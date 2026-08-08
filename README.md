@@ -1,7 +1,7 @@
 # 无限逻辑·语音助手
 
 基于浏览器 Vosk 离线唤醒词的语音对话助手。纯浏览器 + 轻量 Python 后端，
-OpenAI 兼容接口，支持网络/外网任意部署。
+OpenAI 兼容接口，支持离线/在线任意部署。
 
 ## 功能
 
@@ -18,7 +18,7 @@ OpenAI 兼容接口，支持网络/外网任意部署。
 ```bash
 # 1. 安装 Python 依赖
 pip install -r requirements.txt
-# 网络离线: 双击 install_deps.bat（使用 scripts/libs/ 下的离线 wheel）
+# 离线安装: 双击 install_deps.bat（使用 scripts/libs/ 下的离线 wheel）
 
 # 2. 配置
 cp config.yaml.example config.yaml
