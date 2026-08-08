@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Vosk 诊断</title>
+  <script src="/lib/vosk.js"></script>
+  <script>window.vosk = window.Vosk</script>
+  <script src="/lib/wake-word.js"></script>
+</head>
+<body>
+  <h2>Vosk 语音唤醒诊断</h2>
+  <pre id="log"></pre>
+  <button id="startBtn">开始监听</button>
+  <button id="stopBtn" disabled>停止</button>
+  <hr>
+  <p>状态: <span id="status">未启动</span></p>
+  <p>部分结果: <span id="partial">-</span></p>
+  <p>唤醒触发次数: <span id="wakeCount">0</span></p>
+
+<script>
+var logEl = document.getElementById('log');
+function log(msg) {
+  logEl.textContent += new Date().toLocaleTimeString() + ' ' + msg + '\n';
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+var wakeCount = 0;
+document.getElementById('startBtn').onclick = async function() {
+  log('=== 开始诊断 ===');
+
+  // Step 1: Check vosk global
+  log('[1] typeof vosk = ' + typeof vosk);
+  log('[2] typeof Vosk = ' + typeof Vosk);
+
+  // Step 2: Test createModel
+  var modelPath = '/models/vosk-model-small-cn-0.22.tar.gz';
+  log('[3] 加载模型: ' + modelPath);
+  var t0 = Date.now();
+  try {
+    var model = await vosk.createModel(modelPath);
+    log('[3] OK 模型加载完成 (' + (Date.now()-t0) + 'ms)');
+  } catch(e) {
+    log('[3] FAIL: ' + e.message);
+    return;
+  }
+
+  // Step 3: Check model.ready
+  log('[4] model.ready = ' + model.ready);
+  if (!model.ready) {
+    log('[4] 模型未就绪, 稍等...');
+    await new Promise(r => setTimeout(r, 2000));
+    log('[4] model.ready = ' + model.ready);
+  }
+
+  // Step 4: Create recognizer
+  log('[5] 创建 KaldiRecognizer(16000)...');
+  var rec;
+  try {
+    rec = new model.KaldiRecognizer(16000);
+    log('[5] OK recognizer.id = ' + rec.id);
+  } catch(e) {
+    log('[5] FAIL: ' + e.message);
+    return;
+  }
+
+  // Step 5: Test methods exist
+  log('[6] 方法检查:');
+  log('  setWords: ' + typeof rec.setWords);
+  log('  acceptWaveform: ' + typeof rec.acceptWaveform);
+  log('  acceptWaveformFloat: ' + typeof rec.acceptWaveformFloat);
+  log('  remove: ' + typeof rec.remove);
+  log('  retrieveFinalResult: ' + typeof rec.retrieveFinalResult);
+  log('  on: ' + typeof rec.on);
+
+  // Step 6: Bind events
+  rec.setWords(true);
+  rec.on('partialresult', function(msg) {
+    var p = (msg && msg.result && msg.result.partial) || '';
+    if (p) {
+      document.getElementById('partial').textContent = p;
+      log('[partial] ' + p);
+    }
+  });
+  rec.on('result', function(msg) {
+    var t = (msg && msg.result && msg.result.text) || '';
+    if (t) log('[result] ' + t);
+  });
+  log('[6] 事件已绑定');
+
+  // Step 7: Get microphone and test audio processing
+  log('[7] 获取麦克风...');
+  var stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: { ideal: 16000 } } });
+    log('[7] OK 采样率: ' + stream.getAudioTracks()[0].getSettings().sampleRate);
+  } catch(e) {
+    log('[7] FAIL: ' + e.message);
+    return;
+  }
+
+  var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  log('[8] AudioContext 采样率: ' + audioCtx.sampleRate);
+  var source = audioCtx.createMediaStreamSource(stream);
+  var scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
+
+  var chunkCount = 0;
+  scriptNode.onaudioprocess = function(evt) {
+    chunkCount++;
+    if (chunkCount <= 3) {
+      log('[audio chunk ' + chunkCount + '] sampleRate=' + evt.inputBuffer.sampleRate + ' length=' + evt.inputBuffer.length + ' channels=' + evt.inputBuffer.numberOfChannels);
+    }
+    // 新 API: acceptWaveform 接受 AudioBuffer
+    try {
+      rec.acceptWaveform(evt.inputBuffer);
+    } catch(e) {
+      if (chunkCount <= 3) log('[audio error] ' + e.message);
+    }
+    // Also manually check if we should retrieve final result
+    if (chunkCount % 40 === 0) {
+      try { rec.retrieveFinalResult(); } catch(e) {}
+    }
+  };
+
+  source.connect(scriptNode);
+  scriptNode.connect(audioCtx.destination);
+
+  document.getElementById('startBtn').disabled = true;
+  document.getElementById('stopBtn').disabled = false;
+  document.getElementById('status').textContent = '运行中 (chunks: 0)';
+
+  // Periodic status update
+  var statusInterval = setInterval(function() {
+    document.getElementById('status').textContent = '运行中 (chunks: ' + chunkCount + ')';
+    if (chunkCount > 0 && chunkCount % 200 === 0) {
+      try { rec.retrieveFinalResult(); } catch(e) {}
+    }
+  }, 1000);
+
+  document.getElementById('stopBtn').onclick = function() {
+    clearInterval(statusInterval);
+    scriptNode.disconnect();
+    audioCtx.close();
+    stream.getTracks().forEach(t => t.stop());
+    rec.remove();
+    document.getElementById('status').textContent = '已停止 (共 ' + chunkCount + ' chunks)';
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('stopBtn').disabled = true;
+    log('[stopped] 总共处理 ' + chunkCount + ' 个音频块');
+  };
+};
+</script>
+</body>
+</html>
