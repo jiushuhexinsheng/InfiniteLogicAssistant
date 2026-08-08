@@ -369,7 +369,7 @@ export function useAssistant() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             messages: [
-              { role: 'system', content: '你是语音助手。用户执行了一个操作，请用一句话告知结果。' },
+              { role: 'system', content: '你是智能语音助手小逻。用户执行了一个操作，请用一句话告知结果。' },
               { role: 'user', content: `操作: ${action}, 结果: ${toolResult}` },
             ],
           }),

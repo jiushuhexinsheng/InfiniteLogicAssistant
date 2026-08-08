@@ -1,0 +1,76 @@
+# 无限逻辑·语音助手 — 配置
+# 支持 ${ENV_VAR} 环境变量插值
+
+llm:
+  # 当前生效的 LLM profile 名（对应 profiles 下的键名）；改 active 切换服务商
+  active: deepseek
+  profiles:
+    deepseek:                 # OpenAI 兼容（示例）
+      provider: openai
+      endpoint: "https://api.deepseek.com"
+      api_key: "${LLM_API_KEY}"
+      model: "deepseek-chat"
+      chat_path: "/v1/chat/completions"
+      max_tokens: 4096
+      temperature: 0.7
+      timeout: 60
+    openai:                   # OpenAI 官方
+      provider: openai
+      endpoint: "https://api.openai.com/v1"
+      api_key: "${OPENAI_API_KEY}"
+      model: "gpt-4o-mini"
+      chat_path: "/v1/chat/completions"
+      max_tokens: 4096
+      temperature: 0.7
+      timeout: 60
+    qwen:                     # 通义千问（DashScope 兼容模式）
+      provider: openai
+      endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      api_key: "${QWEN_API_KEY}"
+      model: "qwen-plus"
+      chat_path: "/v1/chat/completions"
+      max_tokens: 4096
+      temperature: 0.7
+      timeout: 60
+
+voice:
+  # 离线语音唤醒（浏览器端 Vosk WASM，关键词可任意改）
+  wake_word:
+    enabled: true
+    keyword: "小逻小逻"
+    sensitivity: 0.5
+    model_path: "models/vosk-model-small-cn-0.22"
+  # 静音检测（自动停止录音）
+  vad:
+    silence_threshold: 0.02
+    silence_duration_ms: 1500
+    max_duration_ms: 10000
+  # 在线 ASR 语音转文字（OpenAI 兼容；endpoint/model 需自填）
+  asr:
+    active: openai
+    profiles:
+      openai:
+        provider: openai
+        endpoint: ""                    # 例: https://api.siliconflow.cn/v1
+        api_key: "${ASR_API_KEY}"
+        model: ""                       # 例: FunAudioLLM/SenseVoiceSmall
+        language: "zh"
+        timeout: 30
+        chat_path: "/v1/chat/completions"
+  # TTS（可选；另有浏览器端 SpeechSynthesis 播报，默认关闭）
+  tts:
+    enabled: false
+    profiles:
+      openai:
+        provider: openai
+        endpoint: ""                    # 例: https://api.openai.com/v1
+        api_key: "${TTS_API_KEY}"
+        model: "tts-1"
+        voice: "alloy"
+        timeout: 30
+        chat_path: "/v1/audio/speech"
+
+server:
+  host: "127.0.0.1"
+  port: 8520
+  open_browser: true
