@@ -11,44 +11,30 @@
       <div class="msg-bubble" :class="message.role">
         <MarkdownRenderer v-if="message.role !== 'system'" :text="message.text" />
         <div v-else class="msg-text">{{ message.text }}</div>
-        <!-- 工具调用（Task 7 替换为 ToolTimeline） -->
-        <div v-if="message.toolCalls?.length" class="msg-tools">
-          <div
-            v-for="tc in message.toolCalls"
-            :key="tc.id"
-            class="tool-tag"
-            :class="tc.status"
-            @click="expandedToolId = expandedToolId === tc.id ? '' : tc.id"
-          >
-            <Icon :name="toolIcon(tc)" :size="12" />
-            <span class="tool-name">{{ toolLabel(tc) }}</span>
-            <span class="tool-status-badge">{{ tc.status }}</span>
-          </div>
-          <div v-if="expandedToolId === message.toolCalls[0]?.id" class="tool-detail">
-            <div class="tool-args">
-              <strong>参数:</strong>
-              <code>{{ JSON.stringify(message.toolCalls[0].args, null, 2) }}</code>
-            </div>
-            <div v-if="message.toolCalls[0].result" class="tool-result">
-              <strong>结果:</strong> {{ message.toolCalls[0].result }}
-            </div>
-          </div>
-          <slot name="tool-actions" :tool="message.toolCalls[0]"></slot>
-        </div>
+        <!-- 工具调用：纵向时间轴 -->
+        <ToolTimeline
+          v-if="message.toolCalls?.length"
+          :steps="timelineSteps"
+          @retry="emit('retry', $event)"
+          @cancel="emit('cancel', $event)"
+        />
+        <slot v-if="message.toolCalls?.length" name="tool-actions" :tool="message.toolCalls[0]"></slot>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import Icon from '../Icon.vue'
 import MarkdownRenderer from '../MarkdownRenderer.vue'
+import ToolTimeline from './ToolTimeline.vue'
 import type { ChatMessage, ToolCall } from '../../composables/useAssistant'
+import type { ToolStep } from '../../types'
 
 const props = defineProps<{ message: ChatMessage }>()
 
-const expandedToolId = ref('')
+const emit = defineEmits<{ retry: [id: string]; cancel: [id: string] }>()
 
 const roleName = computed(() => {
   switch (props.message.role) {
@@ -67,6 +53,19 @@ function toolLabel(tc: ToolCall) {
   const map: Record<string, string> = { chat: '对话' }
   return map[tc.name] || tc.name
 }
+
+// ToolCall → ToolStep（pending → queued 时间轴展示名）
+const timelineSteps = computed<ToolStep[]>(() =>
+  (props.message.toolCalls || []).map((tc) => ({
+    id: tc.id,
+    name: toolLabel(tc),
+    icon: toolIcon(tc),
+    status: tc.status === 'pending' ? 'queued' : tc.status,
+    durationMs: (tc as ToolCall & { durationMs?: number }).durationMs,
+    args: tc.args,
+    result: tc.result,
+  }))
+)
 
 function formatTime(ts: number) {
   const d = new Date(ts)
@@ -147,62 +146,4 @@ function formatTime(ts: number) {
   text-align: center;
 }
 .msg-text { white-space: pre-wrap; }
-
-/* 工具调用 */
-.msg-tools {
-  margin-top: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.tool-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: #1e293b;
-  cursor: pointer;
-  align-self: flex-start;
-}
-.tool-tag.running { border-left: 3px solid #f97316; }
-.tool-tag.done { border-left: 3px solid #22c55e; }
-.tool-tag.failed { border-left: 3px solid #ef4444; }
-.tool-name { color: var(--text-2); }
-.tool-status-badge {
-  font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 8px;
-  margin-left: 4px;
-}
-.tool-tag.running .tool-status-badge { background: #f9731620; color: #f97316; }
-.tool-tag.done .tool-status-badge { background: #22c55e20; color: #22c55e; }
-.tool-tag.failed .tool-status-badge { background: #ef444420; color: #ef4444; }
-
-.tool-detail {
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--text-2);
-  background: #0f172a;
-  padding: 6px 8px;
-  border-radius: 6px;
-  max-width: 100%;
-  overflow: hidden;
-}
-.tool-detail strong { color: var(--text-1); }
-.tool-detail code {
-  display: block;
-  background: #1e293b;
-  padding: 4px 6px;
-  border-radius: 4px;
-  margin-top: 2px;
-  font-size: 11px;
-  color: #a5b4fc;
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 80px;
-  overflow-y: auto;
-}
-.tool-result { margin-top: 4px; }
 </style>
