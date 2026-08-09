@@ -10,13 +10,14 @@
     @click="onClick"
     @dblclick="emit('dblclick')"
   >
-    <span class="trigger-icon">{{ visual.icon }}</span>
+    <Icon :name="visual.icon" :size="24" class="trigger-icon" style="color:#fff" />
     <span v-if="!expanded && messageDot" class="new-dot"></span>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onUnmounted } from 'vue'
+import Icon from '../Icon.vue'
 import type { AsstState } from '../../composables/useAssistant'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
 
