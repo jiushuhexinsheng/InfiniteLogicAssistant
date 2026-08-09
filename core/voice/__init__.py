@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""语音模块 — ASR / TTS（OpenAI 兼容多提供方）
+"""语音模块 — ASR / TTS（OpenAI 兼容多提供方，async httpx）
 
 - ASR:  POST {endpoint}{chat_path} + messages[0].content input_audio（OpenAI 兼容）
 - TTS:  POST {endpoint}{chat_path} + {"model","input","voice"}，响应为二进制音频
@@ -7,14 +7,14 @@
 import os
 import tempfile
 
-import requests
+import httpx
 
 from core.config import is_asr_configured, is_tts_enabled, resolve_asr_profile, resolve_tts_profile
 from core.logger import logger
 
 
 class ASRClient:
-    """ASR 语音识别客户端（OpenAI 兼容）"""
+    """ASR 语音识别客户端（OpenAI 兼容，async）"""
 
     def __init__(self):
         self.profile_name, p = resolve_asr_profile()
@@ -40,7 +40,7 @@ class ASRClient:
     def available(self) -> bool:
         return is_asr_configured()
 
-    def transcribe_base64(self, audio_base64: str, audio_format: str = "wav") -> str:
+    async def transcribe_base64(self, audio_base64: str, audio_format: str = "wav") -> str:
         """调用 OpenAI 兼容 ASR（chat completions + input_audio）"""
         url = f"{self.endpoint.rstrip('/')}{self.chat_path}"
         body = {
@@ -53,14 +53,15 @@ class ASRClient:
             }],
             "max_tokens": 1024,
         }
-        resp = requests.post(url, json=body, headers=self._headers, timeout=self.timeout)
-        resp.raise_for_status()
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            resp = await client.post(url, json=body, headers=self._headers)
+            resp.raise_for_status()
         data = resp.json()
         return data["choices"][0]["message"]["content"].strip()
 
 
 class TTSClient:
-    """TTS 语音合成（OpenAI 兼容）"""
+    """TTS 语音合成（OpenAI 兼容，async）"""
 
     def __init__(self):
         self.profile_name, p = resolve_tts_profile()
@@ -75,23 +76,24 @@ class TTSClient:
     def available(self) -> bool:
         return is_tts_enabled()
 
-    def speak(self, text: str) -> bool:
+    async def speak(self, text: str) -> bool:
         if not self.available():
             return False
         try:
-            return self._speak(text)
+            return await self._speak(text)
         except Exception as e:
             logger.warning("TTS 失败: {}", e)
             return False
 
-    def _speak(self, text: str) -> bool:
+    async def _speak(self, text: str) -> bool:
         url = f"{self.endpoint}{self.chat_path}"
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         body = {"model": self.model, "input": text[:500], "voice": self.voice}
-        resp = requests.post(url, json=body, headers=headers, timeout=self.timeout)
-        resp.raise_for_status()
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            resp = await client.post(url, json=body, headers=headers)
+            resp.raise_for_status()
         return _play_audio(resp.content)
 
 
