@@ -83,9 +83,9 @@ function onBallDblClick() {
   messageDot.value = false
 }
 
-// 文字输入发送（Task 10 接入 sendText）
-function onInputSend(_text: string) {
-  // TODO(Task10): props.asst.sendText(text)
+// 文字输入发送 → 复用 LLM 管线
+function onInputSend(text: string) {
+  props.asst.sendText(text)
 }
 
 // 新消息红点
