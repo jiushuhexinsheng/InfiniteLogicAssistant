@@ -5,6 +5,7 @@
     python main.py serve             启动 Web 服务
     python main.py test              测试 LLM / ASR 连通性
 """
+import asyncio
 import base64
 import io
 import sys
@@ -13,8 +14,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from core.config import ensure_dirs, is_llm_configured, resolve_llm_profile, is_asr_configured, resolve_asr_profile
+from core.config import (
+    ensure_dirs, is_llm_configured, resolve_llm_profile,
+    is_asr_configured, resolve_asr_profile,
+)
 from core.logger import logger
+
+TEST_TIMEOUT = 8  # 连通测试超时（秒）
 
 
 def cmd_serve():
@@ -33,13 +39,49 @@ def _silence_wav_base64(seconds: float = 0.3, rate: int = 16000) -> str:
     return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 
-def cmd_test():
-    """测试 LLM / ASR 连通性（start.bat 启动前调用）。
+async def _test_llm() -> bool:
+    """LLM 连通性：stream_chat 消费 done 事件"""
+    from core.llm.stream import stream_chat
+    _, profile = resolve_llm_profile()
+    profile = dict(profile, timeout=TEST_TIMEOUT)  # 测试用短超时
+    messages = [
+        {"role": "system", "content": "你是一个测试助手。"},
+        {"role": "user", "content": "请只回复两个字：连通"},
+    ]
+    try:
+        async for evt in stream_chat(messages, profile=profile):
+            if evt["type"] == "done":
+                content = (evt["message"].get("content") or "").strip()
+                print(f"      回复: {content[:80]}")
+                return bool(content)
+        return False
+    except Exception as e:
+        logger.error("LLM 连通性测试失败: {}", e)
+        print(f"  [失败] {type(e).__name__}: {e}")
+        print("       详情见 data/agent.log")
+        return False
 
-    任一失败返回非零退出码，便于启动脚本中断并提示查看 data/agent.log。
-    """
-    import traceback
-    TEST_TIMEOUT = 8  # 连通测试超时（秒），避免服务不可达时长时间阻塞启动
+
+async def _test_asr() -> bool:
+    """ASR 连通性：静音 WAV base64 过一遍链路"""
+    from core.voice import get_asr
+    asr = get_asr()
+    try:
+        audio_b64 = _silence_wav_base64()
+        text = await asr.transcribe_base64(audio_b64, "wav")
+        ok = isinstance(text, str)
+        if ok:
+            print(f"      返回: {text.strip()[:80] or '(空文本，链路已通)'}")
+        return ok
+    except Exception as e:
+        logger.error("ASR 连通性测试失败: {}", e)
+        print(f"  [失败] {type(e).__name__}: {e}")
+        print("       详情见 data/agent.log")
+        return False
+
+
+async def _cmd_test() -> bool:
+    """异步测试主体，返回是否全部通过"""
     print("=" * 56)
     print("  连通性测试 — LLM / ASR")
     print("=" * 56)
@@ -51,23 +93,10 @@ def cmd_test():
     if not is_llm_configured():
         print("  [跳过] LLM 未配置（config.yaml 缺少 endpoint/model）")
     else:
-        try:
-            from core.llm import get_llm
-            llm = get_llm()
-            llm.timeout = TEST_TIMEOUT  # 测试用短超时，不改变 config.yaml 的生产配置
-            reply = llm.chat("你是一个测试助手。", "请只回复两个字：连通")
-            ok = bool(reply and reply.strip())
-            print(f"  [{'OK' if ok else '失败'}] profile={llm.profile_name} provider={llm.provider} model={llm.model}")
-            if ok:
-                print(f"      回复: {reply.strip()[:80]}")
-            else:
-                print("      返回为空")
-                failed = True
-        except Exception as e:
-            logger.error("LLM 连通性测试失败: {}", e)
-            logger.debug("LLM 测试堆栈:\n{}", traceback.format_exc())
-            print(f"  [失败] {type(e).__name__}: {e}")
-            print("       详情见 data/agent.log")
+        print(f"  [测试] profile={resolve_llm_profile()[0]}")
+        if await _test_llm():
+            print("  [OK] LLM 连通正常")
+        else:
             failed = True
 
     # ── ASR ──
@@ -75,32 +104,25 @@ def cmd_test():
     if not is_asr_configured():
         print("  [跳过] ASR 未配置（config.yaml 缺少 endpoint/model）")
     else:
-        try:
-            from core.voice import get_asr
-            asr = get_asr()
-            asr.timeout = TEST_TIMEOUT  # 测试用短超时
-            audio_b64 = _silence_wav_base64()
-            text = asr.transcribe_base64(audio_b64, "wav")
-            ok = isinstance(text, str)
-            print(f"  [{'OK' if ok else '失败'}] profile={asr.profile_name} provider={asr.provider} model={asr.model}")
-            if ok:
-                print(f"      返回: {text.strip()[:80] or '(空文本，链路已通)'}")
-            else:
-                failed = True
-        except Exception as e:
-            logger.error("ASR 连通性测试失败: {}", e)
-            logger.debug("ASR 测试堆栈:\n{}", traceback.format_exc())
-            print(f"  [失败] {type(e).__name__}: {e}")
-            print("       详情见 data/agent.log")
+        print(f"  [测试] profile={resolve_asr_profile()[0]}")
+        if await _test_asr():
+            print("  [OK] ASR 连通正常")
+        else:
             failed = True
 
     print(f"\n{'=' * 56}")
     if failed:
         print("  结果: 存在连通性失败，请查看 data/agent.log")
-        sys.exit(1)
     else:
         print("  结果: LLM / ASR 连通正常")
     print(f"{'=' * 56}\n")
+    return failed
+
+
+def cmd_test():
+    failed = asyncio.run(_cmd_test())
+    if failed:
+        sys.exit(1)
 
 
 def main():
