@@ -10,8 +10,8 @@
     @click="onClick"
     @dblclick="emit('dblclick')"
   >
-    <!-- 状态环层：recording 进度环（Task 9 填充）；聆听/录音时品牌色环 -->
-    <span class="ball-status-ring" :class="state"></span>
+    <!-- 状态环层：recording 时 conic 进度环；聆听时品牌色环 -->
+    <span class="ball-status-ring" :class="state" :style="ringStyle"></span>
     <!-- 图标层 -->
     <Icon :name="visual.icon" :size="24" class="trigger-icon" style="color:#fff" />
     <!-- 语音开关徽章（mic） -->
@@ -28,7 +28,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import Icon from '../Icon.vue'
 import type { AsstState } from '../../composables/useAssistant'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
@@ -107,12 +107,42 @@ function onClick() {
 onUnmounted(() => {
   document.removeEventListener('pointermove', onDragMove)
   document.removeEventListener('pointerup', onDragEnd)
+  stopProgress()
 })
 
 const triggerStyle = computed(() => ({
   right: (window.innerWidth - props.pos.x - 56) + 'px',
   bottom: (window.innerHeight - props.pos.y - 56) + 'px',
 }))
+
+// ── 录音进度环（recording 时按 VAD 上限推进 conic 进度）──
+const recordingMaxMs = 10000
+const recordingProgress = ref(0)
+let progTimer: ReturnType<typeof setInterval> | null = null
+let progStart = 0
+
+function startProgress() {
+  stopProgress()
+  progStart = Date.now()
+  progTimer = setInterval(() => {
+    const elapsed = Date.now() - progStart
+    recordingProgress.value = Math.min(1, elapsed / recordingMaxMs)
+  }, 100)
+}
+function stopProgress() {
+  if (progTimer) { clearInterval(progTimer); progTimer = null }
+  recordingProgress.value = 0
+}
+watch(() => props.state, (s) => {
+  if (s === 'recording') startProgress()
+  else stopProgress()
+})
+
+const ringStyle = computed(() => {
+  if (props.state !== 'recording') return {}
+  const pct = Math.round(recordingProgress.value * 360)
+  return { background: `conic-gradient(var(--brand-c2) ${pct}deg, rgba(255,255,255,.08) ${pct}deg)` }
+})
 </script>
 
 <style scoped>
@@ -153,7 +183,7 @@ const triggerStyle = computed(() => ({
   pointer-events: none;
 }
 .ball-status-ring.listening { box-shadow: inset 0 0 0 2px rgba(52, 211, 153, .35); }
-.ball-status-ring.recording { box-shadow: inset 0 0 0 2px rgba(248, 113, 113, .45); }
+.ball-status-ring.recording { box-shadow: inset 0 0 0 2px rgba(52, 211, 153, .6); }
 
 /* 语音开关徽章 */
 .ball-mic {
