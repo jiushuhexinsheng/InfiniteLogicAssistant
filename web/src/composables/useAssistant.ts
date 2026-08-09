@@ -21,6 +21,7 @@ export interface ToolCall {
   args: Record<string, any>
   result?: string
   status: 'pending' | 'running' | 'done' | 'failed'
+  durationMs?: number
 }
 
 export interface ChatMessage {
@@ -338,6 +339,7 @@ export function useAssistant() {
   // ── 工具调用 ──
   async function handleAction(parsed: { action: string; args: Record<string, any>; reply?: string }) {
     const { action, args = {}, reply = '' } = parsed
+    const startTs = Date.now()
     const toolCalls: ToolCall[] = [{
       id: genId(),
       name: action,
@@ -367,6 +369,7 @@ export function useAssistant() {
       toolCalls[0].status = 'failed'
       toolCalls[0].result = e.message || '执行失败'
     }
+    toolCalls[0].durationMs = Date.now() - startTs
 
     const displayText = reply || toolResult
     addMessage('assistant', displayText, toolCalls)
@@ -399,6 +402,40 @@ export function useAssistant() {
     }
 
     state.value = 'done'
+  }
+
+  // ── 工具重试/取消 ──
+  async function retryTool(id: string) {
+    const m = messages.value.find(msg => msg.toolCalls?.some(tc => tc.id === id))
+    const tc = m?.toolCalls?.find(t => t.id === id)
+    if (!tc) return
+    tc.status = 'running'
+    tc.result = ''
+    tc.durationMs = undefined
+    state.value = 'tool_calling'
+    const startTs = Date.now()
+    try {
+      let toolResult = ''
+      switch (tc.name) {
+        case 'chat': toolResult = tc.args?.reply || ''; break
+        default: toolResult = '收到，正在处理...'
+      }
+      tc.result = toolResult
+      tc.status = 'done'
+    } catch (e: any) {
+      tc.status = 'failed'
+      tc.result = e.message || '执行失败'
+    }
+    tc.durationMs = Date.now() - startTs
+    state.value = 'done'
+  }
+
+  function cancelTool(id: string) {
+    for (const msg of messages.value) {
+      msg.toolCalls?.forEach(tc => {
+        if (tc.id === id && (tc.status === 'running' || tc.status === 'pending')) tc.status = 'failed'
+      })
+    }
   }
 
   // ── 消息管理 ──
@@ -554,5 +591,7 @@ export function useAssistant() {
     destroy,
     toggleWake,
     clearMessages,
+    retryTool,
+    cancelTool,
   }
 }

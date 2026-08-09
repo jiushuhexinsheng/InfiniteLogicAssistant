@@ -44,6 +44,8 @@
           :state="asst.state.value"
           :visual="asst.visual.value"
           :wake-keyword="asst.wakeKeyword.value"
+          @retry="asst.retryTool($event)"
+          @cancel="asst.cancelTool($event)"
         />
         <ChatInput :disabled="false" @send="onInputSend" />
       </AssistantPanel>

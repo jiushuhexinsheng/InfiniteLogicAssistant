@@ -19,7 +19,13 @@
     </div>
 
     <TransitionGroup name="msg">
-      <MessageItem v-for="m in messages" :key="m.id" :message="m" />
+      <MessageItem
+        v-for="m in messages"
+        :key="m.id"
+        :message="m"
+        @retry="emit('retry', $event)"
+        @cancel="emit('cancel', $event)"
+      />
     </TransitionGroup>
   </div>
 </template>
@@ -36,6 +42,8 @@ const props = defineProps<{
   visual: StateVisual
   wakeKeyword: string
 }>()
+
+const emit = defineEmits<{ retry: [id: string]; cancel: [id: string] }>()
 
 const msgContainer = ref<HTMLDivElement>()
 const waveIndex = ref(0)
