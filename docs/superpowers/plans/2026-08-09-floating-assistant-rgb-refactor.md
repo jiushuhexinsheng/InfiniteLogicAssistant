@@ -725,7 +725,7 @@ git commit -m "feat: 消息列表子组件 MessageList — 滚动到底 + 空态
 - Create: `web/src/components/assistant/StatusBar.vue`
 
 **Interfaces:**
-- Consumes: `props { state: AsstState, visual: StateVisual, statusLine: string, wakeEnabled: boolean }`
+- Consumes: `props { state: AsstState, visual: StateVisual, statusLine: string, partialText: string, wakeEnabled: boolean }`
 - Produces: emits `toggleWake`。
 
 - [ ] **Step 1: 创建组件**
@@ -750,12 +750,17 @@ const props = defineProps<{
   state: AsstState
   visual: StateVisual
   statusLine: string
+  partialText: string
   wakeEnabled: boolean
 }>()
 
 const emit = defineEmits<{ toggleWake: [] }>()
 
+// 保留原逻辑：聆听/录音时优先显示实时转写 partialText
 const statusDisplay = computed(() => {
+  if (props.partialText && (props.state === 'listening' || props.state === 'recording')) {
+    return props.partialText
+  }
   const label = typeof props.visual.label === 'function' ? props.visual.label('') : props.visual.label
   return label
 })
@@ -770,8 +775,6 @@ const showEnableButton = computed(() =>
    呼吸/旋转/闪烁等状态动画迁移自原文件，accent 色改用 STATE_VISUALS.color */
 </style>
 ```
-
-> 注：`statusDisplay` 当前原逻辑在聆听/录音时会显示 `partialText` 优先。该逻辑实际由入口容器传入——见 Task 11，若需保留"partialText 显示"，由容器在调用 StatusBar 前把 label 与 partialText 合并，或本组件增加 `partialText` prop 并优先显示。
 
 - [ ] **Step 2: 验证构建**
 
@@ -1006,6 +1009,7 @@ git commit -m "feat: 面板容器子组件 AssistantPanel — 渐变边框 + 深
           :state="asst.state.value"
           :visual="asst.visual.value"
           :status-line="asst.statusLine.value"
+          :partial-text="asst.partialText.value"
           :wake-enabled="asst.wakeEnabled.value"
           @toggle-wake="asst.toggleWake()"
         />
