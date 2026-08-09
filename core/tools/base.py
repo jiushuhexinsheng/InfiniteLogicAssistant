@@ -33,7 +33,7 @@ class _ToolRegistry:
             return f"Error: unknown tool '{name}'"
         func = self._tools[name]["func"]
         try:
-            if asyncio.iscoroutinefunction(func):
+            if inspect.iscoroutinefunction(func):
                 return f"Error: '{name}' is async; use acall()"
             return _to_string(func(**args))
         except Exception as exc:
@@ -44,7 +44,7 @@ class _ToolRegistry:
             return f"Error: unknown tool '{name}'"
         func = self._tools[name]["func"]
         try:
-            if asyncio.iscoroutinefunction(func):
+            if inspect.iscoroutinefunction(func):
                 return _to_string(await func(**args))
             return _to_string(await asyncio.to_thread(lambda: func(**args)))
         except Exception as exc:
