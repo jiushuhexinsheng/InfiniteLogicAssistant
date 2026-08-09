@@ -9,7 +9,8 @@
         <span class="msg-time">{{ formatTime(message.timestamp) }}</span>
       </div>
       <div class="msg-bubble" :class="message.role">
-        <div class="msg-text">{{ message.text }}</div>
+        <MarkdownRenderer v-if="message.role !== 'system'" :text="message.text" />
+        <div v-else class="msg-text">{{ message.text }}</div>
         <!-- 工具调用（Task 7 替换为 ToolTimeline） -->
         <div v-if="message.toolCalls?.length" class="msg-tools">
           <div
@@ -42,6 +43,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import Icon from '../Icon.vue'
+import MarkdownRenderer from '../MarkdownRenderer.vue'
 import type { ChatMessage, ToolCall } from '../../composables/useAssistant'
 
 const props = defineProps<{ message: ChatMessage }>()
