@@ -10,7 +10,19 @@
     @click="onClick"
     @dblclick="emit('dblclick')"
   >
+    <!-- 状态环层：recording 进度环（Task 9 填充）；聆听/录音时品牌色环 -->
+    <span class="ball-status-ring" :class="state"></span>
+    <!-- 图标层 -->
     <Icon :name="visual.icon" :size="24" class="trigger-icon" style="color:#fff" />
+    <!-- 语音开关徽章（mic） -->
+    <button
+      class="ball-mic"
+      :class="{ on: wakeEnabled }"
+      title="语音开关"
+      @click.stop="emit('toggleWake')"
+    >
+      <Icon name="mic" :size="10" />
+    </button>
     <span v-if="!expanded && messageDot" class="new-dot"></span>
   </div>
 </template>
@@ -27,12 +39,14 @@ const props = defineProps<{
   visual: StateVisual
   messageDot: boolean
   expanded: boolean
+  wakeEnabled?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:pos': [pos: { x: number; y: number }]
   click: []
   dblclick: []
+  toggleWake: []
 }>()
 
 const dragging = ref(false)
@@ -129,7 +143,40 @@ const triggerStyle = computed(() => ({
   0%, 100% { box-shadow: 0 0 8px rgba(165, 180, 252, .25); }
   50%      { box-shadow: 0 0 18px rgba(110, 231, 183, .4), 0 0 30px rgba(103, 232, 249, .2); }
 }
-.trigger-icon { font-size: 24px; line-height: 1; }
+.trigger-icon { z-index: 1; position: relative; }
+
+/* 状态环层 */
+.ball-status-ring {
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.ball-status-ring.listening { box-shadow: inset 0 0 0 2px rgba(52, 211, 153, .35); }
+.ball-status-ring.recording { box-shadow: inset 0 0 0 2px rgba(248, 113, 113, .45); }
+
+/* 语音开关徽章 */
+.ball-mic {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #0f172a;
+  border: 1px solid var(--border-base);
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  z-index: 2;
+  transition: all .2s;
+}
+.ball-mic.on { color: #34d399; border-color: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, .5); }
+.ball-mic:hover { color: var(--brand-c2); }
+
 .new-dot {
   position: absolute;
   top: 4px;
