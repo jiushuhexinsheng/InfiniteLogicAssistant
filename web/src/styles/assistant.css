@@ -1,0 +1,42 @@
+/* 无限逻辑·语音助手 — 悬浮助手视觉令牌与渐变工具类 */
+:root {
+  --brand-c1: #a5b4fc;              /* 靛 */
+  --brand-c2: #67e8f9;              /* 青 */
+  --brand-c3: #6ee7b7;              /* 绿 */
+  --brand-grad: linear-gradient(135deg, var(--brand-c1), var(--brand-c2), var(--brand-c3));
+  --rainbow: conic-gradient(from 0deg,
+    #ef4444, #f97316, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444);
+  --panel-bg: rgba(15, 23, 42, .92);
+  --border-base: #334155;
+  --text-1: #e2e8f0;
+  --text-2: #94a3b8;
+  --text-3: #64748b;
+}
+
+/* 渐变文字 */
+.grad-text {
+  background: var(--brand-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* 渐变描边圆角容器（background-clip 双层技巧）。
+   内填充色用 --grad-inner 覆盖；描边渐变用 --grad-border-grad 覆盖（组件切彩虹时改此变量）。 */
+.grad-border {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--grad-inner, #1e293b), var(--grad-inner, #1e293b)) padding-box,
+    var(--grad-border-grad, var(--brand-grad)) border-box;
+}
+
+/* 品牌光晕 */
+.grad-glow {
+  box-shadow: 0 0 12px rgba(103, 232, 249, .25), 0 0 24px rgba(110, 231, 183, .15);
+}
+
+/* 彩虹 hue 旋转（聆听/录音专用，只作用于小元素） */
+@keyframes rainbow-hue {
+  from { filter: hue-rotate(0deg); }
+  to   { filter: hue-rotate(360deg); }
+}
