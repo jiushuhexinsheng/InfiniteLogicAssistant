@@ -1,0 +1,3 @@
+# Windows 批处理：cmd 解析 LF + 括号块会损坏 %~dp0/变量，必须保持 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
