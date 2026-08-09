@@ -39,4 +39,5 @@ declare const WakeWordEngine: {
   getStream(): MediaStream | null
   isRunning(): boolean
   isModelLoaded(): boolean
+  match(text: string): boolean
 }

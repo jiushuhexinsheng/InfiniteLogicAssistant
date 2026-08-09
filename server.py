@@ -8,7 +8,7 @@ import shutil
 import threading
 import time
 from datetime import datetime
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -220,7 +220,8 @@ def start_server(host: str = "", port: int = 0, open_browser: bool = True):
     open_browser = open_browser and cfg("server.open_browser", True)
 
     ensure_dirs()
-    server = HTTPServer((host, port), AgentHTTPHandler)
+    # ThreadingHTTPServer：避免单个慢请求（如 LLM 最长 60s）阻塞其他请求（静态文件/ASR）
+    server = ThreadingHTTPServer((host, port), AgentHTTPHandler)
     url = f"http://{host}:{port}"
     if WEB_DIST_DIR.is_dir():
         logger.info("服务已启动: {} （前端已构建，直接访问即可）", url)

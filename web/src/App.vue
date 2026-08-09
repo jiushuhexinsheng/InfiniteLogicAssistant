@@ -2,7 +2,7 @@
   <div class="page">
     <div class="hero">
       <h1 class="title">无限逻辑 · 语音助手</h1>
-      <p class="subtitle">唤醒词：小逻小逻</p>
+      <p class="subtitle">唤醒词：{{ app.config.value?.wake_word?.keyword || '小逻小逻' }}</p>
     </div>
     <FloatingAssistant :asst="asst" />
   </div>
@@ -20,7 +20,11 @@ const asst = useAssistant()
 
 onMounted(async () => {
   await app.initConfig()
-  asst.init()
+  // 把服务端 config.yaml 的唤醒词/VAD 配置传给前端引擎（否则引擎用内置默认值，配置不生效）
+  asst.init({
+    wake: app.config.value?.wake_word,
+    vad: app.config.value?.vad,
+  })
 })
 
 onUnmounted(() => {
