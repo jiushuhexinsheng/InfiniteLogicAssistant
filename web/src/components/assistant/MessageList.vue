@@ -23,8 +23,10 @@
         v-for="m in messages"
         :key="m.id"
         :message="m"
+        :typewriter="m.role === 'assistant' && !animatedIds.has(m.id)"
         @retry="emit('retry', $event)"
         @cancel="emit('cancel', $event)"
+        @typed="(id) => animatedIds.add(id)"
       />
     </TransitionGroup>
   </div>
@@ -44,6 +46,9 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ retry: [id: string]; cancel: [id: string] }>()
+
+// 已播报流式动画的消息 id（面板重开不重播）
+const animatedIds = new Set<string>()
 
 const msgContainer = ref<HTMLDivElement>()
 const waveIndex = ref(0)
