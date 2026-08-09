@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { api } from '../api'
+import { api, streamChat } from '../api'
 import { STATE_VISUALS, resolveStateLabel, type StateVisual } from './useAssistantVisuals'
 import type { WakeWordConfig, VadConfig } from '../types'
 
@@ -32,29 +32,9 @@ export interface ChatMessage {
   timestamp: number
 }
 
-// ─── 可用工具（扩展点：在此新增工具描述，并在 handleAction 中实现对应分支）───
-const TOOLS = [
-  {
-    name: 'chat',
-    description: '纯对话，无需调用工具。args: reply(回复内容)',
-  },
-]
-
-// ─── LLM System Prompt ───
+// ─── LLM System Prompt（工具由后端 @tool 注册中心注入，前端不再约定 JSON action）───
 const SYSTEM_PROMPT = `你是一个智能语音助手，名字叫"小逻"。用中文回复，简洁友好（一般不超过3句话）。
-
-你的能力：
-1. 日常对话 — 打招呼、解答问题、闲聊
-2. 将来可扩展工具调用（如查信息、打开网页等）
-
-当用户需要执行操作时，返回 JSON（不要加 markdown 代码块）：
-{"action":"<工具名>","args":{...},"reply":"<对用户说的话>"}
-
-如果是纯聊天，返回：
-{"action":"chat","args":{"reply":"<回复>"},"reply":"<回复>"}
-
-可用工具：
-${TOOLS.map(t => `- ${t.name}: ${t.description}`).join('\n')}`
+你的能力：日常对话、解答问题、使用系统提供的工具（如查时间/计算/搜索/天气）。`
 
 // ─── composable ───
 
@@ -300,111 +280,65 @@ export function useAssistant() {
     }
 
     try {
-      const resp = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history }),
+      // 消费后端 SSE 流（ReAct + 工具由后端执行，前端只展示）
+      let acc = ''
+      let currentMsg: ChatMessage | null = null
+      const toolAcc: ToolCall[] = []
+      const toolStartMap = new Map<string, number>()
+
+      const ensureMsg = () => {
+        if (!currentMsg) {
+          currentMsg = { id: genId(), role: 'assistant', text: '', toolCalls: toolAcc, timestamp: Date.now() }
+          messages.value.push(currentMsg)
+          if (messages.value.length > 50) messages.value.shift()
+        }
+        return currentMsg
+      }
+
+      await streamChat(history, {
+        onContent: (t) => {
+          state.value = 'responding'
+          acc += t
+          partialText.value = acc
+          ensureMsg().text = acc
+        },
+        onToolStart: (name, args) => {
+          state.value = 'tool_calling'
+          const id = genId()
+          toolStartMap.set(id, Date.now())
+          toolAcc.push({ id, name, args, status: 'running' })
+          ensureMsg()
+        },
+        onToolEnd: (name, status, output) => {
+          const tc = toolAcc.find(t => t.name === name && t.status === 'running')
+          if (tc) {
+            tc.status = status === 'ok' ? 'done' : 'failed'
+            tc.result = output
+            const st = toolStartMap.get(tc.id)
+            if (st != null) tc.durationMs = Date.now() - st
+            toolStartMap.delete(tc.id)
+          }
+        },
+        onDone: () => {
+          partialText.value = ''
+          if (acc.trim()) speakText(acc)
+          else if (toolAcc.length) speakText('已完成')
+          state.value = 'done'
+        },
+        onError: (msg) => {
+          console.error('[Asst] LLM error:', msg)
+          addMessage('system', '出错了: ' + msg)
+          state.value = 'error'
+        },
       })
-      const data = await resp.json()
-      if (!data.ok) throw new Error(data.error || 'LLM error')
-
-      const raw = data.text || ''
-      // 解析 JSON action — 兼容 markdown 包裹 + 裸 JSON
-      let parsed: any = null
-      const cleaned = raw.replace(/```(?:json)?\s*/g, '').replace(/```/g, '').trim()
-      const jsonMatch = cleaned.match(/\{[\s\S]*"action"[\s\S]*\}/)
-      if (jsonMatch) {
-        try { parsed = JSON.parse(jsonMatch[0]) } catch { /* ignore */ }
-      }
-      if (!parsed) {
-        try { parsed = JSON.parse(cleaned) } catch { /* ignore */ }
-      }
-
-      if (parsed && parsed.action) {
-        await handleAction(parsed)
-      } else {
-        // 纯文本回复
-        state.value = 'responding'
-        addMessage('assistant', raw)
-        speakText(raw)
-        setTimeout(() => { if (state.value === 'responding') state.value = 'done' }, 2000)
-      }
     } catch (e: any) {
       console.error('[Asst] LLM error:', e)
-      addMessage('assistant', '抱歉，我暂时无法处理，请稍后再试')
+      addMessage('system', '出错了: ' + (e.message || String(e)))
       state.value = 'error'
     }
   }
 
-  // ── 工具调用 ──
-  async function handleAction(parsed: { action: string; args: Record<string, any>; reply?: string }) {
-    const { action, args = {}, reply = '' } = parsed
-    const startTs = Date.now()
-    const toolCalls: ToolCall[] = [{
-      id: genId(),
-      name: action,
-      args,
-      status: 'running',
-    }]
-
-    state.value = 'tool_calling'
-    let toolResult = ''
-
-    try {
-      switch (action) {
-        case 'chat': {
-          toolResult = args.reply || reply || ''
-          toolCalls[0].status = 'done'
-          toolCalls[0].result = toolResult
-          break
-        }
-        default: {
-          // 未知操作 — 降级为对话回复
-          toolResult = reply || `收到，正在处理...`
-          toolCalls[0].status = 'done'
-          toolCalls[0].result = toolResult
-        }
-      }
-    } catch (e: any) {
-      toolCalls[0].status = 'failed'
-      toolCalls[0].result = e.message || '执行失败'
-    }
-    toolCalls[0].durationMs = Date.now() - startTs
-
-    const displayText = reply || toolResult
-    addMessage('assistant', displayText, toolCalls)
-    // 浏览器语音播报
-    speakText(reply || toolResult)
-
-    // 工具执行完后，让 LLM 总结结果
-    if (action !== 'chat') {
-      state.value = 'thinking'
-      try {
-        const summaryResp = await fetch('/api/ai/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: [
-              { role: 'system', content: '你是智能语音助手小逻。用户执行了一个操作，请用一句话告知结果。' },
-              { role: 'user', content: `操作: ${action}, 结果: ${toolResult}` },
-            ],
-          }),
-        })
-        const sdata = await summaryResp.json()
-        if (sdata.ok && sdata.text) {
-          // 更新最后一条消息
-          const last = messages.value[messages.value.length - 1]
-          if (last && last.role === 'assistant') {
-            last.text = sdata.text
-          }
-        }
-      } catch { /* ignore */ }
-    }
-
-    state.value = 'done'
-  }
-
-  // ── 工具重试/取消 ──
+  // ── 工具重试/取消（后端原生工具：重试/取消仅操作本地状态展示）──
   async function retryTool(id: string) {
     const m = messages.value.find(msg => msg.toolCalls?.some(tc => tc.id === id))
     const tc = m?.toolCalls?.find(t => t.id === id)

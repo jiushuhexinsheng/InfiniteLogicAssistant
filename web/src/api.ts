@@ -32,6 +32,66 @@ async function post<T>(path: string, data?: unknown): Promise<T> {
   })
 }
 
+// ─── SSE 流式聊天 ───
+
+export interface ChatHandlers {
+  onContent: (text: string) => void
+  onReasoning?: (text: string) => void
+  onToolStart?: (name: string, args: Record<string, any>) => void
+  onToolEnd?: (name: string, status: string, output: string) => void
+  onDone: () => void
+  onError: (msg: string) => void
+}
+
+/** 消费 /api/ai/chat 的 SSE 事件流 */
+export async function streamChat(messages: unknown[], h: ChatHandlers): Promise<void> {
+  try {
+    const resp = await fetch(`${BASE}/ai/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages }),
+    })
+    if (!resp.ok || !resp.body) {
+      let msg = `HTTP ${resp.status}`
+      try {
+        const e = await resp.json()
+        if (e?.error) msg = e.error
+      } catch { /* not JSON */ }
+      throw new Error(msg)
+    }
+    const reader = resp.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      let idx: number
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        const block = buf.slice(0, idx)
+        buf = buf.slice(idx + 2)
+        const line = block.split('\n').find(l => l.startsWith('data: '))
+        if (!line) continue
+        const data = line.slice(6).trim()
+        if (data === '[DONE]') break
+        let evt: any
+        try { evt = JSON.parse(data) } catch { continue }
+        switch (evt.type) {
+          case 'content_delta': h.onContent(evt.text); break
+          case 'reasoning_delta': h.onReasoning?.(evt.text); break
+          case 'tool_start': h.onToolStart?.(evt.name, evt.args || {}); break
+          case 'tool_end': h.onToolEnd?.(evt.name, evt.status, evt.output || ''); break
+          case 'done': h.onDone(); return
+          case 'error': h.onError(evt.message || '出错'); return
+        }
+      }
+    }
+    h.onDone()
+  } catch (e: any) {
+    h.onError(e?.message || String(e))
+  }
+}
+
 // ─── API 端点 ───
 
 export const api = {
