@@ -4,20 +4,26 @@
     :class="visual.grad === 'rainbow' ? 'fx-rainbow' : ''"
     :style="panelStyle"
   >
-    <!-- 拖拽手柄 -->
-    <div class="panel-handle">
-      <span class="handle-dots">⋮⋮</span>
-      <span class="handle-title">小逻</span>
-      <button class="handle-close" @click="emit('close')">✕</button>
-    </div>
+    <!-- 顶栏：小逻头像 + 名称 + 只读状态 + 清空/关闭 -->
+    <PanelHeader
+      :visual="visual"
+      :state="state"
+      :wake-keyword="wakeKeyword"
+      @clear="emit('clear')"
+      @close="emit('close')"
+    />
 
-    <slot></slot>
+    <!-- 消息区 + 输入栏（由容器经默认 slot 填充） -->
+    <div class="panel-body">
+      <slot></slot>
+    </div>
 
     <slot name="footer"></slot>
   </div>
 </template>
 
 <script setup lang="ts">
+import PanelHeader from './PanelHeader.vue'
 import type { AsstState } from '../../composables/useAssistant'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
 
@@ -25,9 +31,10 @@ defineProps<{
   state: AsstState
   visual: StateVisual
   panelStyle: Record<string, string>
+  wakeKeyword: string
 }>()
 
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ clear: []; close: [] }>()
 </script>
 
 <style scoped>
@@ -57,23 +64,12 @@ const emit = defineEmits<{ close: [] }>()
   animation: rainbow-hue 4s linear infinite;
 }
 
-.panel-handle {
+.panel-body {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  padding: 10px 14px;
-  cursor: grab;
-  background: #0f172a;
-  border-bottom: 1px solid var(--border-base);
-  gap: 8px;
+  flex-direction: column;
 }
-.panel-handle:active { cursor: grabbing; }
-.handle-dots { color: var(--text-3); font-size: 16px; letter-spacing: 2px; }
-.handle-title { flex: 1; color: var(--text-1); font-size: 14px; font-weight: 600; }
-.handle-close {
-  background: none; border: none; color: var(--text-2); cursor: pointer;
-  font-size: 16px; padding: 2px 6px; border-radius: 4px;
-}
-.handle-close:hover { background: #334155; color: var(--text-1); }
 
 /* 移动端 */
 @media (max-width: 480px) {
