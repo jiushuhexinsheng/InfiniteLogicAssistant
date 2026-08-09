@@ -1,15 +1,17 @@
 <template>
   <Teleport to="body">
-    <!-- 悬浮球 -->
+    <!-- 悬浮球（多层：图标 + 状态环 + mic 语音开关徽章） -->
     <FloatBall
       :pos="pos"
       :state="asst.state.value"
       :visual="asst.visual.value"
       :message-dot="messageDot"
       :expanded="expanded"
+      :wake-enabled="asst.wakeEnabled.value"
       @update:pos="pos = $event"
       @click="onBallClick"
       @dblclick="onBallDblClick"
+      @toggle-wake="asst.toggleWake()"
     />
 
     <!-- 迷你播放条：面板收起时实时展示聊天记录 -->
@@ -26,30 +28,24 @@
       @dismiss="miniDismiss = true"
     />
 
-    <!-- 悬浮窗 -->
+    <!-- 悬浮窗（三段式：顶栏 / 消息区 / 输入栏） -->
     <Transition name="panel">
       <AssistantPanel
         v-if="expanded"
         :state="asst.state.value"
         :visual="asst.visual.value"
         :panel-style="panelStyle"
+        :wake-keyword="asst.wakeKeyword.value"
+        @clear="asst.clearMessages()"
         @close="expanded = false"
       >
-        <StatusBar
-          :state="asst.state.value"
-          :visual="asst.visual.value"
-          :status-line="asst.statusLine.value"
-          :partial-text="asst.partialText.value"
-          :wake-enabled="asst.wakeEnabled.value"
-          @toggle-wake="asst.toggleWake()"
-        />
         <MessageList
           :messages="asst.messages.value"
           :state="asst.state.value"
           :visual="asst.visual.value"
           :wake-keyword="asst.wakeKeyword.value"
         />
-        <ActionBar @clear="asst.clearMessages()" @close="expanded = false" />
+        <ChatInput :disabled="false" @send="onInputSend" />
       </AssistantPanel>
     </Transition>
   </Teleport>
@@ -60,9 +56,8 @@ import { ref, computed, watch } from 'vue'
 import FloatBall from './assistant/FloatBall.vue'
 import MiniPlayer from './assistant/MiniPlayer.vue'
 import AssistantPanel from './assistant/AssistantPanel.vue'
-import StatusBar from './assistant/StatusBar.vue'
 import MessageList from './assistant/MessageList.vue'
-import ActionBar from './assistant/ActionBar.vue'
+import ChatInput from './assistant/ChatInput.vue'
 
 const props = defineProps<{
   asst: ReturnType<typeof import('../composables/useAssistant').useAssistant>
@@ -84,6 +79,11 @@ function onBallClick() {
 function onBallDblClick() {
   props.asst.toggleWake()
   messageDot.value = false
+}
+
+// 文字输入发送（Task 10 接入 sendText）
+function onInputSend(_text: string) {
+  // TODO(Task10): props.asst.sendText(text)
 }
 
 // 新消息红点
