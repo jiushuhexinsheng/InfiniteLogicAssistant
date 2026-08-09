@@ -39,7 +39,7 @@ voice:
     enabled: true
     keyword: "小逻小逻"
     sensitivity: 0.5
-    model_path: "models/vosk-model-small-cn-0.22"
+    model_path: "/models/vosk-model-small-cn-0.22.tar.gz"
   # 静音检测（自动停止录音）
   vad:
     silence_threshold: 0.02

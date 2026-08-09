@@ -56,6 +56,17 @@ ${TOOLS.map(t => `- ${t.name}: ${t.description}`).join('\n')}`
 
 // ─── composable ───
 
+/** config.yaml 的 model_path 可能是目录名（如 "models/vosk-model-small-cn-0.22"），
+ *  而 vosk.createModel 需要指向可下载的 .tar.gz 文件 URL。归一化为服务端相对 URL。 */
+function resolveModelPath(p?: string): string {
+  const def = '/models/vosk-model-small-cn-0.22.tar.gz'
+  if (!p) return def
+  let path = p.trim()
+  if (!path.startsWith('/')) path = '/' + path
+  if (!/\.tar\.gz$/i.test(path)) path = path + '.tar.gz'
+  return path
+}
+
 export function useAssistant() {
   // ── 状态 ──
   const state = ref<AsstState>('idle')
@@ -65,9 +76,10 @@ export function useAssistant() {
   const partialText = ref('')
   const statusLine = ref('')
 
-  // 唤醒词配置（init 时设置）
-  let wakeConfig: WakeWordConfig = { enabled: true, keyword: '小邮小邮', sensitivity: 0.5, model_path: '/models/vosk-model-small-cn-0.22.tar.gz' }
+  // 唤醒词配置（init 时从 /api/config 合并）
+  let wakeConfig: WakeWordConfig = { enabled: true, keyword: '小逻小逻', sensitivity: 0.5, model_path: '/models/vosk-model-small-cn-0.22.tar.gz' }
   let vadConfig: VadConfig = { silence_threshold: 0.02, silence_duration_ms: 1500, max_duration_ms: 10000 }
+  const wakeKeyword = ref(wakeConfig.keyword)  // 响应式 keyword，供 UI 提示与状态文案
 
   // ── 录音管线 ──
   let wakeRecorder: MediaRecorder | null = null
@@ -474,7 +486,10 @@ export function useAssistant() {
 
   // ── 初始化 ──
   function init(config?: { wake?: Partial<WakeWordConfig>; vad?: Partial<VadConfig> }) {
-    if (config?.wake) Object.assign(wakeConfig, config.wake)
+    if (config?.wake) {
+      wakeConfig = { ...wakeConfig, ...config.wake, model_path: resolveModelPath(config.wake.model_path) }
+      wakeKeyword.value = wakeConfig.keyword || wakeKeyword.value
+    }
     if (config?.vad) Object.assign(vadConfig, config.vad)
     if (typeof WakeWordEngine !== 'undefined') {
       state.value = 'idle'
@@ -520,7 +535,7 @@ export function useAssistant() {
   const stateLabel = computed(() => {
     const map: Record<AsstState, string> = {
       idle: '双击唤醒',
-      listening: '聆听中...说"小邮小邮"',
+      listening: '聆听中...说"' + wakeKeyword.value + '"',
       recording: '录音中...',
       transcribing: '识别中...',
       thinking: '思考中...',
@@ -555,6 +570,7 @@ export function useAssistant() {
     messages,
     expanded,
     wakeEnabled,
+    wakeKeyword,
     partialText,
     statusLine,
     // 方法

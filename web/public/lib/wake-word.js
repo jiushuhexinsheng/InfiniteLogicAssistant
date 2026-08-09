@@ -20,10 +20,11 @@ var WakeWordEngine = (function () {
   var _chunkCount = 0;
   var _recognizerRate = 16000;
 
-  var _keyword = '小邮小邮';
+  var _keyword = '小逻小逻';
   var _sensitivity = 0.3;       // 降低阈值以匹配更多发音变体
   var _modelPath = '/models/vosk-model-small-cn-0.22.tar.gz';
   var _modelLoaded = false;
+  var _muteGain = null;         // 静音路由节点：保持 audio graph 活跃但不回放麦克风
 
   async function init(config) {
     config = config || {};
@@ -120,7 +121,12 @@ var WakeWordEngine = (function () {
       };
 
       source.connect(_scriptNode);
-      _scriptNode.connect(_audioCtx.destination);
+      // scriptNode 需接入 destination 才会被拉取触发 onaudioprocess；直连会把麦克风回放到扬声器。
+      // 用零增益节点保持 audio graph 活跃，同时输出静音，避免回声/啸叫。
+      _muteGain = _audioCtx.createGain();
+      _muteGain.gain.value = 0;
+      _scriptNode.connect(_muteGain);
+      _muteGain.connect(_audioCtx.destination);
       _running = true;
       console.log('[WW] listening: ' + _keyword);
       return true;
@@ -130,6 +136,7 @@ var WakeWordEngine = (function () {
   function stop() {
     _running = false;
     if (_scriptNode) { _scriptNode.disconnect(); _scriptNode.onaudioprocess = null; _scriptNode = null; }
+    if (_muteGain) { try { _muteGain.disconnect(); } catch (e) {} _muteGain = null; }
     _destroyRec();
     if (_audioCtx) { _audioCtx.close().catch(function () {}); _audioCtx = null; }
     if (_stream) { _stream.getTracks().forEach(function (t) { t.stop(); }); _stream = null; }
@@ -139,43 +146,68 @@ var WakeWordEngine = (function () {
   function isRunning() { return _running; }
   function isModelLoaded() { return _modelLoaded; }
 
-  function match(text) {
-    if (!text || !_keyword) return false;
-    if (text.indexOf(_keyword) !== -1) return true;
-    // 去除所有空格做归一化匹配
-    var compact = text.replace(/\s+/g, '');
-    if (compact.indexOf('小邮小邮') !== -1) return true;
+  // ── 唤醒词匹配（keyword 驱动，适配任意关键词 + 同音字变体）──
 
-    // 发音变体覆盖 (Vosk 小模型对 '邮' 识别率低)
-    var variants = [
-      '小鱼小鱼','小优小优','小有小有','小游小游','小由小由',
-      '小鱼 小鱼','小优 小优','小有 小有','小游 小游','小由 小由',
-      '小游戏',        // vosk 常见误识别: "小游戏" ≈ "小邮"
-      '小用',          // vosk 短识别
-      '小熊效用','小熊 效用','小 熊 效 用',
-    ];
-    for (var i = 0; i < variants.length; i++) {
-      if (text.indexOf(variants[i]) !== -1) return true;
-      if (compact.indexOf(variants[i].replace(/\s+/g, '')) !== -1) return true;
-    }
+  // 单字同音字表：唤醒词中可变字符的常见发音变体（vosk 小模型对非高频字识别率低）
+  var _homophones = {
+    '逻': ['罗', '洛', '萝', '落', '络', '骆', '螺', '锣', '骡', '乐'],
+    '邮': ['鱼', '优', '有', '游', '由', '用', '幼', '右', '油'],
+  };
+  // 整词误识别变体（vosk 小模型特有的整词合并/吞字，非同音字能覆盖）
+  var _keywordVariants = {
+    '小逻小逻': ['小逻辑', '小 逻 辑', '小罗小罗', '小洛小洛'],
+    '小邮小邮': ['小游戏', '小用', '小熊效用', '小 熊 效 用'],
+  };
 
-    // 双字匹配: 小X(空格?)小Y 其中 X,Y ∈ 同音字集
-    var cs = ['邮','鱼','优','有','游','由','用','戏','熊','效'];
-    // 紧凑形式: 小X小Y
-    for (var a = 0; a < cs.length; a++) {
-      for (var b = 0; b < cs.length; b++) {
-        if (compact.indexOf('小' + cs[a] + '小' + cs[b]) !== -1) return true;
+  function _compact(s) {
+    return String(s).replace(/\s+/g, '');
+  }
+
+  function _hset(ch) {
+    return _homophones[ch] || [];
+  }
+
+  // 由 keyword 构造匹配正则：每个字 = 原字 ∪ 同音字，字间允许任意空格。
+  // 例：keyword=小逻小逻 → /小[逻罗洛落络骆螺锣骡乐]\s*小[逻罗洛落络骆螺锣骡乐]/
+  function _keywordRegex() {
+    var key = _compact(_keyword);
+    if (!key) return null;
+    var parts = [];
+    for (var i = 0; i < key.length; i++) {
+      var ch = key.charAt(i);
+      var set = [ch].concat(_hset(ch));
+      if (set.length > 1) {
+        parts.push('[' + set.join('') + ']');
+      } else {
+        parts.push(ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
       }
     }
-    // 宽松形式: "小 X 小 Y" 任意空格分隔 (覆盖 "小 有 小 有")
-    var re = /小\s*(\S)\s*小\s*(\S)/g;
-    var m;
-    while ((m = re.exec(text)) !== null) {
-      if (cs.indexOf(m[1]) !== -1 && cs.indexOf(m[2]) !== -1) return true;
+    return new RegExp(parts.join('\\s*'));
+  }
+
+  function match(text) {
+    if (!text || !_keyword) return false;
+    var compact = _compact(text);
+    var key = _compact(_keyword);
+
+    // 1) 精确匹配（含任意空格分隔）
+    if (compact.indexOf(key) !== -1) return true;
+
+    // 2) 整词误识别变体
+    var variants = _keywordVariants[key] || [];
+    for (var i = 0; i < variants.length; i++) {
+      if (text.indexOf(variants[i]) !== -1) return true;
+      if (compact.indexOf(_compact(variants[i])) !== -1) return true;
     }
 
+    // 3) 同音字正则（原字 ∪ 同音字，字间任意空格）
+    var re = _keywordRegex();
+    if (re) {
+      if (re.test(text)) return true;
+      if (re.test(compact)) return true;
+    }
     return false;
   }
 
-  return { init: init, start: start, stop: stop, getStream: getStream, isRunning: isRunning, isModelLoaded: isModelLoaded };
+  return { init: init, start: start, stop: stop, getStream: getStream, isRunning: isRunning, isModelLoaded: isModelLoaded, match: match };
 })();

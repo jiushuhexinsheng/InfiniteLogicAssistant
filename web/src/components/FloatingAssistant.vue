@@ -79,7 +79,7 @@
           <div v-if="emptyHint" class="panel-hint" :class="asst.state.value">
             <template v-if="asst.state.value === 'listening'">
               <p class="hint-wave">{{ listeningWave }}</p>
-              <p class="hint-sub">说 <strong>"小逻小逻"</strong> 唤醒我</p>
+              <p class="hint-sub">说 <strong>"{{ asst.wakeKeyword.value }}"</strong> 唤醒我</p>
             </template>
             <template v-else-if="asst.state.value === 'recording'">
               <p class="hint-record">🔴 请说话...</p>
@@ -89,7 +89,7 @@
             </template>
             <template v-else>
               <p>双击右下角悬浮球或点击上方开启按钮</p>
-              <p class="hint-sub">说 <strong>"小逻小逻"</strong> 唤醒我</p>
+              <p class="hint-sub">说 <strong>"{{ asst.wakeKeyword.value }}"</strong> 唤醒我</p>
               <p class="hint-sub">你可以说："帮我查一下今天的天气"</p>
             </template>
           </div>

@@ -53,7 +53,7 @@ DEFAULTS: Dict[str, Any] = {
             "enabled": True,
             "keyword": "小逻小逻",
             "sensitivity": 0.5,
-            "model_path": "models/vosk-model-small-cn-0.22",
+            "model_path": "/models/vosk-model-small-cn-0.22.tar.gz",
         },
         "vad": {
             "silence_threshold": 0.02,
