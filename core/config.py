@@ -100,6 +100,22 @@ DEFAULTS: Dict[str, Any] = {
             },
         },
     },
+    "agent": {
+        "recursion_limit": 6,
+        "max_history_messages": 40,
+    },
+    "llm_client": {
+        "retry_max": 3,
+        "retry_backoff_base": 0.5,
+        "retry_backoff_max": 10.0,
+        "circuit_breaker_threshold": 5,
+        "circuit_breaker_cooldown": 30.0,
+        "request_timeout": 60,
+    },
+    "tools": {
+        "search_max_results": 5,
+        "weather_timeout": 10,
+    },
     "server": {"host": "127.0.0.1", "port": 8520, "open_browser": True},
 }
 
