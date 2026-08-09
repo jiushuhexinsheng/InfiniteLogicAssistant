@@ -552,6 +552,14 @@ export function useAssistant() {
     messages.value = []
   }
 
+  // ── 文字输入（与语音共用 LLM 管线）──
+  function sendText(text: string) {
+    const t = text.trim()
+    if (!t) return
+    addMessage('user', t)
+    handleLLM(t)
+  }
+
   // ── 浏览器语音播报 ──
   function speakText(text: string) {
     if (!text || typeof window === 'undefined') return
@@ -591,6 +599,7 @@ export function useAssistant() {
     destroy,
     toggleWake,
     clearMessages,
+    sendText,
     retryTool,
     cancelTool,
   }
