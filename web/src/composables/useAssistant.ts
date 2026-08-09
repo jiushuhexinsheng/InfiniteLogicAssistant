@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import { api } from '../api'
+import { STATE_VISUALS, resolveStateLabel, type StateVisual } from './useAssistantVisuals'
 import type { WakeWordConfig, VadConfig } from '../types'
 
 // ─── 状态机 ───
@@ -531,40 +532,15 @@ export function useAssistant() {
     } catch { /* ignore */ }
   }
 
-  // ── 状态描述 ──
-  const stateLabel = computed(() => {
-    const map: Record<AsstState, string> = {
-      idle: '双击唤醒',
-      listening: '聆听中...说"' + wakeKeyword.value + '"',
-      recording: '录音中...',
-      transcribing: '识别中...',
-      thinking: '思考中...',
-      tool_calling: '执行中...',
-      responding: '',
-      done: '完成',
-      error: '出错了',
-    }
-    return map[state.value] || ''
-  })
-
-  const stateColor = computed(() => {
-    const map: Record<AsstState, string> = {
-      idle: '#6b7280',
-      listening: '#22c55e',
-      recording: '#ef4444',
-      transcribing: '#a855f7',
-      thinking: '#f97316',
-      tool_calling: '#06b6d4',
-      responding: '#3b82f6',
-      done: '#22c55e',
-      error: '#ef4444',
-    }
-    return map[state.value] || '#6b7280'
-  })
+  // ── 状态视觉（数据驱动，来自 useAssistantVisuals）──
+  const visual = computed<StateVisual>(() => STATE_VISUALS[state.value] || STATE_VISUALS.idle)
+  const stateLabel = computed(() => resolveStateLabel(visual.value, wakeKeyword.value))
+  const stateColor = computed(() => visual.value.color)
 
   return {
     // 状态
     state,
+    visual,
     stateLabel,
     stateColor,
     messages,
