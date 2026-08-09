@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
-"""无限逻辑·语音助手 — FastAPI 异步服务（静态托管 + /api/*）"""
-import asyncio
+"""无限逻辑·语音助手 — FastAPI 异步服务（静态托管 + /api/* + SSE 聊天）"""
 import json
+import mimetypes
 import threading
 import time
 import webbrowser
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from core.config import (
     cfg, ensure_dirs, is_llm_configured, is_asr_configured,
@@ -20,6 +19,22 @@ from core.logger import logger
 app = FastAPI(title="无限逻辑·语音助手")
 
 WEB_DIST_DIR = ROOT_DIR / "web" / "dist"
+
+# Vosk 模型等特殊扩展名的 content-type（FileResponse 的 mimetypes 不认识）
+_EXTRA_TYPES = {
+    ".wasm": "application/wasm",
+    ".mdl": "application/octet-stream",
+    ".fst": "application/octet-stream",
+    ".int": "application/octet-stream",
+    ".mat": "application/octet-stream",
+    ".dubm": "application/octet-stream",
+    ".ie": "application/octet-stream",
+    ".stats": "application/octet-stream",
+    ".conf": "text/plain; charset=utf-8",
+    ".tar.gz": "application/octet-stream",
+}
+for _ext, _ct in _EXTRA_TYPES.items():
+    mimetypes.add_type(_ct, _ext)
 
 
 @app.get("/api/ping")
@@ -59,18 +74,9 @@ async def voice_transcribe(request: Request):
         return JSONResponse({"ok": False, "error": str(e)})
 
 
-# ── /api/ai/chat：过渡期同步调用旧 LLM（Phase C 改 SSE）──
-def _chat_sync(params: dict) -> dict:
-    from core.llm import get_llm
-    llm = get_llm()
-    if not llm.available():
-        return {"ok": False, "error": "LLM 未配置"}
-    try:
-        result = llm._call(params.get("messages", []))
-        return {"ok": True, "text": result}
-    except Exception as e:
-        logger.error("ai_chat 失败: {} | {} {}", e, llm.provider, llm.model)
-        return {"ok": False, "error": str(e)}
+# ── /api/ai/chat：SSE 流式（ReAct + 工具）──
+def _sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
 @app.post("/api/ai/chat")
@@ -80,17 +86,53 @@ async def ai_chat(request: Request):
         params = json.loads(body.decode("utf-8")) if body else {}
     except Exception:
         return JSONResponse({"ok": False, "error": "无效 JSON"}, status_code=400)
-    return await asyncio.to_thread(_chat_sync, params)
+    messages = params.get("messages", [])
+
+    if not is_llm_configured():
+        return JSONResponse({"ok": False, "error": "LLM 未配置"})
+
+    from core.agent import run_agent
+
+    async def event_stream():
+        async for evt in run_agent(messages):
+            yield _sse(evt)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-# ── 静态托管 web/dist ──
-def _mount_static():
+# ── 静态托管 web/dist + SPA 兜底 ──
+def _resolve_dist(path: str):
+    """把 URL 路径安全解析到 dist 内；返回目标 Path 或 None。"""
+    clean = path.lstrip("/").split("?")[0]
+    try:
+        rel = Path(clean)
+        target = (WEB_DIST_DIR / rel).resolve()
+        target.relative_to(WEB_DIST_DIR.resolve())
+        return target
+    except (ValueError, OSError):
+        return None
+
+
+@app.get("/{full_path:path}")
+async def spa_handler(full_path: str):
+    if full_path.startswith("api/"):
+        return JSONResponse({"ok": False, "error": f"未知接口: /{full_path}"}, status_code=404)
     if not WEB_DIST_DIR.is_dir():
-        return
-    app.mount("/", StaticFiles(directory=str(WEB_DIST_DIR), html=True), name="static")
+        return JSONResponse({"ok": False, "error": "前端未构建（web/dist 不存在）"}, status_code=404)
 
+    target = _resolve_dist(full_path)
+    if target is None:
+        return JSONResponse({"ok": False, "error": "禁止访问"}, status_code=403)
 
-_mount_static()
+    if target.is_dir():
+        target = target / "index.html"
+    if target.is_file():
+        return FileResponse(str(target))
+    # SPA 兜底：非 /api 导航回退 index.html
+    idx = WEB_DIST_DIR / "index.html"
+    if idx.is_file():
+        return FileResponse(str(idx))
+    return JSONResponse({"ok": False, "error": "页面不存在"}, status_code=404)
 
 
 def start_server(host: str = "", port: int = 0, open_browser: bool = True):
