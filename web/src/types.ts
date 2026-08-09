@@ -32,3 +32,14 @@ export interface VadConfig {
   silence_duration_ms: number
   max_duration_ms: number
 }
+
+/** 工具时间轴步骤（ToolTimeline 数据源） */
+export interface ToolStep {
+  id: string
+  name: string
+  icon?: string
+  status: 'queued' | 'running' | 'done' | 'failed'
+  durationMs?: number
+  args?: Record<string, any>
+  result?: string
+}
