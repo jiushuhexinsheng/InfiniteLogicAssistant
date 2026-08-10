@@ -1,32 +1,37 @@
 @echo off
 setlocal EnableExtensions
-title 无限逻辑·语音助手 - offline install
+title 无限逻辑·语音助手 - dependency install
 cd /d "%~dp0"
 
 echo ============================================
-echo   无限逻辑·语音助手 - offline dependency install
+echo   无限逻辑·语音助手 - dependency install
+echo   (online PyPI first, offline scripts\libs fallback)
 echo ============================================
 echo.
 
-echo [1/2] Installing Python dependencies from scripts\libs ...
-python -m pip install --no-index --find-links=scripts\libs -r requirements.txt --disable-pip-version-check
-if errorlevel 1 goto :fallback
+echo [1/2] Installing dependencies from online PyPI ...
+python -m pip install -r requirements.txt --disable-pip-version-check
+if not errorlevel 1 goto :online_ok
 
-echo [2/2] Dependencies installed.
+echo [WARN] Online install failed, trying offline scripts\libs ...
+python -m pip install --no-index --find-links=scripts\libs -r requirements.txt --disable-pip-version-check
+if not errorlevel 1 goto :offline_ok
+
+echo [ERROR] Dependency install failed. Check network, or scripts\libs
+echo        (offline bundle targets Python 3.14 / win_amd64).
+pause
+exit /b 1
+
+:online_ok
+echo [2/2] Dependencies installed (online source).
 echo.
 echo   Done. Edit config.yaml then run: python main.py serve
 pause
 exit /b 0
 
-:fallback
-echo [WARN] Offline install failed, trying online source ...
-python -m pip install -r requirements.txt
-if errorlevel 1 goto :fail
-echo [2/2] Dependencies installed via online source.
+:offline_ok
+echo [2/2] Dependencies installed (offline scripts\libs source).
+echo.
+echo   Done. Edit config.yaml then run: python main.py serve
 pause
 exit /b 0
-
-:fail
-echo [ERROR] Dependency install failed. Check network or scripts\libs folder.
-pause
-exit /b 1

@@ -12,15 +12,15 @@ REM ---- 1. Check Python ----
 python --version >nul 2>&1
 if errorlevel 1 goto :no_python
 
-REM ---- 2. Check / install dependencies (offline-first) ----
-python -c "import yaml, loguru, requests" >nul 2>&1
+REM ---- 2. Check / install dependencies (online-first, offline fallback) ----
+python -c "import httpx, fastapi, uvicorn, yaml, loguru" >nul 2>&1
 if not errorlevel 1 goto :deps_ok
-echo [INFO] Missing dependencies, installing offline from scripts\libs ...
+echo [INFO] Missing dependencies, installing online from PyPI ...
+python -m pip install -r requirements.txt --disable-pip-version-check
+if not errorlevel 1 goto :deps_ok
+echo [WARN] Online install failed, trying offline scripts\libs ...
 python -m pip install --no-index --find-links=scripts\libs -r requirements.txt --disable-pip-version-check
-if not errorlevel 1 goto :deps_ok
-echo [WARN] Offline install failed, trying online source ...
-python -m pip install -r requirements.txt
-python -c "import yaml, loguru, requests" >nul 2>&1
+python -c "import httpx, fastapi, uvicorn, yaml, loguru" >nul 2>&1
 if errorlevel 1 goto :deps_fail
 
 :deps_ok
@@ -57,11 +57,12 @@ pause
 exit /b 0
 
 :no_python
-echo [ERROR] Python not found. Please install Python 3.10+ and add it to PATH.
+echo [ERROR] Python not found. Please install Python 3.14+ and add it to PATH.
 pause
 exit /b 1
 
 :deps_fail
-echo [ERROR] Dependency install failed. Check the scripts\libs folder or network access.
+echo [ERROR] Dependency install failed. Check network, or scripts\libs
+echo        (offline bundle targets Python 3.14 / win_amd64).
 pause
 exit /b 1
