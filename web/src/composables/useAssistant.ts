@@ -70,6 +70,9 @@ export function useAssistant() {
   let maxTimer: ReturnType<typeof setTimeout> | null = null
   let vadAudioCtx: AudioContext | null = null
 
+  // ── 流式对话中止句柄（取消/停止按钮用）──
+  let abortController: AbortController | null = null
+
   // ── 唤醒词引擎 ──
   let modelLoaded = false
 
@@ -245,7 +248,7 @@ export function useAssistant() {
         if (!text) { state.value = 'listening'; return }
         partialText.value = text
         addMessage('user', text)
-        await handleLLM(text)
+        await runTurn()
       } else {
         addMessage('system', '转写失败: ' + (r.error || '无结果'))
         state.value = 'listening'
@@ -258,10 +261,8 @@ export function useAssistant() {
   }
 
   // ── LLM 对话 ──
-  async function handleLLM(userText: string) {
-    state.value = 'thinking'
-
-    // 构建对话历史
+  // 用当前 messages 构建 OpenAI 消息历史（工具结果以文本拼入 assistant content，供多轮引用）
+  function buildHistory(): { role: string; content: string }[] {
     const history: { role: string; content: string }[] = []
     history.push({ role: 'system', content: SYSTEM_PROMPT })
     for (const m of messages.value.slice(-6)) {
@@ -278,96 +279,116 @@ export function useAssistant() {
         history.push({ role: 'assistant', content })
       }
     }
-
-    try {
-      // 消费后端 SSE 流（ReAct + 工具由后端执行，前端只展示）
-      let acc = ''
-      let currentMsg: ChatMessage | null = null
-      const toolAcc: ToolCall[] = []
-      const toolStartMap = new Map<string, number>()
-
-      const ensureMsg = () => {
-        if (!currentMsg) {
-          currentMsg = { id: genId(), role: 'assistant', text: '', toolCalls: toolAcc, timestamp: Date.now() }
-          messages.value.push(currentMsg)
-          if (messages.value.length > 50) messages.value.shift()
-        }
-        return currentMsg
-      }
-
-      await streamChat(history, {
-        onContent: (t) => {
-          state.value = 'responding'
-          acc += t
-          partialText.value = acc
-          ensureMsg().text = acc
-        },
-        onToolStart: (name, args) => {
-          state.value = 'tool_calling'
-          const id = genId()
-          toolStartMap.set(id, Date.now())
-          toolAcc.push({ id, name, args, status: 'running' })
-          ensureMsg()
-        },
-        onToolEnd: (name, status, output) => {
-          const tc = toolAcc.find(t => t.name === name && t.status === 'running')
-          if (tc) {
-            tc.status = status === 'ok' ? 'done' : 'failed'
-            tc.result = output
-            const st = toolStartMap.get(tc.id)
-            if (st != null) tc.durationMs = Date.now() - st
-            toolStartMap.delete(tc.id)
-          }
-        },
-        onDone: () => {
-          partialText.value = ''
-          if (acc.trim()) speakText(acc)
-          else if (toolAcc.length) speakText('已完成')
-          state.value = 'done'
-        },
-        onError: (msg) => {
-          console.error('[Asst] LLM error:', msg)
-          addMessage('system', '出错了: ' + msg)
-          state.value = 'error'
-        },
-      })
-    } catch (e: any) {
-      console.error('[Asst] LLM error:', e)
-      addMessage('system', '出错了: ' + (e.message || String(e)))
-      state.value = 'error'
-    }
+    return history
   }
 
-  // ── 工具重试/取消（后端原生工具：重试/取消仅操作本地状态展示）──
+  // 消费后端 SSE 流（ReAct + 工具由后端执行，前端只展示）
+  async function runTurn() {
+    state.value = 'thinking'
+    const history = buildHistory()
+
+    // 中止上一次未结束的流（防并发覆盖）
+    abortController?.abort()
+    abortController = new AbortController()
+
+    let acc = ''
+    let currentMsg: ChatMessage | null = null
+    const toolAcc: ToolCall[] = []
+    const toolStartMap = new Map<string, number>()
+
+    const ensureMsg = () => {
+      if (!currentMsg) {
+        currentMsg = { id: genId(), role: 'assistant', text: '', toolCalls: toolAcc, timestamp: Date.now() }
+        messages.value.push(currentMsg)
+        if (messages.value.length > 50) messages.value.shift()
+      }
+      return currentMsg
+    }
+
+    await streamChat(history, {
+      onContent: (t) => {
+        state.value = 'responding'
+        acc += t
+        partialText.value = acc
+        ensureMsg().text = acc
+      },
+      onToolStart: (name, args) => {
+        state.value = 'tool_calling'
+        const id = genId()
+        toolStartMap.set(id, Date.now())
+        toolAcc.push({ id, name, args, status: 'running' })
+        ensureMsg()
+      },
+      onToolEnd: (name, status, output) => {
+        const tc = toolAcc.find(t => t.name === name && t.status === 'running')
+        if (tc) {
+          tc.status = status === 'ok' ? 'done' : 'failed'
+          tc.result = output
+          const st = toolStartMap.get(tc.id)
+          if (st != null) tc.durationMs = Date.now() - st
+          toolStartMap.delete(tc.id)
+        }
+      },
+      onDone: () => {
+        partialText.value = ''
+        if (acc.trim()) speakText(acc)
+        else if (toolAcc.length) speakText('已完成')
+        state.value = 'done'
+      },
+      onAbort: () => {
+        // 用户主动取消（cancelTool 触发），非错误
+        partialText.value = ''
+        state.value = 'done'
+      },
+      onError: (msg) => {
+        console.error('[Asst] LLM error:', msg)
+        addMessage('system', '出错了: ' + msg)
+        state.value = 'error'
+      },
+    }, abortController.signal)
+  }
+
+  // ── 工具重试：失败的工具走后端真实重跑，再用修正结果续一轮对话 ──
   async function retryTool(id: string) {
     const m = messages.value.find(msg => msg.toolCalls?.some(tc => tc.id === id))
     const tc = m?.toolCalls?.find(t => t.id === id)
     if (!tc) return
+
     tc.status = 'running'
     tc.result = ''
     tc.durationMs = undefined
     state.value = 'tool_calling'
+
     const startTs = Date.now()
     try {
-      let toolResult = ''
-      switch (tc.name) {
-        case 'chat': toolResult = tc.args?.reply || ''; break
-        default: toolResult = '收到，正在处理...'
+      const r = await api.callTool(tc.name, tc.args || {})
+      if (r.ok) {
+        tc.status = r.status === 'ok' ? 'done' : 'failed'
+        tc.result = r.output || ''
+      } else {
+        tc.status = 'failed'
+        tc.result = r.error || '执行失败'
       }
-      tc.result = toolResult
-      tc.status = 'done'
     } catch (e: any) {
       tc.status = 'failed'
-      tc.result = e.message || '执行失败'
+      tc.result = e?.message || '执行失败'
     }
     tc.durationMs = Date.now() - startTs
-    state.value = 'done'
+
+    // 续一轮对话，让助手基于重试后的工具结果作答
+    await runTurn()
   }
 
+  // ── 工具/回复取消：中止后端 SSE 流，本地将运行中的步骤标记为已取消 ──
   function cancelTool(id: string) {
+    abortController?.abort()
+    abortController = null
     for (const msg of messages.value) {
       msg.toolCalls?.forEach(tc => {
-        if (tc.id === id && (tc.status === 'running' || tc.status === 'pending')) tc.status = 'failed'
+        if (tc.id === id && (tc.status === 'running' || tc.status === 'pending')) {
+          tc.status = 'failed'
+          tc.result = '已取消'
+        }
       })
     }
   }
@@ -474,6 +495,8 @@ export function useAssistant() {
   }
 
   function destroy() {
+    abortController?.abort()
+    abortController = null
     try { WakeWordEngine.stop() } catch { /* ignore */ }
     clearTimers()
     if (wakeRecorder && wakeRecorder.state !== 'inactive') {
@@ -491,7 +514,7 @@ export function useAssistant() {
     const t = text.trim()
     if (!t) return
     addMessage('user', t)
-    handleLLM(t)
+    void runTurn()
   }
 
   // ── 浏览器语音播报 ──

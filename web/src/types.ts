@@ -20,6 +20,11 @@ export interface TextResponse extends ApiResponse {
   text: string
 }
 
+export interface ToolCallResponse extends ApiResponse {
+  status?: 'ok' | 'error'
+  output?: string
+}
+
 export interface WakeWordConfig {
   enabled: boolean
   keyword: string
