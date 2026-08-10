@@ -16,9 +16,10 @@ OpenAI 兼容接口，支持离线/在线任意部署。
 ## 快速开始
 
 ```bash
-# 1. 安装 Python 依赖
+# 1. 安装 Python 依赖（需要 Python 3.14+）
 pip install -r requirements.txt
-# 离线安装: 双击 install_deps.bat（使用 scripts/libs/ 下的离线 wheel）
+# 或双击 install_deps.bat — 在线优先，失败自动回退 scripts/libs/ 离线 wheel
+#   （离线包按 Python 3.14 / win_amd64 打包，见 requirements.txt 顶部说明）
 
 # 2. 配置
 cp config.yaml.example config.yaml
