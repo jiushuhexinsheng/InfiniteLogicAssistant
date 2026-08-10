@@ -79,6 +79,32 @@ def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
+# ── /api/tools/call：单工具执行（前端"重试失败工具"用）──
+@app.post("/api/tools/call")
+async def tools_call(request: Request):
+    from core.tools import TOOLS
+    body = await request.body()
+    try:
+        params = json.loads(body.decode("utf-8")) if body else {}
+    except Exception:
+        return JSONResponse({"ok": False, "error": "无效 JSON"}, status_code=400)
+    name = params.get("name", "")
+    args = params.get("args") or {}
+    if not isinstance(name, str) or not name:
+        return JSONResponse({"ok": False, "error": "缺少工具名 name"}, status_code=400)
+    if not isinstance(args, dict):
+        return JSONResponse({"ok": False, "error": "args 必须为 JSON 对象"}, status_code=400)
+    if not TOOLS.has(name):
+        return JSONResponse({"ok": False, "error": f"未知工具: {name}"}, status_code=404)
+    try:
+        result = await TOOLS.acall(name, args)
+    except Exception as exc:
+        logger.error("tools_call {}: {}", name, exc)
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+    status = "error" if result.startswith("Error") else "ok"
+    return {"ok": True, "status": status, "output": result}
+
+
 @app.post("/api/ai/chat")
 async def ai_chat(request: Request):
     body = await request.body()
