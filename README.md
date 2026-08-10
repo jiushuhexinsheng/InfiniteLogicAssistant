@@ -10,7 +10,7 @@ OpenAI 兼容接口，支持离线/在线任意部署。
 | 悬浮球助手 | 右下角可拖拽悬浮球，语音对话 + 聊天气泡面板 + 迷你播放条 |
 | 语音唤醒 | 离线 Vosk WASM 唤醒词"小逻小逻"（含同音字变体匹配），纯浏览器运行 |
 | 语音输入 | ASR（OpenAI 兼容）转文字，自动填入 |
-| AI 对话 | LLM（OpenAI 兼容：DeepSeek / OpenAI / 通义…）多 profile 切换 |
+| AI 对话 | LLM（OpenAI 兼容：DeepSeek / OpenAI / 通义…）多 profile 切换，ReAct 工具调用（时间/计算/搜索/天气） |
 | 语音播报 | 浏览器 SpeechSynthesis API 播报助手回复 |
 
 ## 快速开始
@@ -67,9 +67,19 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 ```
 GET  /api/ping
 GET  /api/config
-POST /api/ai/chat          # 通用 LLM 对话（悬浮球助手使用）
+POST /api/ai/chat          # SSE 流式聊天（ReAct + 工具）
 POST /api/voice/transcribe # JSON 体传 audio_base64（16kHz mono WAV）
+POST /api/tools/call       # 单工具执行（前端"重试失败工具"按钮用）
 ```
+
+`POST /api/ai/chat` 返回 `text/event-stream`，每行 `data: {json}\n\n`，事件类型：
+
+| 事件 | 含义 |
+|------|------|
+| `content_delta` / `reasoning_delta` | 文本 / 思考增量 |
+| `tool_start` / `tool_end` | 工具开始 / 结束（`tool_end` 含 `output` 结果与 `status`） |
+| `done` | 本轮完成 |
+| `error` | 出错（含 `message`） |
 
 ## 命令
 
@@ -77,6 +87,13 @@ POST /api/voice/transcribe # JSON 体传 audio_base64（16kHz mono WAV）
 start.bat                   一键启动（Windows，含 LLM/ASR 连通性测试）
 python main.py serve        启动 Web 服务（前端 + 后端 API）
 python main.py test         测试 LLM / ASR 连通性
+```
+
+## 测试
+
+```
+python -m pytest tests/ -q   # 后端单元测试（工具 / ReAct / SSE 解析 / API）
+cd web && npm run build      # 前端类型检查（vue-tsc）+ 生产构建
 ```
 
 ## 配置
@@ -100,9 +117,14 @@ python main.py test         测试 LLM / ASR 连通性
 ├── core/
 │   ├── config.py             配置加载（YAML + ${ENV} 插值 + 多 profile）
 │   ├── logger.py             loguru 日志（控制台 + data/agent.log）
-│   ├── llm/__init__.py       LLM 客户端（OpenAI 兼容）
+│   ├── agent.py              ReAct 循环（工具调用回喂 + 历史裁剪）
+│   ├── llm/                  LLM 客户端
+│   │   ├── stream.py         httpx 解析 OpenAI SSE → 事件流
+│   │   └── client.py         重试 + 熔断 + 连接池
+│   ├── tools/                @tool 注册中心 + 内置工具（datetime/calculate/search/weather）
 │   └── voice/__init__.py     ASR / TTS（OpenAI 兼容）
 ├── scripts/libs/             离线 wheel 包
+├── tests/                    pytest 单元测试
 ├── web/                      Vue3 + Vite + TS 前端
 │   ├── public/lib/vosk.js    Vosk WASM 语音唤醒引擎
 │   ├── public/lib/wake-word.js
@@ -117,5 +139,20 @@ python main.py test         测试 LLM / ASR 连通性
 
 ## 工具扩展
 
-悬浮球工具调用框架已预留：在 `web/src/composables/useAssistant.ts` 的 `TOOLS`
-数组中登记工具描述，并在 `handleAction` 中实现对应分支即可。当前仅内置 `chat` 工具。
+工具由**后端 `@tool` 注册中心**管理（`core/tools/`），前端只负责展示工具时间轴，
+新增能力无需改动前端。ReAct 循环（`core/agent.py`）把工具 schema 注入 LLM，
+执行结果回喂给模型，最终经 SSE 流式返回。
+
+内置 4 个工具：
+
+- `get_datetime` — 当前日期时间
+- `calculate` — 安全算术（AST 白名单求值，禁 `eval`）
+- `web_search` — duckduckgo 联网搜索
+- `get_weather` — wttr.in 天气（免 key）
+
+新增一个工具只需三步：
+
+1. 新建 `core/tools/xxx.py`，用 `@tool("描述")` 装饰函数；参数带类型注解，
+   schema 自动推导（同步/异步均可，如 `async def get_weather(city: str) -> str`）。
+2. 在 `core/tools/__init__.py` 中 `import` 该模块触发注册。
+3. 重启服务，LLM 会自动发现并调用新工具。
