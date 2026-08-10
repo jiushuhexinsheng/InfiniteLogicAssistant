@@ -1,4 +1,4 @@
-import type { ConfigResponse, PingResponse, TextResponse } from './types'
+import type { ConfigResponse, PingResponse, TextResponse, ToolCallResponse } from './types'
 import { blobToWavBase64 } from './audio'
 
 // ─── HTTP 封装 ───
@@ -41,15 +41,18 @@ export interface ChatHandlers {
   onToolEnd?: (name: string, status: string, output: string) => void
   onDone: () => void
   onError: (msg: string) => void
+  /** 用户主动中止（AbortController.abort()），区别于 onError */
+  onAbort?: () => void
 }
 
-/** 消费 /api/ai/chat 的 SSE 事件流 */
-export async function streamChat(messages: unknown[], h: ChatHandlers): Promise<void> {
+/** 消费 /api/ai/chat 的 SSE 事件流；signal 用于取消（对应前端"取消/停止"按钮） */
+export async function streamChat(messages: unknown[], h: ChatHandlers, signal?: AbortSignal): Promise<void> {
   try {
     const resp = await fetch(`${BASE}/ai/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages }),
+      signal,
     })
     if (!resp.ok || !resp.body) {
       let msg = `HTTP ${resp.status}`
@@ -88,6 +91,10 @@ export async function streamChat(messages: unknown[], h: ChatHandlers): Promise<
     }
     h.onDone()
   } catch (e: any) {
+    if (e?.name === 'AbortError') {
+      h.onAbort?.()
+      return
+    }
     h.onError(e?.message || String(e))
   }
 }
@@ -103,4 +110,8 @@ export const api = {
     const base64Wav = await blobToWavBase64(blob)
     return post<TextResponse>('/voice/transcribe', { audio_base64: base64Wav })
   },
+
+  // 单工具执行（前端"重试失败工具"走后端真实重跑）
+  callTool: async (name: string, args: Record<string, any>): Promise<ToolCallResponse> =>
+    post<ToolCallResponse>('/tools/call', { name, args }),
 }

@@ -12,7 +12,7 @@
         <button v-if="step.status === 'failed'" class="tt-act" title="重试" @click="emit('retry', step.id)">
           <Icon name="play" :size="11" />
         </button>
-        <button v-if="['running', 'queued'].includes(step.status)" class="tt-act" title="取消" @click="emit('cancel', step.id)">
+        <button v-if="['running', 'queued'].includes(step.status)" class="tt-act" title="停止" @click="emit('cancel', step.id)">
           <Icon name="close" :size="11" />
         </button>
         <button class="tt-expand" title="展开详情" @click="openId = openId === step.id ? '' : step.id">

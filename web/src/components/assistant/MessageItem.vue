@@ -18,7 +18,6 @@
           @retry="emit('retry', $event)"
           @cancel="emit('cancel', $event)"
         />
-        <slot v-if="message.toolCalls?.length" name="tool-actions" :tool="message.toolCalls[0]"></slot>
       </div>
     </div>
   </div>
@@ -65,14 +64,13 @@ const roleName = computed(() => {
   }
 })
 
+// 工具由后端 @tool 注册中心注入，前端不再维护工具元数据，统一显示工具名 + 扳手图标
 function toolIcon(tc: ToolCall) {
-  const map: Record<string, string> = { chat: 'chat' }
-  return map[tc.name] || 'wrench'
+  return 'wrench'
 }
 
 function toolLabel(tc: ToolCall) {
-  const map: Record<string, string> = { chat: '对话' }
-  return map[tc.name] || tc.name
+  return tc.name
 }
 
 // ToolCall → ToolStep（pending → queued 时间轴展示名）
