@@ -12,6 +12,8 @@ export interface ConfigResponse extends ApiResponse {
   llm_profile: string
   asr_available: boolean
   asr_profile: string
+  tts_available: boolean
+  tts_profile: string
   wake_word: WakeWordConfig
   vad: VadConfig
 }
@@ -23,6 +25,30 @@ export interface TextResponse extends ApiResponse {
 export interface ToolCallResponse extends ApiResponse {
   status?: 'ok' | 'error'
   output?: string
+}
+
+/** OpenAI SSE usage（usage-only chunk，逐轮累计） */
+export interface TokenUsage {
+  prompt_tokens?: number
+  completion_tokens?: number
+  total_tokens?: number
+}
+
+export interface ToolSchema {
+  type: string
+  function: {
+    name: string
+    description: string
+    parameters: {
+      type: string
+      properties: Record<string, any>
+      required?: string[]
+    }
+  }
+}
+
+export interface ToolsResponse extends ApiResponse {
+  tools: ToolSchema[]
 }
 
 export interface WakeWordConfig {
