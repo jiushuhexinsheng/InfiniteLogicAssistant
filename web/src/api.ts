@@ -1,4 +1,4 @@
-import type { ConfigResponse, PingResponse, TextResponse, ToolCallResponse } from './types'
+import type { ConfigResponse, PingResponse, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse } from './types'
 import { blobToWavBase64 } from './audio'
 
 // ─── HTTP 封装 ───
@@ -39,6 +39,7 @@ export interface ChatHandlers {
   onReasoning?: (text: string) => void
   onToolStart?: (name: string, args: Record<string, any>) => void
   onToolEnd?: (name: string, status: string, output: string) => void
+  onUsage?: (usage: TokenUsage) => void
   onDone: () => void
   onError: (msg: string) => void
   /** 用户主动中止（AbortController.abort()），区别于 onError */
@@ -84,6 +85,7 @@ export async function streamChat(messages: unknown[], h: ChatHandlers, signal?: 
           case 'reasoning_delta': h.onReasoning?.(evt.text); break
           case 'tool_start': h.onToolStart?.(evt.name, evt.args || {}); break
           case 'tool_end': h.onToolEnd?.(evt.name, evt.status, evt.output || ''); break
+          case 'usage': h.onUsage?.(evt.usage); break
           case 'done': h.onDone(); return
           case 'error': h.onError(evt.message || '出错'); return
         }
@@ -114,4 +116,7 @@ export const api = {
   // 单工具执行（前端"重试失败工具"走后端真实重跑）
   callTool: async (name: string, args: Record<string, any>): Promise<ToolCallResponse> =>
     post<ToolCallResponse>('/tools/call', { name, args }),
+
+  // 工具清单（控制台「工具」Tab）
+  getTools: () => get<ToolsResponse>('/tools'),
 }

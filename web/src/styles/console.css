@@ -1,0 +1,87 @@
+/* 完整控制台共享样式（页面骨架 / 页头 / Tab / 卡片），沿用 assistant.css 的 CSS 变量 */
+
+.console-page {
+  min-height: 100vh;
+  background: radial-gradient(ellipse at top, #1e293b 0%, #0f172a 60%, #020617 100%);
+  color: var(--text-1);
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 120px; /* 避免右下角悬浮球遮挡 */
+}
+
+/* 页头 */
+.console-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 24px;
+  background: rgba(2, 6, 23, .88);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border-base);
+}
+.console-header .back-btn {
+  background: none;
+  border: 1px solid var(--border-base);
+  color: var(--text-2);
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.console-header .back-btn:hover { color: var(--brand-c2); border-color: var(--brand-c2); }
+.console-header .title { font-size: 17px; font-weight: 600; letter-spacing: .03em; }
+.console-header .head-state {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.console-header .head-state .dot { width: 8px; height: 8px; border-radius: 50%; }
+.console-header .clear-btn {
+  background: none;
+  border: 1px solid var(--border-base);
+  color: var(--text-3);
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.console-header .clear-btn:hover { color: #f87171; border-color: #f87171; }
+
+/* Tab 导航 */
+.console-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 24px 0;
+  border-bottom: 1px solid var(--border-base);
+}
+.console-tab {
+  padding: 8px 16px;
+  font-size: 13px;
+  color: var(--text-2);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color .15s;
+}
+.console-tab:hover { color: var(--text-1); }
+.console-tab.active { color: var(--brand-c2); border-bottom-color: var(--brand-c2); }
+
+/* 面板容器 */
+.console-panel { flex: 1; padding: 18px 24px; min-height: 0; display: flex; flex-direction: column; }
+
+/* 卡片 */
+.card {
+  border: 1px solid var(--border-base);
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: rgba(15, 23, 42, .6);
+}
+.card-title { font-size: 13px; color: var(--text-3); margin-bottom: 10px; }
+.card + .card { margin-top: 12px; }
