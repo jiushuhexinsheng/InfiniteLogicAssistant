@@ -85,3 +85,15 @@ async def test_stream_chat_http_error_raises():
     with pytest.raises(httpx.HTTPStatusError):
         async for _ in stream_chat([], client=client):
             pass
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_emits_usage():
+    # usage 在末尾的 usage-only chunk（无 choices），不应被跳过
+    client = _client_for(_sse([
+        {"choices": [{"delta": {"content": "你好"}}]},
+        {"usage": {"prompt_tokens": 10, "total_tokens": 12}},
+    ]))
+    events = [e async for e in stream_chat([], client=client)]
+    assert {"type": "usage", "usage": {"prompt_tokens": 10, "total_tokens": 12}} in events
+    assert events[-1]["type"] == "done"

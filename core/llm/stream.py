@@ -5,6 +5,7 @@
     content_delta    {"type":"content_delta","text":str}
     reasoning_delta  {"type":"reasoning_delta","text":str}
     tool_call_delta  {"type":"tool_call_delta","index":int,"id":str|None,"name":str,"arguments":str}
+    usage            {"type":"usage","usage":{...}}   # 末尾 usage-only chunk
     done             {"type":"done","message":{role,content,reasoning_content?,tool_calls?}}
 """
 import json
@@ -87,6 +88,10 @@ async def stream_chat(
                     chunk = json.loads(data_str)
                 except json.JSONDecodeError:
                     continue
+                # usage 常在末尾的 usage-only chunk 出现（无 choices），须在跳过前取出
+                usage = chunk.get("usage")
+                if usage:
+                    yield {"type": "usage", "usage": usage}
                 choices = chunk.get("choices") or []
                 if not choices:
                     continue

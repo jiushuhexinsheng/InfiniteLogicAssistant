@@ -2,7 +2,7 @@
 """ReAct Agent 循环 — 原生 OpenAI function-calling（参照 InfiniteLogic src/agent.py）
 
 流程: 调 LLM(tools) → 有 tool_calls 则执行并回喂 → 直到最终答案
-事件: content_delta / reasoning_delta / tool_start / tool_end / done / error
+事件: content_delta / reasoning_delta / tool_start / tool_end / usage / done / error
 """
 import json
 from collections.abc import AsyncIterator
@@ -51,6 +51,8 @@ async def run_agent(messages: list[dict], tools: list[dict] | None = None) -> As
                     yield {"type": "content_delta", "text": event["text"]}
                 elif etype == "tool_call_delta":
                     pass  # UI 等完整 tool_start / tool_end
+                elif etype == "usage":
+                    yield {"type": "usage", "usage": event["usage"]}
                 elif etype == "done":
                     assistant_message = event["message"]
         except CircuitBreakerOpenError:

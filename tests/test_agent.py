@@ -128,6 +128,21 @@ async def test_run_agent_bad_json_args_falls_back_to_empty(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_run_agent_passes_usage(monkeypatch):
+    fake = _FakeLlm([
+        [
+            {"type": "content_delta", "text": "ok"},
+            {"type": "usage", "usage": {"total_tokens": 12}},
+            {"type": "done", "message": {"role": "assistant", "content": "ok"}},
+        ]
+    ])
+    monkeypatch.setattr("core.agent.get_llm_client", lambda: fake)
+    events = [e async for e in run_agent([{"role": "user", "content": "x"}])]
+    assert {"type": "usage", "usage": {"total_tokens": 12}} in events
+    assert events[-1] == {"type": "done"}
+
+
+@pytest.mark.asyncio
 async def test_run_agent_breaker_open(monkeypatch):
     class _Boom:
         def retry_stream_chat(self, messages, tools=None):

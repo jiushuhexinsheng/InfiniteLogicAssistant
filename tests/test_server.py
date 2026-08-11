@@ -39,9 +39,20 @@ def test_ping(client):
 
 def test_config_shape(client):
     data = client.get("/api/config").json()
-    assert {"llm_available", "llm_profile", "asr_available", "asr_profile", "wake_word", "vad"} <= set(data)
+    assert {"llm_available", "llm_profile", "asr_available", "asr_profile",
+            "tts_available", "tts_profile", "wake_word", "vad"} <= set(data)
     assert data["llm_available"] is False
     assert data["asr_available"] is False
+
+
+def test_tools_list(client):
+    data = client.get("/api/tools").json()
+    assert data["ok"] is True
+    names = [t["function"]["name"] for t in data["tools"]]
+    assert {"get_datetime", "calculate", "web_search", "get_weather"} <= set(names)
+    # schema 应含参数描述
+    calc = next(t for t in data["tools"] if t["function"]["name"] == "calculate")
+    assert "expression" in calc["function"]["parameters"]["properties"]
 
 
 # ─── 语音转写 ───
@@ -102,6 +113,7 @@ def test_ai_chat_sse_stream(client, monkeypatch):
     async def fake_run_agent(messages):
         yield {"type": "content_delta", "text": "你好"}
         yield {"type": "tool_start", "name": "get_datetime", "args": {}}
+        yield {"type": "usage", "usage": {"total_tokens": 12}}
         yield {"type": "done"}
 
     monkeypatch.setattr(agent_module, "run_agent", fake_run_agent)
@@ -111,6 +123,7 @@ def test_ai_chat_sse_stream(client, monkeypatch):
     assert "text/event-stream" in resp.headers["content-type"]
     assert "content_delta" in resp.text
     assert "tool_start" in resp.text
+    assert "usage" in resp.text
     assert "你好" in resp.text
     assert resp.text.strip().endswith('data: {"type": "done"}')
 
