@@ -11,8 +11,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from core.config import (
-    cfg, ensure_dirs, is_llm_configured, is_asr_configured,
-    resolve_llm_profile, resolve_asr_profile, ROOT_DIR,
+    cfg, ensure_dirs, is_llm_configured, is_asr_configured, is_tts_enabled,
+    resolve_llm_profile, resolve_asr_profile, resolve_tts_profile, ROOT_DIR,
 )
 from core.logger import logger
 
@@ -50,9 +50,18 @@ async def config():
         "llm_profile": resolve_llm_profile()[0],
         "asr_available": is_asr_configured(),
         "asr_profile": resolve_asr_profile()[0],
+        "tts_available": is_tts_enabled(),
+        "tts_profile": resolve_tts_profile()[0],
         "wake_word": cfg("voice.wake_word", {}),
         "vad": cfg("voice.vad", {}),
     }
+
+
+@app.get("/api/tools")
+async def tools_list():
+    """工具清单：后端 @tool 注册中心的 OpenAI schema 数组（供控制台展示）。"""
+    from core.tools import TOOLS
+    return {"ok": True, "tools": TOOLS.schemas()}
 
 
 @app.post("/api/voice/transcribe")
