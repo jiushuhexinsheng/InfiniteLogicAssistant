@@ -32,7 +32,11 @@ function scrollToBottom() {
   })
 }
 
-watch(() => props.messages.length, scrollToBottom)
+// 新消息或最后一条文本增长（流式回复）时滚到底
+watch(
+  () => [props.messages.length, props.messages[props.messages.length - 1]?.text?.length],
+  scrollToBottom
+)
 onMounted(scrollToBottom)
 </script>
 

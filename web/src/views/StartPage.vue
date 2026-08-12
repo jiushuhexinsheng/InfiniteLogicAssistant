@@ -57,13 +57,13 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: safe center; /* 内容超高时改为顶对齐，避免裁剪 */
   gap: 28px;
   background: radial-gradient(ellipse at top, #1e293b 0%, #0f172a 60%, #020617 100%);
   color: #e2e8f0;
-  overflow: hidden;
+  overflow-y: auto;
   user-select: none;
-  padding: 24px;
+  padding: 40px 24px;
 }
 .hero { text-align: center; pointer-events: none; }
 .title {
