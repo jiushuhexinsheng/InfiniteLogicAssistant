@@ -34,6 +34,14 @@ class _ToolRegistry:
         t = self._tools.get(name)
         return t["risk"] if t else "read"
 
+    def unregister(self, name: str) -> None:
+        self._tools.pop(name, None)
+
+    def unregister_prefix(self, prefix: str) -> None:
+        for n in list(self._tools):
+            if n.startswith(prefix):
+                self._tools.pop(n, None)
+
     def has(self, name: str) -> bool:
         return name in self._tools
 
