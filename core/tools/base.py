@@ -19,11 +19,20 @@ class _ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, dict[str, Any]] = {}
 
-    def register(self, name: str, func: ToolFunc, schema: dict[str, Any]) -> None:
-        self._tools[name] = {"func": func, "schema": schema}
+    def register(self, name: str, func: ToolFunc, schema: dict[str, Any], risk: str = "read") -> None:
+        self._tools[name] = {"func": func, "schema": schema, "risk": risk}
 
     def schemas(self) -> list[dict[str, Any]]:
+        # 发给 LLM 的干净 schema（不含 risk，避免部分 provider 拒绝未知字段）
         return [t["schema"] for t in self._tools.values()]
+
+    def meta(self) -> list[dict[str, Any]]:
+        """工具元信息（含 risk），供确认层 / 控制台展示。"""
+        return [{"name": n, "schema": t["schema"], "risk": t["risk"]} for n, t in self._tools.items()]
+
+    def risk(self, name: str) -> str:
+        t = self._tools.get(name)
+        return t["risk"] if t else "read"
 
     def has(self, name: str) -> bool:
         return name in self._tools
@@ -96,12 +105,16 @@ def _build_schema(func: ToolFunc, description: str) -> dict[str, Any]:
     }
 
 
-def tool(description: str | None = None) -> Callable[[ToolFunc], ToolFunc]:
+def tool(description: str | None = None, *, risk: str = "read") -> Callable[[ToolFunc], ToolFunc]:
+    """注册工具。risk: "read"(只读) / "write"(写) / "exec"(执行任意命令)。
+
+    risk 不进 LLM schema，通过 TOOLS.risk(name) / TOOLS.meta() 暴露给确认层。
+    """
     def decorator(func: ToolFunc) -> ToolFunc:
         desc = description
         if desc is None:
             doc = (func.__doc__ or "").strip()
             desc = doc.splitlines()[0] if doc else func.__name__
-        TOOLS.register(func.__name__, func, _build_schema(func, desc))
+        TOOLS.register(func.__name__, func, _build_schema(func, desc), risk)
         return func
     return decorator
