@@ -20,6 +20,15 @@ def is_stop_command(text: str) -> bool:
     return any(w in t for w in _STOP_WORDS)
 
 
+def _as_bytes(data) -> bytes:
+    """sounddevice RawInputStream.read() 返回 cffi buffer，转成 vosk 需要的 bytes。"""
+    if isinstance(data, bytes):
+        return data
+    if hasattr(data, "tobytes"):
+        return data.tobytes()
+    return bytes(data)
+
+
 class WakeListener:
     """桌面常驻唤醒词监听：唤醒词 → 录音(≤max_ms/静音停) → on_utterance(text)。
 
@@ -105,7 +114,7 @@ class WakeListener:
                 rec = KaldiRecognizer(model, self.SAMPLE_RATE, json.dumps([self.keyword]))
                 while self._running:
                     data, _ = stream.read(self.BLOCK)
-                    if rec.AcceptWaveform(data):
+                    if rec.AcceptWaveform(_as_bytes(data)):
                         logger.info("已唤醒「{}」，开始识别指令", self.keyword)
                         break
                 # 阶段二：指令识别（正常识别，最长 10s）
@@ -116,7 +125,7 @@ class WakeListener:
                     if not self._running:
                         break
                     data, _ = stream.read(self.BLOCK)
-                    if rec2.AcceptWaveform(data):
+                    if rec2.AcceptWaveform(_as_bytes(data)):
                         text_buf.append(json.loads(rec2.Result()).get("text", ""))
                 final = "".join(text_buf).strip()
                 self._dispatch(final)
