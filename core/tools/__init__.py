@@ -5,6 +5,7 @@ from core.tools import (  # noqa: F401
     calculator,
     datetime_tool,
     memory_tools,
+    schedule_tools,
     search,
     skill_tools,
     weather,
