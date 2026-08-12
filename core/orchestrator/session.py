@@ -64,6 +64,10 @@ class Session:
     def append(self, role: str, content: str) -> None:
         self.messages.append({"role": role, "content": content})
 
+    def summary(self, max_messages: int = 8) -> list[dict]:
+        """返回最近 N 条消息，供上下文注入。"""
+        return self.messages[-max_messages:]
+
     async def notify(self, text: str) -> None:
         if self.channel is not None:
             await self.channel.notify(text)
