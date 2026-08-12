@@ -1,102 +1,100 @@
 <template>
-  <Teleport to="body">
-    <!-- 桌面悬浮球：无路由，独立常驻 -->
-    <FloatBall
-      :pos="pos"
-      :state="asst.state.value"
-      :visual="asst.visual.value"
-      :message-dot="messageDot"
-      :expanded="asst.expanded.value"
-      :wake-enabled="asst.wakeEnabled.value"
-      @update:pos="pos = $event"
-      @click="onBallClick"
-      @dblclick="asst.toggleWake()"
-      @toggle-wake="asst.toggleWake()"
-    />
+  <!-- 桌面悬浮球小部件：球头(拖拽) + 迷你历史 + 输入；无路由，常驻 -->
+  <div class="widget">
+    <div class="widget-head" data-tauri-drag-region>
+      <span class="ball-icon" data-tauri-drag-region>
+        <Icon :name="asst.visual.value.icon" :size="16" />
+        <span class="ball-ring" :style="{ borderColor: asst.stateColor.value }"></span>
+      </span>
+      <span class="widget-title" data-tauri-drag-region>小逻 · {{ asst.stateLabel.value }}</span>
+      <button class="icon-btn" :title="asst.wakeEnabled.value ? '关闭语音唤醒' : '开启语音唤醒'" @click="asst.toggleWake()">
+        {{ asst.wakeEnabled.value ? '🎙' : '🎤' }}
+      </button>
+      <button class="icon-btn" title="打开完整控制台" @click="openConsole">⧉</button>
+    </div>
 
-    <MiniPlayer
-      :expanded="asst.expanded.value"
-      :pos="pos"
-      :state="asst.state.value"
-      :visual="asst.visual.value"
+    <MiniHistory
+      class="widget-body"
       :messages="asst.messages.value"
-      :partial-text="asst.partialText.value"
-      :status-line="asst.statusLine.value"
-      :mini-dismiss="miniDismiss"
-      @open="asst.expanded.value = true"
-      @dismiss="miniDismiss = true"
+      :state="asst.state.value"
+      :visual="asst.visual.value"
+      :wake-keyword="asst.wakeKeyword.value"
+      @select="openConsole"
     />
 
-    <Transition name="panel">
-      <AssistantPanel
-        v-if="asst.expanded.value"
-        :state="asst.state.value"
-        :visual="asst.visual.value"
-        :panel-style="panelStyle"
-        :wake-keyword="asst.wakeKeyword.value"
-        @clear="asst.clearMessages()"
-        @close="asst.expanded.value = false"
-      >
-        <MiniHistory
-          :messages="asst.messages.value"
-          :state="asst.state.value"
-          :visual="asst.visual.value"
-          :wake-keyword="asst.wakeKeyword.value"
-          @select="openConsole"
-        />
-        <ChatInput :disabled="false" @send="asst.sendText" />
-        <template #footer>
-          <button class="open-console" @click="openConsole">查看完整记录 →</button>
-        </template>
-      </AssistantPanel>
-    </Transition>
-  </Teleport>
+    <div class="widget-input">
+      <ChatInput :disabled="false" @send="asst.sendText" />
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import FloatBall from './components/assistant/FloatBall.vue'
-import MiniPlayer from './components/assistant/MiniPlayer.vue'
-import AssistantPanel from './components/assistant/AssistantPanel.vue'
+import Icon from './components/Icon.vue'
 import MiniHistory from './components/assistant/MiniHistory.vue'
 import ChatInput from './components/assistant/ChatInput.vue'
 import { useAssistant } from './composables/useAssistant'
 
 const asst = useAssistant()
 
-const messageDot = ref(false)
-const miniDismiss = ref(false)
-const pos = ref({
-  x: typeof window !== 'undefined' ? window.innerWidth - 80 : 0,
-  y: typeof window !== 'undefined' ? window.innerHeight - 80 : 0,
-})
-
 function openConsole() {
-  // 桌面壳内后续可改为 Tauri 打开控制台窗口；当前兜底用浏览器
-  window.open('/console', '_blank')
+  // 桌面壳内由 Tauri 打开控制台窗口；兜底打开浏览器
+  if ((window as any).__TAURI__?.core?.invoke) {
+    ;(window as any).__TAURI__.core.invoke('open_console')
+  } else {
+    window.open('/console', '_blank')
+  }
 }
-
-function onBallClick() {
-  asst.expanded.value = !asst.expanded.value
-  messageDot.value = false
-}
-
-const panelStyle = computed(() => ({
-  right: Math.max(0, Math.min(window.innerWidth - pos.value.x - 380, window.innerWidth - 380)) + 'px',
-  bottom: Math.min(window.innerHeight - pos.value.y, Math.max(0, window.innerHeight - 520)) + 'px',
-}))
 </script>
 
-<style>
-.open-console {
-  width: 100%;
-  border: none;
-  border-top: 1px solid var(--border-base);
-  background: transparent;
-  color: var(--text-2);
-  font-size: 12px;
-  padding: 7px 0 8px;
-  cursor: pointer;
+<style scoped>
+.widget {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(var(--panel-bg), var(--panel-bg)) padding-box,
+    var(--brand-grad) border-box;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, .5);
+  padding: 2px;
 }
-.open-console:hover { color: var(--brand-c2); }
+.widget-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: grab;
+  user-select: none;
+  border-bottom: 1px solid var(--border-base);
+}
+.ball-icon { position: relative; display: inline-flex; }
+.ball-icon :deep(.icon) { color: var(--brand-c2); }
+.ball-ring {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--brand-c2);
+  opacity: .7;
+}
+.widget-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-2);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.icon-btn:hover { color: var(--brand-c2); }
+.widget-body { flex: 1; min-height: 0; overflow-y: auto; padding: 8px; }
+.widget-input { padding: 8px 10px 10px; border-top: 1px solid var(--border-base); }
 </style>

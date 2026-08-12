@@ -37,6 +37,9 @@ data/
 .claude/
 .vscode/
 
+# Rust / Tauri 构建产物
+desktop/src-tauri/target/
+
 # OS
 *.log
 Thumbs.db
