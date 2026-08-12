@@ -31,6 +31,7 @@ models/
 data/
 !data/.gitkeep
 /memory/
+/rag/
 
 # IDE / Claude
 .claude/
