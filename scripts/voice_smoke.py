@@ -13,8 +13,13 @@
 """
 import asyncio
 import json
+import sys
+from pathlib import Path
 
 import httpx
+
+# 脚本在 scripts/ 下运行，需把项目根加入 sys.path 才能 import core
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.config import cfg
 from core.voice.wake import WakeListener
@@ -73,8 +78,9 @@ async def main() -> None:
     if not listener.start(on_utterance=lambda t: asyncio.run(run_pipeline(t))):
         print("\n[错误] 语音监听启动失败。请检查:")
         print("  ① 系统/应用麦克风权限已开启")
-        print("  ② vosk 模型目录存在（scripts/voice_smoke 用的 local_model）")
-        print("  ③ sounddevice 能访问麦克风")
+        print("  ② vosk 模型目录存在（config voice.wake_word.local_model）")
+        print("  ③ local_model 为 ASCII 路径（Windows 上 Kaldi/vosk 无法加载含中文的路径）")
+        print("  ④ sounddevice 能访问麦克风")
         return
     print("  正在监听，说「小逻小逻」…")
     try:
