@@ -29,10 +29,16 @@ class IntentResult:
     summary: str
 
 
+# 记忆类陈述关键词：命中即确定性判为任务（不依赖 LLM 判断）
+_MEMORY_HINTS = ("记住", "以后", "偏好", "我喜欢", "我希望", "帮我记", "默认", "记得")
+
+
 async def judge_intent(text: str) -> IntentResult:
-    """判断意图。LLM 失败/无工具时兜底为 task。"""
+    """判断意图。记忆类陈述规则判为 task；其余走 LLM，失败/无工具兜底为 task。"""
+    if any(h in text for h in _MEMORY_HINTS):
+        return IntentResult(type="task", summary=f"记住用户偏好：{text.strip()}")
     messages = [
-        {"role": "system", "content": "判断用户输入意图，用 judge 工具返回。chit_chat=闲聊/提问，无需执行动作直接回复即可；task=需要形成任务执行，包括：操作/查询类，以及'记住/以后/偏好/我喜欢/我希望/帮我记'等记忆类陈述。"},
+        {"role": "system", "content": "判断用户输入意图，用 judge 工具返回。chit_chat=闲聊/提问，无需执行动作直接回复即可；task=需要形成任务执行，包括操作/查询类。"},
         {"role": "user", "content": text},
     ]
     try:
