@@ -7,6 +7,7 @@ import threading
 import time
 import webbrowser
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -27,7 +28,21 @@ async def lifespan(app: FastAPI):
         await get_mcp_manager().start_all()
     except Exception as e:
         logger.warning("MCP 启动失败: {}", e)
+    # 启动定时调度（到点触发无人值守执行）
+    try:
+        from core.scheduler.runner import run_scheduled
+        from core.scheduler.scheduler import get_scheduler
+        sched = get_scheduler()
+        sched.set_on_fire(run_scheduled)
+        await sched.start()
+    except Exception as e:
+        logger.warning("定时调度启动失败: {}", e)
     yield
+    try:
+        from core.scheduler.scheduler import get_scheduler
+        await get_scheduler().stop()
+    except Exception:
+        pass
     try:
         from core.mcp.manager import get_mcp_manager
         await get_mcp_manager().stop_all()
@@ -208,6 +223,36 @@ async def memory_list():
 async def memory_delete(topic: str):
     from core.memory.context import get_facts_store
     await get_facts_store().delete(topic)
+    return {"ok": True}
+
+
+# ── 定时任务（P3）──
+@app.get("/api/schedules")
+async def schedules_list():
+    from core.scheduler.scheduler import get_scheduler
+    return {"ok": True, "schedules": [asdict(s) for s in get_scheduler().list()]}
+
+
+@app.post("/api/schedules")
+async def schedules_add(request: Request):
+    from core.scheduler.scheduler import get_scheduler
+    body = await request.body()
+    try:
+        params = json.loads(body.decode("utf-8")) if body else {}
+    except Exception:
+        return JSONResponse({"ok": False, "error": "无效 JSON"}, status_code=400)
+    cron = (params.get("cron") or "").strip()
+    prompt = (params.get("prompt") or "").strip()
+    if not cron or not prompt:
+        return JSONResponse({"ok": False, "error": "cron 与 prompt 必填"}, status_code=400)
+    sc = get_scheduler().add(cron, prompt)
+    return {"ok": True, "schedule": asdict(sc)}
+
+
+@app.delete("/api/schedules/{sid}")
+async def schedules_delete(sid: str):
+    from core.scheduler.scheduler import get_scheduler
+    get_scheduler().remove(sid)
     return {"ok": True}
 
 
