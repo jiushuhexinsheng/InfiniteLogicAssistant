@@ -6,6 +6,7 @@ import mimetypes
 import threading
 import time
 import webbrowser
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -17,7 +18,24 @@ from core.config import (
 )
 from core.logger import logger
 
-app = FastAPI(title="无限逻辑·语音助手")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 启动时连接 MCP server 并注册其工具
+    try:
+        from core.mcp.manager import get_mcp_manager
+        await get_mcp_manager().start_all()
+    except Exception as e:
+        logger.warning("MCP 启动失败: {}", e)
+    yield
+    try:
+        from core.mcp.manager import get_mcp_manager
+        await get_mcp_manager().stop_all()
+    except Exception:
+        pass
+
+
+app = FastAPI(title="无限逻辑·语音助手", lifespan=lifespan)
 
 WEB_DIST_DIR = ROOT_DIR / "web" / "dist"
 

@@ -219,3 +219,24 @@ def test_memory_endpoint(client):
     resp = client.get("/api/memory")
     assert resp.status_code == 200
     assert "facts" in resp.json()
+
+
+def test_mcp_integration_tools(monkeypatch):
+    import sys
+    from pathlib import Path
+    import core.mcp.manager as mcp_mgr
+
+    echo = str(Path(__file__).resolve().parent.parent / "scripts" / "mcp_echo_server.py")
+
+    def fake_cfg(path, default=None):
+        if path == "mcp.servers":
+            return [{"name": "echo", "command": sys.executable, "args": [echo]}]
+        return default
+
+    monkeypatch.setattr(mcp_mgr, "cfg", fake_cfg)
+    # with 触发 lifespan：启动 MCP → 注册工具；退出时关闭
+    with TestClient(server_module.app) as client:
+        data = client.get("/api/tools").json()
+        names = {t["function"]["name"] for t in data["tools"]}
+        assert "mcp_echo_echo" in names
+        assert "mcp_echo_add" in names

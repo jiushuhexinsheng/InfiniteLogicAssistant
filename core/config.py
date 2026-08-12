@@ -118,6 +118,10 @@ DEFAULTS: Dict[str, Any] = {
         "search_max_results": 5,
         "weather_timeout": 10,
     },
+    "mcp": {
+        # MCP server 列表：{"name","command","args"}；服务启动时自动连接并注册其工具
+        "servers": [],
+    },
     "server": {"host": "127.0.0.1", "port": 8520, "open_browser": True},
 }
 
