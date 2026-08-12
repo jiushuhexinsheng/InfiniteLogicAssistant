@@ -5,6 +5,9 @@ from fastapi.testclient import TestClient
 
 import server as server_module
 from core import agent as agent_module
+from core.orchestrator import pipeline as pipeline_mod
+from core.orchestrator.intent import IntentResult
+from core.orchestrator.task import Task
 
 
 class _NoAsr:
@@ -163,3 +166,46 @@ def test_resolve_dist_rejects_traversal(client):
     assert p is not None
     assert str(p).startswith(str(server_module.WEB_DIST_DIR.resolve()))
     assert server_module._resolve_dist("assets/app.js").name == "app.js"
+
+
+# ─── 编排管线端点 ───
+
+def test_voice_utter_chit_chat(client, monkeypatch):
+    async def fake_judge(text):
+        return IntentResult(type="chit_chat", summary="打招呼")
+
+    async def fake_stream(*args, **kwargs):
+        yield {"type": "content_delta", "text": "你好"}
+        yield {"type": "done", "message": {"role": "assistant", "content": "你好"}}
+
+    monkeypatch.setattr(pipeline_mod, "judge_intent", fake_judge)
+    monkeypatch.setattr(pipeline_mod, "stream_chat", fake_stream)
+    resp = client.post("/api/voice/utter", json={"text": "你好"})
+    assert resp.status_code == 200
+    assert "content_delta" in resp.text and "你好" in resp.text
+    assert resp.text.strip().endswith('data: {"type": "done"}')
+
+
+def test_voice_utter_task_done(client, monkeypatch):
+    async def fake_judge(text):
+        return IntentResult(type="task", summary="算 1+1")
+
+    async def fake_form(intent):
+        return Task("t", "算 1+1", {}, [], "read")
+
+    async def fake_execute(task, session, cancel):
+        return {"status": "done", "summary": "= 2", "steps": []}
+
+    monkeypatch.setattr(pipeline_mod, "judge_intent", fake_judge)
+    monkeypatch.setattr(pipeline_mod, "form_task", fake_form)
+    monkeypatch.setattr(pipeline_mod, "execute_task", fake_execute)
+    resp = client.post("/api/voice/utter", json={"text": "算 1+1"})
+    assert resp.status_code == 200
+    assert "task_state" in resp.text and "= 2" in resp.text
+    assert resp.text.strip().endswith('data: {"type": "done"}')
+
+
+def test_env_endpoint(client):
+    resp = client.get("/api/env")
+    assert resp.status_code == 200
+    assert "环境感知快照" in resp.json()["content"]
