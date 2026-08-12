@@ -59,6 +59,15 @@ def test_session_stop_anytime():
     assert s.state == SessionState.STOPPED
 
 
+def test_session_summary_trims():
+    s = Session()
+    for i in range(20):
+        s.append("user", str(i))
+    out = s.summary(max_messages=5)
+    assert len(out) == 5
+    assert out[-1]["content"] == "19"
+
+
 # ── 意图判断 ──
 
 @pytest.mark.asyncio
