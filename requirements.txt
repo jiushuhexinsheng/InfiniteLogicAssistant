@@ -11,3 +11,5 @@ pyyaml==6.0.3
 loguru==0.7.3
 openpyxl==3.1.5
 tomli-w==1.2.0
+vosk==0.3.45
+sounddevice==0.5.5
