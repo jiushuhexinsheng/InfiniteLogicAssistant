@@ -25,6 +25,7 @@ web/models/
 
 # Vosk 语音模型（运行只用 .tar.gz，解压目录为临时产物，不提交）
 web/public/models/vosk-model-small-cn-0.22/
+models/
 
 # 数据
 data/
