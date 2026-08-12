@@ -32,6 +32,10 @@ async function post<T>(path: string, data?: unknown): Promise<T> {
   })
 }
 
+async function del<T>(path: string): Promise<T> {
+  return request<T>(path, { method: 'DELETE' })
+}
+
 // ─── SSE 流式聊天 ───
 
 export interface ChatHandlers {
@@ -124,6 +128,17 @@ export const api = {
   answer: (sessionId: string, text: string) => post<ApiResponse>('/voice/answer', { session_id: sessionId, text }),
   stopTask: (sessionId: string) => post<ApiResponse>(`/task/${sessionId}/stop`),
   getEnv: () => get<{ ok: boolean; content: string }>('/env'),
+
+  // 记忆（P1）
+  getMemory: () => get<{ ok: boolean; facts: MemoryFact[] }>('/memory'),
+  deleteMemory: (topic: string) => del<ApiResponse>(`/memory/${encodeURIComponent(topic)}`),
+}
+
+export interface MemoryFact {
+  topic: string
+  content: string
+  source: string
+  ts: string
 }
 
 // ─── 编排 SSE：/api/voice/utter（含澄清/确认的 question 事件）───

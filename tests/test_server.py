@@ -209,3 +209,9 @@ def test_env_endpoint(client):
     resp = client.get("/api/env")
     assert resp.status_code == 200
     assert "环境感知快照" in resp.json()["content"]
+
+
+def test_memory_endpoint(client):
+    resp = client.get("/api/memory")
+    assert resp.status_code == 200
+    assert "facts" in resp.json()
