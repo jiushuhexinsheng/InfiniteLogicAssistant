@@ -180,6 +180,19 @@ async def env():
     return {"ok": True, "content": await read_environment_md()}
 
 
+@app.get("/api/memory")
+async def memory_list():
+    from core.memory.context import get_facts_store
+    return {"ok": True, "facts": await get_facts_store().all()}
+
+
+@app.delete("/api/memory/{topic}")
+async def memory_delete(topic: str):
+    from core.memory.context import get_facts_store
+    await get_facts_store().delete(topic)
+    return {"ok": True}
+
+
 @app.post("/api/tools/call")
 async def tools_call(request: Request):
     from core.tools import TOOLS
