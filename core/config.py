@@ -105,6 +105,8 @@ DEFAULTS: Dict[str, Any] = {
     "agent": {
         "recursion_limit": 6,
         "max_history_messages": 40,
+        # 复杂任务（多参数/长目标）转多智能体协调者
+        "multi_agent": False,
     },
     "llm_client": {
         "retry_max": 3,

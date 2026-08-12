@@ -7,6 +7,7 @@
 import asyncio
 import json
 
+from core.agent.coordinator import run_coordinator
 from core.config import cfg
 from core.llm.client import get_llm_client
 from core.logger import logger
@@ -22,10 +23,28 @@ _SYSTEM = ("你是执行助手。用工具完成任务。每步：需要时就�
            "若用户要求'记住/以后/偏好/我喜欢'等记忆类陈述，调用 memory_put 写入长期记忆。")
 
 
+def should_use_multi_agent(task: Task) -> bool:
+    """复杂任务（启用多智能体且多参数/长目标）转协调者。"""
+    return cfg("agent.multi_agent", False) and (len(task.params) >= 2 or len(task.goal) > 30)
+
+
 async def execute_task(task: Task, session: Session, cancel: CancellationToken) -> dict:
-    """ReAct 执行循环，返回 {status: done|failed|stopped, summary, steps:[...]}。"""
+    """执行任务：复杂任务转多智能体协调者；简单任务走 ReAct。
+
+    返回 {status: done|failed|stopped, summary, steps:[...]}。
+    """
     if cancel.is_cancelled:
         return {"status": "stopped", "summary": "已停止", "steps": []}
+
+    # 复杂任务 → 多智能体
+    if should_use_multi_agent(task):
+        cr = await run_coordinator(task, session, cancel)
+        steps = [
+            {"step": i, "tool": f"agent:{x['agent_type']}", "status": x["status"], "result": x["output"]}
+            for i, x in enumerate(cr["subtasks"])
+        ]
+        return {"status": cr["status"], "summary": cr["summary"], "steps": steps}
+
     max_steps = cfg("agent.recursion_limit", 12)
     # RAG + 长期记忆注入（失败不影响执行）
     context = ""
