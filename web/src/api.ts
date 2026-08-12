@@ -132,6 +132,11 @@ export const api = {
   // 记忆（P1）
   getMemory: () => get<{ ok: boolean; facts: MemoryFact[] }>('/memory'),
   deleteMemory: (topic: string) => del<ApiResponse>(`/memory/${encodeURIComponent(topic)}`),
+
+  // 定时任务（P3）
+  getSchedules: () => get<{ ok: boolean; schedules: ScheduleItem[] }>('/schedules'),
+  addSchedule: (cron: string, prompt: string) => post<{ ok: boolean; schedule: ScheduleItem }>('/schedules', { cron, prompt }),
+  deleteSchedule: (sid: string) => del<ApiResponse>(`/schedules/${sid}`),
 }
 
 export interface MemoryFact {
@@ -139,6 +144,13 @@ export interface MemoryFact {
   content: string
   source: string
   ts: string
+}
+
+export interface ScheduleItem {
+  id: string
+  cron: string
+  prompt: string
+  enabled: boolean
 }
 
 // ─── 编排 SSE：/api/voice/utter（含澄清/确认的 question 事件）───

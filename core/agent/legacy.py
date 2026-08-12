@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""ReAct Agent 循环 — 原生 OpenAI function-calling（参照 InfiniteLogic src/agent.py）
+"""ReAct Agent 循环（旧版 run_agent）— 原生 OpenAI function-calling（参照 InfiniteLogic src/agent.py）
 
 流程: 调 LLM(tools) → 有 tool_calls 则执行并回喂 → 直到最终答案
 事件: content_delta / reasoning_delta / tool_start / tool_end / usage / done / error

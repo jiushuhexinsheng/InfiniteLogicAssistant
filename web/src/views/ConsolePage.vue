@@ -29,7 +29,8 @@
       <ConsoleTools v-else-if="activeTab === 'tools'" />
       <ConsoleStats v-else-if="activeTab === 'stats'" />
       <ConsoleEnvView v-else-if="activeTab === 'env'" />
-      <ConsoleMemoryView v-else />
+      <ConsoleMemoryView v-else-if="activeTab === 'memory'" />
+      <ConsoleScheduleView v-else />
     </div>
   </div>
 </template>
@@ -45,11 +46,12 @@ import ConsoleTools from '../components/console/ConsoleTools.vue'
 import ConsoleStats from '../components/console/ConsoleStats.vue'
 import ConsoleEnvView from '../components/console/ConsoleEnvView.vue'
 import ConsoleMemoryView from '../components/console/ConsoleMemoryView.vue'
+import ConsoleScheduleView from '../components/console/ConsoleScheduleView.vue'
 
 const asst = useAssistant()
 const router = useRouter()
 
-type TabKey = 'conv' | 'task' | 'status' | 'tools' | 'stats' | 'env' | 'memory'
+type TabKey = 'conv' | 'task' | 'status' | 'tools' | 'stats' | 'env' | 'memory' | 'schedule'
 const tabs: { key: TabKey; label: string }[] = [
   { key: 'conv', label: '对话' },
   { key: 'task', label: '任务' },
@@ -58,6 +60,7 @@ const tabs: { key: TabKey; label: string }[] = [
   { key: 'stats', label: '统计' },
   { key: 'env', label: '环境' },
   { key: 'memory', label: '记忆' },
+  { key: 'schedule', label: '定时' },
 ]
 const activeTab = ref<TabKey>('conv')
 </script>

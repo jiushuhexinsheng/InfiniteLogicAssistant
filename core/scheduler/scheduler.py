@@ -69,6 +69,10 @@ class Scheduler:
     def list(self) -> list[Schedule]:
         return list(self._schedules.values())
 
+    def set_on_fire(self, cb) -> None:
+        """设置到点回调：async (prompt) -> None。"""
+        self._on_fire = cb
+
     def _check_and_fire(self, now: datetime) -> list[str]:
         key = now.strftime("%Y-%m-%d %H:%M")
         fired: list[str] = []
