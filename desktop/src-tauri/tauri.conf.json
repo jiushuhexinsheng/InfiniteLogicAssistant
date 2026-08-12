@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "无限逻辑语音助手",
+  "version": "0.1.0",
+  "identifier": "com.infinitelogic.assistant",
+  "build": {
+    "beforeDevCommand": "",
+    "devUrl": "http://127.0.0.1:8520",
+    "beforeBuildCommand": "",
+    "frontendDist": "../web/dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "ball",
+        "title": "悬浮球",
+        "url": "http://127.0.0.1:8520/ball.html",
+        "width": 380,
+        "height": 520,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "visible": true
+      },
+      {
+        "label": "console",
+        "title": "完整控制台",
+        "url": "http://127.0.0.1:8520/console",
+        "width": 1100,
+        "height": 760,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.ico"]
+  }
+}
