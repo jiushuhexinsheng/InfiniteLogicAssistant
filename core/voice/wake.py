@@ -80,16 +80,20 @@ class WakeListener:
         self._thread = None
 
     def _dispatch(self, text: str) -> None:
-        if not text or not self._on_utterance:
+        """调用 on_utterance（兼容同步与异步回调）。"""
+        fn = self._on_utterance
+        if not text or not fn:
             return
         try:
             import asyncio
-            try:
-                asyncio.get_running_loop()
-            except RuntimeError:
-                asyncio.run(self._on_utterance(text))
-            else:
-                asyncio.ensure_future(self._on_utterance(text))
+            res = fn(text)
+            if asyncio.iscoroutine(res):
+                try:
+                    asyncio.get_running_loop()
+                except RuntimeError:
+                    asyncio.run(res)
+                else:
+                    asyncio.ensure_future(res)
         except Exception as e:
             logger.warning("on_utterance 调用失败: {}", e)
 
