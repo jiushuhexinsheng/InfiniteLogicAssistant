@@ -5,9 +5,10 @@
 实时监听基于 vosk + sounddevice；缺依赖/模型/麦克风时 start() 返回 False（优雅降级）。
 """
 import json
+import os
 import threading
 
-from core.config import cfg
+from core.config import ROOT_DIR, cfg
 from core.logger import logger
 
 _STOP_WORDS = ("停止", "取消", "暂停", "够了", "停下", "别做了")
@@ -30,7 +31,11 @@ class WakeListener:
 
     def __init__(self, keyword: str | None = None, model_path: str | None = None):
         self.keyword = keyword or cfg("voice.wake_word.keyword", "小逻小逻")
-        self.model_path = model_path or cfg("voice.wake_word.model_path", "")
+        # 桌面监听优先本地模型目录（local_model），否则回退浏览器端 URL
+        local = cfg("voice.wake_word.local_model", "")
+        self.model_path = model_path or local or cfg("voice.wake_word.model_path", "")
+        if self.model_path and not os.path.isabs(self.model_path):
+            self.model_path = str(ROOT_DIR / self.model_path)
         self._running = False
         self._thread: threading.Thread | None = None
         self._on_utterance = None

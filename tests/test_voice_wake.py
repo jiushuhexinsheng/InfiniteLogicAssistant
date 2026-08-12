@@ -17,6 +17,6 @@ def test_listener_default_keyword():
     assert l.keyword  # 默认「小逻小逻」或配置值
 
 
-def test_listener_start_without_model_fails():
-    l = WakeListener(model_path="")
+def test_listener_start_with_nonexistent_model_fails():
+    l = WakeListener(model_path="C:/no-such-vosk-model-xyz")
     assert l.start(on_utterance=None) is False
