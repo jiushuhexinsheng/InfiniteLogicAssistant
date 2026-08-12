@@ -114,39 +114,46 @@ class WakeListener:
         try:
             with sd.RawInputStream(samplerate=self.SAMPLE_RATE, blocksize=self.BLOCK,
                                    dtype="int16", channels=1) as stream:
-                # 阶段一：关键词识别（只等唤醒词）
-                rec = KaldiRecognizer(model, self.SAMPLE_RATE, json.dumps([self.keyword]))
+                import time as _t
                 while self._running:
-                    data, _ = stream.read(self.BLOCK)
-                    if rec.AcceptWaveform(_as_bytes(data)):
-                        logger.info("已唤醒「{}」，开始识别指令", self.keyword)
-                        break
-                # 阶段二：指令识别（正常识别，最长 ~12s；partial 兜底）
-                logger.info("已唤醒，请说出指令…")
-                rec2 = KaldiRecognizer(model, self.SAMPLE_RATE)
-                rec2.SetWords(False)
-                text_buf: list[str] = []
-                partial = ""
-                for _ in range(24):  # 12s 上限
+                    # ── 阶段一：等唤醒词 ──
+                    rec = KaldiRecognizer(model, self.SAMPLE_RATE, json.dumps([self.keyword]))
+                    woken = False
+                    while self._running and not woken:
+                        data, _ = stream.read(self.BLOCK)
+                        if rec.AcceptWaveform(_as_bytes(data)):
+                            woken = True
                     if not self._running:
                         break
-                    data, _ = stream.read(self.BLOCK)
-                    if rec2.AcceptWaveform(_as_bytes(data)):
-                        text_buf.append(json.loads(rec2.Result()).get("text", ""))
-                        partial = ""
+                    logger.info("已唤醒「{}」，请说出指令…", self.keyword)
+
+                    # ── 阶段二：指令识别（最长 ~12s；partial 兜底）──
+                    rec2 = KaldiRecognizer(model, self.SAMPLE_RATE)
+                    rec2.SetWords(False)
+                    text_buf: list[str] = []
+                    partial = ""
+                    for _ in range(24):
+                        if not self._running:
+                            break
+                        data, _ = stream.read(self.BLOCK)
+                        if rec2.AcceptWaveform(_as_bytes(data)):
+                            text_buf.append(json.loads(rec2.Result()).get("text", ""))
+                            partial = ""
+                        else:
+                            try:
+                                p = json.loads(rec2.PartialResult()).get("partial", "")
+                                if p:
+                                    partial = p
+                            except Exception:
+                                pass
+                    final = "".join(text_buf).strip()
+                    if not final:
+                        final = partial.strip()
+                    if not final:
+                        logger.warning("未识别到指令，回到唤醒监听")
                     else:
-                        try:
-                            p = json.loads(rec2.PartialResult()).get("partial", "")
-                            if p:
-                                partial = p
-                        except Exception:
-                            pass
-                final = "".join(text_buf).strip()
-                if not final:
-                    final = partial.strip()
-                if not final:
-                    logger.warning("未识别到指令（可再说一次，说完后稍作停顿）")
-                    return
-                self._dispatch(final)
+                        self._dispatch(final)
+                    # 冷却一下，避免把回复/杂音误当唤醒词
+                    _t.sleep(1.0)
         except Exception as e:
             logger.warning("WakeListener 退出: {}", e)
