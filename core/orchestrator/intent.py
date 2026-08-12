@@ -32,7 +32,7 @@ class IntentResult:
 async def judge_intent(text: str) -> IntentResult:
     """判断意图。LLM 失败/无工具时兜底为 task。"""
     messages = [
-        {"role": "system", "content": "判断用户输入意图，用 judge 工具返回：chit_chat=闲聊直接回复；task=需要形成任务执行。"},
+        {"role": "system", "content": "判断用户输入意图，用 judge 工具返回。chit_chat=闲聊/提问，无需执行动作直接回复即可；task=需要形成任务执行，包括：操作/查询类，以及'记住/以后/偏好/我喜欢/我希望/帮我记'等记忆类陈述。"},
         {"role": "user", "content": text},
     ]
     try:
