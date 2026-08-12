@@ -51,6 +51,10 @@ class WakeListener:
         if not self.model_path:
             logger.warning("未配置 vosk 模型路径（voice.wake_word.model_path），桌面语音监听不可用")
             return False
+        import os
+        if not os.path.isdir(self.model_path) and not os.path.isfile(self.model_path):
+            logger.warning("vosk 模型路径不存在（{}），桌面语音监听不可用", self.model_path)
+            return False
         self._on_utterance = on_utterance
         self._running = True
         self._thread = threading.Thread(target=self._run, daemon=True)
