@@ -10,6 +10,7 @@ import json
 from core.config import cfg
 from core.llm.client import get_llm_client
 from core.logger import logger
+from core.memory.context import build_context
 from core.orchestrator.confirm import confirm_if_needed
 from core.orchestrator.control import CancellationToken
 from core.orchestrator.session import Session
@@ -25,8 +26,15 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken) 
     if cancel.is_cancelled:
         return {"status": "stopped", "summary": "已停止", "steps": []}
     max_steps = cfg("agent.recursion_limit", 12)
+    # RAG + 长期记忆注入（失败不影响执行）
+    context = ""
+    try:
+        context = await build_context(task.goal + " " + json.dumps(task.params, ensure_ascii=False))
+    except Exception:
+        pass
+    sys_prompt = f"{_SYSTEM}\n\n以下是与任务相关的已知信息：\n{context}" if context else _SYSTEM
     history = [
-        {"role": "system", "content": _SYSTEM},
+        {"role": "system", "content": sys_prompt},
         {"role": "user", "content": f"任务目标：{task.goal}\n参数：{json.dumps(task.params, ensure_ascii=False)}"},
     ]
     steps: list[dict] = []

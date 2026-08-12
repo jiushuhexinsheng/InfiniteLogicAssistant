@@ -79,6 +79,33 @@ async def test_execute_cancelled_before(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_execute_injects_context(monkeypatch):
+    async def fake_build_context(query):
+        return "【相关文档/环境】\nPython 3.14"
+
+    monkeypatch.setattr("core.orchestrator.executor.build_context", fake_build_context)
+
+    class _Fake:
+        def __init__(self):
+            self.msgs = None
+
+        def retry_stream_chat(self, messages, tools=None):
+            self.msgs = messages
+
+            async def gen():
+                yield _done(content="完成")
+            return gen()
+
+    fake = _Fake()
+    monkeypatch.setattr("core.orchestrator.executor.get_llm_client", lambda: fake)
+    s = Session()
+    s.channel = _Channel([])
+    r = await execute_task(Task("t", "查 python 版本", risk="read"), s, CancellationToken())
+    assert r["status"] == "done"
+    assert "Python 3.14" in fake.msgs[0]["content"]
+
+
+@pytest.mark.asyncio
 async def test_execute_high_risk_confirm_rejected(monkeypatch):
     fake = _FakeLLM([
         [_done(tool="write_file", args=json.dumps({"path": "C:/x.txt", "content": "hi"}))],
