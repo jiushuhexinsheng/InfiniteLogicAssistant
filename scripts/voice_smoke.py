@@ -74,8 +74,12 @@ async def main() -> None:
         return
     model = cfg("voice.wake_word.local_model", "") or cfg("voice.wake_word.model_path", "")
     print(f"\n  模型目录: {model}")
+
+    async def on_utterance(text: str) -> None:
+        await run_pipeline(text)
+
     listener = WakeListener(model_path=model)
-    if not listener.start(on_utterance=lambda t: asyncio.run(run_pipeline(t))):
+    if not listener.start(on_utterance=on_utterance):
         print("\n[错误] 语音监听启动失败。请检查:")
         print("  ① 系统/应用麦克风权限已开启")
         print("  ② vosk 模型目录存在（config voice.wake_word.local_model）")
