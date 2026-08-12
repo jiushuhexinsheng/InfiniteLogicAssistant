@@ -75,3 +75,7 @@ server:
   host: "127.0.0.1"
   port: 8520
   open_browser: true
+
+# MCP server 列表：服务启动时自动连接并注册其工具（/api/tools 可见）
+mcp:
+  servers: []   # 例: [{name: echo, command: py, args: ["-3.14", "scripts/mcp_echo_server.py"]}]
