@@ -5,7 +5,7 @@
 
 | 阶段 | 主题 | 状态 | 计划 | 验收要点 |
 |------|------|------|------|----------|
-| P0 | 地基：环境感知 / 执行层 / 基础工具 / 编排闭环 / 停止 / 语音监听 | ✅ 已完成 | [2026-08-12-agent-p0-foundation.md](../superpowers/plans/2026-08-12-agent-p0-foundation.md) | 人类在环闭环已真实 HTTP 验证（question→answer→done）；语音麦克风部分待硬件冒烟 |
+| P0 | 地基：环境感知 / 执行层 / 基础工具 / 编排闭环 / 停止 / 语音监听 | ✅ 已完成 | [2026-08-12-agent-p0-foundation.md](../superpowers/plans/2026-08-12-agent-p0-foundation.md) | 语音全链路冒烟通过（唤醒→ASR→意图→澄清→工具执行→回复→常驻监听）；答案通道当前为文字，语音回答待后续增强 |
 | P1 | 记忆三级 + RAG | ⬜ 未开始 | [2026-08-12-agent-p1-memory-rag.md](../superpowers/plans/2026-08-12-agent-p1-memory-rag.md) | 跨会话记住偏好；"按上次的方式查天气" |
 | P2 | MCP + Skills | ⬜ 未开始 | [2026-08-12-agent-p2-capabilities.md](../superpowers/plans/2026-08-12-agent-p2-capabilities.md) | 接 MCP server 语音调用；语音执行 skill |
 | P3 | 多智能体 + 定时 + GUI | ⬜ 未开始 | [2026-08-12-agent-p3-advanced.md](../superpowers/plans/2026-08-12-agent-p3-advanced.md) | 复杂任务自动拆解；每天九点定时；GUI 控制 |
