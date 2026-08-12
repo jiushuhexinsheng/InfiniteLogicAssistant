@@ -30,6 +30,7 @@ models/
 # 数据
 data/
 !data/.gitkeep
+/memory/
 
 # IDE / Claude
 .claude/
