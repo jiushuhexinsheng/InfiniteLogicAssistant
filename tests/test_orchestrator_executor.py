@@ -79,6 +79,27 @@ async def test_execute_cancelled_before(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_execute_uses_coordinator_for_complex(monkeypatch):
+    async def fake_coordinator(task, session, cancel):
+        return {"status": "done", "summary": "多智能体结果", "subtasks": [
+            {"goal": "a", "agent_type": "doer", "status": "done", "output": "ok", "tools": []}]}
+
+    monkeypatch.setattr("core.orchestrator.executor.run_coordinator", fake_coordinator)
+    monkeypatch.setattr("core.orchestrator.executor.cfg",
+                        lambda path, default=None: True if path == "agent.multi_agent" else default)
+    s = Session()
+    s.channel = _Channel([])
+    r = await execute_task(
+        Task("t", "这是一个很长的复杂任务目标需要拆分成多个子任务来处理",
+             params={"a": 1, "b": 2}, risk="read"),
+        s, CancellationToken(),
+    )
+    assert r["status"] == "done"
+    assert "多智能体结果" in r["summary"]
+    assert any(st["tool"] == "agent:doer" for st in r["steps"])
+
+
+@pytest.mark.asyncio
 async def test_execute_injects_context(monkeypatch):
     async def fake_build_context(query):
         return "【相关文档/环境】\nPython 3.14"
