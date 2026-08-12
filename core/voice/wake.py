@@ -121,17 +121,32 @@ class WakeListener:
                     if rec.AcceptWaveform(_as_bytes(data)):
                         logger.info("已唤醒「{}」，开始识别指令", self.keyword)
                         break
-                # 阶段二：指令识别（正常识别，最长 10s）
+                # 阶段二：指令识别（正常识别，最长 ~12s；partial 兜底）
+                logger.info("已唤醒，请说出指令…")
                 rec2 = KaldiRecognizer(model, self.SAMPLE_RATE)
                 rec2.SetWords(False)
-                text_buf = []
-                for _ in range(20):  # 10s 上限
+                text_buf: list[str] = []
+                partial = ""
+                for _ in range(24):  # 12s 上限
                     if not self._running:
                         break
                     data, _ = stream.read(self.BLOCK)
                     if rec2.AcceptWaveform(_as_bytes(data)):
                         text_buf.append(json.loads(rec2.Result()).get("text", ""))
+                        partial = ""
+                    else:
+                        try:
+                            p = json.loads(rec2.PartialResult()).get("partial", "")
+                            if p:
+                                partial = p
+                        except Exception:
+                            pass
                 final = "".join(text_buf).strip()
+                if not final:
+                    final = partial.strip()
+                if not final:
+                    logger.warning("未识别到指令（可再说一次，说完后稍作停顿）")
+                    return
                 self._dispatch(final)
         except Exception as e:
             logger.warning("WakeListener 退出: {}", e)
