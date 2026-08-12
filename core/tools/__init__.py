@@ -6,6 +6,7 @@ from core.tools import (  # noqa: F401
     datetime_tool,
     memory_tools,
     search,
+    skill_tools,
     weather,
 )
 from core.tools.base import TOOLS  # noqa: F401
