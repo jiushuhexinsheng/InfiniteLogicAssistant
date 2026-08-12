@@ -87,6 +87,14 @@ async def test_judge_intent_chit_chat(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_judge_intent_memory_hint_is_task():
+    # 记忆类陈述规则判为任务，不走 LLM
+    r = await judge_intent("记住，我平时用中文交流")
+    assert r.type == "task"
+    assert "记住用户偏好" in r.summary
+
+
+@pytest.mark.asyncio
 async def test_judge_intent_fallback_to_task(monkeypatch):
     class _Boom:
         def retry_stream_chat(self, messages, tools=None):
