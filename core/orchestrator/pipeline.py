@@ -19,15 +19,16 @@ from core.orchestrator.task import Task, form_task
 class EventQueueChannel(OperatorChannel):
     """notify/question 写事件队列；ask 等待操作者回答（/api/voice/answer 投递）。"""
 
-    def __init__(self, events: asyncio.Queue):
+    def __init__(self, events: asyncio.Queue, session_id: str):
         self.events = events
+        self.session_id = session_id
         self.answers: asyncio.Queue = asyncio.Queue()
 
     async def notify(self, text: str) -> None:
-        await self.events.put({"type": "task_state", "state": "notify", "text": text})
+        await self.events.put({"type": "task_state", "state": "notify", "text": text, "session_id": self.session_id})
 
     async def ask(self, question: str) -> str:
-        await self.events.put({"type": "question", "question": question})
+        await self.events.put({"type": "question", "question": question, "session_id": self.session_id})
         return await self.answers.get()
 
     def answer(self, text: str) -> None:
@@ -46,11 +47,11 @@ async def _chit_chat_reply(text: str, events: asyncio.Queue) -> None:
 
 async def run_pipeline(text: str, session: Session, events: asyncio.Queue, controller: StopController) -> None:
     """完整编排，产出事件（以 done 事件收尾）。"""
-    channel = EventQueueChannel(events)
+    channel = EventQueueChannel(events, session.id)
     session.channel = channel
     session.append("user", text)
     session.set_state(SessionState.UNDERSTANDING)
-    await events.put({"type": "task_state", "state": "understanding"})
+    await events.put({"type": "task_state", "state": "understanding", "session_id": session.id})
 
     intent = await judge_intent(text)
     if intent.type == "chit_chat":

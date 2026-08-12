@@ -51,6 +51,22 @@ export interface ToolsResponse extends ApiResponse {
   tools: ToolSchema[]
 }
 
+export interface TaskStep {
+  step: number
+  tool: string
+  args: Record<string, any>
+  status: string
+  result: string
+}
+
+export interface TaskState {
+  state: string
+  status?: string
+  summary?: string
+  steps?: TaskStep[]
+  session_id?: string
+}
+
 export interface WakeWordConfig {
   enabled: boolean
   keyword: string

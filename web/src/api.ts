@@ -1,4 +1,4 @@
-import type { ConfigResponse, PingResponse, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse } from './types'
+import type { ApiResponse, ConfigResponse, PingResponse, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState } from './types'
 import { blobToWavBase64 } from './audio'
 
 // ─── HTTP 封装 ───
@@ -119,4 +119,70 @@ export const api = {
 
   // 工具清单（控制台「工具」Tab）
   getTools: () => get<ToolsResponse>('/tools'),
+
+  // ── 编排管线（P0）──
+  answer: (sessionId: string, text: string) => post<ApiResponse>('/voice/answer', { session_id: sessionId, text }),
+  stopTask: (sessionId: string) => post<ApiResponse>(`/task/${sessionId}/stop`),
+  getEnv: () => get<{ ok: boolean; content: string }>('/env'),
+}
+
+// ─── 编排 SSE：/api/voice/utter（含澄清/确认的 question 事件）───
+
+export interface UtterHandlers {
+  onTaskState?: (s: TaskState) => void
+  onContent?: (text: string) => void
+  onQuestion?: (q: { question: string; session_id: string }) => void
+  onError?: (msg: string) => void
+  onDone?: (sessionId: string) => void
+}
+
+/** 消费 /api/voice/utter 的 SSE 事件流；返回 session_id（供 answer/stop 用）。 */
+export async function streamUtter(text: string, h: UtterHandlers): Promise<string> {
+  let sessionId = ''
+  try {
+    const resp = await fetch(`${BASE}/voice/utter`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    })
+    if (!resp.ok || !resp.body) {
+      let msg = `HTTP ${resp.status}`
+      try {
+        const e = await resp.json()
+        if (e?.error) msg = e.error
+      } catch { /* not JSON */ }
+      throw new Error(msg)
+    }
+    const reader = resp.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      let idx: number
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        const block = buf.slice(0, idx)
+        buf = buf.slice(idx + 2)
+        const line = block.split('\n').find(l => l.startsWith('data: '))
+        if (!line) continue
+        const data = line.slice(6).trim()
+        if (data === '[DONE]') break
+        let evt: any
+        try { evt = JSON.parse(data) } catch { continue }
+        if (evt.session_id) sessionId = evt.session_id
+        switch (evt.type) {
+          case 'task_state': h.onTaskState?.(evt); break
+          case 'content_delta': h.onContent?.(evt.text); break
+          case 'question': h.onQuestion?.({ question: evt.question, session_id: evt.session_id }); break
+          case 'error': h.onError?.(evt.message); return sessionId
+          case 'done': h.onDone?.(sessionId); return sessionId
+        }
+      }
+    }
+    h.onDone?.(sessionId)
+  } catch (e: any) {
+    h.onError?.(e?.message || String(e))
+  }
+  return sessionId
 }

@@ -9,16 +9,16 @@ from core.orchestrator.pipeline import EventQueueChannel
 @pytest.mark.asyncio
 async def test_channel_ask_blocks_until_answer():
     events: asyncio.Queue = asyncio.Queue()
-    ch = EventQueueChannel(events)
+    ch = EventQueueChannel(events, session_id="s1")
 
     async def do_ask():
         return await ch.ask("问题?")
 
     t = asyncio.ensure_future(do_ask())
     await asyncio.sleep(0.05)
-    # question 事件已入队
+    # question 事件已入队（含 session_id，供前端回答）
     evt = await events.get()
-    assert evt == {"type": "question", "question": "问题?"}
+    assert evt == {"type": "question", "question": "问题?", "session_id": "s1"}
     # 投递回答 → ask 返回
     ch.answer("回答")
     assert await t == "回答"
@@ -27,6 +27,6 @@ async def test_channel_ask_blocks_until_answer():
 @pytest.mark.asyncio
 async def test_channel_notify_puts_event():
     events: asyncio.Queue = asyncio.Queue()
-    ch = EventQueueChannel(events)
+    ch = EventQueueChannel(events, session_id="s1")
     await ch.notify("开始执行")
-    assert await events.get() == {"type": "task_state", "state": "notify", "text": "开始执行"}
+    assert await events.get() == {"type": "task_state", "state": "notify", "text": "开始执行", "session_id": "s1"}
