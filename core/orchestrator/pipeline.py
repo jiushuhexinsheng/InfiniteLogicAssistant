@@ -47,9 +47,11 @@ async def _chit_chat_reply(text: str, events: asyncio.Queue) -> None:
             await events.put({"type": "content_delta", "text": evt["text"]})
 
 
-async def run_pipeline(text: str, session: Session, events: asyncio.Queue, controller: StopController) -> None:
-    """完整编排，产出事件（以 done 事件收尾）。"""
-    channel = EventQueueChannel(events, session.id)
+async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
+                       controller: StopController, channel: OperatorChannel | None = None) -> None:
+    """完整编排，产出事件（以 done 事件收尾）。channel 缺省用 SSE 队列通道。"""
+    if channel is None:
+        channel = EventQueueChannel(events, session.id)
     session.channel = channel
     session.append("user", text)
     session.set_state(SessionState.UNDERSTANDING)

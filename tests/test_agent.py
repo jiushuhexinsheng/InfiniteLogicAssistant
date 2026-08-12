@@ -74,7 +74,7 @@ async def test_run_agent_simple_reply(monkeypatch):
             {"type": "done", "message": {"role": "assistant", "content": "你好"}},
         ]
     ])
-    monkeypatch.setattr("core.agent.get_llm_client", lambda: fake)
+    monkeypatch.setattr("core.agent.legacy.get_llm_client", lambda: fake)
     events = [e async for e in run_agent([{"role": "user", "content": "hi"}])]
     assert events[0] == {"type": "content_delta", "text": "你好"}
     assert events[-1] == {"type": "done"}
@@ -89,7 +89,7 @@ async def test_run_agent_executes_tool_and_feeds_back(monkeypatch):
             {"type": "done", "message": {"role": "assistant", "content": "现在时间是..."}},
         ],
     ])
-    monkeypatch.setattr("core.agent.get_llm_client", lambda: fake)
+    monkeypatch.setattr("core.agent.legacy.get_llm_client", lambda: fake)
     events = [e async for e in run_agent([{"role": "user", "content": "几点了"}])]
 
     assert any(e["type"] == "tool_start" and e["name"] == "get_datetime" for e in events)
@@ -107,7 +107,7 @@ async def test_run_agent_tool_error_status(monkeypatch):
         [_done_with_tool("no_such_tool")],
         [{"type": "done", "message": {"role": "assistant", "content": "失败了"}}],
     ])
-    monkeypatch.setattr("core.agent.get_llm_client", lambda: fake)
+    monkeypatch.setattr("core.agent.legacy.get_llm_client", lambda: fake)
     events = [e async for e in run_agent([{"role": "user", "content": "x"}])]
     tool_end = next(e for e in events if e["type"] == "tool_end")
     assert tool_end["name"] == "no_such_tool"
@@ -121,7 +121,7 @@ async def test_run_agent_bad_json_args_falls_back_to_empty(monkeypatch):
         [_done_with_tool("get_datetime", arguments="not-json")],
         [{"type": "done", "message": {"role": "assistant", "content": "ok"}}],
     ])
-    monkeypatch.setattr("core.agent.get_llm_client", lambda: fake)
+    monkeypatch.setattr("core.agent.legacy.get_llm_client", lambda: fake)
     events = [e async for e in run_agent([{"role": "user", "content": "x"}])]
     tool_start = next(e for e in events if e["type"] == "tool_start")
     assert tool_start["args"] == {}
@@ -136,7 +136,7 @@ async def test_run_agent_passes_usage(monkeypatch):
             {"type": "done", "message": {"role": "assistant", "content": "ok"}},
         ]
     ])
-    monkeypatch.setattr("core.agent.get_llm_client", lambda: fake)
+    monkeypatch.setattr("core.agent.legacy.get_llm_client", lambda: fake)
     events = [e async for e in run_agent([{"role": "user", "content": "x"}])]
     assert {"type": "usage", "usage": {"total_tokens": 12}} in events
     assert events[-1] == {"type": "done"}
@@ -148,7 +148,7 @@ async def test_run_agent_breaker_open(monkeypatch):
         def retry_stream_chat(self, messages, tools=None):
             raise CircuitBreakerOpenError()
 
-    monkeypatch.setattr("core.agent.get_llm_client", lambda: _Boom())
+    monkeypatch.setattr("core.agent.legacy.get_llm_client", lambda: _Boom())
     events = [e async for e in run_agent([{"role": "user", "content": "x"}])]
     assert events[0] == {"type": "error", "message": "服务暂时不可用，请稍后重试"}
 
@@ -163,7 +163,7 @@ async def test_run_agent_recursion_limit(monkeypatch):
 
             return gen()
 
-    monkeypatch.setattr("core.agent.get_llm_client", lambda: _Fake())
+    monkeypatch.setattr("core.agent.legacy.get_llm_client", lambda: _Fake())
     events = [e async for e in run_agent([{"role": "user", "content": "x"}])]
     assert events[-1]["type"] == "error"
     assert "上限" in events[-1]["message"]

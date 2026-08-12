@@ -41,3 +41,16 @@ def test_scheduler_persists(tmp_path):
     sc = s.add("0 9 * * *", "持久化任务")
     s2 = Scheduler(path=tmp_path / "s.json")
     assert any(x.id == sc.id for x in s2.list())
+
+
+@pytest.mark.asyncio
+async def test_run_scheduled_uses_silent_channel(monkeypatch):
+    from core.scheduler.runner import run_scheduled
+    captured = {}
+
+    async def fake_pipeline(text, session, events, controller, channel=None):
+        captured["channel"] = channel
+
+    monkeypatch.setattr("core.scheduler.runner.run_pipeline", fake_pipeline)
+    await run_scheduled("查天气")
+    assert captured["channel"] is not None
