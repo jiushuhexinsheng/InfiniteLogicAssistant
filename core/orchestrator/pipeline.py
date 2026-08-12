@@ -7,6 +7,8 @@ ask() 抛出 question 事件后阻塞，等待 /api/voice/answer 投递回答（
 import asyncio
 
 from core.llm.stream import stream_chat
+from core.memory.context import get_facts_store
+from core.memory.extract import extract_and_store
 from core.orchestrator.clarify import run_clarify
 from core.orchestrator.confirm import confirm_if_needed
 from core.orchestrator.control import StopController
@@ -80,6 +82,9 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue, contr
 
     session.set_state(SessionState.EXECUTING)
     result = await execute_task(task, session, controller.token)
+    # 任务后异步提取事实写长期记忆（不阻塞回复，失败静默）
+    if result.get("status") in ("done", "failed"):
+        asyncio.ensure_future(extract_and_store(task, result, get_facts_store()))
     session.set_state(SessionState.REPORTING)
     await events.put({
         "type": "task_state", "state": "done", "status": result["status"],

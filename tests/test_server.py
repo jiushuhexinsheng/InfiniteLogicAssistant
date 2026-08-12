@@ -196,9 +196,13 @@ def test_voice_utter_task_done(client, monkeypatch):
     async def fake_execute(task, session, cancel):
         return {"status": "done", "summary": "= 2", "steps": []}
 
+    async def fake_extract(task, result, store):
+        pass  # 避免真实 LLM 提取
+
     monkeypatch.setattr(pipeline_mod, "judge_intent", fake_judge)
     monkeypatch.setattr(pipeline_mod, "form_task", fake_form)
     monkeypatch.setattr(pipeline_mod, "execute_task", fake_execute)
+    monkeypatch.setattr(pipeline_mod, "extract_and_store", fake_extract)
     resp = client.post("/api/voice/utter", json={"text": "算 1+1"})
     assert resp.status_code == 200
     assert "task_state" in resp.text and "= 2" in resp.text
