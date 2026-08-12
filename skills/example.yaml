@@ -1,0 +1,10 @@
+name: 整理下载目录
+description: 列出下载目录的文件（示例技能，演示 skills 格式）
+requires:
+  - download_path
+steps:
+  - tool: run_shell_tool
+    args_template:
+      command: "dir {{download_path}}"
+    note: 列出下载目录内容
+dangerous: false
