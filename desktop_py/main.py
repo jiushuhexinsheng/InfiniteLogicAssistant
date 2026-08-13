@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication
 
 from desktop_py import backend_runner
 from desktop_py.ball import BallWindow
+from desktop_py.mini_panel import MiniPanel
 from desktop_py.tray import Tray
 
 
@@ -22,7 +23,8 @@ def main() -> int:
     if not backend_runner.ensure_backend():
         print("[错误] 后端启动失败，请先运行: py main.py serve")
 
-    ball = BallWindow()
+    panel = MiniPanel()
+    ball = BallWindow(panel)
     ball.show()
     tray = Tray(ball, app)  # 保持引用防 GC
 

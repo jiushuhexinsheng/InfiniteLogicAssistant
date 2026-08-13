@@ -10,7 +10,7 @@ _CLICK_DELAY = 250  # 区分单击/双击的等待毫秒
 
 
 class BallWindow(QWidget):
-    def __init__(self):
+    def __init__(self, panel=None):
         super().__init__()
         # Qt.SubWindow 会使无父窗口的置顶窗不显示，必须用 Qt.Window
         self.setWindowFlags(
@@ -23,6 +23,7 @@ class BallWindow(QWidget):
         if screen:
             geo = screen.availableGeometry()
             self.move(geo.right() - 96 - 40, geo.bottom() - 96 - 40)
+        self.panel = panel
         self.state = "idle"
         self._drag_pos = None
         self._moved = False
@@ -77,4 +78,18 @@ class BallWindow(QWidget):
         api.toggle_voice()
 
     def _on_single_click(self):
-        api.open_console()
+        if self.panel and self.panel.isVisible():
+            self.panel.hide()
+        else:
+            self._show_panel()
+
+    def _show_panel(self):
+        if not self.panel:
+            return
+        x = self.x() - self.panel.width() - 8
+        y = self.y() + self.height() - self.panel.height()
+        if x < 0:
+            x = self.x() + self.width() + 8
+        self.panel.move(max(0, x), max(0, y))
+        self.panel.show()
+        self.panel.raise_()
