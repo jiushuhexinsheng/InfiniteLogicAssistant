@@ -1,7 +1,14 @@
 # 无限逻辑 · 语音全控智能体 —— 整体架构设计
 
 > 版本 v1 · 2026-08-12 · 目标：用语音控制电脑上的一切，无沙箱/安全区，全链路可观测、可中止。
-> 决策基线：**后端宿主 + 浏览器面板 + 桌面语音监听**；**自研轻量编排**（不引入 LangGraph/CrewAI 等重框架）。
+> 决策基线：**后端宿主 + 浏览器面板 + 语音交互**；**自研轻量编排**（不引入 LangGraph/CrewAI 等重框架）。
+>
+> ## 实现状态（2026-08 更新）
+>
+> P0–P3 已全部完成并合入主分支（见 `roadmap.md`）。**桌面语音监听已暂停开发、不再回迁**：
+> 桌面悬浮球 UI 代码迁移至 `desktop-ball` 分支；`core/voice/wake.py` 保留为可复用模块但未接入
+> server 运行链路。当前语音交互 = **浏览器 Vosk WASM 唤醒 + 后端 OpenAI 兼容 ASR/TTS + SpeechSynthesis 播报**。
+> 下文涉及「桌面常驻语音监听」的段落均为设计意图/历史说明，与当前主分支实现存在差异。
 
 ---
 
@@ -21,7 +28,7 @@
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  交互层  Voice（桌面唤醒/ASR/TTS）· Web 控制台（Vue）          │
+│  交互层  Voice（浏览器唤醒/ASR/TTS）· Web 控制台（Vue）      │
 ├──────────────────────────────────────────────────────────────┤
 │  编排层  Orchestrator：会话 → 意图 → 任务 → 澄清 → 确认 → 执行 │
 │          └── 停止/中止控制器（贯穿所有层）                     │
@@ -52,8 +59,8 @@ infinite-logic/
 │   ├── config.py           # 配置（多 provider，复用现有）
 │   ├── logger.py           # 日志 + 审计（复用现有 loguru）
 │   ├── llm/                # LLM 客户端（复用现有 stream/client）
-│   ├── voice/              # ★ 语音层（桌面常驻）
-│   │   ├── wake.py         #   本地唤醒词监听（Vosk，后台常驻麦克风）
+│   ├── voice/              # 语音层（当前：ASR/TTS；wake.py 桌面监听保留未接入）
+│   │   ├── wake.py         #   （历史/可复用）本地唤醒词监听（Vosk 常驻麦克风，未接入 server）
 │   │   ├── asr.py          #   语音转文字（在线/本地可选）
 │   │   ├── tts.py          #   文字转语音（播报）
 │   │   └── vad.py          #   端点/静音检测
@@ -103,11 +110,12 @@ infinite-logic/
 
 ### 3.1 交互层：语音 + 前端
 
-**语音（桌面常驻）**——脱离浏览器，解决"全控"必须随时可唤醒：
-- `wake.py`：本地 Vosk 唤醒词（如"小逻小逻"），系统后台常驻麦克风；也可复用现有 WASM 方案作降级。
+**语音（当前实现：浏览器端）**——Vosk WASM 唤醒词在浏览器内运行，ASR/TTS 走后端 OpenAI 兼容接口：
+- 浏览器端 `public/lib/vosk.js` + `wake-word.js`：离线唤醒词「小逻小逻」（含同音字变体），激活录音后经 ASR 转文字。
+- ~~桌面常驻监听（`wake.py` 本地 Vosk 后台常驻麦克风）~~：设计目标之一，**已暂停开发**；`core/voice/wake.py` 保留为可复用模块（`scripts/voice_smoke.py` 冒烟、`tests/test_voice_wake.py` 测试），未接入 server 运行链路。若未来恢复，可复用现有 WASM 方案作降级。
 - `asr.py`：在线 OpenAI 兼容 ASR（现有）或本地 Whisper 二选一，配置切换。
 - `tts.py`：播报回复/汇报（在线 TTS 或本地 piper）；浏览器端继续 SpeechSynthesis 作面板播报。
-- 语音事件统一转成 `Utterance(text)` 推入编排层；**命令词**（"停止/取消/暂停"）在 wake/ASR 层即时识别并直接发 `StopSignal` 给 control.py，不经过 LLM（保证响应及时）。
+- 语音事件统一转成 `Utterance(text)` 推入编排层；**命令词**（"停止/取消/暂停"）在唤醒/ASR 层即时识别并直接触发 `StopController`，不经过 LLM（保证响应及时；命令词表见 `core/voice/wake.py::is_stop_command`）。
 
 **前端（Vue 控制台）**：复用现有悬浮球 + /console，新增视图：任务列表/单任务执行流、待澄清问题卡片、记忆浏览、环境快照、定时任务、审计日志。SSE 复用现有 `stream_chat` 的事件通道，新增事件类型 `task_state`/`question`/`confirm`/`stop_ack`。
 
@@ -291,7 +299,7 @@ SSE 事件扩展：现有 `content_delta/tool_start/tool_end/usage/done/error` �
 
 | 阶段 | 内容 | 验收 |
 |------|------|------|
-| **P0 地基** | envprobe→environment.md；execution（shell/py/fs）；tools 基础集；orchestrator（session/intent/task/clarify/confirm/executor/control）；桌面语音监听接入；SSE 事件扩展 | 语音"把桌面 xx.txt 复制到下载" 全链路 + "停止"可中断 |
+| **P0 地基** | envprobe→environment.md；execution（shell/py/fs）；tools 基础集；orchestrator（session/intent/task/clarify/confirm/executor/control）；SSE 事件扩展（语音监听详见「实现状态」：桌面监听暂停，浏览器 WASM 唤醒为当前入口） | 语音"把桌面 xx.txt 复制到下载" 全链路 + "停止"可中断 |
 | **P1 记忆+RAG** | memory 三级；RAG 索引 environment.md 与文档目录；任务后事实提取 | 跨会话记住偏好；"按上次的方式查天气" 直接可用 |
 | **P2 能力扩展** | MCP 客户端 + 桥；Skills 系统 | 接一个 MCP server 并语音调用其工具；语音"执行我 skill 里的 xxx" |
 | **P3 多智能体+定时+GUI** | coordinator + 子代理；scheduler；gui 自动化 | 复杂任务自动拆解多步执行；"每天九点查天气并播报"；语音控制打开/操作应用 |
