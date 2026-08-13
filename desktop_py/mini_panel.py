@@ -81,6 +81,7 @@ class MiniPanel(QWidget):
         if self._pending_answer and self._worker:
             self._worker.answer(text)
             self._pending_answer = False
+            self.input.clear()
             self._reset_input("说点什么，回车发送…")
             self.list.addItem(f"（回答）{text}")
             self.list.scrollToBottom()
