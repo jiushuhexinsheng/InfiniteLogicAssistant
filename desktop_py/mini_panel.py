@@ -57,6 +57,7 @@ class MiniPanel(QWidget):
 
         self._worker = None
         self._pending_answer = False
+        self._stream_item = None
         self.refresh()
 
     def refresh(self):
@@ -88,6 +89,8 @@ class MiniPanel(QWidget):
             return  # 上一个任务未结束
         self.input.clear()
         self.list.addItem(f"你: {text}")
+        self.list.addItem("小逻: ")  # 流式回复目标
+        self._stream_item = self.list.item(self.list.count() - 1)
         self.list.scrollToBottom()
         self._worker = UtterWorker(text, self)
         self._worker.content.connect(self._stream)
@@ -97,9 +100,8 @@ class MiniPanel(QWidget):
         self._worker.start()
 
     def _stream(self, t):
-        item = self.list.item(self.list.count() - 1)
-        if item:
-            item.setText(item.text() + t)
+        if self._stream_item:
+            self._stream_item.setText(self._stream_item.text() + t)
             self.list.scrollToBottom()
 
     def _on_question(self, q, sid):

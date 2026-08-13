@@ -54,6 +54,9 @@ class UtterWorker(QThread):
             t = evt.get("type")
             if t == "content_delta":
                 self.content.emit(evt.get("text", ""))
+            elif t == "task_state" and evt.get("state") == "done" and evt.get("summary"):
+                # 任务型回复在 done 事件里携带 summary
+                self.content.emit("\n" + evt["summary"])
             elif t == "question":
                 self._session_id = evt.get("session_id", "")
                 self.question.emit(evt.get("question", ""), self._session_id)
