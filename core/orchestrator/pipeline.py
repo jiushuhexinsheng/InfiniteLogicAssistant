@@ -16,6 +16,8 @@ from core.orchestrator.executor import execute_task
 from core.orchestrator.intent import judge_intent
 from core.orchestrator.session import OperatorChannel, Session, SessionState
 from core.orchestrator.task import Task, form_task
+from core.recent import append_turn
+from core.status import set_status
 
 
 class EventQueueChannel(OperatorChannel):
@@ -37,14 +39,17 @@ class EventQueueChannel(OperatorChannel):
         self.answers.put_nowait(text)
 
 
-async def _chit_chat_reply(text: str, events: asyncio.Queue) -> None:
+async def _chit_chat_reply(text: str, events: asyncio.Queue) -> str:
     messages = [
         {"role": "system", "content": "你是小逻，用中文简洁友好地回复。"},
         {"role": "user", "content": text},
     ]
+    acc = ""
     async for evt in stream_chat(messages):
         if evt["type"] == "content_delta":
+            acc += evt["text"]
             await events.put({"type": "content_delta", "text": evt["text"]})
+    return acc
 
 
 async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
@@ -56,12 +61,16 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
     session.append("user", text)
     session.set_state(SessionState.UNDERSTANDING)
     await events.put({"type": "task_state", "state": "understanding", "session_id": session.id})
+    set_status(state="understanding", activity=text)
 
     intent = await judge_intent(text)
     if intent.type == "chit_chat":
         session.set_state(SessionState.CHIT_CHAT)
+        set_status(state="chit_chat", activity=intent.summary)
         try:
-            await _chit_chat_reply(text, events)
+            reply = await _chit_chat_reply(text, events)
+            set_status(state="done", summary=reply)
+            append_turn(user=text, assistant=reply, source="chit")
         except Exception as e:
             await events.put({"type": "error", "message": str(e)})
         await events.put({"type": "done"})
@@ -83,10 +92,14 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
         return
 
     session.set_state(SessionState.EXECUTING)
+    set_status(state="executing", activity=task.goal)
     result = await execute_task(task, session, controller.token)
     # 任务后异步提取事实写长期记忆（不阻塞回复，失败静默）
     if result.get("status") in ("done", "failed"):
         asyncio.ensure_future(extract_and_store(task, result, get_facts_store()))
+    set_status(state="done", summary=result.get("summary", ""))
+    append_turn(user=text, assistant=result.get("summary", ""),
+                tools=[s.get("tool", "") for s in result.get("steps", [])])
     session.set_state(SessionState.REPORTING)
     await events.put({
         "type": "task_state", "state": "done", "status": result["status"],

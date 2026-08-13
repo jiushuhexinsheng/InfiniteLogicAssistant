@@ -226,6 +226,25 @@ async def memory_delete(topic: str):
     return {"ok": True}
 
 
+# ── 桌面球轻量端点（状态/最近对话/语音开关）──
+@app.get("/api/status")
+async def status():
+    from core.status import get_status
+    return {"ok": True, **get_status()}
+
+
+@app.get("/api/session/recent")
+async def session_recent():
+    from core.recent import list_turns
+    return {"ok": True, "turns": list_turns()}
+
+
+@app.post("/api/voice/toggle")
+async def voice_toggle():
+    from core.voice.manager import toggle
+    return {"ok": True, "running": toggle()}
+
+
 # ── 定时任务（P3）──
 @app.get("/api/schedules")
 async def schedules_list():

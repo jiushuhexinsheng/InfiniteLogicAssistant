@@ -221,6 +221,27 @@ def test_memory_endpoint(client):
     assert "facts" in resp.json()
 
 
+def test_status_endpoint(client):
+    resp = client.get("/api/status").json()
+    assert resp["ok"] is True
+    assert "state" in resp and "summary" in resp
+
+
+def test_session_recent_endpoint(client, tmp_path, monkeypatch):
+    import core.recent as recent_mod
+    monkeypatch.setattr(recent_mod, "RECENT_FILE", tmp_path / "recent.json")
+    assert client.get("/api/session/recent").json()["turns"] == []
+    recent_mod.append_turn("你好", "你好呀")
+    turns = client.get("/api/session/recent").json()["turns"]
+    assert turns and turns[0]["user"] == "你好" and turns[0]["assistant"] == "你好呀"
+
+
+def test_voice_toggle_endpoint(client, monkeypatch):
+    import core.voice.manager as vm
+    monkeypatch.setattr(vm, "toggle", lambda: True)
+    assert client.post("/api/voice/toggle").json()["running"] is True
+
+
 def test_schedules_endpoints(client, tmp_path, monkeypatch):
     import core.scheduler.scheduler as sched_mod
     from core.scheduler.scheduler import Scheduler
