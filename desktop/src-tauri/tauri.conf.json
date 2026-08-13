@@ -16,14 +16,15 @@
         "label": "ball",
         "title": "悬浮球",
         "url": "http://127.0.0.1:8520/ball.html",
-        "width": 380,
-        "height": 520,
+        "width": 80,
+        "height": 80,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "resizable": false,
-        "visible": true
+        "visible": true,
+        "center": true
       },
       {
         "label": "console",

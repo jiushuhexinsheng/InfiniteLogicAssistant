@@ -1,0 +1,9 @@
+{
+  "identifier": "ball-remote",
+  "description": "允许悬浮球/控制台窗口从本地后端域使用 Tauri 能力（拖拽/窗口/托盘）",
+  "windows": ["ball", "console"],
+  "remote": {
+    "urls": ["http://127.0.0.1:8520", "http://localhost:8520"]
+  },
+  "permissions": ["core:default"]
+}

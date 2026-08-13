@@ -39,6 +39,11 @@ data/
 
 # Rust / Tauri 构建产物
 desktop/src-tauri/target/
+desktop/src-tauri/gen/
+
+# PyInstaller 构建产物
+desktop_py/build/
+desktop_py/dist/
 
 # OS
 *.log
