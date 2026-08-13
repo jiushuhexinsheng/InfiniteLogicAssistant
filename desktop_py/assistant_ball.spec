@@ -27,8 +27,8 @@ hiddenimports = [
 hiddenimports += collect_submodules('uvicorn')
 
 a = Analysis(
-    ['desktop_py/main.py'],
-    pathex=['.'],
+    ['main.py'],
+    pathex=['..'],
     binaries=[],
     datas=[],
     hiddenimports=hiddenimports,
@@ -57,7 +57,7 @@ exe = EXE(
     upx=True,
     console=False,
     disable_windowed_traceback=False,
-    icon='desktop_py/icon.ico',
+    icon='icon.ico',
 )
 
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=True, name='无限逻辑悬浮球')
