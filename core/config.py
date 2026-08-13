@@ -6,17 +6,12 @@
 """
 import os
 import re
-import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
 
-# PyInstaller 冻结时 __file__ 指向临时解压目录，改用 exe 所在目录作为根（config/data 放 exe 旁）
-if getattr(sys, "frozen", False):
-    ROOT_DIR = Path(sys.executable).resolve().parent
-else:
-    ROOT_DIR = Path(__file__).resolve().parent.parent
+ROOT_DIR = Path(__file__).resolve().parent.parent
 CONFIG_FILE = ROOT_DIR / "config.yaml"
 EXAMPLE_FILE = ROOT_DIR / "config.yaml.example"
 

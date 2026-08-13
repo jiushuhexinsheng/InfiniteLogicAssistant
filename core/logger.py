@@ -9,14 +9,12 @@ LOG_DIR = Path(__file__).resolve().parent.parent / "data"
 LOG_FILE = LOG_DIR / "agent.log"
 
 logger.remove()
-# 窗口程序（PyInstaller console=False）无 stdout，需判空
-if sys.stdout is not None:
-    logger.add(
-        sys.stdout,
-        format="<green>{time:HH:mm:ss}</green> | <level>{level: <7}</level> | <level>{message}</level>",
-        level="INFO",
-        colorize=True,
-    )
+logger.add(
+    sys.stdout,
+    format="<green>{time:HH:mm:ss}</green> | <level>{level: <7}</level> | <level>{message}</level>",
+    level="INFO",
+    colorize=True,
+)
 logger.add(
     LOG_FILE,
     format="{time:YYYY-MM-DD HH:mm:ss} | {level: <7} | {name}:{function}:{line} | {message}",

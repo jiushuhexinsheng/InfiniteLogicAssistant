@@ -19,13 +19,4 @@ export default defineConfig({
     },
   },
   publicDir: 'public',
-  // 多页：控制台(index) + 桌面悬浮球(ball)
-  build: {
-    rollupOptions: {
-      input: {
-        main: resolve(__dirname, 'index.html'),
-        ball: resolve(__dirname, 'ball.html'),
-      },
-    },
-  },
 })
