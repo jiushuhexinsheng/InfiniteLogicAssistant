@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """悬浮球窗口 — 无边框透明置顶圆窗，QPainter 画状态环 + 图标"""
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
 from desktop_py import api, theme
@@ -12,11 +12,17 @@ _CLICK_DELAY = 250  # 区分单击/双击的等待毫秒
 class BallWindow(QWidget):
     def __init__(self):
         super().__init__()
+        # Qt.SubWindow 会使无父窗口的置顶窗不显示，必须用 Qt.Window
         self.setWindowFlags(
-            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool | Qt.SubWindow
+            Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFixedSize(96, 96)
+        # 默认位置：主屏右下角
+        screen = QGuiApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            self.move(geo.right() - 96 - 40, geo.bottom() - 96 - 40)
         self.state = "idle"
         self._drag_pos = None
         self._moved = False
