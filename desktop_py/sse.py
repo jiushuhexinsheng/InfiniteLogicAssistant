@@ -2,11 +2,22 @@
 """SSE 工作线程 — 调 /api/voice/utter，流式回 UI；question 暂停等待回答"""
 import json
 import threading
-import urllib.request
+from pathlib import Path
 
+import requests
 from PySide6.QtCore import QThread, Signal
 
 BASE = "http://127.0.0.1:8520"
+_DEBUG_LOG = Path(__file__).resolve().parent.parent / "data" / "worker.log"
+
+
+def _debug(msg: str) -> None:
+    try:
+        _DEBUG_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with _DEBUG_LOG.open("a", encoding="utf-8") as f:
+            f.write(msg + "\n")
+    except Exception:
+        pass
 
 
 class UtterWorker(QThread):
@@ -23,52 +34,46 @@ class UtterWorker(QThread):
         self._answer_text = ""
 
     def run(self):
+        _debug(f"[worker] start text={self._text}")
         try:
-            data = json.dumps({"text": self._text}).encode("utf-8")
-            req = urllib.request.Request(
-                f"{BASE}/api/voice/utter", data=data,
-                headers={"Content-Type": "application/json"}, method="POST",
-            )
-            resp = urllib.request.urlopen(req, timeout=120)
-            buf = b""
-            while True:
-                chunk = resp.read(4096)
-                if not chunk:
-                    break
-                buf += chunk
-                while b"\n\n" in buf:
-                    block, buf = buf.split(b"\n\n", 1)
-                    self._parse(block.decode("utf-8", errors="replace"))
+            resp = requests.post(f"{BASE}/api/voice/utter", json={"text": self._text},
+                                 stream=True, timeout=120)
+            _debug(f"[worker] status={resp.status_code}")
+            for raw in resp.iter_lines():
+                if not raw:
+                    continue
+                line = raw.decode("utf-8", errors="replace")
+                if line.startswith("data: "):
+                    self._parse(line[6:].strip())
             self.task_done.emit()
+            _debug("[worker] done")
         except Exception as e:
+            _debug(f"[worker] ERROR {e!r}")
             self.error.emit(str(e))
 
-    def _parse(self, block: str):
-        for line in block.splitlines():
-            if not line.startswith("data: "):
-                continue
-            try:
-                evt = json.loads(line[6:])
-            except Exception:
-                continue
-            t = evt.get("type")
-            if t == "content_delta":
-                self.content.emit(evt.get("text", ""))
-            elif t == "task_state" and evt.get("state") == "done" and evt.get("summary"):
-                # 任务型回复在 done 事件里携带 summary
-                self.content.emit("\n" + evt["summary"])
-            elif t == "question":
-                self._session_id = evt.get("session_id", "")
-                self.question.emit(evt.get("question", ""), self._session_id)
-                # 等待面板回答后继续
-                self._answer_event.clear()
-                self._answer_event.wait()
-                self._post_answer(self._answer_text)
-            elif t == "error":
-                self.error.emit(evt.get("message", "出错"))
-                self._answer_event.set()
-            elif t == "done":
-                self._answer_event.set()
+    def _parse(self, data: str):
+        try:
+            evt = json.loads(data)
+        except Exception as e:
+            _debug(f"[worker] parse err {e!r}: {data[:80]}")
+            return
+        t = evt.get("type")
+        _debug(f"[worker] evt {t}")
+        if t == "content_delta":
+            self.content.emit(evt.get("text", ""))
+        elif t == "task_state" and evt.get("state") == "done" and evt.get("summary"):
+            self.content.emit("\n" + evt["summary"])
+        elif t == "question":
+            self._session_id = evt.get("session_id", "")
+            self.question.emit(evt.get("question", ""), self._session_id)
+            self._answer_event.clear()
+            self._answer_event.wait()
+            self._post_answer(self._answer_text)
+        elif t == "error":
+            self.error.emit(evt.get("message", "出错"))
+            self._answer_event.set()
+        elif t == "done":
+            self._answer_event.set()
 
     def answer(self, text: str):
         self._answer_text = text
@@ -76,11 +81,7 @@ class UtterWorker(QThread):
 
     def _post_answer(self, text: str):
         try:
-            data = json.dumps({"session_id": self._session_id, "text": text}).encode("utf-8")
-            req = urllib.request.Request(
-                f"{BASE}/api/voice/answer", data=data,
-                headers={"Content-Type": "application/json"}, method="POST",
-            )
-            urllib.request.urlopen(req, timeout=10)
+            requests.post(f"{BASE}/api/voice/answer",
+                          json={"session_id": self._session_id, "text": text}, timeout=10)
         except Exception:
             pass
