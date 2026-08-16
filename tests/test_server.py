@@ -22,6 +22,10 @@ def client(monkeypatch, tmp_path):
     # LLM 一律视为未配置（config.yaml 里配了真实 key，绝不能打到外网）
     monkeypatch.setattr(server_module, "is_llm_configured", lambda: False)
     monkeypatch.setattr(server_module, "is_asr_configured", lambda: False)
+    # RAG 自动索引跳过（lifespan 触发时避免真实重建）
+    _orig_cfg = server_module.cfg
+    monkeypatch.setattr(server_module, "cfg",
+                        lambda path, default=None: False if path == "rag.auto_index" else _orig_cfg(path, default))
     # ASR 客户端桩
     monkeypatch.setattr("core.voice.get_asr", lambda: _NoAsr())
     # 静态托管指向临时 dist

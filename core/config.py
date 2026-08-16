@@ -122,6 +122,10 @@ DEFAULTS: Dict[str, Any] = {
         # MCP server 列表：{"name","command","args"}；服务启动时自动连接并注册其工具
         "servers": [],
     },
+    "rag": {
+        # 启动时按需重建索引：index.db 缺失或 environment.md/docs 更新时重建
+        "auto_index": True,
+    },
     "server": {"host": "127.0.0.1", "port": 8520, "open_browser": True},
 }
 
