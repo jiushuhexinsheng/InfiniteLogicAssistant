@@ -28,9 +28,11 @@ def should_use_multi_agent(task: Task) -> bool:
     return cfg("agent.multi_agent", False) and (len(task.params) >= 2 or len(task.goal) > 30)
 
 
-async def execute_task(task: Task, session: Session, cancel: CancellationToken) -> dict:
+async def execute_task(task: Task, session: Session, cancel: CancellationToken,
+                       events: asyncio.Queue | None = None) -> dict:
     """执行任务：复杂任务转多智能体协调者；简单任务走 ReAct。
 
+    events 非空时流式发射 tool_start/tool_end/usage/content_delta（SSE 实时呈现）。
     返回 {status: done|failed|stopped, summary, steps:[...]}。
     """
     if cancel.is_cancelled:
@@ -52,7 +54,18 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken) 
         context = await build_context(task.goal + " " + json.dumps(task.params, ensure_ascii=False))
     except Exception:
         pass
-    sys_prompt = f"{_SYSTEM}\n\n以下是与任务相关的已知信息：\n{context}" if context else _SYSTEM
+    # 对话历史（排除当前轮用户消息，供多轮任务上下文）
+    prior = [m for m in session.summary(10) if m.get("role") in ("user", "assistant")][:-1]
+    context_lines = []
+    if context:
+        context_lines.append(f"以下是与任务相关的已知信息：\n{context}")
+    if prior:
+        lines = "\n".join(
+            f"{'用户' if m['role'] == 'user' else '助手'}: {m['content']}"
+            for m in prior if isinstance(m.get("content"), str)
+        )
+        context_lines.append(f"以下是最近对话：\n{lines}")
+    sys_prompt = f"{_SYSTEM}\n\n" + "\n\n".join(context_lines) if context_lines else _SYSTEM
     history = [
         {"role": "system", "content": sys_prompt},
         {"role": "user", "content": f"任务目标：{task.goal}\n参数：{json.dumps(task.params, ensure_ascii=False)}"},
@@ -67,6 +80,8 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken) 
             async for evt in get_llm_client().retry_stream_chat(history, tools=TOOLS.schemas()):
                 if evt["type"] == "done":
                     assistant_message = evt["message"]
+                elif events is not None and evt["type"] in ("content_delta", "usage"):
+                    await events.put(evt)
             if assistant_message is None:
                 return {"status": "failed", "summary": "LLM 返回空消息", "steps": steps}
 
@@ -83,6 +98,8 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken) 
                     args = json.loads(raw) if isinstance(raw, str) else raw
                 except json.JSONDecodeError:
                     args = {}
+                if events is not None:
+                    await events.put({"type": "tool_start", "name": name, "args": args})
                 # 高风险工具先确认
                 if TOOLS.risk(name) != "read":
                     plan = f"调用工具 {name}，参数 {json.dumps(args, ensure_ascii=False)}"
@@ -91,6 +108,8 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken) 
                 else:
                     result = await TOOLS.acall(name, args)
                 status = "error" if result.startswith("Error") else "ok"
+                if events is not None:
+                    await events.put({"type": "tool_end", "name": name, "status": status, "output": result[:500]})
                 steps.append({"step": step, "tool": name, "args": args, "status": status, "result": result[:500]})
                 history.append({"role": "tool", "tool_call_id": tc.get("id", ""), "content": result})
                 session.append("tool", f"{name}: {result[:200]}")

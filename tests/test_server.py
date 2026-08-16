@@ -190,6 +190,22 @@ def test_voice_utter_chit_chat(client, monkeypatch):
     assert resp.text.strip().endswith('data: {"type": "done"}')
 
 
+def test_voice_utter_forwards_messages(client, monkeypatch):
+    captured = {}
+
+    async def fake_run(text, session, events, controller, channel=None, messages=None):
+        captured["messages"] = messages
+        await events.put({"type": "done"})
+
+    monkeypatch.setattr(pipeline_mod, "run_pipeline", fake_run)
+    resp = client.post("/api/voice/utter", json={
+        "text": "hi",
+        "messages": [{"role": "user", "content": "a"}, {"role": "assistant", "content": "b"}],
+    })
+    assert resp.status_code == 200
+    assert captured["messages"] == [{"role": "user", "content": "a"}, {"role": "assistant", "content": "b"}]
+
+
 def test_voice_utter_task_done(client, monkeypatch):
     async def fake_judge(text):
         return IntentResult(type="task", summary="算 1+1")
@@ -197,7 +213,7 @@ def test_voice_utter_task_done(client, monkeypatch):
     async def fake_form(intent):
         return Task("t", "算 1+1", {}, [], "read")
 
-    async def fake_execute(task, session, cancel):
+    async def fake_execute(task, session, cancel, events=None):
         return {"status": "done", "summary": "= 2", "steps": []}
 
     async def fake_extract(task, result, store):
