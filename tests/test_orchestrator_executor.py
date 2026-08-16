@@ -127,6 +127,30 @@ async def test_execute_injects_context(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_execute_read_tools_run_concurrently(monkeypatch):
+    msg = {
+        "role": "assistant", "content": "",
+        "tool_calls": [
+            {"id": "c1", "type": "function", "function": {"name": "calculate", "arguments": json.dumps({"expression": "1+1"})}},
+            {"id": "c2", "type": "function", "function": {"name": "get_datetime", "arguments": "{}"}},
+        ],
+    }
+    fake = _FakeLLM([
+        [{"type": "done", "message": msg}],
+        [_done(content="完成")],
+    ])
+    monkeypatch.setattr("core.orchestrator.executor.get_llm_client", lambda: fake)
+    s = Session()
+    s.channel = _Channel([])
+    r = await execute_task(Task("t", "多工具", risk="read"), s, CancellationToken())
+    assert r["status"] == "done"
+    # read 级工具并发执行，结果按原顺序回喂
+    tools = [st["tool"] for st in r["steps"]]
+    assert tools == ["calculate", "get_datetime"]
+    assert all(st["status"] == "ok" for st in r["steps"])
+
+
+@pytest.mark.asyncio
 async def test_execute_high_risk_confirm_rejected(monkeypatch):
     fake = _FakeLLM([
         [_done(tool="write_file", args=json.dumps({"path": "C:/x.txt", "content": "hi"}))],

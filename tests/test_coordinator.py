@@ -31,6 +31,35 @@ async def test_coordinator_merges_subtasks(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_coordinator_emits_notify_events(monkeypatch):
+    async def fake_decompose(task):
+        return [{"goal": "子任务", "agent_type": "doer", "independent": False}]
+
+    async def fake_subagent(role, goal, context="", cancel=None, max_steps=None):
+        return SimpleNamespace(status="done", output="完成", used_tools=[])
+
+    monkeypatch.setattr("core.agent.coordinator._decompose", fake_decompose)
+    monkeypatch.setattr("core.agent.coordinator.run_subagent", fake_subagent)
+
+    events = []
+
+    class _Rec:
+        async def notify(self, text):
+            events.append(text)
+        async def ask(self, q):
+            return ""
+
+    s = Session()
+    s.channel = _Rec()
+    r = await run_coordinator(Task("t", "主任务"), s, CancellationToken())
+    assert r["status"] == "done"
+    assert any("已拆分" in e for e in events)
+    assert any("子代理 doer 开始" in e for e in events)
+    assert any("子代理 doer 完成" in e for e in events)
+    assert any("批评" in e for e in events)
+
+
+@pytest.mark.asyncio
 async def test_coordinator_cancelled_before(monkeypatch):
     token = CancellationToken()
     token.cancel()
