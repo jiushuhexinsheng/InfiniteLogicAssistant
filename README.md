@@ -6,7 +6,6 @@ OpenAI 兼容接口，支持离线/在线任意部署。
 
 > 项目从「语音对话助手」演进而来，现已具备完整的 Agent 能力：自研编排状态机（不依赖 LangGraph/CrewAI）、
 > 多智能体协调、长期记忆 + RAG、MCP 桥接、Skills 技能包、cron 定时任务、GUI/Shell/文件系统执行层。
-> 整体架构见 `docs/architecture/01-voice-control-agent.md`，实施进度见 `docs/architecture/roadmap.md`。
 
 ## 功能
 
@@ -229,13 +228,5 @@ cd web && npm run build      # 前端类型检查（vue-tsc）+ 生产构建
 │       ├── components/console/（控制台：任务/记忆/环境/定时/工具视图）
 │       ├── composables/        useApi.ts / useAssistant.ts / useAssistantVisuals.ts
 │       └── views/              StartPage.vue / ConsolePage.vue
-├── deploy/                     打包发布副本（package_deploy.bat 生成；含 deploy.zip）
-└── docs/                       架构设计 + 分阶段实施计划
+└── deploy/                     打包发布副本（package_deploy.bat 生成；含 deploy.zip）
 ```
-
-## 相关文档
-
-- [整体架构设计](docs/architecture/01-voice-control-agent.md) — 分层设计、核心流程、安全与信任模型、技术选型
-- [实施路线追踪](docs/architecture/roadmap.md) — P0 地基 / P1 记忆+RAG / P2 MCP+Skills / P3 多智能体+定时+GUI
-- [P0 计划](docs/superpowers/plans/2026-08-12-agent-p0-foundation.md) · [P1 计划](docs/superpowers/plans/2026-08-12-agent-p1-memory-rag.md) ·
-  [P2 计划](docs/superpowers/plans/2026-08-12-agent-p2-capabilities.md) · [P3 计划](docs/superpowers/plans/2026-08-12-agent-p3-advanced.md)

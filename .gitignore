@@ -37,6 +37,9 @@ data/
 .claude/
 .vscode/
 
+# 内部文档（架构设计 / 计划），不进入公开仓库
+docs/
+
 # OS
 *.log
 Thumbs.db
