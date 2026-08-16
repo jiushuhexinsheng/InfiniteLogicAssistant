@@ -30,10 +30,6 @@ export interface ChatMessage {
   timestamp: number
 }
 
-// ─── LLM System Prompt（工具由后端 @tool 注册中心注入，前端不再约定 JSON action）───
-const SYSTEM_PROMPT = `你是一个智能语音助手，名字叫"小逻"。用中文回复，简洁友好（一般不超过3句话）。
-你的能力：日常对话、解答问题、使用系统提供的工具（如查时间/计算/搜索/天气）。`
-
 // 会话内消息上限（控制台需保留完整记录；buildHistory 只取最近 6 条，与 LLM 上下文解耦）
 export const MAX_MESSAGES = 200
 
@@ -50,6 +46,10 @@ export const wakeEnabled = ref(false)
 export const partialText = ref('')
 export const statusLine = ref('')
 export const tokenUsage = ref<TokenUsage>({})
+
+// 编排问答：待回答的澄清/确认问题 与 当前会话 id
+export const pendingQuestion = ref('')
+export const currentSessionId = ref('')
 
 // 唤醒词配置（init 时从 /api/config 用 Object.assign 原地合并，保持引用稳定）
 export const wakeConfig: WakeWordConfig = { enabled: true, keyword: '小逻小逻', sensitivity: 0.5, model_path: '/models/vosk-model-small-cn-0.22.tar.gz' }
@@ -86,10 +86,9 @@ export function failWake(msg: string) {
   expanded.value = true // 自动展开面板，确保用户看到错误信息
 }
 
-// ── LLM 对话历史构建（工具结果以文本拼入 assistant content，供多轮引用）──
+// ── 多轮历史构建（system 由后端各自注入；工具结果拼入 assistant content，供多轮引用）──
 export function buildHistory(): { role: string; content: string }[] {
   const history: { role: string; content: string }[] = []
-  history.push({ role: 'system', content: SYSTEM_PROMPT })
   for (const m of messages.value.slice(-6)) {
     if (m.role === 'user') history.push({ role: 'user', content: m.text })
     else if (m.role === 'assistant') {

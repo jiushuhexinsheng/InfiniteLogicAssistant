@@ -1,6 +1,6 @@
 import { reactive } from 'vue'
-import { api, streamChat } from '../../api'
-import { state, messages, tokenUsage, partialText, genId, addMessage, buildHistory, MAX_MESSAGES } from './store'
+import { api, streamUtter } from '../../api'
+import { state, messages, tokenUsage, partialText, genId, addMessage, buildHistory, MAX_MESSAGES, pendingQuestion, currentSessionId } from './store'
 import { speakText } from './useTts'
 import type { ChatMessage, ToolCall } from './store'
 
@@ -13,8 +13,11 @@ export function abortChat() {
   abortController = null
 }
 
-// 消费后端 SSE 流（ReAct + 工具由后端执行，前端只展示）
+// 消费编排 SSE 流（唯一 agent 路径；工具由后端执行，前端只展示）
 export async function runTurn() {
+  const last = messages.value[messages.value.length - 1]
+  if (!last || last.role !== 'user') return  // 只对用户话语启动一轮
+  const text = last.text
   state.value = 'thinking'
   const history = buildHistory()
 
@@ -54,13 +57,19 @@ export async function runTurn() {
     if (acc) ensureMsg().text = acc
   }
 
-  await streamChat(history, {
+  await streamUtter(text, {
+    onTaskState: (s) => {
+      if (s.session_id) currentSessionId.value = s.session_id
+      if (s.state === 'understanding') state.value = 'thinking'
+      // notify / done 的状态提示由消息文本呈现，无需额外处理
+    },
     onContent: (t) => {
       state.value = 'responding'
       acc += t
       partialText.value = acc
       scheduleText()
     },
+    onReasoning: () => { /* 前端不展示思考过程，忽略 */ },
     onToolStart: (name, args) => {
       state.value = 'tool_calling'
       const id = genId()
@@ -79,12 +88,19 @@ export async function runTurn() {
       }
     },
     onUsage: (u) => {
-      // ReAct 每轮可能多次 completion，按会话累计
+      // 编排 ReAct 每轮可能多次 completion，按会话累计
       tokenUsage.value.prompt_tokens = (tokenUsage.value.prompt_tokens || 0) + (u.prompt_tokens || 0)
       tokenUsage.value.completion_tokens = (tokenUsage.value.completion_tokens || 0) + (u.completion_tokens || 0)
       tokenUsage.value.total_tokens = (tokenUsage.value.total_tokens || 0) + (u.total_tokens || 0)
     },
-    onDone: () => {
+    onQuestion: ({ question, session_id }) => {
+      currentSessionId.value = session_id
+      pendingQuestion.value = question
+      state.value = 'thinking'
+    },
+    onDone: (sessionId) => {
+      if (sessionId) currentSessionId.value = sessionId
+      pendingQuestion.value = ''
       flushText()
       partialText.value = ''
       if (acc.trim()) speakText(acc)
@@ -95,15 +111,29 @@ export async function runTurn() {
       // 用户主动取消（cancelTool 触发），非错误
       if (textFlushTimer) { clearTimeout(textFlushTimer); textFlushTimer = null }
       partialText.value = ''
+      pendingQuestion.value = ''
       state.value = 'done'
     },
     onError: (msg) => {
       if (textFlushTimer) { clearTimeout(textFlushTimer); textFlushTimer = null }
       console.error('[Asst] LLM error:', msg)
       addMessage('system', '出错了: ' + msg)
+      pendingQuestion.value = ''
       state.value = 'error'
     },
-  }, abortController.signal)
+  }, { messages: history, signal: abortController.signal })
+}
+
+// ── 回答澄清/确认问题（解除后端 ask() 阻塞）──
+export async function sendAnswer(text: string) {
+  const t = text.trim()
+  if (!t || !currentSessionId.value) return
+  try {
+    await api.answer(currentSessionId.value, t)
+    pendingQuestion.value = ''
+  } catch (e: any) {
+    addMessage('system', '回答投递失败: ' + (e?.message || ''))
+  }
 }
 
 // ── 工具重试：失败的工具走后端真实重跑，再用修正结果续一轮对话 ──
@@ -132,9 +162,7 @@ export async function retryTool(id: string) {
     tc.result = e?.message || '执行失败'
   }
   tc.durationMs = Date.now() - startTs
-
-  // 续一轮对话，让助手基于重试后的工具结果作答
-  await runTurn()
+  // 不再自动续轮：编排管线按新话语驱动，用户可发「继续」等新话语，历史随 messages 种子带入
 }
 
 // ── 工具/回复取消：中止后端 SSE 流，本地将运行中的步骤标记为已取消 ──

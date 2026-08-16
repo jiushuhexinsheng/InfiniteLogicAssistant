@@ -1,23 +1,30 @@
 <template>
   <div class="chat-input">
-    <textarea
-      ref="ta"
-      v-model="text"
-      rows="1"
-      placeholder="输入消息，Enter 发送，Shift+Enter 换行"
-      :disabled="disabled"
-      @keydown.enter.exact.prevent="onEnter"
-      @input="autosize"
-    ></textarea>
-    <button class="ci-send" :disabled="disabled || !text.trim()" @click="submit">
-      <Icon name="send" :size="16" />
-    </button>
+    <QuestionCard v-if="asst.pendingQuestion.value" />
+    <div class="chat-input-row">
+      <textarea
+        ref="ta"
+        v-model="text"
+        rows="1"
+        placeholder="输入消息，Enter 发送，Shift+Enter 换行"
+        :disabled="disabled"
+        @keydown.enter.exact.prevent="onEnter"
+        @input="autosize"
+      ></textarea>
+      <button class="ci-send" :disabled="disabled || !text.trim()" @click="submit">
+        <Icon name="send" :size="16" />
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
 import Icon from '../Icon.vue'
+import QuestionCard from './QuestionCard.vue'
+import { useAssistant } from '../../composables/useAssistant'
+
+const asst = useAssistant()
 
 const props = defineProps<{ disabled?: boolean }>()
 const emit = defineEmits<{ send: [text: string] }>()
@@ -46,11 +53,12 @@ function submit() {
 <style scoped>
 .chat-input {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
   gap: 8px;
   padding: 8px 10px;
   border-top: 1px solid var(--border-base);
 }
+.chat-input-row { display: flex; align-items: flex-end; gap: 8px; }
 .chat-input textarea {
   flex: 1;
   resize: none;

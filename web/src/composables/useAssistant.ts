@@ -3,9 +3,9 @@ import { STATE_VISUALS, resolveStateLabel, type StateVisual } from './useAssista
 import type { WakeWordConfig, VadConfig } from '../types'
 import {
   state, messages, expanded, wakeEnabled, wakeKeyword, partialText, statusLine, tokenUsage,
-  wakeConfig, vadConfig, clearMessages,
+  wakeConfig, vadConfig, clearMessages, pendingQuestion, currentSessionId,
 } from './assistant/store'
-import { sendText, retryTool, cancelTool, abortChat } from './assistant/useChat'
+import { sendText, retryTool, cancelTool, abortChat, sendAnswer } from './assistant/useChat'
 import { toggleWake, stopWake } from './assistant/useWakeWord'
 
 // 类型沿用原模块路径导出，避免改动各组件 import
@@ -66,12 +66,16 @@ export function useAssistant() {
     partialText,
     statusLine,
     tokenUsage,
+    // 编排问答
+    pendingQuestion,
+    currentSessionId,
     // 方法
     init,
     destroy,
     toggleWake,
     clearMessages,
     sendText,
+    sendAnswer,
     retryTool,
     cancelTool,
   }
