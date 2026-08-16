@@ -66,7 +66,7 @@ class Scheduler:
         self._schedules.pop(sid, None)
         self._save()
 
-    def list(self) -> list[Schedule]:
+    def all(self) -> list[Schedule]:
         return list(self._schedules.values())
 
     def set_on_fire(self, cb) -> None:

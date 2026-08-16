@@ -2,10 +2,11 @@
 """安全算术计算器 — ast 白名单求值，禁 exec/eval"""
 import ast
 import operator
+from typing import Any, Callable
 
 from core.tools.base import tool
 
-_OPS = {
+_OPS: dict[type, Callable[..., Any]] = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
     ast.Mult: operator.mul,

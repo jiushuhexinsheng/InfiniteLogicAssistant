@@ -24,8 +24,8 @@ class McpTool:
 class McpConnection:
     def __init__(self, cfg: McpServerCfg):
         self.cfg = cfg
-        self._stdio_ctx = None
-        self._session_ctx = None
+        self._stdio_ctx: Any = None
+        self._session_ctx: Any = None
         self._session: ClientSession | None = None
 
     async def connect(self) -> None:

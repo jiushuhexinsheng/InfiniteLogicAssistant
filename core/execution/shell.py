@@ -29,7 +29,7 @@ def kill_tree(pid: int) -> None:
         subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True, text=True)
     else:
         try:
-            os.killpg(pid, signal.SIGKILL)
+            os.killpg(pid, signal.SIGKILL)  # type: ignore[attr-defined]  # POSIX only
         except (ProcessLookupError, PermissionError):
             pass
 
