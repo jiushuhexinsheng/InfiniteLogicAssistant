@@ -18,12 +18,13 @@ OpenAI 兼容接口，支持离线/在线任意部署。
 | 任务编排 | 意图判断（闲聊/任务）→ 任务形成 → 澄清缺失信息 → 高风险操作确认 → 执行 → 汇报（SSE 实时） |
 | 多智能体 | 复杂任务自动拆解：规划 / 执行 / 检索 / 批评 子代理并发协作（可开关） |
 | 工具执行 | 26 个内置工具：搜索/天气/计算/文件/Shell/Python/GUI/记忆/定时/技能，@tool 自动注册 |
-| 长期记忆 | 事实记忆（SQLite）+ 任务后 LLM 自动提取 + 关键词 RAG 检索注入上下文 |
+| 长期记忆 | 事实记忆（SQLite FTS5 全文检索）+ 任务后 LLM 自动提取 + RAG（BM25）检索注入上下文 |
 | MCP 桥接 | 启动时连接外部 MCP server，工具动态注册进注册中心（mcp_<server>_<tool>） |
 | Skills 技能包 | skills/*.yaml 热加载，{{param}} 填参逐步骤执行，危险技能需确认 |
 | 定时任务 | cron（5 段）注册，到点无人值守执行（需澄清/确认的自动跳过） |
 | 环境感知 | 采集系统信息写入 environment.md，注入规划上下文，工具参数贴合真实系统 |
 | 全链路可控 | 任意时刻可停止整个任务/当前步骤（CancellationToken 贯穿到子进程，taskkill /T 兜底） |
+| 安全审计 | 非 localhost 绑定强制 API Token；工具执行与高风险确认写入 data/audit.log |
 | 语音播报 | 浏览器 SpeechSynthesis API 播报助手回复（可选后端 TTS） |
 
 ## 快速开始
@@ -145,8 +146,10 @@ python main.py test         测试 LLM / ASR 连通性
 ## 测试
 
 ```
-python -m pytest tests/ -q   # 后端单元测试（编排 / 工具 / 记忆 / RAG / MCP / Skills / 定时 / API）
-cd web && npm run build      # 前端类型检查（vue-tsc）+ 生产构建
+python -m pytest tests/ -q      # 后端单元测试（编排 / 工具 / 记忆 / RAG / MCP / Skills / 定时 / API）
+python -m mypy core/ server.py  # 后端静态类型检查
+cd web && npm run build         # 前端类型检查（vue-tsc）+ 生产构建
+cd web && npm test              # 前端单元测试（Vitest）
 ```
 
 ## 配置
@@ -160,6 +163,18 @@ cd web && npm run build      # 前端类型检查（vue-tsc）+ 生产构建
 - `agent`：`recursion_limit`（ReAct 步数上限）、`multi_agent`（复杂任务是否转多智能体协调者）。
 - `llm_client`：重试 / 熔断参数。
 - `mcp.servers`：MCP server 列表（`{name, command, args}`），启动时自动连接并注册工具。
+- `server.api_token`：非 localhost 绑定时的 API 访问令牌（留空则拒绝非 localhost 启动）。
+- `server.cors_origins`：允许跨域的前端来源（默认空 = 禁止跨域）。
+- `rag.auto_index`：启动时按需重建 RAG 索引（默认 true）。
+
+## 安全
+
+- **绑定与令牌**：默认只绑定 `127.0.0.1`。将 `server.host` 改为非 localhost 地址时，必须设置
+  `server.api_token`（否则拒绝启动）；此时所有 `/api/*` 请求需携带 `X-API-Token` 请求头。
+- **CORS**：`server.cors_origins` 默认空 = 禁止跨域；本地同源/开发代理（vite 代理 /api）无需配置。
+- **无沙箱 + 人类在环**：高风险工具（`write`/`exec`）执行前经操作者明确确认，无人值守（定时任务）自动拒绝。
+- **审计**：工具执行与高风险确认决策写入 `data/audit.log`（独立于 agent.log）。
+- **凭据**：`config.yaml`（含 API Key）与 `environment.md`（含本机信息）不入仓库。
 
 ## 工具扩展
 
@@ -190,13 +205,15 @@ cd web && npm run build      # 前端类型检查（vue-tsc）+ 生产构建
 
 ```
 无限逻辑-语音全控智能体/
-├── main.py / server.py        入口 + FastAPI 宿主（/api/* + 托管 web/dist 前端 + SSE）
+├── main.py / server.py        入口 + FastAPI 装配（lifespan + 认证 + 静态托管 + 挂载路由）
 ├── start.bat / install_deps.bat / package_deploy.bat
 ├── config.yaml.example        配置模板
 ├── requirements.txt           Python 依赖（在线 / 离线 scripts/libs/ 双路）
+├── mypy.ini                   后端静态类型检查配置
 ├── core/
 │   ├── config.py              配置加载（YAML + ${ENV} 插值 + 多 profile + 默认值兜底）
-│   ├── logger.py              loguru 日志（控制台 + data/agent.log）
+│   ├── logger.py              loguru 日志（控制台 + data/agent.log）+ 审计（data/audit.log）
+│   ├── api/                   API 路由（voice / tools / memory / schedule / state 会话注册表）
 │   ├── llm/                   LLM 客户端（stream.py SSE 解析 / client.py 重试+熔断+连接池）
 │   ├── voice/                 ASR / TTS（OpenAI 兼容）
 │   ├── orchestrator/          编排层：session / intent / task / clarify / confirm / executor / control / pipeline
@@ -205,19 +222,19 @@ cd web && npm run build      # 前端类型检查（vue-tsc）+ 生产构建
 │   │                          search / weather / memory_tools / schedule_tools / skill_tools / gui_tools / mcp_bridge）
 │   ├── execution/             执行层：shell（可 kill 进程树）/ python（独立进程）/ fs（通用格式读写）/
 │   │                          gui（自动化）/ envprobe（环境感知 → environment.md）
-│   ├── memory/                长期事实记忆（facts.sqlite）+ 任务后提取（extract.py）+ 上下文注入（context.py）
-│   ├── rag/                   索引（indexer.py 分块）+ 检索（retriever.py 关键词打分）
+│   ├── memory/                长期事实记忆（facts.sqlite FTS5 全文检索）+ 任务后提取（extract.py）+ 上下文注入（context.py）
+│   ├── rag/                   索引（indexer.py 分块）+ 检索（retriever.py BM25 打分）
 │   ├── mcp/                   外部 MCP server 客户端（client.py stdio）+ 生命周期（manager.py）
 │   ├── skills/                技能包加载（loader.py 热重载）+ 执行（executor.py）
 │   └── scheduler/             cron 定时（scheduler.py 持久化）+ 无人值守执行（runner.py）
 ├── skills/                    技能定义（YAML，文件名 = 技能名）
 ├── memory/                    长期记忆数据（facts.sqlite）
 ├── rag/                       RAG 索引数据（index.db）
-├── environment.md             环境感知快照（envprobe 生成，agent 规划时注入）
-├── data/                      运行时数据（agent.log / schedules.json / 截图等）
+├── environment.md             环境感知快照（envprobe 生成，agent 规划时注入，gitignore 不入仓库）
+├── data/                      运行时数据（agent.log / audit.log / schedules.json / tasks/ 等）
 ├── scripts/                   辅助脚本（mcp_echo_server.py / verify_memory.py）+ 离线 wheel
 ├── scripts/libs/              离线 wheel 包
-├── tests/                     pytest 单元测试（30 个文件）
+├── tests/                     pytest 单元测试（编排 / 工具 / 记忆 / RAG / MCP / Skills / 定时 / API）
 ├── web/                       Vue3 + Vite + TS 前端
 │   ├── public/lib/vosk.js     Vosk WASM 语音唤醒引擎
 │   ├── public/lib/wake-word.js
