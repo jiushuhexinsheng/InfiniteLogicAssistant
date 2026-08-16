@@ -22,11 +22,10 @@
 
 ## 桌面端（暂停开发，不再迁移）
 
-桌面原生悬浮球（PySide6 窗口 + 托盘）与本地常驻语音监听（`core/voice/wake.py`）曾作为 P4 方向开发：
+桌面原生悬浮球（PySide6 窗口 + 托盘）与本地常驻语音监听曾作为 P4 方向开发：
 
 - **桌面悬浮球 UI**（PySide6 / 早期 Tauri 尝试）：已完成 WIP 快照，代码迁移至 **`desktop-ball` 分支**，主分支已移除。
-- **本地常驻语音监听**（`core/voice/wake.py`）：保留在主分支为可复用模块，但**未接入 server 运行链路**；
-  可通过 `scripts/voice_smoke.py` 冒烟、`tests/test_voice_wake.py` 验证。
+- **本地常驻语音监听**：已随桌面端一并移除，代码在 `desktop-ball` 分支。
 
 **决策**：桌面端**不再迁移回主分支**。当前语音交互由浏览器端 Vosk WASM 唤醒 + 后端 ASR 承担，
 主分支以此为唯一语音入口；`desktop-ball` 分支保留为历史快照。
