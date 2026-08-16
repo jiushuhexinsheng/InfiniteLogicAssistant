@@ -62,7 +62,7 @@ const miniLong = computed(() => miniText.value.length > 16)
 
 const showMini = computed(() =>
   !props.expanded && !props.miniDismiss &&
-  (props.messages.length > 0 || isMiniActive.value)
+  (props.messages.length > 0 || isMiniActive.value || props.state === 'error')
 )
 
 const miniStyle = computed(() => {
@@ -86,16 +86,16 @@ const miniStyle = computed(() => {
   gap: 8px;
   width: 210px;
   padding: 6px 10px;
-  background: var(--panel-bg);
   border: 1px solid transparent;
-  /* 品牌渐变描边 */
+  /* 品牌渐变描边 + 玻璃质感 */
   background:
-    linear-gradient(var(--panel-bg), var(--panel-bg)) padding-box,
+    linear-gradient(var(--glass-bg-strong), var(--glass-bg-strong)) padding-box,
     var(--brand-grad) border-box;
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, .4);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-3);
   cursor: pointer;
-  backdrop-filter: blur(4px);
   user-select: none;
 }
 .mini-player:hover { border-color: transparent; opacity: .92; }

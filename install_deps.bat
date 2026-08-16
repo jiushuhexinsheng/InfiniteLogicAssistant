@@ -1,10 +1,10 @@
 @echo off
 setlocal EnableExtensions
-title 鏃犻檺閫昏緫路璇煶鍔╂墜 - dependency install
+title 无限逻辑·语音助手 - dependency install
 cd /d "%~dp0"
 
 echo ============================================
-echo   鏃犻檺閫昏緫路璇煶鍔╂墜 - dependency install
+echo   无限逻辑·语音助手 - dependency install
 echo   (online PyPI first, offline scripts\libs fallback)
 echo ============================================
 echo.

@@ -11,7 +11,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
 from core.config import (
     cfg, ensure_dirs, is_llm_configured, is_asr_configured, is_tts_enabled,
@@ -86,9 +86,40 @@ async def config():
         "asr_profile": resolve_asr_profile()[0],
         "tts_available": is_tts_enabled(),
         "tts_profile": resolve_tts_profile()[0],
+        "tts_voice": resolve_tts_profile()[1].get("voice", ""),
+        "tts_model": resolve_tts_profile()[1].get("model", ""),
         "wake_word": cfg("voice.wake_word", {}),
         "vad": cfg("voice.vad", {}),
     }
+
+
+@app.post("/api/tts")
+async def tts_synthesize(request: Request):
+    """文本转语音：调后端配置的 OpenAI 兼容 TTS 端点，返回音频字节。
+
+    请求体：{"text": "...", "voice": "可选，缺省用配置里的 voice"}
+    """
+    body = await request.body()
+    try:
+        params = json.loads(body.decode("utf-8")) if body else {}
+    except Exception:
+        return JSONResponse({"ok": False, "error": "无效 JSON"}, status_code=400)
+    text = (params.get("text") or "").strip()
+    voice = params.get("voice") or None
+    if not text:
+        return JSONResponse({"ok": False, "error": "text 不能为空"}, status_code=400)
+    if not is_tts_enabled():
+        return JSONResponse(
+            {"ok": False, "error": "TTS 未启用：voice.tts.enabled=false 或未配置 endpoint"},
+            status_code=400,
+        )
+    try:
+        from core.tts import synthesize
+        audio, media_type = await synthesize(text, voice)
+    except Exception as e:
+        logger.warning("TTS 合成失败: {}", e)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+    return Response(content=audio, media_type=media_type)
 
 
 @app.get("/api/tools")

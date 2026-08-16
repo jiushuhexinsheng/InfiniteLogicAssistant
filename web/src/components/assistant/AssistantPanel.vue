@@ -43,17 +43,19 @@ const emit = defineEmits<{ clear: []; close: [] }>()
   z-index: 9998;
   width: 360px;
   max-height: 520px;
-  /* 品牌渐变细边框（background-clip 双层技巧，支持圆角）+ 深空晕染背景 */
+  /* 品牌渐变细边框（background-clip 双层技巧，支持圆角）+ 玻璃质感 + 深空晕染背景 */
   border: 1px solid transparent;
   background:
     radial-gradient(120% 60% at 50% 0%, rgba(103, 232, 249, .08), transparent 60%),
-    linear-gradient(var(--panel-bg), var(--panel-bg)) padding-box,
+    linear-gradient(var(--glass-bg-strong), var(--glass-bg-strong)) padding-box,
     var(--brand-grad) border-box;
-  border-radius: 16px;
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border-radius: var(--r-2xl);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, .4);
+  box-shadow: var(--shadow-3);
 }
 /* 聆听/录音：边框切彩虹 */
 .float-panel.fx-rainbow {

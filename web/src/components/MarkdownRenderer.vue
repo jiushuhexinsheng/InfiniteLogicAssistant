@@ -39,18 +39,22 @@ const html = computed(() => {
   // 有序列表 1. item
   s = s.replace(/(^|\n)[ \t]*\d+[.、][ \t]+([^\n]+)/g, '$1<li>$2</li>')
   s = s.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>')
-  // 段落与换行
-  s = s.replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br/>')
+  // 段落与换行：聊天场景下把换行折叠为空格（而非 <br/>）。按句换行的回复若拆成多行，
+  // 会让 .msg-bubble（fit-content 收缩）塌成每行两三个字的窄气泡。
+  s = s.replace(/\s*\n\s*/g, ' ')
   return '<p>' + s + '</p>'
 })
 </script>
 
 <style scoped>
-.md { line-height: 1.6; word-break: break-word; }
-.md :deep(code) { background: rgba(255,255,255,.12); padding: 1px 4px; border-radius: 4px; font-size: .9em; font-family: Consolas, monospace; }
-.md :deep(pre) { background: #0f172a; padding: 8px 10px; border-radius: 8px; overflow-x: auto; margin: 6px 0; }
+.md { line-height: 1.65; word-break: break-word; font-size: var(--fs-sm); }
+.md :deep(p) { margin: 0 0 8px; }
+.md :deep(p:last-child) { margin-bottom: 0; }
+.md :deep(code) { background: rgba(148, 163, 184, .16); padding: 1px 5px; border-radius: 5px; font-size: .88em; font-family: var(--font-mono); }
+.md :deep(pre) { background: rgba(2, 6, 23, .7); padding: 10px 12px; border-radius: var(--r-md); overflow-x: auto; margin: 8px 0; border: 1px solid var(--border-soft); }
 .md :deep(pre code) { background: none; padding: 0; }
-.md :deep(a) { color: var(--brand-c2); text-decoration: underline; }
-.md :deep(ul) { padding-left: 18px; margin: 4px 0; }
-.md :deep(strong) { color: var(--text-1); }
+.md :deep(a) { color: var(--brand-c2); text-decoration: underline; text-underline-offset: 2px; }
+.md :deep(ul) { padding-left: 20px; margin: 4px 0 8px; display: grid; gap: 4px; }
+.md :deep(strong) { color: var(--text-1); font-weight: 600; }
+.md :deep(em) { color: var(--text-2); }
 </style>
