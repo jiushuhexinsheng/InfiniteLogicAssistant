@@ -101,7 +101,8 @@ export interface UtterHandlers {
 }
 
 /** 消费 /api/voice/utter 的 SSE 事件流；返回 session_id（供 answer/stop 用）。
- *  messages 为多轮历史种子（含当前用户消息）；signal 用于取消（对应"取消/停止"按钮）。 */
+ *  messages 为多轮历史种子（含当前用户消息）；signal 用于取消（对应"取消/停止"按钮）。
+ *  网络错误且未收到任何事件时自动重试一次；HTTP/业务错误与流中段不重试。 */
 export async function streamUtter(
   text: string,
   h: UtterHandlers,
@@ -110,59 +111,79 @@ export async function streamUtter(
   let sessionId = ''
   const body: Record<string, unknown> = { text }
   if (opts?.messages?.length) body.messages = opts.messages
-  try {
-    const resp = await fetch(`${BASE}/voice/utter`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: opts?.signal,
-    })
-    if (!resp.ok || !resp.body) {
-      let msg = `HTTP ${resp.status}`
-      try {
-        const e = await resp.json()
-        if (e?.error) msg = e.error
-      } catch { /* not JSON */ }
-      throw new Error(msg)
-    }
-    const reader = resp.body.getReader()
-    const decoder = new TextDecoder()
-    let buf = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-      let idx: number
-      while ((idx = buf.indexOf('\n\n')) !== -1) {
-        const block = buf.slice(0, idx)
-        buf = buf.slice(idx + 2)
-        const line = block.split('\n').find(l => l.startsWith('data: '))
-        if (!line) continue
-        const data = line.slice(6).trim()
-        if (data === '[DONE]') break
-        let evt: any
-        try { evt = JSON.parse(data) } catch { continue }
-        if (evt.session_id) sessionId = evt.session_id
-        switch (evt.type) {
-          case 'task_state': h.onTaskState?.(evt); break
-          case 'content_delta': h.onContent?.(evt.text); break
-          case 'reasoning_delta': h.onReasoning?.(evt.text); break
-          case 'tool_start': h.onToolStart?.(evt.name, evt.args || {}); break
-          case 'tool_end': h.onToolEnd?.(evt.name, evt.status, evt.output || ''); break
-          case 'usage': h.onUsage?.(evt.usage); break
-          case 'question': h.onQuestion?.({ question: evt.question, session_id: evt.session_id }); break
-          case 'error': h.onError?.(evt.message); return sessionId
-          case 'done': h.onDone?.(sessionId); return sessionId
+  const MAX_RETRY = 1
+
+  /** 单次尝试：'done' = 正常/业务/中断（不重试）；'retry' = 网络错误且未收到事件（可重试）。 */
+  const runOnce = async (): Promise<'done' | 'retry'> => {
+    let received = false
+    try {
+      const resp = await fetch(`${BASE}/voice/utter`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: opts?.signal,
+      })
+      if (!resp.ok || !resp.body) {
+        let msg = `HTTP ${resp.status}`
+        try {
+          const e = await resp.json()
+          if (e?.error) msg = e.error
+        } catch { /* not JSON */ }
+        h.onError?.(msg)
+        return 'done'
+      }
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        let idx: number
+        while ((idx = buf.indexOf('\n\n')) !== -1) {
+          const block = buf.slice(0, idx)
+          buf = buf.slice(idx + 2)
+          const line = block.split('\n').find(l => l.startsWith('data: '))
+          if (!line) continue
+          const data = line.slice(6).trim()
+          if (data === '[DONE]') break
+          let evt: any
+          try { evt = JSON.parse(data) } catch { continue }
+          received = true
+          if (evt.session_id) sessionId = evt.session_id
+          switch (evt.type) {
+            case 'task_state': h.onTaskState?.(evt); break
+            case 'content_delta': h.onContent?.(evt.text); break
+            case 'reasoning_delta': h.onReasoning?.(evt.text); break
+            case 'tool_start': h.onToolStart?.(evt.name, evt.args || {}); break
+            case 'tool_end': h.onToolEnd?.(evt.name, evt.status, evt.output || ''); break
+            case 'usage': h.onUsage?.(evt.usage); break
+            case 'question': h.onQuestion?.({ question: evt.question, session_id: evt.session_id }); break
+            case 'error': h.onError?.(evt.message); return 'done'
+            case 'done': h.onDone?.(sessionId); return 'done'
+          }
         }
       }
+      h.onDone?.(sessionId)
+      return 'done'
+    } catch (e: any) {
+      if (e?.name === 'AbortError') {
+        h.onAbort?.()
+        return 'done'
+      }
+      if (received) {
+        // 流已开始后中断：提示但不重试（避免重复执行任务）
+        h.onError?.('连接中断：' + (e?.message || String(e)))
+        return 'done'
+      }
+      return 'retry'
     }
-    h.onDone?.(sessionId)
-  } catch (e: any) {
-    if (e?.name === 'AbortError') {
-      h.onAbort?.()
-      return sessionId
-    }
-    h.onError?.(e?.message || String(e))
+  }
+
+  for (let i = 0; i <= MAX_RETRY; i++) {
+    const status = await runOnce()
+    if (status === 'done') break
+    if (i === MAX_RETRY) h.onError?.('网络连接失败，请重试')
   }
   return sessionId
 }

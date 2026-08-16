@@ -1,5 +1,5 @@
 import { api } from '../../api'
-import { state, partialText, statusLine, expanded, wakeEnabled, wakeConfig, vadConfig, addMessage, failWake } from './store'
+import { state, partialText, statusLine, expanded, wakeEnabled, wakeConfig, vadConfig, addMessage, failWake, modelLoading, modelProgress } from './store'
 import { runTurn } from './useChat'
 
 // ── 录音管线 ──
@@ -12,6 +12,26 @@ let vadAudioCtx: AudioContext | null = null
 // ── 唤醒词引擎 ──
 let modelLoaded = false
 
+/** 带进度下载模型字节（约 44MB tar.gz），供 vosk.createModel 初始化。 */
+async function fetchModel(url: string, onProgress: (pct: number) => void): Promise<ArrayBuffer> {
+  const resp = await fetch(url)
+  if (!resp.ok || !resp.body) throw new Error(`模型下载失败: HTTP ${resp.status}`)
+  const total = Number(resp.headers.get('Content-Length')) || 0
+  const reader = resp.body.getReader()
+  const chunks: Uint8Array[] = []
+  let received = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (value) { chunks.push(value); received += value.length }
+    if (total) onProgress(Math.min(100, Math.round((received / total) * 100)))
+  }
+  const all = new Uint8Array(received)
+  let off = 0
+  for (const c of chunks) { all.set(c, off); off += c.length }
+  return all.buffer
+}
+
 async function initWakeModel() {
   if (typeof WakeWordEngine === 'undefined') {
     console.warn('[Asst] WakeWordEngine missing')
@@ -19,17 +39,27 @@ async function initWakeModel() {
   }
   if (modelLoaded) return true
   try {
-    statusLine.value = '正在加载语音模型...'
+    modelLoading.value = true
+    modelProgress.value = 0
+    statusLine.value = '正在下载唤醒模型 0%...'
+    const buf = await fetchModel(wakeConfig.model_path, (pct) => {
+      modelProgress.value = pct
+      statusLine.value = pct >= 100 ? '正在初始化语音模型...' : `正在下载唤醒模型 ${pct}%...`
+    })
     const ok = await WakeWordEngine.init({
       modelPath: wakeConfig.model_path,
       keyword: wakeConfig.keyword,
       sensitivity: wakeConfig.sensitivity,
+      model: buf,
     })
     modelLoaded = ok
+    modelLoading.value = false
+    modelProgress.value = 100
     statusLine.value = ok ? '' : '模型加载失败'
     return ok
   } catch (e) {
     console.error('[Asst] model init fail:', e)
+    modelLoading.value = false
     statusLine.value = '模型加载失败'
     return false
   }
