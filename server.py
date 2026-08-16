@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from core import config as config
-from core.api import memory, schedule, tools, voice
+from core.api import history, memory, schedule, tools, voice
 from core.logger import logger
 
 
@@ -113,6 +113,7 @@ app.include_router(voice.router, prefix="/api")
 app.include_router(tools.router, prefix="/api")
 app.include_router(memory.router, prefix="/api")
 app.include_router(schedule.router, prefix="/api")
+app.include_router(history.router, prefix="/api")
 
 
 # ── 静态托管 web/dist + SPA 兜底 ──

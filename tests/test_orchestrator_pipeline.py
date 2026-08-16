@@ -33,6 +33,29 @@ async def test_channel_notify_puts_event():
 
 
 @pytest.mark.asyncio
+async def test_chit_chat_records_assistant_reply(monkeypatch):
+    from core.orchestrator.pipeline import run_pipeline
+    from core.orchestrator.control import StopController
+    from core.orchestrator.session import Session
+    from core.orchestrator.intent import IntentResult
+
+    async def fake_judge(text):
+        return IntentResult(type="chit_chat", summary="打招呼")
+
+    async def fake_stream(messages, **kw):
+        yield {"type": "content_delta", "text": "你好呀"}
+        yield {"type": "done", "message": {"role": "assistant", "content": "你好呀"}}
+
+    monkeypatch.setattr("core.orchestrator.pipeline.judge_intent", fake_judge)
+    monkeypatch.setattr("core.orchestrator.pipeline.stream_chat", fake_stream)
+    s = Session()
+    events: asyncio.Queue = asyncio.Queue()
+    await run_pipeline("你好", s, events, StopController())
+    # 闲聊回复应记录进会话历史（供完整历史保存）
+    assert any(m.get("role") == "assistant" and "你好呀" in m.get("content", "") for m in s.messages)
+
+
+@pytest.mark.asyncio
 async def test_run_pipeline_seeds_messages(monkeypatch):
     from core.orchestrator.pipeline import run_pipeline
     from core.orchestrator.control import StopController
@@ -57,8 +80,10 @@ async def test_run_pipeline_seeds_messages(monkeypatch):
         "你好", s, events, StopController(),
         messages=[{"role": "user", "content": "昨天聊过"}],
     )
-    assert s.messages[-1]["content"] == "你好"
+    assert any(m["content"] == "你好" for m in s.messages)
     assert any(m["content"] == "昨天聊过" for m in s.messages)
+    # 闲聊回复记录进会话（供完整历史保存）
+    assert s.messages[-1]["role"] == "assistant"
     assert (await events.get())["type"] == "task_state"
     assert (await events.get())["type"] == "content_delta"
     assert (await events.get())["type"] == "done"

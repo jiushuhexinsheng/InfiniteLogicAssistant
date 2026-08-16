@@ -45,7 +45,13 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
             {"step": i, "tool": f"agent:{x['agent_type']}", "status": x["status"], "result": x["output"]}
             for i, x in enumerate(cr["subtasks"])
         ]
-        return {"status": cr["status"], "summary": cr["summary"], "steps": steps}
+        summary = cr["summary"]
+        # 把最终摘要按 content_delta 流式返回（前端累积 → 语音播报真实结论）
+        if events is not None and summary:
+            for i in range(0, len(summary), 200):
+                await events.put({"type": "content_delta", "text": summary[i:i + 200]})
+        session.append("assistant", summary)
+        return {"status": cr["status"], "summary": summary, "steps": steps}
 
     max_steps = cfg("agent.recursion_limit", 12)
     # RAG + 长期记忆注入（失败不影响执行）
@@ -88,7 +94,9 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
             history.append(assistant_message)
             tool_calls = assistant_message.get("tool_calls") or []
             if not tool_calls:
-                return {"status": "done", "summary": assistant_message.get("content") or "完成", "steps": steps}
+                summary = assistant_message.get("content") or "完成"
+                session.append("assistant", summary)
+                return {"status": "done", "summary": summary, "steps": steps}
 
             async def run_one_tc(tc: dict, step: int) -> tuple[dict, dict] | None:
                 """执行单个工具调用，返回 (steps条目, tool消息)；取消返回 None。"""

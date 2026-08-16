@@ -127,6 +127,51 @@ async def test_execute_injects_context(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_execute_multi_agent_streams_summary_and_records(monkeypatch):
+    import asyncio
+
+    async def fake_coordinator(task, session, cancel):
+        return {"status": "done", "summary": "多智能体最终结论：已全部完成", "subtasks": [
+            {"goal": "a", "agent_type": "doer", "status": "done", "output": "ok", "tools": []}]}
+
+    monkeypatch.setattr("core.orchestrator.executor.run_coordinator", fake_coordinator)
+    monkeypatch.setattr("core.orchestrator.executor.cfg",
+                        lambda path, default=None: True if path == "agent.multi_agent" else default)
+    s = Session()
+    s.channel = _Channel([])
+    events: asyncio.Queue = asyncio.Queue()
+    r = await execute_task(
+        Task("t", "这是一个很长的复杂任务目标需要拆分成多个子任务来处理",
+             params={"a": 1, "b": 2}, risk="read"),
+        s, CancellationToken(), events,
+    )
+    assert r["status"] == "done"
+    deltas = "".join(e.get("text", "") for e in _drain(events) if e["type"] == "content_delta")
+    assert deltas == "多智能体最终结论：已全部完成"
+    assert any(m.get("role") == "assistant" and "多智能体最终结论" in m.get("content", "") for m in s.messages)
+
+
+@pytest.mark.asyncio
+async def test_execute_records_assistant_reply(monkeypatch):
+    fake = _FakeLLM([
+        [_done(content="结果是 2")],
+    ])
+    monkeypatch.setattr("core.orchestrator.executor.get_llm_client", lambda: fake)
+    s = Session()
+    s.channel = _Channel([])
+    r = await execute_task(Task("t", "算 1+1", risk="read"), s, CancellationToken())
+    assert r["status"] == "done"
+    assert any(m.get("role") == "assistant" and "结果是 2" in m.get("content", "") for m in s.messages)
+
+
+def _drain(q):
+    out = []
+    while not q.empty():
+        out.append(q.get_nowait())
+    return out
+
+
+@pytest.mark.asyncio
 async def test_execute_read_tools_run_concurrently(monkeypatch):
     msg = {
         "role": "assistant", "content": "",
