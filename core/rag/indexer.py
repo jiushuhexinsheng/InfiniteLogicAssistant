@@ -48,10 +48,11 @@ def _iter_files(src: Path):
                 yield p
 
 
-async def index_sources(sources: list[Path], index_db: Path | None = None) -> None:
+async def index_sources(sources: list[Path], index_db: Path | None = None) -> int:
     """重建索引：把 sources（文件或目录）全部切块写入 sqlite。
 
     index_db 缺省用 INDEX_DB（core.rag 模块级）；测试可显式传入隔离的 db 路径。
+    返回写入的 chunk 数。
     """
     db = Path(index_db) if index_db is not None else Path(INDEX_DB)
     db.parent.mkdir(parents=True, exist_ok=True)

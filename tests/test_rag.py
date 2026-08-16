@@ -85,6 +85,21 @@ async def test_maybe_rebuild_when_stale(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_bm25_ranks_relevant_higher(tmp_path, monkeypatch):
+    import core.rag.retriever as retriever_mod
+    db = tmp_path / "index.db"
+    monkeypatch.setattr(retriever_mod, "INDEX_DB", db)
+    src = tmp_path / "docs.md"
+    src.write_text(
+        "# 文档\n\n## 相关段\n\nPython 版本 3.14 与 pip 包管理\n\n## 无关段\n\n天气不错适合散步\n",
+        encoding="utf-8",
+    )
+    await index_sources([src], index_db=db)
+    hits = await retrieve("python 包管理")
+    assert hits and "Python" in hits[0]["text"]  # 命中多个查询词的段排最前
+
+
+@pytest.mark.asyncio
 async def test_maybe_rebuild_skips_fresh(tmp_path):
     from core.rag import maybe_rebuild_index
     src = tmp_path / "env.md"
