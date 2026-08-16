@@ -58,17 +58,20 @@ voice:
         timeout: 30
         chat_path: "/v1/chat/completions"
   # TTS（可选；另有浏览器端 SpeechSynthesis 播报，默认关闭）
+  # 小米 MiMo 预置音色示例：model=mimo-v2.5-tts，voice 填内置音色名（mimo_default/冰糖/茉莉/苏打/白桦/Mia/Chloe/Milo/Dean）
+  # voiceclone 模型（mimo-v2.5-tts-voiceclone）则需额外配置 voice_ref 参考音频
   tts:
     enabled: false
     profiles:
       openai:
-        provider: openai
-        endpoint: ""                    # 例: https://api.openai.com/v1
+        provider: xiaomi
+        endpoint: "https://api.xiaomimimo.com"   # 或 OpenAI 兼容 TTS 端点
         api_key: "${TTS_API_KEY}"
-        model: "tts-1"
-        voice: "alloy"
+        model: "mimo-v2.5-tts"
+        voice: "Chloe"                  # 内置音色名；留空默认 mimo_default
+        format: "wav"                   # 输出格式: wav / mp3 / pcm16
         timeout: 30
-        chat_path: "/v1/audio/speech"
+        chat_path: "/v1/chat/completions"
 
 server:
   host: "127.0.0.1"

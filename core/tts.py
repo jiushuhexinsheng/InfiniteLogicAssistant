@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 """TTS 语音合成 — 支持两种 OpenAI 兼容协议：
 - speech：POST /v1/audio/speech，body {model, input, voice}，直接返回音频字节
-- chat  ：POST /v1/chat/completions，messages + audio{format, voice: 参考音频 base64}，
-          音频在 choices[0].message.audio.data（base64）—— 用于 MiMo-V2.5-TTS-VoiceClone 等声音克隆模型
+- chat  ：POST /v1/chat/completions，messages + audio{format, voice}，
+          音频在 choices[0].message.audio.data（base64）—— 用于 MiMo TTS 系列：
+          - mimo-v2.5-tts（预置音色）：voice = 内置音色名（如 Chloe / mimo_default）
+          - mimo-v2.5-tts-voiceclone（音色复刻）：voice = 参考音频 base64（需 voice_ref）
+          - mimo-v2.5-tts-voicedesign（音色描述）：voice 不支持，user 消息给风格描述
 """
 import base64
 from pathlib import Path
@@ -75,21 +78,32 @@ def _audio_data_url(p: Path) -> str:
 
 
 async def _synthesize_chat(text: str, profile: dict) -> tuple[bytes, str]:
-    """MiMo voiceclone 等：chat completions + audio.voice（参考音频克隆）"""
-    voice_ref = profile.get("voice_ref") or ""
-    ref = Path(voice_ref)
-    # 用 is_file() 而非 exists()：空路径 Path('') 会解析成 '.'（目录），exists() 恒为 True
-    if not voice_ref or not ref.is_file():
-        raise TtsConfigError(
-            f"voiceclone 需要 voice_ref 参考音频（当前: {voice_ref!r}）。"
-            "请在 config.yaml 的 voice.tts.profiles.openai.voice_ref 配置一个 mp3/wav 样本（≤10MB），"
-            "或将 voice.tts.enabled 设为 false 使用浏览器本地语音播报"
-        )
+    """MiMo TTS 系列：chat completions + audio.voice。
+
+    voiceclone 模型 → voice = 参考音频 base64（需 voice_ref）；
+    标准/预置音色模型（mimo-v2.5-tts）→ voice = 内置音色名（默认 mimo_default）。
+    """
+    model = profile.get("model") or "mimo-v2.5-tts"
     fmt = profile.get("format") or "wav"
+    audio_cfg: dict = {"format": fmt}
+    if "voiceclone" in model:
+        voice_ref = profile.get("voice_ref") or ""
+        ref = Path(voice_ref)
+        # 用 is_file() 而非 exists()：空路径 Path('') 会解析成 '.'（目录），exists() 恒为 True
+        if not voice_ref or not ref.is_file():
+            raise TtsConfigError(
+                f"voiceclone 需要 voice_ref 参考音频（当前: {voice_ref!r}）。"
+                "请在 config.yaml 的 voice.tts.profiles.openai.voice_ref 配置一个 mp3/wav 样本（≤10MB），"
+                "或将 voice.tts.enabled 设为 false 使用浏览器本地语音播报"
+            )
+        audio_cfg["voice"] = _audio_data_url(ref)
+    else:
+        # 预置音色：voice 缺省用配置里的音色名，空则兜底 mimo_default
+        audio_cfg["voice"] = (profile.get("voice") or "").strip() or "mimo_default"
     payload = {
-        "model": profile.get("model") or "mimo-v2.5-tts-voiceclone",
+        "model": model,
         "messages": [{"role": "assistant", "content": text}],
-        "audio": {"format": fmt, "voice": _audio_data_url(ref)},
+        "audio": audio_cfg,
     }
     r = await _post(profile, profile.get("chat_path") or "/v1/chat/completions", payload)
     try:
