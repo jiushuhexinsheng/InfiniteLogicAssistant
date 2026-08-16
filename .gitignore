@@ -32,7 +32,8 @@ data/
 !data/.gitkeep
 /memory/
 /rag/
-environment.md   # 环境感知快照（envprobe 生成，含本机信息，不入公开仓库）
+# 环境感知快照（envprobe 生成，含本机信息，不入公开仓库）
+environment.md
 
 # IDE / Claude
 .claude/
