@@ -12,7 +12,7 @@ async def register_schedule(cron: str, prompt: str) -> str:
 
 @tool("列出定时任务", risk="read")
 async def list_schedules() -> str:
-    scs = get_scheduler().list()
+    scs = get_scheduler().all()
     if not scs:
         return "暂无定时任务"
     return "\n".join(f"- {sc.id} [{sc.cron}] {sc.prompt}" for sc in scs)

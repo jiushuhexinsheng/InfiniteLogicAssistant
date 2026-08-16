@@ -16,9 +16,9 @@ def test_cron_matches():
 def test_scheduler_add_list_remove(tmp_path):
     s = Scheduler(path=tmp_path / "s.json")
     sc = s.add("0 9 * * *", "查天气")
-    assert s.list() and s.list()[0].id == sc.id
+    assert s.all() and s.all()[0].id == sc.id
     s.remove(sc.id)
-    assert not s.list()
+    assert not s.all()
 
 
 @pytest.mark.asyncio
@@ -40,7 +40,7 @@ def test_scheduler_persists(tmp_path):
     s = Scheduler(path=tmp_path / "s.json")
     sc = s.add("0 9 * * *", "持久化任务")
     s2 = Scheduler(path=tmp_path / "s.json")
-    assert any(x.id == sc.id for x in s2.list())
+    assert any(x.id == sc.id for x in s2.all())
 
 
 @pytest.mark.asyncio
