@@ -184,13 +184,16 @@ async def voice_utter(request: Request):
     text = (params.get("text") or "").strip()
     if not text:
         return JSONResponse({"ok": False, "error": "缺少 text 参数"}, status_code=400)
+    messages = params.get("messages")
+    if not isinstance(messages, list):
+        messages = None
 
     session = Session()
     controller = StopController()
     _sessions[session.id] = session
     _controllers[session.id] = controller
     events: asyncio.Queue = asyncio.Queue()
-    runner = asyncio.ensure_future(run_pipeline(text, session, events, controller))
+    runner = asyncio.ensure_future(run_pipeline(text, session, events, controller, messages=messages))
 
     async def event_stream():
         getter = asyncio.ensure_future(events.get())

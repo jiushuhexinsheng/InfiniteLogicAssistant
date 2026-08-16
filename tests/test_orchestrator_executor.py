@@ -138,3 +138,29 @@ async def test_execute_high_risk_confirm_rejected(monkeypatch):
     r = await execute_task(Task("t", "写文件", risk="write"), s, CancellationToken())
     assert r["status"] == "done"
     assert r["steps"][0]["status"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_execute_emits_streaming_events(monkeypatch):
+    import asyncio
+    fake = _FakeLLM([
+        [_done(tool="calculate", args=json.dumps({"expression": "1+1"})),
+         {"type": "usage", "usage": {"total_tokens": 5}}],
+        [{"type": "content_delta", "text": "结果是 "},
+         {"type": "content_delta", "text": "2"},
+         _done(content="结果是 2")],
+    ])
+    monkeypatch.setattr("core.orchestrator.executor.get_llm_client", lambda: fake)
+    s = Session()
+    s.channel = _Channel([])
+    events: asyncio.Queue = asyncio.Queue()
+    r = await execute_task(Task("t", "算 1+1", risk="read"), s, CancellationToken(), events)
+    assert r["status"] == "done"
+    evts = []
+    while not events.empty():
+        evts.append(events.get_nowait())
+    types = [e["type"] for e in evts]
+    assert "tool_start" in types and "tool_end" in types
+    assert "usage" in types
+    content = "".join(e.get("text", "") for e in evts if e["type"] == "content_delta")
+    assert "结果是 2" in content

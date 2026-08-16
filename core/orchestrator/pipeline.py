@@ -37,23 +37,35 @@ class EventQueueChannel(OperatorChannel):
         self.answers.put_nowait(text)
 
 
-async def _chit_chat_reply(text: str, events: asyncio.Queue) -> None:
-    messages = [
-        {"role": "system", "content": "你是小逻，用中文简洁友好地回复。"},
-        {"role": "user", "content": text},
-    ]
+async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str) -> None:
+    messages = [{"role": "system", "content": "你是小逻，用中文简洁友好地回复。"}]
+    messages.extend(session.summary(8))  # 含当前用户消息 → 多轮闲聊
     async for evt in stream_chat(messages):
         if evt["type"] == "content_delta":
             await events.put({"type": "content_delta", "text": evt["text"]})
 
 
 async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
-                       controller: StopController, channel: OperatorChannel | None = None) -> None:
-    """完整编排，产出事件（以 done 事件收尾）。channel 缺省用 SSE 队列通道。"""
+                       controller: StopController, channel: OperatorChannel | None = None,
+                       messages: list[dict] | None = None) -> None:
+    """完整编排，产出事件（以 done 事件收尾）。channel 缺省用 SSE 队列通道。
+
+    messages 为前端多轮历史种子（含当前用户消息）；缺省时把 text 记为当前用户消息。
+    """
     if channel is None:
         channel = EventQueueChannel(events, session.id)
     session.channel = channel
-    session.append("user", text)
+    if messages:
+        session.messages = [
+            m for m in messages
+            if isinstance(m, dict) and m.get("role") in ("user", "assistant")
+            and isinstance(m.get("content"), str)
+        ]
+        # 确保当前用户消息在末尾（调用方可能只传历史）
+        if not session.messages or session.messages[-1].get("role") != "user" or session.messages[-1].get("content") != text:
+            session.messages.append({"role": "user", "content": text})
+    else:
+        session.append("user", text)
     session.set_state(SessionState.UNDERSTANDING)
     await events.put({"type": "task_state", "state": "understanding", "session_id": session.id})
 
@@ -61,7 +73,7 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
     if intent.type == "chit_chat":
         session.set_state(SessionState.CHIT_CHAT)
         try:
-            await _chit_chat_reply(text, events)
+            await _chit_chat_reply(session, events, text)
         except Exception as e:
             await events.put({"type": "error", "message": str(e)})
         await events.put({"type": "done"})
@@ -83,7 +95,7 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
         return
 
     session.set_state(SessionState.EXECUTING)
-    result = await execute_task(task, session, controller.token)
+    result = await execute_task(task, session, controller.token, events)
     # 任务后异步提取事实写长期记忆（不阻塞回复，失败静默）
     if result.get("status") in ("done", "failed"):
         asyncio.ensure_future(extract_and_store(task, result, get_facts_store()))
