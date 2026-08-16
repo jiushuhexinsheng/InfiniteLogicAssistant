@@ -119,13 +119,12 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 | `POST /api/voice/answer` | 投递澄清/确认问题的回答（解除 ask() 阻塞） |
 | `POST /api/task/{session_id}/stop` | 停止该会话整个任务（CancellationToken → executor/子进程中止） |
 | `POST /api/tools/call` | 单工具执行（前端「重试失败工具」用） |
-| `POST /api/ai/chat` | SSE 流式聊天（ReAct + 工具，旧入口） |
 | `POST /api/voice/transcribe` | ASR 转写（JSON 体 audio_base64，16kHz mono WAV） |
 | `GET /api/env` | 环境感知快照（environment.md 内容） |
 | `GET /api/memory` · `DELETE /api/memory/{topic}` | 长期记忆浏览/删除 |
 | `GET/POST /api/schedules` · `DELETE /api/schedules/{sid}` | 定时任务列表/注册/取消 |
 
-SSE 事件类型（`/api/voice/utter`、`/api/ai/chat`）：
+SSE 事件类型（`/api/voice/utter`）：
 
 | 事件 | 含义 |
 |------|------|
@@ -202,7 +201,7 @@ cd web && npm run build      # 前端类型检查（vue-tsc）+ 生产构建
 │   ├── llm/                   LLM 客户端（stream.py SSE 解析 / client.py 重试+熔断+连接池）
 │   ├── voice/                 ASR / TTS（OpenAI 兼容）
 │   ├── orchestrator/          编排层：session / intent / task / clarify / confirm / executor / control / pipeline
-│   ├── agent/                 base 子代理基座 + coordinator 多智能体协调者（legacy.py 为旧 ReAct）
+│   ├── agent/                 base 子代理基座 + coordinator 多智能体协调者
 │   ├── tools/                 @tool 注册中心 + 内置工具（base / basic / calculator / datetime_tool /
 │   │                          search / weather / memory_tools / schedule_tools / skill_tools / gui_tools / mcp_bridge）
 │   ├── execution/             执行层：shell（可 kill 进程树）/ python（独立进程）/ fs（通用格式读写）/

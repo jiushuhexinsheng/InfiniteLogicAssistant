@@ -155,7 +155,6 @@ async def voice_transcribe(request: Request):
         return JSONResponse({"ok": False, "error": str(e)})
 
 
-# ── /api/ai/chat：SSE 流式（ReAct + 工具）──
 def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
@@ -320,27 +319,6 @@ async def tools_call(request: Request):
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
     status = "error" if result.startswith("Error") else "ok"
     return {"ok": True, "status": status, "output": result}
-
-
-@app.post("/api/ai/chat")
-async def ai_chat(request: Request):
-    body = await request.body()
-    try:
-        params = json.loads(body.decode("utf-8")) if body else {}
-    except Exception:
-        return JSONResponse({"ok": False, "error": "无效 JSON"}, status_code=400)
-    messages = params.get("messages", [])
-
-    if not is_llm_configured():
-        return JSONResponse({"ok": False, "error": "LLM 未配置"})
-
-    from core.agent import run_agent
-
-    async def event_stream():
-        async for evt in run_agent(messages):
-            yield _sse(evt)
-
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 # ── 静态托管 web/dist + SPA 兜底 ──
