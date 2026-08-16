@@ -33,6 +33,29 @@ async def test_search_by_keyword(store):
 
 
 @pytest.mark.asyncio
+async def test_fts_search_ranked(store):
+    await store.upsert("a", "用户每天看天气预报")
+    await store.upsert("b", "天气预报 天气预报 重要")
+    await store.upsert("c", "无关内容")
+    hits = await store.search(["天气预报"])
+    topics = [h["topic"] for h in hits]
+    assert "a" in topics and "b" in topics and "c" not in topics
+    # b 命中次数更多，bm25 排名更优 → 排前
+    assert topics.index("b") < topics.index("a")
+
+
+@pytest.mark.asyncio
+async def test_fts_sync_on_update_delete(store):
+    await store.upsert("k", "旧关键词天气预报")
+    assert await store.search(["天气预报"])
+    await store.upsert("k", "新内容卫星云图")
+    assert not await store.search(["天气预报"])   # 更新后旧内容应从 FTS 移除
+    assert await store.search(["卫星云图"])
+    await store.delete("k")
+    assert not await store.search(["卫星云图"])    # 删除后 FTS 同步移除
+
+
+@pytest.mark.asyncio
 async def test_all_and_delete(store):
     await store.upsert("a", "1")
     await store.upsert("b", "2")
