@@ -143,7 +143,7 @@ async def voice_utter(request: Request):
             getter.cancel()
             runner.cancel()
             await asyncio.gather(getter, runner, return_exceptions=True)
-            state.persist(session, state.session_ts.get(session.id))
+            await state.persist(session, state.session_ts.get(session.id))
             state.cleanup(session.id)  # done/error/客户端断开时不再被引用
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

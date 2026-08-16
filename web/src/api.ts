@@ -68,6 +68,11 @@ export const api = {
   getSchedules: () => get<{ ok: boolean; schedules: ScheduleItem[] }>('/schedules'),
   addSchedule: (cron: string, prompt: string) => post<{ ok: boolean; schedule: ScheduleItem }>('/schedules', { cron, prompt }),
   deleteSchedule: (sid: string) => del<ApiResponse>(`/schedules/${sid}`),
+
+  // 会话历史
+  getHistory: () => get<{ ok: boolean; conversations: HistoryConversation[] }>('/history'),
+  getHistoryDetail: (id: string) => get<{ ok: boolean; conversation: HistoryConversationDetail }>(`/history/${encodeURIComponent(id)}`),
+  deleteHistory: (id: string) => del<ApiResponse>(`/history/${encodeURIComponent(id)}`),
 }
 
 export interface MemoryFact {
@@ -82,6 +87,25 @@ export interface ScheduleItem {
   cron: string
   prompt: string
   enabled: boolean
+}
+
+export interface HistoryConversation {
+  id: string
+  created: string
+  updated: string
+  status: string
+  summary: string
+  message_count: number
+}
+
+export interface HistoryMessage {
+  role: string
+  content: string
+  tool_calls: { name: string; result?: string }[] | null
+}
+
+export interface HistoryConversationDetail extends HistoryConversation {
+  messages: HistoryMessage[]
 }
 
 // ─── 编排 SSE：/api/voice/utter（唯一 agent 路径，含澄清/确认 question 事件）───

@@ -46,23 +46,45 @@ def cleanup(session_id: str) -> None:
     session_ts.pop(session_id, None)
 
 
-def persist(session: Session, created: float | None = None) -> None:
-    """把完成的会话/任务落盘到 data/tasks/<id>.json（重启可查、可审计）。best-effort。"""
+def _conv_summary(messages: list[dict], task: dict | None) -> str:
+    """历史列表摘要：优先任务目标，其次最近一条助手回复。"""
+    if task and task.get("goal"):
+        return str(task["goal"])[:80]
+    for m in reversed(messages):
+        if m.get("role") == "assistant" and m.get("content"):
+            return str(m["content"])[:80]
+    return ""
+
+
+async def persist(session: Session, created: float | None = None) -> None:
+    """把完成的会话/任务落盘到 data/tasks/<id>.json，并保存完整会话历史。best-effort。"""
     try:
         tasks_dir = config.ROOT_DIR / "data" / "tasks"
         tasks_dir.mkdir(parents=True, exist_ok=True)
+        state_str: str = session.state.value if hasattr(session.state, "value") else str(session.state)
+        task_dict: dict | None = asdict(session.task) if session.task is not None else None
         record = {
             "session_id": session.id,
             "created": datetime.fromtimestamp(created).isoformat() if created else None,
             "finished": datetime.now().isoformat(),
-            "state": session.state.value if hasattr(session.state, "value") else str(session.state),
+            "state": state_str,
             "messages": [
                 {"role": m.get("role"), "content": m.get("content")}
                 for m in session.messages[-20:] if isinstance(m, dict)
             ],
-            "task": asdict(session.task) if session.task is not None else None,
+            "task": task_dict,
         }
         (tasks_dir / f"{session.id}.json").write_text(
             json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+        # 完整会话历史（控制台「历史」tab 数据源）
+        try:
+            from core.history import get_history_store
+            await get_history_store().save_conversation(
+                session.id, session.messages,
+                status=state_str,
+                summary=_conv_summary(session.messages, task_dict),
+            )
+        except Exception as e2:
+            logger.warning("历史保存失败 {}: {}", session.id, e2)
     except Exception as e:
         logger.warning("会话落盘失败 {}: {}", session.id, e)

@@ -40,9 +40,13 @@ class EventQueueChannel(OperatorChannel):
 async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str) -> None:
     messages = [{"role": "system", "content": "你是小逻，用中文简洁友好地回复。"}]
     messages.extend(session.summary(8))  # 含当前用户消息 → 多轮闲聊
+    reply_parts: list[str] = []
     async for evt in stream_chat(messages):
         if evt["type"] == "content_delta":
             await events.put({"type": "content_delta", "text": evt["text"]})
+            reply_parts.append(evt["text"])
+    if reply_parts:
+        session.append("assistant", "".join(reply_parts))  # 记录完整回复到会话历史
 
 
 async def run_pipeline(text: str, session: Session, events: asyncio.Queue,

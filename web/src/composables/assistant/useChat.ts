@@ -26,6 +26,7 @@ export async function runTurn() {
   abortController = new AbortController()
 
   let acc = ''
+  let lastSummary = ''  // 多智能体等 task_state(done) 携带的最终摘要（语音兜底）
   let currentMsg: ChatMessage | null = null
   // 用 reactive 数组承载工具调用，onToolStart/onToolEnd 的增删改才能触发 UI 更新
   const toolAcc = reactive<ToolCall[]>([])
@@ -61,7 +62,8 @@ export async function runTurn() {
     onTaskState: (s) => {
       if (s.session_id) currentSessionId.value = s.session_id
       if (s.state === 'understanding') state.value = 'thinking'
-      // notify / done 的状态提示由消息文本呈现，无需额外处理
+      if (s.state === 'done' && s.summary) lastSummary = s.summary
+      // notify 状态提示由消息文本呈现，无需额外处理
     },
     onContent: (t) => {
       state.value = 'responding'
@@ -96,6 +98,7 @@ export async function runTurn() {
     onQuestion: ({ question, session_id }) => {
       currentSessionId.value = session_id
       pendingQuestion.value = question
+      speakText(question)  // 澄清/确认问题也语音播报
       state.value = 'thinking'
     },
     onDone: (sessionId) => {
@@ -104,6 +107,7 @@ export async function runTurn() {
       flushText()
       partialText.value = ''
       if (acc.trim()) speakText(acc)
+      else if (lastSummary) speakText(lastSummary)  // 多智能体摘要兜底
       else if (toolAcc.length) speakText('已完成')
       state.value = 'done'
     },
@@ -119,6 +123,7 @@ export async function runTurn() {
       console.error('[Asst] LLM error:', msg)
       addMessage('system', '出错了: ' + msg)
       pendingQuestion.value = ''
+      speakText('出错了：' + msg)
       state.value = 'error'
     },
   }, { messages: history, signal: abortController.signal })
