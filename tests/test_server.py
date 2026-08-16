@@ -4,6 +4,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 import server as server_module
+import core.config as config_mod
+from core.api import state
 from core.orchestrator import pipeline as pipeline_mod
 from core.orchestrator.intent import IntentResult
 from core.orchestrator.task import Task
@@ -18,12 +20,13 @@ class _NoAsr:
 
 @pytest.fixture
 def client(monkeypatch, tmp_path):
-    # LLM 一律视为未配置（config.yaml 里配了真实 key，绝不能打到外网）
-    monkeypatch.setattr(server_module, "is_llm_configured", lambda: False)
-    monkeypatch.setattr(server_module, "is_asr_configured", lambda: False)
+    # LLM/ASR 一律视为未配置（config.yaml 里配了真实 key，绝不能打到外网）
+    # 注：路由用 `core.config` 模块访问，因此 patch config_mod 即可全局生效
+    monkeypatch.setattr(config_mod, "is_llm_configured", lambda: False)
+    monkeypatch.setattr(config_mod, "is_asr_configured", lambda: False)
     # RAG 自动索引跳过（lifespan 触发时避免真实重建）
-    _orig_cfg = server_module.cfg
-    monkeypatch.setattr(server_module, "cfg",
+    _orig_cfg = config_mod.cfg
+    monkeypatch.setattr(config_mod, "cfg",
                         lambda path, default=None: False if path == "rag.auto_index" else _orig_cfg(path, default))
     # ASR 客户端桩
     monkeypatch.setattr("core.voice.get_asr", lambda: _NoAsr())
@@ -32,7 +35,34 @@ def client(monkeypatch, tmp_path):
     dist.mkdir()
     (dist / "index.html").write_text("<html>spa</html>", encoding="utf-8")
     monkeypatch.setattr(server_module, "WEB_DIST_DIR", dist)
+    # 会话落盘（data/tasks）与 ROOT_DIR 隔离到临时目录，避免污染真实 data/
+    monkeypatch.setattr(config_mod, "ROOT_DIR", tmp_path)
     return TestClient(server_module.app)
+
+
+# ─── 安全：API token 与 host 校验 ───
+
+def test_api_token_enforced(client, monkeypatch):
+    _orig = config_mod.cfg
+    monkeypatch.setattr(config_mod, "cfg",
+                        lambda path, default=None: "secret-token" if path == "server.api_token" else _orig(path, default))
+    # 未带 token → 401
+    resp = client.get("/api/tools")
+    assert resp.status_code == 401
+    # 带正确 token → 200
+    resp = client.get("/api/tools", headers={"X-API-Token": "secret-token"})
+    assert resp.status_code == 200
+    # 静态资源不校验
+    resp = client.get("/")
+    assert resp.status_code == 200
+
+
+def test_validate_bind_requires_token():
+    server_module._validate_bind("127.0.0.1", "")  # localhost 无需 token
+    server_module._validate_bind("0.0.0.0", "abc")  # 非 localhost 但有 token
+    import pytest
+    with pytest.raises(RuntimeError):
+        server_module._validate_bind("0.0.0.0", "")  # 非 localhost 且无 token → 拒绝
 
 
 # ─── 基础端点 ───
@@ -104,6 +134,25 @@ def test_tools_call_bad_json(client):
     assert resp.status_code == 400
 
 
+# ─── 会话持久化 ───
+
+def test_persist_session_writes_task_json(tmp_path, monkeypatch):
+    import json
+    from core.orchestrator.session import Session
+    monkeypatch.setattr(config_mod, "ROOT_DIR", tmp_path)
+    s = Session()
+    s.append("user", "你好")
+    s.task = Task("t", "算 1+1", {"a": 1}, ["x"], "read")
+    state.persist(s, created=1700000000.0)
+    p = tmp_path / "data" / "tasks" / f"{s.id}.json"
+    assert p.exists()
+    data = json.loads(p.read_text(encoding="utf-8"))
+    assert data["session_id"] == s.id
+    assert data["task"]["goal"] == "算 1+1"
+    assert data["messages"][-1]["content"] == "你好"
+    assert "finished" in data
+
+
 # ─── 静态托管 / SPA 兜底 / 路径穿越 ───
 
 def test_static_index(client):
@@ -142,6 +191,24 @@ def test_resolve_dist_rejects_traversal(client):
 
 
 # ─── 编排管线端点 ───
+
+def test_voice_utter_session_cleaned_up(client, monkeypatch):
+    async def fake_judge(text):
+        return IntentResult(type="chit_chat", summary="打招呼")
+
+    async def fake_stream(*args, **kwargs):
+        yield {"type": "content_delta", "text": "你好"}
+        yield {"type": "done", "message": {"role": "assistant", "content": "你好"}}
+
+    monkeypatch.setattr(pipeline_mod, "judge_intent", fake_judge)
+    monkeypatch.setattr(pipeline_mod, "stream_chat", fake_stream)
+    resp = client.post("/api/voice/utter", json={"text": "你好"})
+    assert resp.status_code == 200
+    # 流结束（done）后会话与控制器应从注册表移除
+    assert state.sessions == {}
+    assert state.controllers == {}
+    assert state.session_ts == {}
+
 
 def test_voice_utter_chit_chat(client, monkeypatch):
     async def fake_judge(text):

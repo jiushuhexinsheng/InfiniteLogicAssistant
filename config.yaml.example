@@ -74,6 +74,10 @@ server:
   host: "127.0.0.1"
   port: 8520
   open_browser: true
+  # 非 localhost 绑定时的 API 访问令牌（留空则禁止非 localhost 绑定）
+  api_token: ""
+  # 允许跨域的前端来源（默认空 = 禁止跨域；本地同源/开发代理不需要 CORS）
+  cors_origins: []
 
 # MCP server 列表：服务启动时自动连接并注册其工具（/api/tools 可见）
 mcp:

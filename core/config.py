@@ -126,7 +126,15 @@ DEFAULTS: Dict[str, Any] = {
         # 启动时按需重建索引：index.db 缺失或 environment.md/docs 更新时重建
         "auto_index": True,
     },
-    "server": {"host": "127.0.0.1", "port": 8520, "open_browser": True},
+    "server": {
+        "host": "127.0.0.1",
+        "port": 8520,
+        "open_browser": True,
+        # 非 localhost 绑定时的 API 访问令牌（留空则禁止非 localhost 绑定）
+        "api_token": "",
+        # 允许跨域的前端来源（默认空 = 禁止跨域；本地同源/开发代理不需要 CORS）
+        "cors_origins": [],
+    },
 }
 
 # ─── 多 profile 兼容层（llm / voice.asr / voice.tts 共用）───
@@ -204,7 +212,7 @@ _PROFILE_SECTIONS: Dict[str, Dict[str, Any]] = {
 
 def _get_section(root: Dict, path: tuple) -> Dict[str, Any]:
     """按路径元组取字典节点，任一环节非 dict 返回 {}。"""
-    node = root
+    node: Any = root
     for p in path:
         if not isinstance(node, dict):
             return {}
@@ -305,7 +313,7 @@ def get_config() -> Dict[str, Any]:
 def cfg(path: str = "", default=None):
     """点号路径取值: cfg('llm.model')"""
     parts = path.split(".") if path else []
-    node = get_config()
+    node: Any = get_config()
     for p in parts:
         if isinstance(node, dict):
             node = node.get(p)

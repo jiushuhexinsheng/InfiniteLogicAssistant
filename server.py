@@ -1,22 +1,18 @@
 # -*- coding: utf-8 -*-
-"""无限逻辑·语音助手 — FastAPI 异步服务（静态托管 + /api/* + SSE 聊天 + 编排管线）"""
-import asyncio
-import json
+"""无限逻辑·语音助手 — FastAPI 装配（lifespan + 认证/CORS + 路由挂载 + 静态托管）"""
 import mimetypes
 import threading
 import time
 import webbrowser
 from contextlib import asynccontextmanager
-from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 
-from core.config import (
-    cfg, ensure_dirs, is_llm_configured, is_asr_configured, is_tts_enabled,
-    resolve_llm_profile, resolve_asr_profile, resolve_tts_profile, ROOT_DIR,
-)
+from core import config as config
+from core.api import memory, schedule, tools, voice
 from core.logger import logger
 
 
@@ -39,7 +35,7 @@ async def lifespan(app: FastAPI):
         logger.warning("定时调度启动失败: {}", e)
     # 启动时按需重建 RAG 索引（best-effort）
     try:
-        if cfg("rag.auto_index", True):
+        if config.cfg("rag.auto_index", True):
             from core.rag import maybe_rebuild_index
             await maybe_rebuild_index()
     except Exception as e:
@@ -59,7 +55,42 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="无限逻辑·语音助手", lifespan=lifespan)
 
-WEB_DIST_DIR = ROOT_DIR / "web" / "dist"
+# ── 安全：非 localhost 绑定必须配 api_token；CORS 默认禁止跨域 ──
+def _is_localhost(host: str) -> bool:
+    return host in ("", "127.0.0.1", "localhost", "::1")
+
+
+@app.middleware("http")
+async def _auth_middleware(request: Request, call_next):
+    token = config.cfg("server.api_token", "")
+    # 配置了 token 时，所有 /api/* 请求都需携带正确的 X-API-Token（静态资源放行）
+    if token and request.url.path.startswith("/api/"):
+        if request.headers.get("x-api-token") != token:
+            return JSONResponse({"ok": False, "error": "未授权：需要正确的 X-API-Token"}, status_code=401)
+    return await call_next(request)
+
+
+_cors_origins = config.cfg("server.cors_origins", [])
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+def _validate_bind(host: str, token: str) -> None:
+    """非 localhost 绑定必须配 api_token，否则拒绝启动（避免无认证 RCE）。"""
+    if not _is_localhost(host) and not token:
+        raise RuntimeError(
+            "拒绝在非 localhost 地址启动：未配置 server.api_token。"
+            "公开绑定会暴露可执行任意命令的 API。请先在 config.yaml 设置 api_token。"
+        )
+
+
+WEB_DIST_DIR = config.ROOT_DIR / "web" / "dist"
 
 # Vosk 模型等特殊扩展名的 content-type（FileResponse 的 mimetypes 不认识）
 _EXTRA_TYPES = {
@@ -77,248 +108,11 @@ _EXTRA_TYPES = {
 for _ext, _ct in _EXTRA_TYPES.items():
     mimetypes.add_type(_ct, _ext)
 
-
-@app.get("/api/ping")
-async def ping():
-    from datetime import datetime
-    return {"ok": True, "time": datetime.now().isoformat()}
-
-
-@app.get("/api/config")
-async def config():
-    return {
-        "llm_available": is_llm_configured(),
-        "llm_profile": resolve_llm_profile()[0],
-        "asr_available": is_asr_configured(),
-        "asr_profile": resolve_asr_profile()[0],
-        "tts_available": is_tts_enabled(),
-        "tts_profile": resolve_tts_profile()[0],
-        "tts_voice": resolve_tts_profile()[1].get("voice", ""),
-        "tts_model": resolve_tts_profile()[1].get("model", ""),
-        "wake_word": cfg("voice.wake_word", {}),
-        "vad": cfg("voice.vad", {}),
-    }
-
-
-@app.post("/api/tts")
-async def tts_synthesize(request: Request):
-    """文本转语音：调后端配置的 OpenAI 兼容 TTS 端点，返回音频字节。
-
-    请求体：{"text": "...", "voice": "可选，缺省用配置里的 voice"}
-    """
-    body = await request.body()
-    try:
-        params = json.loads(body.decode("utf-8")) if body else {}
-    except Exception:
-        return JSONResponse({"ok": False, "error": "无效 JSON"}, status_code=400)
-    text = (params.get("text") or "").strip()
-    voice = params.get("voice") or None
-    if not text:
-        return JSONResponse({"ok": False, "error": "text 不能为空"}, status_code=400)
-    if not is_tts_enabled():
-        return JSONResponse(
-            {"ok": False, "error": "TTS 未启用：voice.tts.enabled=false 或未配置 endpoint"},
-            status_code=400,
-        )
-    try:
-        from core.tts import synthesize
-        audio, media_type = await synthesize(text, voice)
-    except Exception as e:
-        logger.warning("TTS 合成失败: {}", e)
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
-    return Response(content=audio, media_type=media_type)
-
-
-@app.get("/api/tools")
-async def tools_list():
-    """工具清单：后端 @tool 注册中心的 OpenAI schema 数组（供控制台展示）。"""
-    from core.tools import TOOLS
-    return {"ok": True, "tools": TOOLS.schemas()}
-
-
-@app.post("/api/voice/transcribe")
-async def voice_transcribe(request: Request):
-    from core.voice import get_asr
-    asr = get_asr()
-    if not asr.available():
-        return JSONResponse({"ok": False, "error": "ASR 未配置"})
-    try:
-        body = await request.body()
-        params = json.loads(body.decode("utf-8"))
-        b64 = params.get("audio_base64", "")
-        if not b64:
-            return JSONResponse({"ok": False, "error": "请提供 audio_base64 参数"})
-        text = await asr.transcribe_base64(b64, "wav")
-        return {"ok": True, "text": text}
-    except Exception as e:
-        logger.error("voice_transcribe: {}", e)
-        return JSONResponse({"ok": False, "error": str(e)})
-
-
-def _sse(payload: dict) -> str:
-    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-
-
-# ── /api/tools/call：单工具执行（前端"重试失败工具"用）──
-# 编排会话与停止控制器注册表（key = session_id）
-_sessions: dict[str, "Session"] = {}
-_controllers: dict[str, "StopController"] = {}
-
-
-@app.post("/api/voice/utter")
-async def voice_utter(request: Request):
-    """编排入口：文本(语音转写后/文字输入) → SSE 事件流。
-
-    事件：task_state / content_delta / question / error / done。
-    question 事件后需操作者回答：POST /api/voice/answer {session_id, text}。
-    """
-    from core.orchestrator.control import StopController
-    from core.orchestrator.pipeline import run_pipeline
-    from core.orchestrator.session import Session
-    body = await request.body()
-    try:
-        params = json.loads(body.decode("utf-8")) if body else {}
-    except Exception:
-        return JSONResponse({"ok": False, "error": "无效 JSON"}, status_code=400)
-    text = (params.get("text") or "").strip()
-    if not text:
-        return JSONResponse({"ok": False, "error": "缺少 text 参数"}, status_code=400)
-    messages = params.get("messages")
-    if not isinstance(messages, list):
-        messages = None
-
-    session = Session()
-    controller = StopController()
-    _sessions[session.id] = session
-    _controllers[session.id] = controller
-    events: asyncio.Queue = asyncio.Queue()
-    runner = asyncio.ensure_future(run_pipeline(text, session, events, controller, messages=messages))
-
-    async def event_stream():
-        getter = asyncio.ensure_future(events.get())
-        try:
-            while True:
-                done, _ = await asyncio.wait({runner, getter}, return_when=asyncio.FIRST_COMPLETED)
-                if getter in done:
-                    evt = getter.result()
-                    yield _sse(evt)
-                    if evt["type"] == "done":
-                        break
-                    getter = asyncio.ensure_future(events.get())  # 取下一个事件
-                if runner in done:
-                    # runner 提前结束（异常兜底），避免客户端永久等待
-                    if not events.empty():
-                        continue
-                    exc = runner.exception()
-                    if exc is not None:
-                        yield _sse({"type": "error", "message": f"编排异常: {exc}"})
-                    yield _sse({"type": "done"})
-                    break
-        finally:
-            getter.cancel()
-            runner.cancel()
-            await asyncio.gather(getter, runner, return_exceptions=True)
-
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
-
-
-@app.post("/api/voice/answer")
-async def voice_answer(request: Request):
-    """投递操作者对澄清/确认问题的回答，解除 pipeline 的 ask() 阻塞。"""
-    body = await request.body()
-    try:
-        params = json.loads(body.decode("utf-8")) if body else {}
-    except Exception:
-        return JSONResponse({"ok": False, "error": "无效 JSON"}, status_code=400)
-    session = _sessions.get(params.get("session_id", ""))
-    channel = getattr(session, "channel", None) if session else None
-    if channel is None:
-        return JSONResponse({"ok": False, "error": "会话不存在或未在等待回答"}, status_code=404)
-    channel.answer(str(params.get("text") or ""))
-    return {"ok": True}
-
-
-@app.post("/api/task/{session_id}/stop")
-async def task_stop(session_id: str):
-    """停止该会话的整个任务（CancellationToken → executor/子进程中止）。"""
-    ctrl = _controllers.get(session_id)
-    if ctrl:
-        ctrl.stop_task()
-    return {"ok": True, "ack": "stop"}
-
-
-@app.get("/api/env")
-async def env():
-    from core.execution.envprobe import read_environment_md
-    return {"ok": True, "content": await read_environment_md()}
-
-
-@app.get("/api/memory")
-async def memory_list():
-    from core.memory.context import get_facts_store
-    return {"ok": True, "facts": await get_facts_store().all()}
-
-
-@app.delete("/api/memory/{topic}")
-async def memory_delete(topic: str):
-    from core.memory.context import get_facts_store
-    await get_facts_store().delete(topic)
-    return {"ok": True}
-
-
-# ── 定时任务（P3）──
-@app.get("/api/schedules")
-async def schedules_list():
-    from core.scheduler.scheduler import get_scheduler
-    return {"ok": True, "schedules": [asdict(s) for s in get_scheduler().list()]}
-
-
-@app.post("/api/schedules")
-async def schedules_add(request: Request):
-    from core.scheduler.scheduler import get_scheduler
-    body = await request.body()
-    try:
-        params = json.loads(body.decode("utf-8")) if body else {}
-    except Exception:
-        return JSONResponse({"ok": False, "error": "无效 JSON"}, status_code=400)
-    cron = (params.get("cron") or "").strip()
-    prompt = (params.get("prompt") or "").strip()
-    if not cron or not prompt:
-        return JSONResponse({"ok": False, "error": "cron 与 prompt 必填"}, status_code=400)
-    sc = get_scheduler().add(cron, prompt)
-    return {"ok": True, "schedule": asdict(sc)}
-
-
-@app.delete("/api/schedules/{sid}")
-async def schedules_delete(sid: str):
-    from core.scheduler.scheduler import get_scheduler
-    get_scheduler().remove(sid)
-    return {"ok": True}
-
-
-@app.post("/api/tools/call")
-async def tools_call(request: Request):
-    from core.tools import TOOLS
-    body = await request.body()
-    try:
-        params = json.loads(body.decode("utf-8")) if body else {}
-    except Exception:
-        return JSONResponse({"ok": False, "error": "无效 JSON"}, status_code=400)
-    name = params.get("name", "")
-    args = params.get("args") or {}
-    if not isinstance(name, str) or not name:
-        return JSONResponse({"ok": False, "error": "缺少工具名 name"}, status_code=400)
-    if not isinstance(args, dict):
-        return JSONResponse({"ok": False, "error": "args 必须为 JSON 对象"}, status_code=400)
-    if not TOOLS.has(name):
-        return JSONResponse({"ok": False, "error": f"未知工具: {name}"}, status_code=404)
-    try:
-        result = await TOOLS.acall(name, args)
-    except Exception as exc:
-        logger.error("tools_call {}: {}", name, exc)
-        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
-    status = "error" if result.startswith("Error") else "ok"
-    return {"ok": True, "status": status, "output": result}
+# 挂载各域路由
+app.include_router(voice.router, prefix="/api")
+app.include_router(tools.router, prefix="/api")
+app.include_router(memory.router, prefix="/api")
+app.include_router(schedule.router, prefix="/api")
 
 
 # ── 静态托管 web/dist + SPA 兜底 ──
@@ -358,15 +152,19 @@ async def spa_handler(full_path: str):
 
 def start_server(host: str = "", port: int = 0, open_browser: bool = True):
     import uvicorn
-    host = host or cfg("server.host", "127.0.0.1")
-    port = port or cfg("server.port", 8520)
-    open_browser = open_browser and cfg("server.open_browser", True)
-    ensure_dirs()
+    host = host or config.cfg("server.host", "127.0.0.1")
+    port = port or config.cfg("server.port", 8520)
+    open_browser = open_browser and config.cfg("server.open_browser", True)
+    _validate_bind(host, config.cfg("server.api_token", ""))
+    config.ensure_dirs()
     url = f"http://{host}:{port}"
     if WEB_DIST_DIR.is_dir():
         logger.info("服务已启动: {} （前端已构建）", url)
     else:
         logger.info("服务已启动: {} （未检测到 web/dist，请先构建前端）", url)
     if open_browser:
-        threading.Thread(target=lambda: (time.sleep(1), webbrowser.open(url)), daemon=True).start()
+        def _open_browser() -> None:
+            time.sleep(1)
+            webbrowser.open(url)
+        threading.Thread(target=_open_browser, daemon=True).start()
     uvicorn.run(app, host=host, port=port, log_level="warning")
