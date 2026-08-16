@@ -9,7 +9,8 @@
         <span class="msg-time">{{ formatTime(message.timestamp) }}</span>
       </div>
       <div class="msg-bubble" :class="message.role">
-        <MarkdownRenderer v-if="message.role !== 'system'" :text="message.text.slice(0, revealed)" />
+        <!-- 直接渲染全文：SSE 已按增量下发，无需打字机截断，否则流式文本被 slice 卡住不显示 -->
+        <MarkdownRenderer v-if="message.role !== 'system'" :text="message.text" />
         <div v-else class="msg-text">{{ message.text }}</div>
         <!-- 工具调用：纵向时间轴 -->
         <ToolTimeline
@@ -24,37 +25,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { computed } from 'vue'
 import Icon from '../Icon.vue'
 import MarkdownRenderer from '../MarkdownRenderer.vue'
 import ToolTimeline from './ToolTimeline.vue'
 import type { ChatMessage, ToolCall } from '../../composables/useAssistant'
 import type { ToolStep } from '../../types'
 
-const props = defineProps<{ message: ChatMessage; typewriter?: boolean }>()
+const props = defineProps<{ message: ChatMessage }>()
 
-const emit = defineEmits<{ retry: [id: string]; cancel: [id: string]; typed: [id: string] }>()
-
-// ── 流式打字效果（仅新助手消息，用 animatedIds 防重播）──
-const revealed = ref(0)
-let twTimer: ReturnType<typeof setInterval> | null = null
-onMounted(() => {
-  const full = props.message.text.length
-  if (props.typewriter && props.message.role === 'assistant' && full > 0) {
-    revealed.value = 0
-    twTimer = setInterval(() => {
-      revealed.value += 2
-      if (revealed.value >= full) {
-        revealed.value = full
-        if (twTimer) { clearInterval(twTimer); twTimer = null }
-        emit('typed', props.message.id)
-      }
-    }, 20)
-  } else {
-    revealed.value = full
-  }
-})
-onUnmounted(() => { if (twTimer) clearInterval(twTimer) })
+const emit = defineEmits<{ retry: [id: string]; cancel: [id: string] }>()
 
 const roleName = computed(() => {
   switch (props.message.role) {
@@ -97,8 +77,13 @@ function formatTime(ts: number) {
   display: flex;
   gap: 8px;
   align-items: flex-start;
+  animation: msg-in .32s var(--ease-out) both;
 }
 .msg-item.system { justify-content: center; }
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 /* 头像 */
 .msg-avatar {
@@ -134,24 +119,35 @@ function formatTime(ts: number) {
 .msg-item.user .msg-meta { flex-direction: row-reverse; }
 
 .msg-bubble {
+  position: relative;
   max-width: 90%;
   padding: 8px 12px;
-  border-radius: 12px;
-  font-size: 13px;
+  border-radius: var(--r-lg);
+  font-size: var(--fs-sm);
   line-height: 1.5;
   word-break: break-word;
 }
-/* 用户气泡：品牌渐变背景 */
+/* 用户气泡：品牌渐变背景 + 右下小尾巴（深色文字保证渐变上的对比度） */
 .msg-bubble.user {
   align-self: flex-end;
   background: var(--brand-grad);
-  color: #fff;
+  color: #0f172a;
+  font-weight: 500;
   border-bottom-right-radius: 4px;
 }
-/* 助手气泡：暗色底 + 品牌渐变左边框 */
+.msg-bubble.user::after {
+  content: '';
+  position: absolute;
+  right: -5px; bottom: 6px;
+  width: 10px; height: 10px;
+  background: var(--brand-c3);
+  border-bottom-right-radius: 3px;
+  transform: rotate(45deg);
+}
+/* 助手气泡：暗色渐变底 + 品牌青色左边框 */
 .msg-bubble.assistant {
   align-self: flex-start;
-  background: #334155;
+  background: linear-gradient(180deg, rgba(51, 65, 85, .95), rgba(30, 41, 59, .95));
   color: var(--text-1);
   border-left: 2px solid var(--brand-c2);
   border-bottom-left-radius: 4px;

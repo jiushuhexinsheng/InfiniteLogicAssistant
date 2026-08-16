@@ -1,0 +1,18 @@
+name: 代码搜索
+description: "在指定目录按关键词搜索代码，返回 文件:行号: 匹配行"
+requires:
+  - keyword
+  - dir
+steps:
+  - tool: grep_file
+    args_template:
+      pattern: "{{keyword}}"
+      path: "{{dir}}"
+      ext: ""
+    note: 按内容搜索关键词
+  - tool: find_files
+    args_template:
+      name_pattern: "{{keyword}}"
+      dir: "{{dir}}"
+    note: 按文件名搜索包含关键词的文件
+dangerous: false

@@ -14,6 +14,8 @@ export interface ConfigResponse extends ApiResponse {
   asr_profile: string
   tts_available: boolean
   tts_profile: string
+  tts_voice?: string
+  tts_model?: string
   wake_word: WakeWordConfig
   vad: VadConfig
 }

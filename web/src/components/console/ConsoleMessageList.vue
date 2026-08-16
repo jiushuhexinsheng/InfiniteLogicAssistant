@@ -8,7 +8,6 @@
         v-for="m in messages"
         :key="m.id"
         :message="m"
-        :typewriter="false"
         @retry="emit('retry', $event)"
         @cancel="emit('cancel', $event)"
       />

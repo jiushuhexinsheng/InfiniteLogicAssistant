@@ -1,0 +1,13 @@
+name: 每日天气
+description: 查询指定城市今日天气并给出穿衣/出行建议
+requires:
+  - city
+steps:
+  - tool: get_weather
+    args_template:
+      city: "{{city}}"
+    note: 查询城市当前天气
+  - tool: get_datetime
+    args_template: {}
+    note: 获取当前日期时间
+dangerous: false

@@ -48,10 +48,22 @@ interface Turn {
   tools: string[]
 }
 
-/** 摘要：取首个非空行、剥 markdown 记号、截断。不额外调 LLM。 */
+/** 摘要：折叠换行后取整段、剥 markdown 记号、截断。不额外调 LLM。
+ *  只取首行会导致按句换行的回复摘要只剩"好的。"两三个字。 */
 function summarize(text: string): string {
-  const line = (text.split('\n').map(s => s.trim()).find(Boolean) || '').replace(/[*`_~#>|]/g, '')
-  return line.length > 60 ? line.slice(0, 60) + '…' : line
+  const flat = text.replace(/\s*\n\s*/g, ' ').trim().replace(/[*`_~#>|]/g, '')
+  return flat.length > 60 ? flat.slice(0, 60) + '…' : flat
+}
+
+// 摘要缓存：按消息 id 缓存 { text, summary }，仅当文本变化（流式增长）时才重算。
+// 避免 turns computed 每次消息变动都对整段历史（最多 200 条）重跑 summarize。
+const summaryCache = new Map<string, { text: string; summary: string }>()
+function cachedSummary(m: ChatMessage): string {
+  const hit = summaryCache.get(m.id)
+  if (hit && hit.text === m.text) return hit.summary
+  const summary = summarize(m.text)
+  summaryCache.set(m.id, { text: m.text, summary })
+  return summary
 }
 
 // user 暂存为 input，遇 assistant 产出 { input, summary, tools }；结尾未回复的 user 产出一条 '…'
@@ -65,7 +77,7 @@ const turns = computed<Turn[]>(() => {
       out.push({
         key: m.id,
         input: pendingInput,
-        summary: summarize(m.text),
+        summary: cachedSummary(m),
         tools: (m.toolCalls || []).map(tc => tc.name),
       })
       pendingInput = ''
@@ -80,6 +92,11 @@ const turns = computed<Turn[]>(() => {
 })
 
 const scrollEl = ref<HTMLElement | null>(null)
+
+// 清空会话时同步清空摘要缓存，避免残留
+watch(() => props.messages.length, (n) => {
+  if (n === 0) summaryCache.clear()
+})
 
 // 新 turn 或最后一条文本增长（流式回复）时滚到底，保证最新内容可见
 watch(
@@ -125,14 +142,19 @@ watch(
 .mini-eq i:nth-child(3) { animation-delay: .3s; }
 @keyframes eq-bounce { 0%,100% { height: 30%; } 50% { height: 100%; } }
 
-.mini-turn { display: flex; flex-direction: column; gap: 4px; }
+.mini-turn { display: flex; flex-direction: column; gap: 4px; animation: mini-in .32s var(--ease-out) both; }
+@keyframes mini-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 /* 气泡：用户右对齐品牌渐变 / AI 左对齐暗色 + 品牌左边框（与完整聊天一致） */
 .mini-bubble {
+  position: relative;
   max-width: 88%;
   padding: 6px 10px;
-  border-radius: 10px;
-  font-size: 12px;
+  border-radius: var(--r-lg);
+  font-size: var(--fs-sm);
   line-height: 1.5;
   word-break: break-word;
   white-space: pre-wrap;
@@ -141,11 +163,21 @@ watch(
   align-self: flex-end;
   background: var(--brand-grad);
   color: #0f172a;
+  font-weight: 500;
   border-bottom-right-radius: 4px;
+}
+.mini-bubble.user::after {
+  content: '';
+  position: absolute;
+  right: -5px; bottom: 5px;
+  width: 9px; height: 9px;
+  background: var(--brand-c3);
+  border-bottom-right-radius: 3px;
+  transform: rotate(45deg);
 }
 .mini-bubble.ai {
   align-self: flex-start;
-  background: #334155;
+  background: linear-gradient(180deg, rgba(51, 65, 85, .95), rgba(30, 41, 59, .95));
   color: var(--text-1);
   border-left: 2px solid var(--brand-c2);
   border-bottom-left-radius: 4px;
@@ -155,7 +187,7 @@ watch(
   gap: 6px;
 }
 
-.mini-summary { flex: 1; min-width: 0; }
+.mini-summary { flex: 1 1 100%; min-width: 0; }
 .mini-tool {
   flex-shrink: 0;
   font-size: 10px;

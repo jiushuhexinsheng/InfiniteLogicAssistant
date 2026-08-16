@@ -1,9 +1,47 @@
-/* 无限逻辑·语音助手 — 全局基础样式 */
+/* 无限逻辑·语音助手 — 全局基础 */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body, #app { height: 100%; }
 body {
-  font-family: "Microsoft YaHei", "PingFang SC", -apple-system, BlinkMacSystemFont, sans-serif;
-  background: #020617;
-  color: #e2e8f0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  color: var(--text-1);
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(103, 232, 249, .08), transparent 60%),
+    radial-gradient(900px 500px at 85% 110%, rgba(165, 180, 252, .07), transparent 60%),
+    var(--bg-0);
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 细颗粒噪点：盖在整个页面上，赋予深色底"质感"，不拦截事件 */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9990;
+  pointer-events: none;
+  opacity: .035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+}
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, .28);
+  border-radius: var(--r-full);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: rgba(148, 163, 184, .45); }
+* { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, .35) transparent; }
+
+/* 选中 / 焦点环 */
+::selection { background: rgba(103, 232, 249, .28); color: #fff; }
+:focus-visible { outline: 2px solid var(--brand-c2); outline-offset: 2px; border-radius: 4px; }
+
+/* 尊重系统减弱动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }

@@ -7,7 +7,6 @@
       placeholder="输入消息，Enter 发送，Shift+Enter 换行"
       :disabled="disabled"
       @keydown.enter.exact.prevent="onEnter"
-      @keydown.enter.shift.prevent="onShiftEnter"
       @input="autosize"
     ></textarea>
     <button class="ci-send" :disabled="disabled || !text.trim()" @click="submit">
@@ -34,8 +33,6 @@ function autosize() {
 }
 
 function onEnter() { submit() }
-
-function onShiftEnter() { autosize() }
 
 function submit() {
   const v = text.value.trim()

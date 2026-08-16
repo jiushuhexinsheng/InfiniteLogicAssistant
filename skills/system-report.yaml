@@ -1,0 +1,20 @@
+name: 系统体检
+description: 一键体检电脑：环境快照 + 磁盘/内存/CPU 概览（Windows 命令）
+requires: []
+steps:
+  - tool: system_probe
+    args_template: {}
+    note: 读取环境感知快照（OS/硬件/软件/磁盘可用空间）
+  - tool: run_shell_tool
+    args_template:
+      command: "wmic OS get FreePhysicalMemory,TotalVisibleMemorySize /value"
+    note: 查看物理内存使用情况
+  - tool: run_shell_tool
+    args_template:
+      command: "wmic cpu get LoadPercentage /value"
+    note: 查看 CPU 负载
+  - tool: run_shell_tool
+    args_template:
+      command: "wmic logicaldisk get DeviceID,FreeSpace,Size /value"
+    note: 查看各磁盘剩余空间
+dangerous: false

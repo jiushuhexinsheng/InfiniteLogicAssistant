@@ -130,7 +130,7 @@ var WakeWordEngine = (function () {
       _running = true;
       console.log('[WW] listening: ' + _keyword);
       return true;
-    } catch (e) { console.error('[WW] start fail:', e); return false; }
+    } catch (e) { console.error('[WW] start fail:', e); throw e; }
   }
 
   function stop() {

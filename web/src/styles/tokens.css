@@ -1,0 +1,79 @@
+/* 无限逻辑·语音助手 — 设计令牌（唯一 token 来源）
+   组件内的 --panel-bg / --border-base / --text-* / --brand-* 均沿用此处定义。 */
+:root {
+  /* ── 色板 ── */
+  --bg-0: #020617;                 /* 最深背景 */
+  --bg-1: #0f172a;                 /* 面板/卡片底 */
+  --bg-2: #1e293b;                 /* 抬升面 */
+  --bg-3: #334155;                 /* 边框/分隔 */
+  --brand-c1: #a5b4fc;             /* 靛 */
+  --brand-c2: #67e8f9;             /* 青 */
+  --brand-c3: #6ee7b7;             /* 绿 */
+  --brand-grad: linear-gradient(135deg, var(--brand-c1), var(--brand-c2), var(--brand-c3));
+  --rainbow: conic-gradient(from 0deg,
+    #ef4444, #f97316, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444);
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --err: #f87171;
+  --info: #22d3ee;
+
+  /* ── 表面 / 玻璃 ── */
+  --panel-bg: rgba(15, 23, 42, .92);
+  --glass-bg: rgba(15, 23, 42, .66);
+  --glass-bg-strong: rgba(15, 23, 42, .82);
+  --glass-border: rgba(148, 163, 184, .16);
+  --border-base: #334155;
+  --border-soft: rgba(148, 163, 184, .14);
+  --hairline: linear-gradient(90deg, transparent, rgba(165, 180, 252, .45), rgba(103, 232, 249, .45), transparent);
+
+  /* ── 文字 ── */
+  --text-1: #e2e8f0;
+  --text-2: #94a3b8;
+  --text-3: #64748b;
+
+  /* ── 字体 ── */
+  --font-sans: "Microsoft YaHei", "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "Cascadia Code", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
+
+  /* ── 字号刻度 ── */
+  --fs-2xs: 11px;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-2xl: 28px;
+  --fs-3xl: 44px;
+
+  /* ── 间距 ── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+
+  /* ── 圆角 ── */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-2xl: 28px;
+  --r-full: 999px;
+
+  /* ── 阴影 / 层级 ── */
+  --shadow-1: 0 1px 2px rgba(2, 6, 23, .4), 0 1px 3px rgba(2, 6, 23, .3);
+  --shadow-2: 0 4px 14px -4px rgba(2, 6, 23, .55), 0 2px 6px rgba(2, 6, 23, .35);
+  --shadow-3: 0 18px 44px -12px rgba(2, 6, 23, .65), 0 8px 20px -8px rgba(2, 6, 23, .45);
+  --glow-brand: 0 6px 28px -6px rgba(165, 180, 252, .45), 0 6px 28px -8px rgba(110, 231, 183, .4);
+  --glow-cyan: 0 0 0 1px rgba(103, 232, 249, .12), 0 8px 32px -8px rgba(103, 232, 249, .4);
+
+  /* ── 动效 ── */
+  --dur-fast: 140ms;
+  --dur-base: 240ms;
+  --dur-slow: 420ms;
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+}
