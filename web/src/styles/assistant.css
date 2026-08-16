@@ -105,3 +105,11 @@
   from { filter: hue-rotate(0deg); }
   to   { filter: hue-rotate(360deg); }
 }
+
+/* 澄清/确认问题回答卡片（悬浮球与控制台对话共用） */
+.confirm-card { border: 1px solid #f59e0b; border-radius: 10px; background: rgba(245,158,11,.06); padding: 10px 12px; margin: 0 10px 8px; }
+.confirm-title { font-size: 12px; font-weight: 600; color: #fbbf24; margin-bottom: 4px; }
+.confirm-q { font-size: 13px; margin: 0 0 8px; color: var(--text-1); }
+.confirm-row { display: flex; gap: 8px; }
+.confirm-row input { flex: 1; background: #0b1120; border: 1px solid var(--border-base); border-radius: 8px; color: var(--text-1); padding: 6px 10px; font-size: 13px; }
+.confirm-btn { background: none; border: 1px solid #f59e0b; color: #fbbf24; font-size: 12px; padding: 5px 14px; border-radius: 999px; cursor: pointer; }
