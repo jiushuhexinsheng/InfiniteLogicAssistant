@@ -4,6 +4,7 @@ import type { WakeWordConfig, VadConfig } from '../types'
 import {
   state, messages, expanded, wakeEnabled, wakeKeyword, partialText, statusLine, tokenUsage,
   wakeConfig, vadConfig, clearMessages, pendingQuestion, currentSessionId,
+  modelLoading, modelProgress,
 } from './assistant/store'
 import { sendText, retryTool, cancelTool, abortChat, sendAnswer } from './assistant/useChat'
 import { toggleWake, stopWake } from './assistant/useWakeWord'
@@ -66,6 +67,9 @@ export function useAssistant() {
     partialText,
     statusLine,
     tokenUsage,
+    // 唤醒模型下载
+    modelLoading,
+    modelProgress,
     // 编排问答
     pendingQuestion,
     currentSessionId,

@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import type { TokenUsage, WakeWordConfig, VadConfig } from '../../types'
 
 // ─── 状态机 ───
@@ -43,6 +43,8 @@ export const state = ref<AsstState>('idle')
 export const messages = ref<ChatMessage[]>([])
 export const expanded = ref(false)
 export const wakeEnabled = ref(false)
+export const modelLoading = ref(false)
+export const modelProgress = ref(0)
 export const partialText = ref('')
 export const statusLine = ref('')
 export const tokenUsage = ref<TokenUsage>({})
@@ -55,6 +57,36 @@ export const currentSessionId = ref('')
 export const wakeConfig: WakeWordConfig = { enabled: true, keyword: '小逻小逻', sensitivity: 0.5, model_path: '/models/vosk-model-small-cn-0.22.tar.gz' }
 export const vadConfig: VadConfig = { silence_threshold: 0.02, silence_duration_ms: 1500, max_duration_ms: 10000 }
 export const wakeKeyword = ref(wakeConfig.keyword)  // 响应式 keyword，供 UI 提示与状态文案
+
+// ── 消息与 token 用量持久化（刷新恢复会话记录）──
+const STORAGE_KEY = 'xluo.history'
+
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      messages: messages.value.slice(-MAX_MESSAGES),
+      tokenUsage: tokenUsage.value,
+    }))
+  } catch { /* 隐私模式/配额满：忽略 */ }
+}
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+watch([messages, tokenUsage], () => {
+  // 流式期间高频变化，合并到 ~500ms 落盘一次
+  if (saveTimer) return
+  saveTimer = setTimeout(() => { saveTimer = null; saveState() }, 500)
+}, { deep: true })
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return
+    const data = JSON.parse(raw)
+    if (Array.isArray(data?.messages)) messages.value = data.messages.slice(-MAX_MESSAGES)
+    if (data?.tokenUsage && typeof data.tokenUsage === 'object') tokenUsage.value = data.tokenUsage
+  } catch { /* 解析失败忽略 */ }
+}
+loadState()
 
 // ── 消息管理 ──
 export function genId() {
