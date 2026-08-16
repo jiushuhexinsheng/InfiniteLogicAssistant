@@ -77,10 +77,12 @@ async def run_coordinator(task: Task, session: Session, cancel: CancellationToke
     subtasks = await _decompose(task)
     if cancel.is_cancelled:
         return {"status": "stopped", "summary": "已停止", "subtasks": []}
+    await session.notify(f"已拆分 {len(subtasks)} 个子任务")
 
     executed: list[dict] = []
 
     async def run_one(s: dict) -> None:
+        await session.notify(f"子代理 {s['agent_type']} 开始：{s['goal'][:50]}")
         r = await run_subagent(
             _ROLE_PROMPTS.get(s["agent_type"], _ROLE_PROMPTS["doer"]),
             s["goal"], context=task.goal, cancel=cancel,
@@ -89,6 +91,7 @@ async def run_coordinator(task: Task, session: Session, cancel: CancellationToke
             "goal": s["goal"], "agent_type": s["agent_type"],
             "status": r.status, "output": r.output[:300], "tools": r.used_tools,
         })
+        await session.notify(f"子代理 {s['agent_type']} 完成（{r.status}）")
 
     indep = [s for s in subtasks if s["independent"]]
     dep = [s for s in subtasks if not s["independent"]]
@@ -110,6 +113,7 @@ async def run_coordinator(task: Task, session: Session, cancel: CancellationToke
     # critic 审查
     merged = "\n".join(f"- {x['goal']}: {x['output']}" for x in executed)
     critique = ""
+    await session.notify("批评子代理审查中…")
     critic = await run_subagent(
         _ROLE_PROMPTS["critic"],
         f"审查以下子任务结果是否达成主任务「{task.goal}」，指出问题：\n{merged}",

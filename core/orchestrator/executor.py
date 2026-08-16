@@ -70,7 +70,7 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
         {"role": "system", "content": sys_prompt},
         {"role": "user", "content": f"任务目标：{task.goal}\n参数：{json.dumps(task.params, ensure_ascii=False)}"},
     ]
-    steps: list[dict] = []
+    steps = []
     for step in range(max_steps):
         if cancel.is_cancelled:
             return {"status": "stopped", "summary": "已停止", "steps": steps}
@@ -90,7 +90,8 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
             if not tool_calls:
                 return {"status": "done", "summary": assistant_message.get("content") or "完成", "steps": steps}
 
-            for tc in tool_calls:
+            async def run_one_tc(tc: dict, step: int) -> tuple[dict, dict] | None:
+                """执行单个工具调用，返回 (steps条目, tool消息)；取消返回 None。"""
                 cancel.throw_if_cancelled()
                 name = tc["function"]["name"]
                 raw = tc["function"].get("arguments") or "{}"
@@ -110,9 +111,30 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
                 status = "error" if result.startswith("Error") else "ok"
                 if events is not None:
                     await events.put({"type": "tool_end", "name": name, "status": status, "output": result[:500]})
-                steps.append({"step": step, "tool": name, "args": args, "status": status, "result": result[:500]})
-                history.append({"role": "tool", "tool_call_id": tc.get("id", ""), "content": result})
-                session.append("tool", f"{name}: {result[:200]}")
+                return (
+                    {"step": step, "tool": name, "args": args, "status": status, "result": result[:500]},
+                    {"role": "tool", "tool_call_id": tc.get("id", ""), "content": result},
+                )
+
+            # read 级工具并发执行（相互独立）；write/exec 串行（需逐个人类确认）
+            read_idx = [i for i, tc in enumerate(tool_calls) if TOOLS.risk(tc["function"]["name"]) == "read"]
+            write_idx = [i for i, tc in enumerate(tool_calls) if TOOLS.risk(tc["function"]["name"]) != "read"]
+            results: dict[int, tuple[dict, dict]] = {}
+            if read_idx:
+                outs = await asyncio.gather(*(run_one_tc(tool_calls[i], step) for i in read_idx))
+                for i, o in zip(read_idx, outs):
+                    if o is not None:
+                        results[i] = o
+            for i in write_idx:
+                o = await run_one_tc(tool_calls[i], step)
+                if o is not None:
+                    results[i] = o
+            # 按原 tool_calls 顺序落 steps/history，保持回喂顺序稳定
+            for i in sorted(results):
+                step_entry, tool_msg = results[i]
+                steps.append(step_entry)
+                history.append(tool_msg)
+                session.append("tool", f"{step_entry['tool']}: {step_entry['result'][:200]}")
         except asyncio.CancelledError:
             return {"status": "stopped", "summary": "已停止", "steps": steps}
         except Exception as e:
