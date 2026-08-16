@@ -5,6 +5,24 @@ from core.tools import TOOLS
 from core.tools.base import tool, _build_schema
 
 
+@pytest.mark.asyncio
+async def test_acall_writes_audit(monkeypatch):
+    calls = []
+    monkeypatch.setattr("core.tools.base.audit", lambda m: calls.append(m))
+    r = await TOOLS.acall("calculate", {"expression": "1+1"})
+    assert r == "2"
+    assert any(c.startswith("tool=calculate") and "status=ok" in c for c in calls)
+
+
+@pytest.mark.asyncio
+async def test_acall_error_audited(monkeypatch):
+    calls = []
+    monkeypatch.setattr("core.tools.base.audit", lambda m: calls.append(m))
+    r = await TOOLS.acall("calculate", {"expression": "bad("})
+    assert r.startswith("Error")
+    assert any(c.startswith("tool=calculate") and "status=error" in c for c in calls)
+
+
 def test_schemas_contain_all_tools():
     names = [s["function"]["name"] for s in TOOLS.schemas()]
     assert {"get_datetime", "calculate", "web_search", "get_weather"} <= set(names)

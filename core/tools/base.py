@@ -10,7 +10,10 @@
 """
 import asyncio
 import inspect
+import json
 from typing import Any, Callable, get_type_hints
+
+from core.logger import audit
 
 ToolFunc = Callable[..., Any]
 
@@ -45,6 +48,11 @@ class _ToolRegistry:
     def has(self, name: str) -> bool:
         return name in self._tools
 
+    def _audit(self, name: str, args: dict[str, Any], status: str, detail: str = "") -> None:
+        risk = self._tools.get(name, {}).get("risk", "read")
+        args_str = json.dumps(args, ensure_ascii=False, default=str)
+        audit(f"tool={name} risk={risk} args={args_str} status={status}{detail}")
+
     def call(self, name: str, args: dict[str, Any]) -> str:
         if name not in self._tools:
             return f"Error: unknown tool '{name}'"
@@ -52,8 +60,11 @@ class _ToolRegistry:
         try:
             if inspect.iscoroutinefunction(func):
                 return f"Error: '{name}' is async; use acall()"
-            return _to_string(func(**args))
+            result = _to_string(func(**args))
+            self._audit(name, args, "error" if result.startswith("Error") else "ok")
+            return result
         except Exception as exc:
+            self._audit(name, args, "error", f" error={exc}")
             return f"Error in {name}: {exc}"
 
     async def acall(self, name: str, args: dict[str, Any]) -> str:
@@ -62,9 +73,13 @@ class _ToolRegistry:
         func = self._tools[name]["func"]
         try:
             if inspect.iscoroutinefunction(func):
-                return _to_string(await func(**args))
-            return _to_string(await asyncio.to_thread(lambda: func(**args)))
+                result = _to_string(await func(**args))
+            else:
+                result = _to_string(await asyncio.to_thread(lambda: func(**args)))
+            self._audit(name, args, "error" if result.startswith("Error") else "ok")
+            return result
         except Exception as exc:
+            self._audit(name, args, "error", f" error={exc}")
             return f"Error in {name}: {exc}"
 
 
