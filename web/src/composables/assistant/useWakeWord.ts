@@ -12,26 +12,6 @@ let vadAudioCtx: AudioContext | null = null
 // ── 唤醒词引擎 ──
 let modelLoaded = false
 
-/** 带进度下载模型字节（约 44MB tar.gz），供 vosk.createModel 初始化。 */
-async function fetchModel(url: string, onProgress: (pct: number) => void): Promise<ArrayBuffer> {
-  const resp = await fetch(url)
-  if (!resp.ok || !resp.body) throw new Error(`模型下载失败: HTTP ${resp.status}`)
-  const total = Number(resp.headers.get('Content-Length')) || 0
-  const reader = resp.body.getReader()
-  const chunks: Uint8Array[] = []
-  let received = 0
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    if (value) { chunks.push(value); received += value.length }
-    if (total) onProgress(Math.min(100, Math.round((received / total) * 100)))
-  }
-  const all = new Uint8Array(received)
-  let off = 0
-  for (const c of chunks) { all.set(c, off); off += c.length }
-  return all.buffer
-}
-
 async function initWakeModel() {
   if (typeof WakeWordEngine === 'undefined') {
     console.warn('[Asst] WakeWordEngine missing')
@@ -40,17 +20,14 @@ async function initWakeModel() {
   if (modelLoaded) return true
   try {
     modelLoading.value = true
-    modelProgress.value = 0
-    statusLine.value = '正在下载唤醒模型 0%...'
-    const buf = await fetchModel(wakeConfig.model_path, (pct) => {
-      modelProgress.value = pct
-      statusLine.value = pct >= 100 ? '正在初始化语音模型...' : `正在下载唤醒模型 ${pct}%...`
-    })
+    // 注意：vosk.js 的 worker 只支持按 URL 加载模型（load() 内 modelUrl.replace），
+    // 不支持传入 ArrayBuffer 字节——因此不能预下载字节，直接交给引擎按 URL 下载/解压
+    // （首次约 44MB，之后走 IndexedDB 缓存）。
+    statusLine.value = '正在加载语音模型（首次需下载约 44MB，请稍候）...'
     const ok = await WakeWordEngine.init({
       modelPath: wakeConfig.model_path,
       keyword: wakeConfig.keyword,
       sensitivity: wakeConfig.sensitivity,
-      model: buf,
     })
     modelLoaded = ok
     modelLoading.value = false
@@ -64,6 +41,9 @@ async function initWakeModel() {
     return false
   }
 }
+
+/** 初始化唤醒模型（供测试与 toggleWake 复用）。 */
+export { initWakeModel }
 
 function playBeep() {
   try {

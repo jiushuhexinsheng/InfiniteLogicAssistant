@@ -38,6 +38,10 @@ pip install -r requirements.txt
 # 2. 配置
 cp config.yaml.example config.yaml
 # 编辑 config.yaml 填入 LLM / ASR endpoint 和凭据（${ENV_VAR} 支持环境变量）
+# 密钥一律用环境变量，勿明文写进 config.yaml：
+#   set LLM_API_KEY=sk-...      # LLM（deepseek）
+#   set ASR_API_KEY=sk-...      # ASR（MiMo 等 OpenAI 兼容服务）
+#   set TTS_API_KEY=sk-...      # 后端 TTS（可选；默认浏览器本地语音播报）
 
 # 3. 启动（一键：前端 + 后端）
 python main.py serve                  # 浏览器自动打开 http://127.0.0.1:8520
@@ -156,8 +160,8 @@ cd web && npm test              # 前端单元测试（Vitest）
 
 `config.yaml.example` 为完整模板，支持 `${ENV_VAR}` 环境变量插值。核心段：
 
-- `llm`：OpenAI 兼容 LLM，多 profile（deepseek / openai / qwen），改 `active` 切换。
-- `voice.asr`：OpenAI 兼容 ASR（endpoint/model 自填，DeepSeek 无 ASR 服务）。
+- `llm`：OpenAI 兼容 LLM，多 profile（deepseek / openai / qwen），改 `active` 切换；`api_key` 用 `${ENV_VAR}` 引用环境变量。
+- `voice.asr`：OpenAI 兼容 ASR（endpoint/model 自填，DeepSeek 无 ASR 服务），`api_key` 同理走环境变量。
 - `voice.tts`：可选后端 TTS；默认用浏览器 SpeechSynthesis 播报。
 - `voice.wake_word` / `voice.vad`：唤醒词与静音检测参数。
 - `agent`：`recursion_limit`（ReAct 步数上限）、`multi_agent`（复杂任务是否转多智能体协调者）。
@@ -174,7 +178,8 @@ cd web && npm test              # 前端单元测试（Vitest）
 - **CORS**：`server.cors_origins` 默认空 = 禁止跨域；本地同源/开发代理（vite 代理 /api）无需配置。
 - **无沙箱 + 人类在环**：高风险工具（`write`/`exec`）执行前经操作者明确确认，无人值守（定时任务）自动拒绝。
 - **审计**：工具执行与高风险确认决策写入 `data/audit.log`（独立于 agent.log）。
-- **凭据**：`config.yaml`（含 API Key）与 `environment.md`（含本机信息）不入仓库。
+- **凭据**：`config.yaml`（含 API Key）与 `environment.md`（含本机信息）不入仓库；密钥用 `${ENV_VAR}` 环境变量引用，
+  `package_deploy.bat` 打包时只带 `config.yaml.example` 模板，不含任何密钥。
 
 ## 工具扩展
 

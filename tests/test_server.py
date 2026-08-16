@@ -101,6 +101,24 @@ def test_voice_transcribe_unconfigured(client):
     assert data["error"] == "ASR 未配置"
 
 
+# ─── TTS：配置错误应映射为 400（可修复），而非 500 ───
+
+def test_tts_config_error_maps_to_400(client, monkeypatch):
+    import core.tts as tts_mod
+    # 启用后端 TTS，但 voiceclone 缺 voice_ref → 配置错误
+    monkeypatch.setattr(config_mod, "is_tts_enabled", lambda: True)  # voice.py 前置检查
+    monkeypatch.setattr(tts_mod, "is_tts_enabled", lambda: True)     # synthesize() 内检查
+    monkeypatch.setattr(
+        tts_mod, "resolve_tts_profile",
+        lambda: ("openai", {"endpoint": "https://x.example", "api_key": "k",
+                            "model": "mimo-v2.5-tts-voiceclone",
+                            "chat_path": "/v1/chat/completions"}),
+    )
+    resp = client.post("/api/tts", json={"text": "你好"})
+    assert resp.status_code == 400
+    assert "voice_ref" in resp.json()["error"]
+
+
 # ─── 单工具执行 ───
 
 def test_tools_call_ok(client):

@@ -16,13 +16,21 @@ from core.logger import logger
 _MEDIA_TYPES = {"wav": "audio/wav", "mp3": "audio/mpeg", "pcm16": "audio/pcm"}
 
 
+class TtsConfigError(RuntimeError):
+    """TTS 配置错误（未启用 / 缺 voice_ref 等）。API 层映射为 400，非服务端故障。"""
+
+
 async def synthesize(text: str, voice: str | None = None) -> tuple[bytes, str]:
     """调用配置的 TTS 端点合成语音，返回 (音频字节, media_type)。
 
     按 profile.chat_path 自动选择协议：含 'chat/completions' → chat 模式，否则 speech 模式。
+    配置错误抛 TtsConfigError；网络/端点错误抛 RuntimeError。
     """
     if not is_tts_enabled():
-        raise RuntimeError("TTS 未启用：voice.tts.enabled=false 或未配置 endpoint")
+        raise TtsConfigError(
+            "TTS 未启用：voice.tts.enabled=false 或未配置 endpoint。"
+            "如需后端 TTS 请在 config.yaml 配置，否则保持关闭（浏览器本地语音播报）"
+        )
     if not text.strip():
         raise RuntimeError("合成文本为空")
 
@@ -72,9 +80,10 @@ async def _synthesize_chat(text: str, profile: dict) -> tuple[bytes, str]:
     ref = Path(voice_ref)
     # 用 is_file() 而非 exists()：空路径 Path('') 会解析成 '.'（目录），exists() 恒为 True
     if not voice_ref or not ref.is_file():
-        raise RuntimeError(
+        raise TtsConfigError(
             f"voiceclone 需要 voice_ref 参考音频（当前: {voice_ref!r}）。"
-            "请在 config.yaml 的 voice.tts 配置一个 mp3/wav 样本（≤10MB）"
+            "请在 config.yaml 的 voice.tts.profiles.openai.voice_ref 配置一个 mp3/wav 样本（≤10MB），"
+            "或将 voice.tts.enabled 设为 false 使用浏览器本地语音播报"
         )
     fmt = profile.get("format") or "wav"
     payload = {
