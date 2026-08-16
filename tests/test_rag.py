@@ -35,3 +35,62 @@ async def test_rag_context_joins_topk(tmp_path, monkeypatch):
 async def test_retrieve_empty_db(tmp_path, monkeypatch):
     monkeypatch.setattr(rag_mod, "INDEX_DB", tmp_path / "empty.db")
     assert await retrieve("anything") == []
+
+
+@pytest.mark.asyncio
+async def test_index_sources_hermetic_index_db(tmp_path):
+    src = tmp_path / "src.md"
+    src.write_text("## 主题\n\n内容", encoding="utf-8")
+    db = tmp_path / "hermetic.db"
+    await index_sources([src], index_db=db)
+    import sqlite3
+    conn = sqlite3.connect(str(db))
+    try:
+        n = conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
+    finally:
+        conn.close()
+    assert n >= 1
+
+
+@pytest.mark.asyncio
+async def test_maybe_rebuild_missing_db(tmp_path, monkeypatch):
+    from core.rag import maybe_rebuild_index
+    import core.rag.retriever as retriever_mod
+    src = tmp_path / "env.md"
+    src.write_text("## 系统\n\nPython 3.14", encoding="utf-8")
+    db = tmp_path / "index.db"
+    await maybe_rebuild_index([src], index_db=db)
+    assert db.exists()
+    monkeypatch.setattr(retriever_mod, "INDEX_DB", db)
+    hits = await retrieve("python")
+    assert hits and any("Python" in h["text"] for h in hits)
+
+
+@pytest.mark.asyncio
+async def test_maybe_rebuild_when_stale(tmp_path, monkeypatch):
+    import os
+    import time
+    from core.rag import maybe_rebuild_index
+    import core.rag.retriever as retriever_mod
+    src = tmp_path / "env.md"
+    src.write_text("## 系统\n\nPython 3.14", encoding="utf-8")
+    db = tmp_path / "index.db"
+    await maybe_rebuild_index([src], index_db=db)
+    src.write_text("## 系统\n\nPython 3.15 更新了", encoding="utf-8")
+    os.utime(src, (time.time() + 2, time.time() + 2))
+    await maybe_rebuild_index([src], index_db=db)
+    monkeypatch.setattr(retriever_mod, "INDEX_DB", db)
+    hits = await retrieve("3.15")
+    assert hits and any("3.15" in h["text"] for h in hits)
+
+
+@pytest.mark.asyncio
+async def test_maybe_rebuild_skips_fresh(tmp_path):
+    from core.rag import maybe_rebuild_index
+    src = tmp_path / "env.md"
+    src.write_text("## 系统\n\nPython 3.14", encoding="utf-8")
+    db = tmp_path / "index.db"
+    await maybe_rebuild_index([src], index_db=db)
+    before = db.stat().st_mtime_ns
+    await maybe_rebuild_index([src], index_db=db)  # 源未变 → 不应重建
+    assert db.stat().st_mtime_ns == before

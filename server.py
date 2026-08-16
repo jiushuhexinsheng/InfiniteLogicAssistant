@@ -37,6 +37,13 @@ async def lifespan(app: FastAPI):
         await sched.start()
     except Exception as e:
         logger.warning("定时调度启动失败: {}", e)
+    # 启动时按需重建 RAG 索引（best-effort）
+    try:
+        if cfg("rag.auto_index", True):
+            from core.rag import maybe_rebuild_index
+            await maybe_rebuild_index()
+    except Exception as e:
+        logger.warning("RAG 索引构建失败: {}", e)
     yield
     try:
         from core.scheduler.scheduler import get_scheduler

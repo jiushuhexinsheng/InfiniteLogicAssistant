@@ -78,3 +78,7 @@ server:
 # MCP server 列表：服务启动时自动连接并注册其工具（/api/tools 可见）
 mcp:
   servers: []   # 例: [{name: echo, command: py, args: ["-3.14", "scripts/mcp_echo_server.py"]}]
+
+# RAG 索引：启动时 index.db 缺失或源文件更新则自动重建；false 关闭自动构建
+rag:
+  auto_index: true
