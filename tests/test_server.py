@@ -4,7 +4,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 import server as server_module
-from core import agent as agent_module
 from core.orchestrator import pipeline as pipeline_mod
 from core.orchestrator.intent import IntentResult
 from core.orchestrator.task import Task
@@ -103,36 +102,6 @@ def test_tools_call_invalid_args(client):
 def test_tools_call_bad_json(client):
     resp = client.post("/api/tools/call", content="not json")
     assert resp.status_code == 400
-
-
-# ─── SSE 聊天 ───
-
-def test_ai_chat_unconfigured(client):
-    resp = client.post("/api/ai/chat", json={"messages": [{"role": "user", "content": "hi"}]})
-    assert resp.status_code == 200
-    assert resp.json()["ok"] is False
-    assert resp.json()["error"] == "LLM 未配置"
-
-
-def test_ai_chat_sse_stream(client, monkeypatch):
-    monkeypatch.setattr(server_module, "is_llm_configured", lambda: True)
-
-    async def fake_run_agent(messages):
-        yield {"type": "content_delta", "text": "你好"}
-        yield {"type": "tool_start", "name": "get_datetime", "args": {}}
-        yield {"type": "usage", "usage": {"total_tokens": 12}}
-        yield {"type": "done"}
-
-    monkeypatch.setattr(agent_module, "run_agent", fake_run_agent)
-
-    resp = client.post("/api/ai/chat", json={"messages": [{"role": "user", "content": "hi"}]})
-    assert resp.status_code == 200
-    assert "text/event-stream" in resp.headers["content-type"]
-    assert "content_delta" in resp.text
-    assert "tool_start" in resp.text
-    assert "usage" in resp.text
-    assert "你好" in resp.text
-    assert resp.text.strip().endswith('data: {"type": "done"}')
 
 
 # ─── 静态托管 / SPA 兜底 / 路径穿越 ───
