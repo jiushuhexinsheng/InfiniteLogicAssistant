@@ -37,12 +37,8 @@ var WakeWordEngine = (function () {
     if (_modelLoaded) return true;
 
     try {
-      // 支持传入已下载的模型字节（前端可展示下载进度），否则按 URL 加载
-      if (config.model != null) {
-        _model = await vosk.createModel(config.model);
-      } else {
-        _model = await vosk.createModel(_modelPath);
-      }
+      // vosk.js worker 只支持按 URL 加载（load() 内 modelUrl.replace），不支持字节
+      _model = await vosk.createModel(_modelPath);
       _modelLoaded = true;
       console.log('[WW] model ready=' + _model.ready);
       return true;

@@ -24,8 +24,40 @@ class Schedule:
 
 
 def _match(field: str, value: int) -> bool:
+    """cron 字段匹配：* / 列表 a,b / 范围 a-b / 步长 */n 与 a-b/n / 精确值"""
+    field = field.strip()
     if field == "*":
         return True
+    # 列表：任意一项匹配即匹配
+    if "," in field:
+        return any(_match(part, value) for part in field.split(","))
+    # 步长：*/n 或 a-b/n
+    if "/" in field:
+        base, _, step_s = field.partition("/")
+        try:
+            step = int(step_s)
+        except ValueError:
+            return False
+        if step <= 0:
+            return False
+        if base == "*":
+            return value % step == 0
+        if "-" in base:
+            a_s, _, b_s = base.partition("-")
+            try:
+                a, b = int(a_s), int(b_s)
+            except ValueError:
+                return False
+            return a <= value <= b and (value - a) % step == 0
+        return False
+    # 范围：a-b（含端点）
+    if "-" in field:
+        a_s, _, b_s = field.partition("-")
+        try:
+            a, b = int(a_s), int(b_s)
+        except ValueError:
+            return False
+        return a <= value <= b
     try:
         return value == int(field)
     except ValueError:

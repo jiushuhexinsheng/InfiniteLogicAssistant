@@ -16,7 +16,7 @@ interface VoskRecognizer {
 }
 
 declare const vosk: {
-  createModel(path: string | ArrayBuffer | Blob): Promise<VoskModel>
+  createModel(path: string): Promise<VoskModel>
 }
 
 // WakeWordEngine — 全局 IIFE (web/lib/wake-word.js)
@@ -25,8 +25,6 @@ interface WakeWordConfig {
   modelPath: string
   keyword: string
   sensitivity: number
-  /** 已下载的模型字节（tar.gz）；缺省时按 modelPath URL 加载 */
-  model?: ArrayBuffer
 }
 
 interface WakeStateInfo {

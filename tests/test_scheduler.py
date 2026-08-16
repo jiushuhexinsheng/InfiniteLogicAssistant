@@ -3,7 +3,7 @@ from datetime import datetime
 
 import pytest
 
-from core.scheduler.scheduler import Scheduler, cron_matches
+from core.scheduler.scheduler import Scheduler, _match, cron_matches
 
 
 def test_cron_matches():
@@ -11,6 +11,34 @@ def test_cron_matches():
     assert cron_matches("30 10 * * *", datetime(2026, 8, 13, 10, 30))
     assert not cron_matches("0 9 * * *", datetime(2026, 8, 13, 10, 30))
     assert not cron_matches("bad", datetime(2026, 8, 13, 10, 30))
+
+
+def test_cron_step_list_range():
+    # 步长：*/n
+    assert cron_matches("*/15 * * * *", datetime(2026, 8, 13, 10, 15))
+    assert not cron_matches("*/15 * * * *", datetime(2026, 8, 13, 10, 14))
+    # 列表：a,b,c
+    assert cron_matches("0,30 9 * * *", datetime(2026, 8, 13, 9, 30))
+    assert not cron_matches("0,30 9 * * *", datetime(2026, 8, 13, 9, 15))
+    # 范围：a-b
+    assert cron_matches("0 9-18 * * *", datetime(2026, 8, 13, 14, 0))
+    assert not cron_matches("0 9-18 * * *", datetime(2026, 8, 13, 8, 0))
+    # 带步长的范围：a-b/n
+    assert cron_matches("0 8-18/2 * * *", datetime(2026, 8, 13, 12, 0))
+    assert not cron_matches("0 8-18/2 * * *", datetime(2026, 8, 13, 11, 0))
+
+
+def test_cron_field_match_dow_and_invalid():
+    # 星期字段（0/7=周日，1-5=周一至周五）
+    assert _match("1-5", 3) is True
+    assert _match("1-5", 0) is False
+    assert _match("0,6", 0) is True
+    assert _match("*/2", 4) is True
+    assert _match("*/2", 3) is False
+    assert _match("1-10/3", 7) is True
+    assert _match("1-10/3", 8) is False
+    assert _match("", 1) is False
+    assert _match("0/0", 5) is False  # 非法步长
 
 
 def test_scheduler_add_list_remove(tmp_path):

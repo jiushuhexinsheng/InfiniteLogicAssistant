@@ -40,15 +40,17 @@ echo.
 mkdir "%STAGE%" 2>nul
 
 REM ---- 2. Backend code and startup scripts ----
+REM 注意：不复制 config.yaml（可能含明文密钥）！部署包一律使用 config.yaml.example 模板
+REM       （见步骤 3），密钥在目标机器上用环境变量或自行填写。
 echo [2/5] Copying backend code and startup scripts ...
-robocopy "%~dp0." "%STAGE%" main.py server.py start.bat install_deps.bat requirements.txt config.yaml /NJH /NJS /NFL /NDL >nul
+robocopy "%~dp0." "%STAGE%" main.py server.py start.bat install_deps.bat requirements.txt /NJH /NJS /NFL /NDL >nul
 robocopy "%~dp0core" "%STAGE%\core" /E /XD __pycache__ /NJH /NJS /NFL /NDL >nul
 robocopy "%~dp0scripts" "%STAGE%\scripts" /E /NJH /NJS /NFL /NDL >nul
 robocopy "%~dp0skills" "%STAGE%\skills" /E /NJH /NJS /NFL /NDL >nul
 
-REM ---- 3. Config file (fall back to template if missing) ----
+REM ---- 3. Config file (template only, never the local one with keys) ----
 if not exist "%STAGE%\config.yaml" (
-    echo   [NOTE] config.yaml not found, copied template. Fill it on the target machine.
+    echo   [NOTE] copying config.yaml.example as config.yaml template. Fill it on the target machine.
     copy /y "%~dp0config.yaml.example" "%STAGE%\config.yaml" >nul
 )
 
@@ -88,7 +90,8 @@ echo Created: %ZIPFILE%
 
 :after_zip
 echo.
-echo NOTE: deploy\config.yaml contains API keys. Delete that file before sharing the package externally.
+echo NOTE: deploy\config.yaml is the TEMPLATE (config.yaml.example) — no keys inside.
+echo       Set keys via environment variables on the target machine before use.
 echo.
 pause
 exit /b 0

@@ -55,13 +55,13 @@ async def test_index_sources_hermetic_index_db(tmp_path):
 @pytest.mark.asyncio
 async def test_maybe_rebuild_missing_db(tmp_path, monkeypatch):
     from core.rag import maybe_rebuild_index
-    import core.rag.retriever as retriever_mod
+    import core.rag as rag_mod
     src = tmp_path / "env.md"
     src.write_text("## 系统\n\nPython 3.14", encoding="utf-8")
     db = tmp_path / "index.db"
     await maybe_rebuild_index([src], index_db=db)
     assert db.exists()
-    monkeypatch.setattr(retriever_mod, "INDEX_DB", db)
+    monkeypatch.setattr(rag_mod, "INDEX_DB", db)
     hits = await retrieve("python")
     assert hits and any("Python" in h["text"] for h in hits)
 
@@ -71,7 +71,7 @@ async def test_maybe_rebuild_when_stale(tmp_path, monkeypatch):
     import os
     import time
     from core.rag import maybe_rebuild_index
-    import core.rag.retriever as retriever_mod
+    import core.rag as rag_mod
     src = tmp_path / "env.md"
     src.write_text("## 系统\n\nPython 3.14", encoding="utf-8")
     db = tmp_path / "index.db"
@@ -79,16 +79,53 @@ async def test_maybe_rebuild_when_stale(tmp_path, monkeypatch):
     src.write_text("## 系统\n\nPython 3.15 更新了", encoding="utf-8")
     os.utime(src, (time.time() + 2, time.time() + 2))
     await maybe_rebuild_index([src], index_db=db)
-    monkeypatch.setattr(retriever_mod, "INDEX_DB", db)
+    monkeypatch.setattr(rag_mod, "INDEX_DB", db)
     hits = await retrieve("3.15")
     assert hits and any("3.15" in h["text"] for h in hits)
 
 
 @pytest.mark.asyncio
-async def test_bm25_ranks_relevant_higher(tmp_path, monkeypatch):
-    import core.rag.retriever as retriever_mod
+async def test_index_stores_terms(tmp_path):
+    """索引期应预计算并存储分词结果（避免检索时全量重分词）"""
+    src = tmp_path / "src.md"
+    src.write_text("## 主题\n\nPython 版本 3.14 与 磁盘 检查", encoding="utf-8")
     db = tmp_path / "index.db"
-    monkeypatch.setattr(retriever_mod, "INDEX_DB", db)
+    await index_sources([src], index_db=db)
+    import sqlite3
+    conn = sqlite3.connect(str(db))
+    try:
+        n = conn.execute("SELECT COUNT(*) FROM chunk_terms").fetchone()[0]
+        terms = conn.execute("SELECT terms FROM chunk_terms LIMIT 1").fetchone()[0]
+    finally:
+        conn.close()
+    assert n >= 1
+    assert "python" in terms  # 英文整词
+    assert "磁盘" in terms    # 中文二元组
+
+
+@pytest.mark.asyncio
+async def test_retrieve_legacy_db_without_terms(tmp_path, monkeypatch):
+    """旧索引（无 chunk_terms 表）仍可检索（向后兼容）"""
+    import sqlite3
+    import core.rag as rag_mod
+    db = tmp_path / "legacy.db"
+    monkeypatch.setattr(rag_mod, "INDEX_DB", db)
+    conn = sqlite3.connect(str(db))
+    try:
+        conn.execute("CREATE TABLE chunks (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT, section TEXT, text TEXT)")
+        conn.execute("INSERT INTO chunks (path, section, text) VALUES (?,?,?)", ("env.md", "系统", "Python 版本 3.14"))
+        conn.commit()
+    finally:
+        conn.close()
+    hits = await retrieve("python")
+    assert hits and "Python" in hits[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_bm25_ranks_relevant_higher(tmp_path, monkeypatch):
+    import core.rag as rag_mod
+    db = tmp_path / "index.db"
+    monkeypatch.setattr(rag_mod, "INDEX_DB", db)
     src = tmp_path / "docs.md"
     src.write_text(
         "# 文档\n\n## 相关段\n\nPython 版本 3.14 与 pip 包管理\n\n## 无关段\n\n天气不错适合散步\n",

@@ -61,7 +61,11 @@ async def tts_synthesize(request: Request):
         )
     try:
         from core.tts import synthesize
+        from core.tts import TtsConfigError
         audio, media_type = await synthesize(text, voice)
+    except TtsConfigError as e:
+        # 配置问题（未启用/缺 voice_ref 等）：客户端可修复 → 400
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
     except Exception as e:
         logger.warning("TTS 合成失败: {}", e)
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
