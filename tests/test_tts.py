@@ -13,6 +13,24 @@ async def test_synthesize_chat_voiceclone_missing_voice_ref_raises_config_error(
 
 
 @pytest.mark.asyncio
+async def test_synthesize_chat_preset_uses_passed_voice(monkeypatch):
+    """前端传入的 voice 应覆盖配置音色（UI 切换生效）"""
+    captured = {}
+
+    class _Resp:
+        def json(self):
+            return {"choices": [{"message": {"audio": {"data": ""}}}]}
+
+    async def fake_post(profile, path, payload):
+        captured["payload"] = payload
+        return _Resp()
+
+    monkeypatch.setattr("core.tts._post", fake_post)
+    await _synthesize_chat("你好", {"chat_path": "/v1/chat/completions", "voice": "Chloe"}, voice="Mia")
+    assert captured["payload"]["audio"]["voice"] == "Mia"
+
+
+@pytest.mark.asyncio
 async def test_synthesize_chat_preset_uses_default_voice(monkeypatch):
     """标准/预置音色模型无需 voice_ref：voice 缺省用配置音色，空则兜底 mimo_default"""
     captured = {}

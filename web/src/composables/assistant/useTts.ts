@@ -16,8 +16,8 @@ export interface TtsSettings {
 
 const STORAGE_KEY = 'xluo.tts'
 
-/** OpenAI 兼容 TTS 常用音色（供 API 模式下拉提示；可自定义输入任意名字） */
-export const API_VOICE_SUGGESTIONS = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer']
+/** MiMo 预置音色（mimo-v2.5-tts）；API 模式下拉提示，可自定义输入任意名字 */
+export const API_VOICE_SUGGESTIONS = ['Chloe', 'Mia', '冰糖', '茉莉', '苏打', '白桦', 'Dean', 'Milo', 'mimo_default']
 
 function clamp(n: number, min: number, max: number) {
   if (!Number.isFinite(n)) return min

@@ -40,7 +40,7 @@ async def synthesize(text: str, voice: str | None = None) -> tuple[bytes, str]:
     _, profile = resolve_tts_profile()
     path = profile.get("chat_path") or "/v1/audio/speech"
     if "chat/completions" in path:
-        return await _synthesize_chat(text, profile)
+        return await _synthesize_chat(text, profile, voice)
     return await _synthesize_speech(text, voice, profile)
 
 
@@ -77,11 +77,12 @@ def _audio_data_url(p: Path) -> str:
     return f"data:{mime};base64,{b64}"
 
 
-async def _synthesize_chat(text: str, profile: dict) -> tuple[bytes, str]:
+async def _synthesize_chat(text: str, profile: dict, voice: str | None = None) -> tuple[bytes, str]:
     """MiMo TTS 系列：chat completions + audio.voice。
 
     voiceclone 模型 → voice = 参考音频 base64（需 voice_ref）；
-    标准/预置音色模型（mimo-v2.5-tts）→ voice = 内置音色名（默认 mimo_default）。
+    标准/预置音色模型（mimo-v2.5-tts）→ voice = 内置音色名。
+    优先使用前端显式传入的 voice（UI 音色切换），其次配置 voice，空则默认 mimo_default。
     """
     model = profile.get("model") or "mimo-v2.5-tts"
     fmt = profile.get("format") or "wav"
@@ -98,8 +99,8 @@ async def _synthesize_chat(text: str, profile: dict) -> tuple[bytes, str]:
             )
         audio_cfg["voice"] = _audio_data_url(ref)
     else:
-        # 预置音色：voice 缺省用配置里的音色名，空则兜底 mimo_default
-        audio_cfg["voice"] = (profile.get("voice") or "").strip() or "mimo_default"
+        # 前端传入 > 配置 voice > 默认 mimo_default
+        audio_cfg["voice"] = (voice or "").strip() or (profile.get("voice") or "").strip() or "mimo_default"
     payload = {
         "model": model,
         "messages": [{"role": "assistant", "content": text}],
