@@ -54,8 +54,6 @@ DEFAULTS: Dict[str, Any] = {
             "keyword": "小逻小逻",
             "sensitivity": 0.5,
             "model_path": "/models/vosk-model-small-cn-0.22.tar.gz",  # 浏览器端 URL
-            # 桌面监听用本地模型目录；Windows 上 Kaldi/vosk 无法加载含中文的路径，必须 ASCII
-            "local_model": "",
         },
         "vad": {
             "silence_threshold": 0.02,

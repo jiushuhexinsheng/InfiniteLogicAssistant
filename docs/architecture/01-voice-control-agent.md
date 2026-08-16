@@ -6,8 +6,8 @@
 > ## 实现状态（2026-08 更新）
 >
 > P0–P3 已全部完成并合入主分支（见 `roadmap.md`）。**桌面语音监听已暂停开发、不再回迁**：
-> 桌面悬浮球 UI 代码迁移至 `desktop-ball` 分支；`core/voice/wake.py` 保留为可复用模块但未接入
-> server 运行链路。当前语音交互 = **浏览器 Vosk WASM 唤醒 + 后端 OpenAI 兼容 ASR/TTS + SpeechSynthesis 播报**。
+> 桌面悬浮球 UI 代码迁移至 `desktop-ball` 分支（桌面常驻监听已一并移除）。
+> 当前语音交互 = **浏览器 Vosk WASM 唤醒 + 后端 OpenAI 兼容 ASR/TTS + SpeechSynthesis 播报**。
 > 下文涉及「桌面常驻语音监听」的段落均为设计意图/历史说明，与当前主分支实现存在差异。
 
 ---
@@ -59,8 +59,7 @@ infinite-logic/
 │   ├── config.py           # 配置（多 provider，复用现有）
 │   ├── logger.py           # 日志 + 审计（复用现有 loguru）
 │   ├── llm/                # LLM 客户端（复用现有 stream/client）
-│   ├── voice/              # 语音层（当前：ASR/TTS；wake.py 桌面监听保留未接入）
-│   │   ├── wake.py         #   （历史/可复用）本地唤醒词监听（Vosk 常驻麦克风，未接入 server）
+│   ├── voice/              # 语音层（当前：ASR/TTS）
 │   │   ├── asr.py          #   语音转文字（在线/本地可选）
 │   │   ├── tts.py          #   文字转语音（播报）
 │   │   └── vad.py          #   端点/静音检测
@@ -112,10 +111,10 @@ infinite-logic/
 
 **语音（当前实现：浏览器端）**——Vosk WASM 唤醒词在浏览器内运行，ASR/TTS 走后端 OpenAI 兼容接口：
 - 浏览器端 `public/lib/vosk.js` + `wake-word.js`：离线唤醒词「小逻小逻」（含同音字变体），激活录音后经 ASR 转文字。
-- ~~桌面常驻监听（`wake.py` 本地 Vosk 后台常驻麦克风）~~：设计目标之一，**已暂停开发**；`core/voice/wake.py` 保留为可复用模块（`scripts/voice_smoke.py` 冒烟、`tests/test_voice_wake.py` 测试），未接入 server 运行链路。若未来恢复，可复用现有 WASM 方案作降级。
+- ~~桌面常驻监听（本地 Vosk 后台常驻麦克风）~~：设计目标之一，**已暂停开发并移除**（代码在 `desktop-ball` 分支）；若未来恢复，可复用浏览器 WASM 方案作降级。
 - `asr.py`：在线 OpenAI 兼容 ASR（现有）或本地 Whisper 二选一，配置切换。
 - `tts.py`：播报回复/汇报（在线 TTS 或本地 piper）；浏览器端继续 SpeechSynthesis 作面板播报。
-- 语音事件统一转成 `Utterance(text)` 推入编排层；**命令词**（"停止/取消/暂停"）在唤醒/ASR 层即时识别并直接触发 `StopController`，不经过 LLM（保证响应及时；命令词表见 `core/voice/wake.py::is_stop_command`）。
+- 语音事件统一转成 `Utterance(text)` 推入编排层；**命令词**（"停止/取消/暂停"）在唤醒/ASR 层即时识别并直接触发 `StopController`，不经过 LLM（保证响应及时）。
 
 **前端（Vue 控制台）**：复用现有悬浮球 + /console，新增视图：任务列表/单任务执行流、待澄清问题卡片、记忆浏览、环境快照、定时任务、审计日志。SSE 复用现有 `stream_chat` 的事件通道，新增事件类型 `task_state`/`question`/`confirm`/`stop_ack`。
 

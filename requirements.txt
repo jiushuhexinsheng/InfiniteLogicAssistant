@@ -11,8 +11,6 @@ pyyaml==6.0.3
 loguru==0.7.3
 openpyxl==3.1.5
 tomli-w==1.2.0
-vosk==0.3.45
-sounddevice==0.5.5
 mcp==2.0.0
 # GUI 自动化（pyautogui 为 sdist，离线 wheel 无法覆盖，需在线安装）
 pyautogui==0.9.54

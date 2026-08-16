@@ -78,9 +78,8 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 
 唤醒词、静音阈值等可在 `config.yaml` 的 `voice.wake_word` / `voice.vad` 中调整。
 
-> **桌面端说明**：桌面原生悬浮球（PySide6）与本地常驻语音监听（`core/voice/wake.py`）的开发已暂停，
-> 桌面代码迁移至 `desktop-ball` 分支（不再回迁）。当前语音交互由浏览器端 Vosk WASM 唤醒 + 后端 ASR 承担；
-> `core/voice/wake.py` 保留为可复用模块（`scripts/voice_smoke.py` 冒烟、`tests/test_voice_wake.py` 测试），未接入 server 运行链路。
+> **桌面端说明**：桌面原生悬浮球（PySide6）与本地常驻语音监听已暂停开发，桌面代码迁移至 `desktop-ball` 分支（不再回迁）。
+> 当前语音交互由浏览器端 Vosk WASM 唤醒 + 后端 ASR 承担。
 
 ## 架构总览
 
@@ -116,11 +115,11 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 | `GET /api/ping` | 健康检查 |
 | `GET /api/config` | 配置概要（LLM/ASR/TTS profile、唤醒词、VAD） |
 | `GET /api/tools` | 工具清单（@tool 注册中心的 OpenAI schema 数组，含 mcp_* 与 skill 工具） |
-| `POST /api/ai/chat` | SSE 流式聊天（ReAct + 工具，旧入口） |
 | `POST /api/voice/utter` | **编排入口**：文本 → SSE 事件流（task_state / content_delta / question / error / done） |
 | `POST /api/voice/answer` | 投递澄清/确认问题的回答（解除 ask() 阻塞） |
 | `POST /api/task/{session_id}/stop` | 停止该会话整个任务（CancellationToken → executor/子进程中止） |
 | `POST /api/tools/call` | 单工具执行（前端「重试失败工具」用） |
+| `POST /api/ai/chat` | SSE 流式聊天（ReAct + 工具，旧入口） |
 | `POST /api/voice/transcribe` | ASR 转写（JSON 体 audio_base64，16kHz mono WAV） |
 | `GET /api/env` | 环境感知快照（environment.md 内容） |
 | `GET /api/memory` · `DELETE /api/memory/{topic}` | 长期记忆浏览/删除 |
@@ -201,7 +200,7 @@ cd web && npm run build      # 前端类型检查（vue-tsc）+ 生产构建
 │   ├── config.py              配置加载（YAML + ${ENV} 插值 + 多 profile + 默认值兜底）
 │   ├── logger.py              loguru 日志（控制台 + data/agent.log）
 │   ├── llm/                   LLM 客户端（stream.py SSE 解析 / client.py 重试+熔断+连接池）
-│   ├── voice/                 ASR / TTS（OpenAI 兼容）；wake.py 桌面监听（保留，未接入）
+│   ├── voice/                 ASR / TTS（OpenAI 兼容）
 │   ├── orchestrator/          编排层：session / intent / task / clarify / confirm / executor / control / pipeline
 │   ├── agent/                 base 子代理基座 + coordinator 多智能体协调者（legacy.py 为旧 ReAct）
 │   ├── tools/                 @tool 注册中心 + 内置工具（base / basic / calculator / datetime_tool /
@@ -218,7 +217,7 @@ cd web && npm run build      # 前端类型检查（vue-tsc）+ 生产构建
 ├── rag/                       RAG 索引数据（index.db）
 ├── environment.md             环境感知快照（envprobe 生成，agent 规划时注入）
 ├── data/                      运行时数据（agent.log / schedules.json / 截图等）
-├── scripts/                   辅助脚本（voice_smoke.py / mcp_echo_server.py / verify_memory.py）+ 离线 wheel
+├── scripts/                   辅助脚本（mcp_echo_server.py / verify_memory.py）+ 离线 wheel
 ├── scripts/libs/              离线 wheel 包
 ├── tests/                     pytest 单元测试（30 个文件）
 ├── web/                       Vue3 + Vite + TS 前端
