@@ -2,7 +2,7 @@
 """会话状态机与操作者通道
 
 状态机：idle → understanding →(闲聊 chit_chat | 任务 forming_task)
-→ clarifying → confirming → executing → reporting → idle；任何状态可 stopped / paused。
+→ clarifying → confirming → executing → reporting → idle；任何状态可 stopped。
 """
 import enum
 import uuid
@@ -19,7 +19,6 @@ class SessionState(str, enum.Enum):
     EXECUTING = "executing"
     REPORTING = "reporting"
     STOPPED = "stopped"
-    PAUSED = "paused"
 
 
 class OperatorChannel(Protocol):
@@ -37,10 +36,9 @@ _ALLOWED: dict[SessionState, set[SessionState]] = {
     SessionState.FORMING_TASK: {SessionState.CLARIFYING, SessionState.CONFIRMING, SessionState.EXECUTING, SessionState.IDLE},
     SessionState.CLARIFYING: {SessionState.FORMING_TASK, SessionState.CONFIRMING, SessionState.EXECUTING, SessionState.IDLE},
     SessionState.CONFIRMING: {SessionState.EXECUTING, SessionState.IDLE},
-    SessionState.EXECUTING: {SessionState.REPORTING, SessionState.IDLE, SessionState.STOPPED, SessionState.PAUSED},
+    SessionState.EXECUTING: {SessionState.REPORTING, SessionState.IDLE, SessionState.STOPPED},
     SessionState.REPORTING: {SessionState.IDLE},
-    SessionState.STOPPED: {SessionState.IDLE, SessionState.PAUSED},
-    SessionState.PAUSED: {SessionState.EXECUTING, SessionState.IDLE},
+    SessionState.STOPPED: {SessionState.IDLE},
 }
 
 
@@ -53,8 +51,8 @@ class Session:
         self.channel: OperatorChannel | None = None
 
     def set_state(self, new: SessionState) -> None:
-        """状态迁移（stopped/paused 允许从任意状态进入）。"""
-        if new in (SessionState.STOPPED, SessionState.PAUSED):
+        """状态迁移（stopped 允许从任意状态进入）。"""
+        if new == SessionState.STOPPED:
             self.state = new
             return
         if new not in _ALLOWED.get(self.state, set()):

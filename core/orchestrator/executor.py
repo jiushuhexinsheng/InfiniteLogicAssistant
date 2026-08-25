@@ -12,7 +12,7 @@ from core.config import cfg
 from core.llm.client import get_llm_client
 from core.logger import logger
 from core.memory.context import build_context
-from core.orchestrator.confirm import confirm_if_needed
+from core.orchestrator.confirm import confirm_tool
 from core.orchestrator.control import CancellationToken
 from core.orchestrator.session import Session
 from core.orchestrator.task import Task
@@ -109,13 +109,9 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
                     args = {}
                 if events is not None:
                     await events.put({"type": "tool_start", "name": name, "args": args})
-                # 高风险工具先确认
-                if TOOLS.risk(name) != "read":
-                    plan = f"调用工具 {name}，参数 {json.dumps(args, ensure_ascii=False)}"
-                    ok = await confirm_if_needed(task, plan, session)
-                    result = await TOOLS.acall(name, args) if ok else f"Error: 操作者拒绝调用 {name}"
-                else:
-                    result = await TOOLS.acall(name, args)
+                # 高风险工具先确认（基于工具实际风险，而非任务声明的 risk）
+                ok = await confirm_tool(session, name, args)
+                result = await TOOLS.acall(name, args) if ok else f"Error: 操作者拒绝调用 {name}"
                 status = "error" if result.startswith("Error") else "ok"
                 if events is not None:
                     await events.put({"type": "tool_end", "name": name, "status": status, "output": result[:500]})

@@ -210,6 +210,21 @@ async def test_execute_high_risk_confirm_rejected(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_execute_high_risk_tool_confirm_ignores_task_risk_read(monkeypatch):
+    # 堵洞：任务被 LLM 误标为 read，但调用了 write_file → 仍必须经操作者确认（答「取消」被拒）
+    fake = _FakeLLM([
+        [_done(tool="write_file", args=json.dumps({"path": "C:/x.txt", "content": "hi"}))],
+        [_done(content="已跳过")],
+    ])
+    monkeypatch.setattr("core.orchestrator.executor.get_llm_client", lambda: fake)
+    s = Session()
+    s.channel = _Channel(["取消"])
+    r = await execute_task(Task("t", "写文件", risk="read"), s, CancellationToken())
+    assert r["status"] == "done"
+    assert r["steps"][0]["status"] == "error"
+
+
+@pytest.mark.asyncio
 async def test_execute_emits_streaming_events(monkeypatch):
     import asyncio
     fake = _FakeLLM([

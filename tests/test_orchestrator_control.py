@@ -21,12 +21,6 @@ def test_stop_controller_flags():
     c.stop_task()
     assert c.token.is_cancelled
 
-    c2 = StopController()
-    c2.pause()
-    assert c2.paused
-    c2.resume()
-    assert not c2.paused
-
 
 @pytest.mark.asyncio
 async def test_run_shell_mid_run_cancel():

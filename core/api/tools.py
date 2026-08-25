@@ -32,6 +32,14 @@ async def tools_call(request: Request):
         return JSONResponse({"ok": False, "error": "args 必须为 JSON 对象"}, status_code=400)
     if not TOOLS.has(name):
         return JSONResponse({"ok": False, "error": f"未知工具: {name}"}, status_code=404)
+    # 非 read 工具需显式确认（前端弹窗后带 confirm: true 重调）
+    risk = TOOLS.risk(name)
+    if risk != "read" and not params.get("confirm"):
+        return JSONResponse({
+            "ok": False,
+            "error": f"工具 {name} 属于 {risk} 风险，需要操作者显式确认",
+            "needs_confirm": True,
+        })
     try:
         result = await TOOLS.acall(name, args)
     except Exception as exc:
