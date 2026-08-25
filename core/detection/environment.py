@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""环境感知调查 — 采集系统信息 → environment.md
+"""环境感知（detection 域）— 采集系统信息 → environment.md
 
-安装时/首次运行调用一次全量采集，结果写入独立的 environment.md（人可读、可随时更新）；
+采集结果写入独立的 environment.md（人可读、可随时更新）；
 agent 规划时把该文件（或其相关段）注入上下文，让工具参数贴合真实系统。
+（原 core/execution/envprobe.py，迁入检测域）
 """
 import ctypes
 import os

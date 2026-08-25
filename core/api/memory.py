@@ -7,7 +7,7 @@ router = APIRouter()
 
 @router.get("/env")
 async def env():
-    from core.execution.envprobe import read_environment_md
+    from core.detection.environment import read_environment_md
     return {"ok": True, "content": await read_environment_md()}
 
 

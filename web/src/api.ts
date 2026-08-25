@@ -1,4 +1,4 @@
-import type { ApiResponse, ConfigResponse, PingResponse, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState } from './types'
+import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, PingResponse, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState } from './types'
 import { blobToWavBase64 } from './audio'
 
 // ─── HTTP 封装 ───
@@ -32,6 +32,22 @@ async function post<T>(path: string, data?: unknown): Promise<T> {
   })
 }
 
+async function patchHttp<T>(path: string, data?: unknown): Promise<T> {
+  return request<T>(path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: data ? JSON.stringify(data) : undefined,
+  })
+}
+
+async function putHttp<T>(path: string, data?: unknown): Promise<T> {
+  return request<T>(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: data ? JSON.stringify(data) : undefined,
+  })
+}
+
 async function del<T>(path: string): Promise<T> {
   return request<T>(path, { method: 'DELETE' })
 }
@@ -41,6 +57,12 @@ async function del<T>(path: string): Promise<T> {
 export const api = {
   ping: () => get<PingResponse>('/ping'),
   getConfig: () => get<ConfigResponse>('/config'),
+
+  // 设置页：可编辑快照 / 保存 / 密钥 / 检测
+  getConfigFull: () => get<{ ok: boolean; editable: EditableSnapshot }>('/config/full'),
+  patchConfig: (body: Record<string, any>) => patchHttp<{ ok: boolean; restart_required: boolean; error?: string }>('/config', body),
+  putSecret: (path: string, value: string) => putHttp<{ ok: boolean; set: boolean; error?: string }>('/config/secrets', { path, value }),
+  getDetection: () => get<{ ok: boolean; report: DetectionReport }>('/detection'),
 
   // 语音
   transcribe: async (blob: Blob): Promise<TextResponse> => {

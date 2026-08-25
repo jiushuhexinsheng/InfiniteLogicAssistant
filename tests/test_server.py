@@ -20,14 +20,12 @@ class _NoAsr:
 
 @pytest.fixture
 def client(monkeypatch, tmp_path):
+    # 用隔离的 Settings 实例替代全局单例（不读真实 config.yaml，避免真实密钥/真实索引）
+    monkeypatch.setattr(config_mod, "get_settings",
+                        lambda: config_mod.Settings(rag=config_mod.RagSection(auto_index=False)))
     # LLM/ASR 一律视为未配置（config.yaml 里配了真实 key，绝不能打到外网）
-    # 注：路由用 `core.config` 模块访问，因此 patch config_mod 即可全局生效
     monkeypatch.setattr(config_mod, "is_llm_configured", lambda: False)
     monkeypatch.setattr(config_mod, "is_asr_configured", lambda: False)
-    # RAG 自动索引跳过（lifespan 触发时避免真实重建）
-    _orig_cfg = config_mod.cfg
-    monkeypatch.setattr(config_mod, "cfg",
-                        lambda path, default=None: False if path == "rag.auto_index" else _orig_cfg(path, default))
     # ASR 客户端桩
     monkeypatch.setattr("core.voice.get_asr", lambda: _NoAsr())
     # 静态托管指向临时 dist
@@ -46,9 +44,10 @@ def client(monkeypatch, tmp_path):
 # ─── 安全：API token 与 host 校验 ───
 
 def test_api_token_enforced(client, monkeypatch):
-    _orig = config_mod.cfg
-    monkeypatch.setattr(config_mod, "cfg",
-                        lambda path, default=None: "secret-token" if path == "server.api_token" else _orig(path, default))
+    monkeypatch.setattr(config_mod, "get_settings", lambda: config_mod.Settings(
+        server=config_mod.ServerSection(api_token="secret-token"),
+        rag=config_mod.RagSection(auto_index=False),
+    ))
     # 未带 token → 401
     resp = client.get("/api/tools")
     assert resp.status_code == 401
@@ -342,6 +341,117 @@ def test_env_endpoint(client):
     assert "环境感知快照" in resp.json()["content"]
 
 
+def test_detection_endpoint(client):
+    # 未配置任何服务 → 聚合检测全部 skip，不发真实网络
+    resp = client.get("/api/detection")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    report = data["report"]
+    assert set(report) == {"environment", "config", "connectivity"}
+    assert len(report["connectivity"]) == 3
+    assert all(c["status"] == "skip" for c in report["connectivity"])
+
+
+# ─── 设置 API：PATCH /config + PUT /config/secrets（隔离到临时文件）───
+
+@pytest.fixture
+def isolated_settings(monkeypatch, tmp_path):
+    """把 config.yaml / secrets 重定向到临时文件并重置单例，避免碰真实配置。"""
+    import core.config as config_mod
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text(
+        "agent:\n  recursion_limit: 12\n  multi_agent: false\nrag:\n  auto_index: false\n",
+        encoding="utf-8",
+    )
+    secrets_file = tmp_path / "config.secrets.yaml"
+    secrets_file.write_text("llm:\n  api_key: ''\n", encoding="utf-8")
+    monkeypatch.setattr(config_mod, "CONFIG_FILE", cfg_file)
+    monkeypatch.setattr(config_mod, "SECRETS_FILE", secrets_file)
+    monkeypatch.setattr(config_mod, "_settings", None)
+    return config_mod
+
+
+def test_patch_config_persists_and_reloads(isolated_settings):
+    from fastapi.testclient import TestClient
+    import server as server_module
+
+    with TestClient(server_module.app) as tc:
+        resp = tc.patch("/api/config", json={"agent": {"recursion_limit": 3}})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["restart_required"] is False
+    # 热重载后单例反映新值
+    assert isolated_settings.get_settings().agent.recursion_limit == 3
+    # 落盘
+    assert "recursion_limit: 3" in isolated_settings.CONFIG_FILE.read_text(encoding="utf-8")
+
+
+def test_patch_config_restart_required_for_server(isolated_settings):
+    from fastapi.testclient import TestClient
+    import server as server_module
+
+    with TestClient(server_module.app) as tc:
+        resp = tc.patch("/api/config", json={"server": {"port": 9000}})
+    assert resp.json()["restart_required"] is True
+
+
+def test_patch_config_rejects_api_key(isolated_settings):
+    # 密钥不能通过 PATCH 写入 config.yaml（会被剥离）
+    from fastapi.testclient import TestClient
+    import server as server_module
+
+    with TestClient(server_module.app) as tc:
+        resp = tc.patch("/api/config", json={"llm": {"profiles": {"deepseek": {"api_key": "sk-leak"}}}})
+    assert resp.status_code == 200
+    assert "sk-leak" not in isolated_settings.CONFIG_FILE.read_text(encoding="utf-8")
+
+
+def test_patch_config_invalid_value_400(isolated_settings):
+    from fastapi.testclient import TestClient
+    import server as server_module
+
+    with TestClient(server_module.app) as tc:
+        resp = tc.patch("/api/config", json={"agent": {"recursion_limit": "abc"}})
+    assert resp.status_code == 400
+    assert "配置无效" in resp.json()["error"]
+
+
+def test_put_secrets_writes_file_no_echo(isolated_settings):
+    import yaml
+    from fastapi.testclient import TestClient
+    import server as server_module
+
+    with TestClient(server_module.app) as tc:
+        resp = tc.put("/api/config/secrets", json={"path": "llm.api_key", "value": "sk-test"})
+    assert resp.status_code == 200
+    assert resp.json()["set"] is True
+    # 写入了 secrets 文件
+    data = yaml.safe_load(isolated_settings.SECRETS_FILE.read_text(encoding="utf-8"))
+    assert data["llm"]["api_key"] == "sk-test"
+    # 响应不回显密钥
+    assert "sk-test" not in resp.text
+
+
+def test_put_secrets_per_profile(isolated_settings):
+    import yaml
+    from fastapi.testclient import TestClient
+    import server as server_module
+
+    with TestClient(server_module.app) as tc:
+        resp = tc.put("/api/config/secrets", json={"path": "llm.profiles.deepseek", "value": "sk-ds"})
+    assert resp.status_code == 200
+    data = yaml.safe_load(isolated_settings.SECRETS_FILE.read_text(encoding="utf-8"))
+    assert data["llm"]["profiles"]["deepseek"] == "sk-ds"
+    # 清除
+    with TestClient(server_module.app) as tc2:
+        resp2 = tc2.put("/api/config/secrets", json={"path": "llm.profiles.deepseek", "value": ""})
+    assert resp2.json()["set"] is False
+    data = yaml.safe_load(isolated_settings.SECRETS_FILE.read_text(encoding="utf-8"))
+    assert "profiles" not in data.get("llm", {}) or "deepseek" not in data["llm"].get("profiles", {})
+
+
 def test_memory_endpoint(client):
     resp = client.get("/api/memory")
     assert resp.status_code == 200
@@ -364,16 +474,16 @@ def test_schedules_endpoints(client, tmp_path, monkeypatch):
 def test_mcp_integration_tools(monkeypatch):
     import sys
     from pathlib import Path
-    import core.mcp.manager as mcp_mgr
+    from core import config as config_mod
 
     echo = str(Path(__file__).resolve().parent.parent / "scripts" / "mcp_echo_server.py")
 
-    def fake_cfg(path, default=None):
-        if path == "mcp.servers":
-            return [{"name": "echo", "command": sys.executable, "args": [echo]}]
-        return default
-
-    monkeypatch.setattr(mcp_mgr, "cfg", fake_cfg)
+    monkeypatch.setattr(config_mod, "get_settings", lambda: config_mod.Settings(
+        mcp=config_mod.McpSection(servers=[
+            config_mod.McpServer(name="echo", command=sys.executable, args=[echo]),
+        ]),
+        rag=config_mod.RagSection(auto_index=False),
+    ))
     # with 触发 lifespan：启动 MCP → 注册工具；退出时关闭
     with TestClient(server_module.app) as client:
         data = client.get("/api/tools").json()
