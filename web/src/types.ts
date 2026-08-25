@@ -27,6 +27,7 @@ export interface TextResponse extends ApiResponse {
 export interface ToolCallResponse extends ApiResponse {
   status?: 'ok' | 'error'
   output?: string
+  needs_confirm?: boolean
 }
 
 /** OpenAI SSE usage（usage-only chunk，逐轮累计） */

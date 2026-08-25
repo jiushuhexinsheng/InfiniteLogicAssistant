@@ -9,8 +9,13 @@ MAX_CLARIFY_ROUNDS = 3
 
 
 async def run_clarify(session: Session, task: Task) -> dict:
-    """逐条把 task.missing 问给操作者，用回答重新形成任务，直到 missing 为空或轮次/重复上限。"""
+    """逐条把 task.missing 问给操作者，用回答重新形成任务，直到 missing 为空或轮次/重复上限。
+
+    每轮把全部已答问题并入上下文重形成任务；已确认参数保留合并、已问问题不再追问，
+    避免 LLM 重新生成时丢掉前几轮参数或重复提问。
+    """
     asked: set[str] = set()
+    answered: dict[str, str] = {}
     for _ in range(MAX_CLARIFY_ROUNDS):
         if not task.missing:
             break
@@ -22,9 +27,13 @@ async def run_clarify(session: Session, task: Task) -> dict:
         ans = (await session.ask(q)).strip()
         if not ans:
             break
-        # 把回答并入上下文重新形成任务，得到更新后的 params/missing
-        new_task = await form_task(IntentResult(type="task", summary=f"{task.goal}（{q}→{ans}）"))
-        task.goal = new_task.goal
-        task.params = new_task.params
-        task.missing = new_task.missing
+        answered[q] = ans
+        # 把全部已答并入上下文重新形成任务
+        ctx = "；".join(f"{k}→{v}" for k, v in answered.items())
+        new_task = await form_task(IntentResult(type="task", summary=f"{task.goal}（已确认：{ctx}）"))
+        task.goal = new_task.goal or task.goal
+        # 保留先前已确认参数，新结果覆盖同名键
+        task.params = {**task.params, **new_task.params}
+        # 过滤已问过的问题，避免 LLM 重问
+        task.missing = [m for m in new_task.missing if m not in asked]
     return dict(task.params)

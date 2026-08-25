@@ -25,13 +25,16 @@ class EventQueueChannel(OperatorChannel):
         self.events = events
         self.session_id = session_id
         self.answers: asyncio.Queue = asyncio.Queue()
+        self._ask_lock = asyncio.Lock()
 
     async def notify(self, text: str) -> None:
         await self.events.put({"type": "task_state", "state": "notify", "text": text, "session_id": self.session_id})
 
     async def ask(self, question: str) -> str:
-        await self.events.put({"type": "question", "question": question, "session_id": self.session_id})
-        return await self.answers.get()
+        # 串行化提问：同会话同时最多一个待答问题，避免并发子代理答非所问
+        async with self._ask_lock:
+            await self.events.put({"type": "question", "question": question, "session_id": self.session_id})
+            return await self.answers.get()
 
     def answer(self, text: str) -> None:
         self.answers.put_nowait(text)

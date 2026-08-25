@@ -3,7 +3,7 @@
 import asyncio
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from core.config import cfg
 from core.llm.client import get_llm_client
@@ -25,8 +25,12 @@ async def run_subagent(
     context: str = "",
     cancel: CancellationToken | None = None,
     max_steps: int | None = None,
+    confirm: Callable[[str, dict], Awaitable[bool]] | None = None,
 ) -> SubAgentResult:
-    """执行子任务：LLM 循环（可调工具），直到给出结论或步数/取消。"""
+    """执行子任务：LLM 循环（可调工具），直到给出结论或步数/取消。
+
+    confirm(name, args)：非 read 工具调用前的确认回调；None 表示无确认通道 → 直接拒绝非 read 工具。
+    """
     max_steps = max_steps or cfg("agent.recursion_limit", 12)
     history = [
         {"role": "system", "content": role_prompt},
@@ -61,7 +65,16 @@ async def run_subagent(
                 args = json.loads(raw) if isinstance(raw, str) else raw
             except json.JSONDecodeError:
                 args = {}
-            result = await TOOLS.acall(name, args)
+            # 非 read 工具需操作者确认；无确认通道时一律拒绝（与主 ReAct 路径一致）
+            risk = TOOLS.risk(name)
+            if risk == "read":
+                result = await TOOLS.acall(name, args)
+            elif confirm is None:
+                result = f"Error: 工具 {name} 需要操作者确认，但当前无确认通道，已拒绝"
+            elif await confirm(name, args):
+                result = await TOOLS.acall(name, args)
+            else:
+                result = f"Error: 操作者拒绝调用 {name}"
             used.append(name)
             history.append({"role": "tool", "tool_call_id": tc.get("id", ""), "content": result})
     return SubAgentResult("failed", f"超出步数上限（{max_steps}）", used)

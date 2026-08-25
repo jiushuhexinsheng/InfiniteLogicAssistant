@@ -155,6 +155,28 @@ def test_tools_call_bad_json(client):
     assert resp.status_code == 400
 
 
+def test_tools_call_high_risk_requires_confirm(client):
+    # 非 read 工具无 confirm 字段 → 返回 needs_confirm，不执行
+    resp = client.post("/api/tools/call", json={"name": "write_file", "args": {"path": "C:/x.txt", "content": "hi"}})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is False
+    assert data["needs_confirm"] is True
+
+
+def test_tools_call_high_risk_with_confirm_executes(client, monkeypatch):
+    async def fake_acall(name, args):
+        return "ok-stubbed"
+    monkeypatch.setattr("core.api.tools.TOOLS.acall", fake_acall)
+    resp = client.post("/api/tools/call", json={
+        "name": "write_file", "args": {"path": "x", "content": "y"}, "confirm": True,
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["output"] == "ok-stubbed"
+
+
 # ─── 会话持久化 ───
 
 @pytest.mark.asyncio

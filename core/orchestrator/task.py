@@ -37,7 +37,7 @@ class Task:
     params: dict = field(default_factory=dict)
     missing: list[str] = field(default_factory=list)
     risk: str = "read"
-    state: str = "queued"  # queued/planning/running/waiting_question/waiting_confirm/done/failed/stopped/paused
+    state: str = "queued"  # queued/planning/running/waiting_question/waiting_confirm/done/failed/stopped
 
 
 async def form_task(intent: IntentResult) -> Task:

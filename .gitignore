@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 运行时数据（含本机信息 / 日志 / 本地 SQLite）
+config.yaml
+environment.md
+data/
+memory/
+rag/
+*.sqlite
+*.db
+
+# 前端构建产物与依赖
+web/node_modules/
+web/dist/
+node_modules/
+dist/
+
+# 部署包副本
+deploy/
+
+# 系统
+.DS_Store
+Thumbs.db

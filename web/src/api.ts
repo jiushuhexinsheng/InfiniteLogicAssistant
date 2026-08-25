@@ -48,9 +48,9 @@ export const api = {
     return post<TextResponse>('/voice/transcribe', { audio_base64: base64Wav })
   },
 
-  // 单工具执行（前端"重试失败工具"走后端真实重跑）
-  callTool: async (name: string, args: Record<string, any>): Promise<ToolCallResponse> =>
-    post<ToolCallResponse>('/tools/call', { name, args }),
+  // 单工具执行（前端"重试失败工具"走后端真实重跑；高风险工具需 confirm: true 显式确认）
+  callTool: async (name: string, args: Record<string, any>, confirm = false): Promise<ToolCallResponse> =>
+    post<ToolCallResponse>('/tools/call', { name, args, confirm }),
 
   // 工具清单（控制台「工具」Tab）
   getTools: () => get<ToolsResponse>('/tools'),

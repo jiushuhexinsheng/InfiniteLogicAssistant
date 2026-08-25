@@ -154,7 +154,14 @@ export async function retryTool(id: string) {
 
   const startTs = Date.now()
   try {
-    const r = await api.callTool(tc.name, tc.args || {})
+    // 高风险工具（后端返回 needs_confirm）先弹确认，确认后再带 confirm 重调
+    let r = await api.callTool(tc.name, tc.args || {})
+    if (r.needs_confirm) {
+      const ok = window.confirm(`确认执行高风险工具「${tc.name}」？\n参数：${JSON.stringify(tc.args || {})}`)
+      r = ok
+        ? await api.callTool(tc.name, tc.args || {}, true)
+        : { ok: false, status: 'error', error: '用户取消确认' }
+    }
     if (r.ok) {
       tc.status = r.status === 'ok' ? 'done' : 'failed'
       tc.result = r.output || ''

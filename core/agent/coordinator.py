@@ -8,6 +8,7 @@ from typing import Any
 from core.agent.base import run_subagent
 from core.llm.client import get_llm_client
 from core.logger import logger
+from core.orchestrator.confirm import confirm_tool
 from core.orchestrator.control import CancellationToken
 from core.orchestrator.session import Session
 from core.orchestrator.task import Task
@@ -74,6 +75,11 @@ async def run_coordinator(task: Task, session: Session, cancel: CancellationToke
     """拆解→执行→critic→合并。返回 {status, summary, subtasks}。"""
     if cancel.is_cancelled:
         return {"status": "stopped", "summary": "已停止", "subtasks": []}
+
+    async def _confirm(name: str, args: dict) -> bool:
+        """子代理工具确认：read 放行，write/exec 问操作者（无人值守自动拒绝）。"""
+        return await confirm_tool(session, name, args)
+
     subtasks = await _decompose(task)
     if cancel.is_cancelled:
         return {"status": "stopped", "summary": "已停止", "subtasks": []}
@@ -85,7 +91,7 @@ async def run_coordinator(task: Task, session: Session, cancel: CancellationToke
         await session.notify(f"子代理 {s['agent_type']} 开始：{s['goal'][:50]}")
         r = await run_subagent(
             _ROLE_PROMPTS.get(s["agent_type"], _ROLE_PROMPTS["doer"]),
-            s["goal"], context=task.goal, cancel=cancel,
+            s["goal"], context=task.goal, cancel=cancel, confirm=_confirm,
         )
         executed.append({
             "goal": s["goal"], "agent_type": s["agent_type"],
@@ -117,7 +123,7 @@ async def run_coordinator(task: Task, session: Session, cancel: CancellationToke
     critic = await run_subagent(
         _ROLE_PROMPTS["critic"],
         f"审查以下子任务结果是否达成主任务「{task.goal}」，指出问题：\n{merged}",
-        cancel=cancel,
+        cancel=cancel, confirm=_confirm,
     )
     critique = critic.output[:500]
 
