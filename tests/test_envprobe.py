@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import pytest
 
-from core.execution.envprobe import probe, write_environment_md
+from core.detection.environment import probe, write_environment_md
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """duckduckgo 联网搜索（无 key；依赖网络，失败给出可操作提示）"""
-from core.config import cfg
+from core import config
 from core.tools.base import tool
 
 
@@ -16,7 +16,7 @@ def _describe_error(exc: Exception) -> str:
 def web_search(query: str) -> str:
     from duckduckgo_search import DDGS
     try:
-        results = DDGS().text(query, max_results=cfg("tools.search_max_results", 5))
+        results = DDGS().text(query, max_results=config.settings.tools.search_max_results)
     except Exception as exc:
         return _describe_error(exc)
     if not results:

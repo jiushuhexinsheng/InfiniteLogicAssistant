@@ -80,13 +80,15 @@ async def test_execute_cancelled_before(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_execute_uses_coordinator_for_complex(monkeypatch):
+    from core import config as config_mod
+
     async def fake_coordinator(task, session, cancel):
         return {"status": "done", "summary": "多智能体结果", "subtasks": [
             {"goal": "a", "agent_type": "doer", "status": "done", "output": "ok", "tools": []}]}
 
     monkeypatch.setattr("core.orchestrator.executor.run_coordinator", fake_coordinator)
-    monkeypatch.setattr("core.orchestrator.executor.cfg",
-                        lambda path, default=None: True if path == "agent.multi_agent" else default)
+    monkeypatch.setattr(config_mod, "get_settings",
+                        lambda: config_mod.Settings(agent=config_mod.AgentSection(multi_agent=True)))
     s = Session()
     s.channel = _Channel([])
     r = await execute_task(
@@ -129,14 +131,15 @@ async def test_execute_injects_context(monkeypatch):
 @pytest.mark.asyncio
 async def test_execute_multi_agent_streams_summary_and_records(monkeypatch):
     import asyncio
+    from core import config as config_mod
 
     async def fake_coordinator(task, session, cancel):
         return {"status": "done", "summary": "多智能体最终结论：已全部完成", "subtasks": [
             {"goal": "a", "agent_type": "doer", "status": "done", "output": "ok", "tools": []}]}
 
     monkeypatch.setattr("core.orchestrator.executor.run_coordinator", fake_coordinator)
-    monkeypatch.setattr("core.orchestrator.executor.cfg",
-                        lambda path, default=None: True if path == "agent.multi_agent" else default)
+    monkeypatch.setattr(config_mod, "get_settings",
+                        lambda: config_mod.Settings(agent=config_mod.AgentSection(multi_agent=True)))
     s = Session()
     s.channel = _Channel([])
     events: asyncio.Queue = asyncio.Queue()

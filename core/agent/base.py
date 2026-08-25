@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
-from core.config import cfg
+from core import config
 from core.llm.client import get_llm_client
 from core.logger import logger
 from core.orchestrator.control import CancellationToken
@@ -31,7 +31,7 @@ async def run_subagent(
 
     confirm(name, args)：非 read 工具调用前的确认回调；None 表示无确认通道 → 直接拒绝非 read 工具。
     """
-    max_steps = max_steps or cfg("agent.recursion_limit", 12)
+    max_steps = max_steps or config.settings.agent.recursion_limit
     history = [
         {"role": "system", "content": role_prompt},
         {"role": "user", "content": f"子任务目标：{goal}\n背景：{context or '（无）'}"},

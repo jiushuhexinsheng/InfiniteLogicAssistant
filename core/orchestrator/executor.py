@@ -8,7 +8,7 @@ import asyncio
 import json
 
 from core.agent.coordinator import run_coordinator
-from core.config import cfg
+from core import config
 from core.llm.client import get_llm_client
 from core.logger import logger
 from core.memory.context import build_context
@@ -25,7 +25,7 @@ _SYSTEM = ("你是执行助手。用工具完成任务。每步：需要时就�
 
 def should_use_multi_agent(task: Task) -> bool:
     """复杂任务（启用多智能体且多参数/长目标）转协调者。"""
-    return cfg("agent.multi_agent", False) and (len(task.params) >= 2 or len(task.goal) > 30)
+    return config.settings.agent.multi_agent and (len(task.params) >= 2 or len(task.goal) > 30)
 
 
 async def execute_task(task: Task, session: Session, cancel: CancellationToken,
@@ -53,7 +53,7 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
         session.append("assistant", summary)
         return {"status": cr["status"], "summary": summary, "steps": steps}
 
-    max_steps = cfg("agent.recursion_limit", 12)
+    max_steps = config.settings.agent.recursion_limit
     # RAG + 长期记忆注入（失败不影响执行）
     context = ""
     try:

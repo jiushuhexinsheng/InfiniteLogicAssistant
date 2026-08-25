@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from core.execution.envprobe import read_environment_md
+from core.detection.environment import read_environment_md
 from core.execution.fs import list_dir as _fs_list_dir
 from core.execution.fs import read_doc, stat_path as _fs_stat
 from core.execution.python import run_python

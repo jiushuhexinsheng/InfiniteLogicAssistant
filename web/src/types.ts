@@ -93,3 +93,64 @@ export interface ToolStep {
   args?: Record<string, any>
   result?: string
 }
+
+// ─── 设置页：可编辑配置快照（/api/config/full）与检测（/api/detection） ───
+
+export interface ProfileConfig {
+  provider?: string
+  endpoint?: string
+  model?: string
+  vision_model?: string
+  chat_path?: string
+  max_tokens?: number
+  temperature?: number
+  timeout?: number
+  language?: string
+  voice?: string
+  format?: string
+}
+
+export interface SectionEditable<T> {
+  active: string
+  profiles: Record<string, T>
+  api_key_set: Record<string, boolean>
+}
+
+export interface EditableSnapshot {
+  llm: SectionEditable<ProfileConfig>
+  asr: SectionEditable<ProfileConfig>
+  tts: SectionEditable<ProfileConfig> & { enabled: boolean }
+  wake_word: WakeWordConfig
+  vad: VadConfig
+  agent: { recursion_limit: number; multi_agent: boolean }
+  llm_client: {
+    retry_max: number; retry_backoff_base: number; retry_backoff_max: number
+    circuit_breaker_threshold: number; circuit_breaker_cooldown: number; request_timeout: number
+  }
+  tools: { search_max_results: number; weather_timeout: number }
+  mcp: { servers: { name: string; command: string; args: string[] }[] }
+  rag: { auto_index: boolean }
+  server: {
+    host: string; port: number; open_browser: boolean
+    cors_origins: string[]; api_token_set: boolean
+  }
+}
+
+export interface DetectionIssue {
+  level: 'error' | 'warning' | 'info'
+  key: string
+  message: string
+}
+
+export interface ConnectivityResult {
+  name: string
+  status: 'ok' | 'skip' | 'fail'
+  latency_ms: number | null
+  detail: string
+}
+
+export interface DetectionReport {
+  environment: Record<string, any>
+  config: { ok: boolean; issues: DetectionIssue[] }
+  connectivity: ConnectivityResult[]
+}

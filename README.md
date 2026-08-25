@@ -26,6 +26,8 @@ OpenAI 兼容接口，支持离线/在线任意部署。
 | 全链路可控 | 任意时刻可停止整个任务/当前步骤（CancellationToken 贯穿到子进程，taskkill /T 兜底） |
 | 安全审计 | 非 localhost 绑定强制 API Token；工具执行与高风险确认写入 data/audit.log |
 | 语音播报 | 浏览器 SpeechSynthesis API 播报助手回复（可选后端 TTS） |
+| 设置面板 | 控制台「设置」页：切换服务商 profile / 调节参数 / 设密钥（不回显）/ 检测连接，热重载即时生效 |
+| 检测域 | `core/detection/`：环境感知 + 配置校验 + LLM/ASR/TTS 连通性三合一（`python main.py test` / 设置页「检测」） |
 
 ## 快速开始
 
@@ -35,13 +37,15 @@ pip install -r requirements.txt
 # 或双击 install_deps.bat — 在线优先，失败自动回退 scripts/libs/ 离线 wheel
 #   （离线包按 Python 3.14 / win_amd64 打包，见 requirements.txt 顶部说明）
 
-# 2. 配置
+# 2. 配置（非敏感配置与密钥分离）
 cp config.yaml.example config.yaml
-# 编辑 config.yaml 填入 LLM / ASR endpoint 和凭据（${ENV_VAR} 支持环境变量）
-# 密钥一律用环境变量，勿明文写进 config.yaml：
+cp config.secrets.yaml.example config.secrets.yaml
+# 编辑 config.yaml（endpoint/model/多 profile 等非敏感项）与 config.secrets.yaml（密钥，不入库）。
+# 密钥优先级：环境变量 > config.secrets.yaml：
 #   set LLM_API_KEY=sk-...      # LLM（deepseek）
 #   set ASR_API_KEY=sk-...      # ASR（MiMo 等 OpenAI 兼容服务）
 #   set TTS_API_KEY=sk-...      # 后端 TTS（可选；默认浏览器本地语音播报）
+# 配置也可在网页控制台「设置」页编辑（切换模型/调参/设密钥/检测连接，大部分即时生效）。
 
 # 3. 启动（一键：前端 + 后端）
 python main.py serve                  # 浏览器自动打开 http://127.0.0.1:8520
@@ -127,6 +131,10 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 | `GET /api/env` | 环境感知快照（environment.md 内容） |
 | `GET /api/memory` · `DELETE /api/memory/{topic}` | 长期记忆浏览/删除 |
 | `GET/POST /api/schedules` · `DELETE /api/schedules/{sid}` | 定时任务列表/注册/取消 |
+| `GET /api/config/full` | 设置页可编辑配置快照（密钥不回显，只报 `*_set`） |
+| `PATCH /api/config` | 持久化非敏感配置并热重载（`restart_required` 标记服务器绑定类） |
+| `PUT /api/config/secrets` | 设置/清除密钥（写 `config.secrets.yaml`，永不回显） |
+| `GET /api/detection` | 聚合检测：环境感知 + 配置校验 + LLM/ASR/TTS 连通性 |
 
 SSE 事件类型（`/api/voice/utter`）：
 
@@ -158,11 +166,11 @@ cd web && npm test              # 前端单元测试（Vitest）
 
 ## 配置
 
-`config.yaml.example` 为完整模板，支持 `${ENV_VAR}` 环境变量插值。核心段：
+配置采用 **pydantic 强类型校验 + 双文件分离**（非敏感配置 / 密钥独立存储），参考 InfiniteLogic-main 的强类型方案，保留多 profile YAML 结构：
 
-- `llm`：OpenAI 兼容 LLM，多 profile（deepseek / openai / qwen），改 `active` 切换；`api_key` 用 `${ENV_VAR}` 引用环境变量。
-- `voice.asr`：OpenAI 兼容 ASR（endpoint/model 自填，DeepSeek 无 ASR 服务），`api_key` 同理走环境变量。
-- `voice.tts`：可选后端 TTS；默认用浏览器 SpeechSynthesis 播报。
+- `config.yaml`：非敏感结构（llm / voice / server / mcp / rag / agent / llm_client / tools），**不含任何密钥**。
+  加载时经 pydantic 模型校验（类型 / 范围 / 枚举，写错启动即报错）。多 profile（deepseek / openai / qwen）改 `active` 切换。
+- `config.secrets.yaml`：密钥独立存储（`llm/asr/tts.api_key`、`server.api_token`），不入库；环境变量优先级更高。
 - `voice.wake_word` / `voice.vad`：唤醒词与静音检测参数。
 - `agent`：`recursion_limit`（ReAct 步数上限）、`multi_agent`（复杂任务是否转多智能体协调者）。
 - `llm_client`：重试 / 熔断参数。
@@ -171,15 +179,20 @@ cd web && npm test              # 前端单元测试（Vitest）
 - `server.cors_origins`：允许跨域的前端来源（默认空 = 禁止跨域）。
 - `rag.auto_index`：启动时按需重建 RAG 索引（默认 true）。
 
+**网页设置页**：控制台「设置」tab 可切换服务商 profile、调节参数、设置密钥（不回显）、检测连接；
+保存后大部分配置**热重载即时生效**（LLM/ASR/TTS/唤醒词/参数），服务器绑定 / MCP 类变更需重启。
+
 ## 安全
 
 - **绑定与令牌**：默认只绑定 `127.0.0.1`。将 `server.host` 改为非 localhost 地址时，必须设置
   `server.api_token`（否则拒绝启动）；此时所有 `/api/*` 请求需携带 `X-API-Token` 请求头。
 - **CORS**：`server.cors_origins` 默认空 = 禁止跨域；本地同源/开发代理（vite 代理 /api）无需配置。
+- **密钥零落库**：`config.yaml` 不含密钥，密钥在 `config.secrets.yaml` / 环境变量；API 永不回显密钥值，
+  设置页只报「已设置 / 未设置」。
 - **无沙箱 + 人类在环**：高风险工具（`write`/`exec`）执行前经操作者明确确认，无人值守（定时任务）自动拒绝。
 - **审计**：工具执行与高风险确认决策写入 `data/audit.log`（独立于 agent.log）。
-- **凭据**：`config.yaml`（含 API Key）与 `environment.md`（含本机信息）不入仓库；密钥用 `${ENV_VAR}` 环境变量引用，
-  `package_deploy.bat` 打包时只带 `config.yaml.example` 模板，不含任何密钥。
+- **凭据/环境**：`config.secrets.yaml`、`environment.md`（含本机信息）不入仓库；`package_deploy.bat` 打包时只带
+  `config.yaml.example` / `config.secrets.yaml.example` 模板，不含任何密钥。
 
 ## 工具扩展
 
@@ -212,21 +225,22 @@ cd web && npm test              # 前端单元测试（Vitest）
 无限逻辑-语音全控智能体/
 ├── main.py / server.py        入口 + FastAPI 装配（lifespan + 认证 + 静态托管 + 挂载路由）
 ├── start.bat / install_deps.bat / package_deploy.bat
-├── config.yaml.example        配置模板
+├── config.yaml.example        非敏感配置模板（不含密钥）
+├── config.secrets.yaml.example 密钥存储模板（复制为 config.secrets.yaml，不入库）
 ├── requirements.txt           Python 依赖（在线 / 离线 scripts/libs/ 双路）
 ├── mypy.ini                   后端静态类型检查配置
 ├── core/
-│   ├── config.py              配置加载（YAML + ${ENV} 插值 + 多 profile + 默认值兜底）
+│   ├── config.py              配置加载（pydantic 强类型校验 + YAML 双文件 + 密钥注入 + 热重载）
 │   ├── logger.py              loguru 日志（控制台 + data/agent.log）+ 审计（data/audit.log）
-│   ├── api/                   API 路由（voice / tools / memory / schedule / state 会话注册表）
+│   ├── detection/             检测域：environment（环境感知）/ validator（配置校验）/ connectivity（LLM/ASR/TTS 连通性）
+│   ├── api/                   API 路由（voice / tools / memory / schedule / settings / state 会话注册表）
 │   ├── llm/                   LLM 客户端（stream.py SSE 解析 / client.py 重试+熔断+连接池）
 │   ├── voice/                 ASR / TTS（OpenAI 兼容）
 │   ├── orchestrator/          编排层：session / intent / task / clarify / confirm / executor / control / pipeline
 │   ├── agent/                 base 子代理基座 + coordinator 多智能体协调者
 │   ├── tools/                 @tool 注册中心 + 内置工具（base / basic / calculator / datetime_tool /
 │   │                          search / weather / memory_tools / schedule_tools / skill_tools / gui_tools / mcp_bridge）
-│   ├── execution/             执行层：shell（可 kill 进程树）/ python（独立进程）/ fs（通用格式读写）/
-│   │                          gui（自动化）/ envprobe（环境感知 → environment.md）
+│   ├── execution/             执行层：shell（可 kill 进程树）/ python（独立进程）/ fs（通用格式读写）/ gui（自动化）
 │   ├── memory/                长期事实记忆（facts.sqlite FTS5 全文检索）+ 任务后提取（extract.py）+ 上下文注入（context.py）
 │   ├── rag/                   索引（indexer.py 分块）+ 检索（retriever.py BM25 打分）
 │   ├── mcp/                   外部 MCP server 客户端（client.py stdio）+ 生命周期（manager.py）

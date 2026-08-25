@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from core.config import cfg
+from core import config
 from core.llm.stream import stream_chat
 from core.logger import logger
 
@@ -94,8 +94,8 @@ def _is_retryable(exc: Exception) -> bool:
 
 
 def _backoff(attempt: int) -> float:
-    base = cfg("llm_client.retry_backoff_base", 0.5)
-    cap = cfg("llm_client.retry_backoff_max", 10.0)
+    base = config.settings.llm_client.retry_backoff_base
+    cap = config.settings.llm_client.retry_backoff_max
     raw = min(base * (2 ** (attempt - 1)), cap)
     return max(0.0, raw + raw * 0.25 * (2 * random.random() - 1))
 
@@ -104,14 +104,14 @@ class LlmClient:
     def __init__(self) -> None:
         self._http: httpx.AsyncClient | None = None
         self._breaker = CircuitBreaker(
-            failure_threshold=cfg("llm_client.circuit_breaker_threshold", 5),
-            cooldown_seconds=cfg("llm_client.circuit_breaker_cooldown", 30.0),
+            failure_threshold=config.settings.llm_client.circuit_breaker_threshold,
+            cooldown_seconds=config.settings.llm_client.circuit_breaker_cooldown,
         )
 
     async def _get_http(self) -> httpx.AsyncClient:
         if self._http is None or self._http.is_closed:
             self._http = httpx.AsyncClient(
-                timeout=cfg("llm_client.request_timeout", 60),
+                timeout=config.settings.llm_client.request_timeout,
                 limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
             )
         return self._http
@@ -120,7 +120,7 @@ class LlmClient:
         """带重试 + 熔断 + 连接池的流式聊天。"""
         if await self._breaker.is_open():
             raise CircuitBreakerOpenError("Circuit breaker is OPEN")
-        max_retries = cfg("llm_client.retry_max", 3)
+        max_retries = config.settings.llm_client.retry_max
         client = await self._get_http()
         emitted = False
         last_exc: Exception | None = None

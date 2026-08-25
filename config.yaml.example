@@ -1,5 +1,5 @@
-# 无限逻辑·语音助手 — 配置
-# 支持 ${ENV_VAR} 环境变量插值
+# 无限逻辑·语音助手 — 配置（非敏感部分）
+# 密钥一律不写在这里！请填到 config.secrets.yaml（或环境变量 LLM_API_KEY / ASR_API_KEY / TTS_API_KEY / SERVER_API_TOKEN）。
 
 llm:
   # 当前生效的 LLM profile 名（对应 profiles 下的键名）；改 active 切换服务商
@@ -8,7 +8,6 @@ llm:
     deepseek:                 # OpenAI 兼容（示例）
       provider: openai
       endpoint: "https://api.deepseek.com"
-      api_key: "${LLM_API_KEY}"
       model: "deepseek-chat"
       chat_path: "/v1/chat/completions"
       max_tokens: 4096
@@ -17,7 +16,6 @@ llm:
     openai:                   # OpenAI 官方
       provider: openai
       endpoint: "https://api.openai.com/v1"
-      api_key: "${OPENAI_API_KEY}"
       model: "gpt-4o-mini"
       chat_path: "/v1/chat/completions"
       max_tokens: 4096
@@ -26,7 +24,6 @@ llm:
     qwen:                     # 通义千问（DashScope 兼容模式）
       provider: openai
       endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-      api_key: "${QWEN_API_KEY}"
       model: "qwen-plus"
       chat_path: "/v1/chat/completions"
       max_tokens: 4096
@@ -45,14 +42,13 @@ voice:
     silence_threshold: 0.02
     silence_duration_ms: 1500
     max_duration_ms: 10000
-  # 在线 ASR 语音转文字（OpenAI 兼容；endpoint/model 需自填）
+  # 在线 ASR 语音转文字（OpenAI 兼容；endpoint/model 需自填，密钥在 config.secrets.yaml）
   asr:
     active: openai
     profiles:
       openai:
         provider: openai
         endpoint: ""                    # 例: https://api.siliconflow.cn/v1
-        api_key: "${ASR_API_KEY}"
         model: ""                       # 例: Qwen2-Audio-7B-Instruct（按服务商文档填写）
         language: "zh"
         timeout: 30
@@ -66,7 +62,6 @@ voice:
       openai:
         provider: xiaomi
         endpoint: "https://api.xiaomimimo.com"   # 或 OpenAI 兼容 TTS 端点
-        api_key: "${TTS_API_KEY}"
         model: "mimo-v2.5-tts"
         voice: "Chloe"                  # 内置音色名；留空默认 mimo_default
         format: "wav"                   # 输出格式: wav / mp3 / pcm16
@@ -77,8 +72,7 @@ server:
   host: "127.0.0.1"
   port: 8520
   open_browser: true
-  # 非 localhost 绑定时的 API 访问令牌（留空则禁止非 localhost 绑定）
-  api_token: ""
+  # api_token 已移到 config.secrets.yaml（非 localhost 绑定时的 API 访问令牌）
   # 允许跨域的前端来源（默认空 = 禁止跨域；本地同源/开发代理不需要 CORS）
   cors_origins: []
 

@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from core import config as config
-from core.api import history, memory, schedule, tools, voice
+from core.api import history, memory, schedule, settings, tools, voice
 from core.logger import logger
 
 
@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
         logger.warning("定时调度启动失败: {}", e)
     # 启动时按需重建 RAG 索引（best-effort）
     try:
-        if config.cfg("rag.auto_index", True):
+        if config.settings.rag.auto_index:
             from core.rag import maybe_rebuild_index
             await maybe_rebuild_index()
     except Exception as e:
@@ -62,7 +62,7 @@ def _is_localhost(host: str) -> bool:
 
 @app.middleware("http")
 async def _auth_middleware(request: Request, call_next):
-    token = config.cfg("server.api_token", "")
+    token = config.settings.server.api_token
     # 配置了 token 时，所有 /api/* 请求都需携带正确的 X-API-Token（静态资源放行）
     if token and request.url.path.startswith("/api/"):
         if request.headers.get("x-api-token") != token:
@@ -70,7 +70,7 @@ async def _auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
-_cors_origins = config.cfg("server.cors_origins", [])
+_cors_origins = config.settings.server.cors_origins
 if _cors_origins:
     app.add_middleware(
         CORSMiddleware,
@@ -114,6 +114,7 @@ app.include_router(tools.router, prefix="/api")
 app.include_router(memory.router, prefix="/api")
 app.include_router(schedule.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
+app.include_router(settings.router, prefix="/api")
 
 
 # ── 静态托管 web/dist + SPA 兜底 ──
@@ -153,10 +154,10 @@ async def spa_handler(full_path: str):
 
 def start_server(host: str = "", port: int = 0, open_browser: bool = True):
     import uvicorn
-    host = host or config.cfg("server.host", "127.0.0.1")
-    port = port or config.cfg("server.port", 8520)
-    open_browser = open_browser and config.cfg("server.open_browser", True)
-    _validate_bind(host, config.cfg("server.api_token", ""))
+    host = host or config.settings.server.host
+    port = port or config.settings.server.port
+    open_browser = open_browser and config.settings.server.open_browser
+    _validate_bind(host, config.settings.server.api_token)
     config.ensure_dirs()
     url = f"http://{host}:{port}"
     if WEB_DIST_DIR.is_dir():

@@ -9,7 +9,7 @@ import tempfile
 
 import httpx
 
-from core.config import is_asr_configured, is_tts_enabled, resolve_asr_profile, resolve_tts_profile
+from core.config import add_reload_hook, is_asr_configured, is_tts_enabled, resolve_asr_profile, resolve_tts_profile
 from core.logger import logger
 
 
@@ -124,3 +124,13 @@ def get_tts() -> TTSClient:
     if _tts is None:
         _tts = TTSClient()
     return _tts
+
+
+def _reset_clients() -> None:
+    """配置热重载后清空客户端单例，下次访问用新 profile 重建。"""
+    global _asr, _tts
+    _asr = None
+    _tts = None
+
+
+add_reload_hook(_reset_clients)
