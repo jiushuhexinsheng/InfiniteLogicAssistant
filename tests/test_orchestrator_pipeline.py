@@ -6,6 +6,23 @@ import pytest
 from core.orchestrator.pipeline import EventQueueChannel
 
 
+class _FakeLLMClient:
+    """模拟 LlmClient.retry_stream_chat；check 可选，用于断言收到的 messages。"""
+
+    def __init__(self, events=None, check=None):
+        self.events = events or [
+            {"type": "content_delta", "text": "你好呀"},
+            {"type": "done", "message": {"role": "assistant", "content": "你好呀"}},
+        ]
+        self.check = check
+
+    async def retry_stream_chat(self, messages, tools=None, *, profile=None):
+        if self.check:
+            self.check(messages)
+        for e in self.events:
+            yield e
+
+
 @pytest.mark.asyncio
 async def test_channel_ask_blocks_until_answer():
     events: asyncio.Queue = asyncio.Queue()
@@ -42,12 +59,8 @@ async def test_chit_chat_records_assistant_reply(monkeypatch):
     async def fake_judge(text):
         return IntentResult(type="chit_chat", summary="打招呼")
 
-    async def fake_stream(messages, **kw):
-        yield {"type": "content_delta", "text": "你好呀"}
-        yield {"type": "done", "message": {"role": "assistant", "content": "你好呀"}}
-
     monkeypatch.setattr("core.orchestrator.pipeline.judge_intent", fake_judge)
-    monkeypatch.setattr("core.orchestrator.pipeline.stream_chat", fake_stream)
+    monkeypatch.setattr("core.orchestrator.pipeline.get_llm_client", lambda: _FakeLLMClient())
     s = Session()
     events: asyncio.Queue = asyncio.Queue()
     await run_pipeline("你好", s, events, StopController())
@@ -65,15 +78,13 @@ async def test_run_pipeline_seeds_messages(monkeypatch):
     async def fake_judge(text):
         return IntentResult(type="chit_chat", summary="打招呼")
 
-    async def fake_stream(messages, **kw):
+    def check(messages):
         # 断言多轮历史被带入：最后一个 user 消息是当前输入
         assert messages[-1]["role"] == "user" and messages[-1]["content"] == "你好"
         assert any(m["content"] == "昨天聊过" for m in messages)
-        yield {"type": "content_delta", "text": "你好呀"}
-        yield {"type": "done", "message": {"role": "assistant", "content": "你好呀"}}
 
     monkeypatch.setattr("core.orchestrator.pipeline.judge_intent", fake_judge)
-    monkeypatch.setattr("core.orchestrator.pipeline.stream_chat", fake_stream)
+    monkeypatch.setattr("core.orchestrator.pipeline.get_llm_client", lambda: _FakeLLMClient(check=check))
     s = Session()
     events: asyncio.Queue = asyncio.Queue()
     await run_pipeline(

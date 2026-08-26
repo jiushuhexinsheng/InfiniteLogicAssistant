@@ -6,7 +6,7 @@ ask() 抛出 question 事件后阻塞，等待 /api/voice/answer 投递回答（
 """
 import asyncio
 
-from core.llm.stream import stream_chat
+from core.llm.client import get_llm_client
 from core.memory.context import get_facts_store
 from core.memory.extract import extract_and_store
 from core.orchestrator.clarify import run_clarify
@@ -44,7 +44,8 @@ async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str) -
     messages = [{"role": "system", "content": "你是小逻，用中文简洁友好地回复。"}]
     messages.extend(session.summary(8))  # 含当前用户消息 → 多轮闲聊
     reply_parts: list[str] = []
-    async for evt in stream_chat(messages):
+    # 走 LLM client：与任务执行共享重试/熔断/模型 failover
+    async for evt in get_llm_client().retry_stream_chat(messages):
         if evt["type"] == "content_delta":
             await events.put({"type": "content_delta", "text": evt["text"]})
             reply_parts.append(evt["text"])

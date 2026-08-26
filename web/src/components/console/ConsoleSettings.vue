@@ -92,7 +92,7 @@
           API Key：{{ sec(s.key).api_key_set[sec(s.key).active] ? '已设置' : '未设置' }}
         </span>
         <button class="cs-btn sm" @click="setKey(s.key, sec(s.key).active)">设置</button>
-        <button class="cs-btn sm" :disabled="!openaiProtocol(s.key)" @click="fetchModelsFor(s.key)">获取模型</button>
+        <button class="cs-btn sm" @click="fetchModelsFor(s.key)">获取模型</button>
       </div>
 
       <div v-if="connResults[s.name]" class="cs-connline" :class="'st-' + connResults[s.name].status">
@@ -256,10 +256,6 @@ function voiceOptions(s: any): string[] {
   const v = vendorPreset(s)
   return [...new Set([...(prof.voices || []), ...(v?.voices || [])])].filter(Boolean)
 }
-function openaiProtocol(s: any): boolean {
-  return (activeProfile(s).provider || 'openai') === 'openai'
-}
-
 /** 目录预设 → 可编辑 profile（与后端 core/providers.preset_to_profile 对齐） */
 function presetToProfile(v: ProviderPreset): ProfileConfig {
   const p: any = {
@@ -307,10 +303,9 @@ function deleteProfile(key: string) {
   msg.value = `已删除 Profile「${name}」（保存后生效）`
 }
 
-/** 拉取 OpenAI 兼容端点的模型列表，写回当前 profile.models */
+/** 拉取当前 profile 的模型列表（openai/anthropic/gemini 均支持），写回 profile.models */
 async function fetchModelsFor(s: any) {
   const prof = activeProfile(s)
-  if (!openaiProtocol(s)) return
   const profile = { name: (editable.value as any)[s.key].active, ...prof }
   msg.value = ''
   try {

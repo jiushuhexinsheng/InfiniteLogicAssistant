@@ -18,6 +18,17 @@ class _NoAsr:
         return False
 
 
+class _FakeLLMClient:
+    """模拟 LlmClient.retry_stream_chat，隔离真实网络。"""
+
+    def __init__(self, events):
+        self.events = events
+
+    async def retry_stream_chat(self, messages, tools=None, *, profile=None):
+        for e in self.events:
+            yield e
+
+
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     # 用隔离的 Settings 实例替代全局单例（不读真实 config.yaml，避免真实密钥/真实索引）
@@ -266,12 +277,12 @@ def test_voice_utter_session_cleaned_up(client, monkeypatch):
     async def fake_judge(text):
         return IntentResult(type="chit_chat", summary="打招呼")
 
-    async def fake_stream(*args, **kwargs):
-        yield {"type": "content_delta", "text": "你好"}
-        yield {"type": "done", "message": {"role": "assistant", "content": "你好"}}
-
+    _FAKE_EVENTS = [
+        {"type": "content_delta", "text": "你好"},
+        {"type": "done", "message": {"role": "assistant", "content": "你好"}},
+    ]
     monkeypatch.setattr(pipeline_mod, "judge_intent", fake_judge)
-    monkeypatch.setattr(pipeline_mod, "stream_chat", fake_stream)
+    monkeypatch.setattr(pipeline_mod, "get_llm_client", lambda: _FakeLLMClient(_FAKE_EVENTS))
     resp = client.post("/api/voice/utter", json={"text": "你好"})
     assert resp.status_code == 200
     # 流结束（done）后会话与控制器应从注册表移除
@@ -284,12 +295,12 @@ def test_voice_utter_chit_chat(client, monkeypatch):
     async def fake_judge(text):
         return IntentResult(type="chit_chat", summary="打招呼")
 
-    async def fake_stream(*args, **kwargs):
-        yield {"type": "content_delta", "text": "你好"}
-        yield {"type": "done", "message": {"role": "assistant", "content": "你好"}}
-
+    _FAKE_EVENTS = [
+        {"type": "content_delta", "text": "你好"},
+        {"type": "done", "message": {"role": "assistant", "content": "你好"}},
+    ]
     monkeypatch.setattr(pipeline_mod, "judge_intent", fake_judge)
-    monkeypatch.setattr(pipeline_mod, "stream_chat", fake_stream)
+    monkeypatch.setattr(pipeline_mod, "get_llm_client", lambda: _FakeLLMClient(_FAKE_EVENTS))
     resp = client.post("/api/voice/utter", json={"text": "你好"})
     assert resp.status_code == 200
     assert "content_delta" in resp.text and "你好" in resp.text
@@ -537,13 +548,24 @@ def test_providers_catalog_no_secrets(client):
     assert ds["endpoint"] == "https://api.deepseek.com"
 
 
-def test_fetch_models_requires_openai(client):
+def test_fetch_models_accepts_anthropic(client, monkeypatch):
+    import core.api.providers as providers_mod
+    captured = {}
+
+    async def fake_fetch(profile, api_key):
+        captured.update(profile=profile, api_key=api_key)
+        return ["claude-3-5-haiku-latest"]
+
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.setattr(providers_mod, "_fetch_models", fake_fetch)
     resp = client.post("/api/providers/fetch-models", json={
         "section": "llm",
         "profile": {"provider": "anthropic", "endpoint": "https://api.anthropic.com",
                     "chat_path": "/v1/messages", "name": "anthropic"},
     })
-    assert resp.status_code == 400
+    assert resp.status_code == 200
+    assert resp.json()["models"] == ["claude-3-5-haiku-latest"]
+    assert captured["profile"]["provider"] == "anthropic"  # 原生协议也已放行
 
 
 def test_fetch_models_no_key(client, monkeypatch, tmp_path):
@@ -566,8 +588,8 @@ def test_fetch_models_success(client, monkeypatch):
     import core.api.providers as providers_mod
     seen = {}
 
-    async def fake_fetch(endpoint, path, api_key, timeout):
-        seen.update(endpoint=endpoint, path=path, api_key=api_key)
+    async def fake_fetch(profile, api_key):
+        seen.update(profile=profile, api_key=api_key)
         return ["model-a", "model-b"]
 
     monkeypatch.setenv("LLM_API_KEY", "sk-test")
@@ -579,10 +601,51 @@ def test_fetch_models_success(client, monkeypatch):
     })
     assert resp.status_code == 200
     assert resp.json()["models"] == ["model-a", "model-b"]
-    assert seen["endpoint"] == "https://api.deepseek.com"
-    assert seen["path"] == "/v1/models"
+    assert seen["profile"]["endpoint"] == "https://api.deepseek.com"
     assert seen["api_key"] == "sk-test"
     assert "sk-test" not in resp.text  # 密钥不回显
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_dispatch_protocols():
+    import httpx
+    import core.api.providers as providers_mod
+
+    async def _run(profile, handler):
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            return await providers_mod._fetch_models(profile, "k", client=client)
+        finally:
+            await client.aclose()
+
+    # anthropic：x-api-key 头 + data[].id
+    def anth_handler(request):
+        assert request.headers["x-api-key"] == "k"
+        assert request.headers["anthropic-version"] == "2023-06-01"
+        return httpx.Response(200, json={"data": [{"id": "claude-3-5-haiku-latest"}]})
+
+    anth = await _run(
+        {"provider": "anthropic", "endpoint": "https://api.anthropic.com"},
+        anth_handler,
+    )
+    assert anth == ["claude-3-5-haiku-latest"]
+
+    # gemini：剥 models/ 前缀 + 只留 generateContent 方法
+    gem = await _run(
+        {"provider": "gemini", "endpoint": "https://generativelanguage.googleapis.com"},
+        lambda r: httpx.Response(200, json={"models": [
+            {"name": "models/gemini-2.5-flash", "supportedGenerationMethods": ["generateContent"]},
+            {"name": "models/text-embedding-004", "supportedGenerationMethods": ["embedContent"]},
+        ]}),
+    )
+    assert gem == ["gemini-2.5-flash"]
+
+    # openai：models_path 从 chat_path 推导
+    oai = await _run(
+        {"provider": "openai", "endpoint": "https://api.deepseek.com", "chat_path": "/v1/chat/completions"},
+        lambda r: httpx.Response(200, json={"data": [{"id": "deepseek-chat"}]}),
+    )
+    assert oai == ["deepseek-chat"]
 
 
 def test_mcp_integration_tools(monkeypatch):
