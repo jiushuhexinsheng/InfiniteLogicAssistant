@@ -98,6 +98,7 @@ export interface ToolStep {
 
 export interface ProfileConfig {
   provider?: string
+  vendor?: string
   endpoint?: string
   model?: string
   vision_model?: string
@@ -108,6 +109,28 @@ export interface ProfileConfig {
   language?: string
   voice?: string
   format?: string
+  api_key_env?: string
+  models?: string[]
+  models_path?: string
+  voices?: string[]
+  compat?: Record<string, any>
+}
+
+/** 厂商目录预设（GET /api/providers，已剥密钥） */
+export interface ProviderPreset {
+  id: string
+  kind: 'llm' | 'asr' | 'tts'
+  label: string
+  provider: string
+  endpoint: string
+  chat_path: string
+  models_path?: string
+  models: string[]
+  vision_models: string[]
+  voices: string[]
+  api_key_env: string
+  compat: Record<string, any>
+  defaults: Record<string, any>
 }
 
 export interface SectionEditable<T> {

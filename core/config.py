@@ -13,7 +13,7 @@ is_*_configured / is_tts_enabled / ROOT_DIR / ensure_dirs 保留；cfg() 点号�
 import os
 import shutil
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -34,16 +34,49 @@ _ENV_KEY_MAP = {
 # ─────────────────────────── 模型定义 ───────────────────────────
 
 
+class CompatConfig(BaseModel):
+    """厂商兼容开关（影响请求体组装；默认与既有行为一致，纯增量）。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    stream_options: bool = True   # 是否发 stream_options.include_usage（部分网关拒绝未知字段）
+    max_tokens_field: Literal["max_tokens", "max_completion_tokens"] = "max_tokens"
+
+
+class VendorPreset(BaseModel):
+    """厂商目录预设（代码内置 + config.yaml vendor_presets 扩展）；extra=forbid 防拼错键。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["llm", "asr", "tts"]
+    label: str = ""
+    provider: str = "openai"   # 协议：openai / anthropic / gemini
+    endpoint: str = ""         # 基座 URL（不含 /v1，与 chat_path 配对）
+    chat_path: str = ""
+    models_path: str = ""      # 获取模型列表路径；空则从 chat_path 推导
+    models: list[str] = Field(default_factory=list)
+    vision_models: list[str] = Field(default_factory=list)
+    voices: list[str] = Field(default_factory=list)   # 仅 TTS
+    api_key_env: str = ""      # 推荐环境变量名（非密钥本身）
+    compat: dict[str, Any] = Field(default_factory=dict)
+    defaults: dict[str, Any] = Field(default_factory=dict)
+
+
 class ProfileBase(BaseModel):
     """各 profile 公共字段；extra=allow 保留用户透传键（如 TTS 的 format/voice_ref）。"""
 
     model_config = ConfigDict(extra="allow")
 
-    provider: str = "openai"
+    provider: str = "openai"   # 协议：openai / anthropic / gemini（LLM 分派用）
+    vendor: str = ""           # 厂商目录 ID（UI 元数据，不参与请求）
     endpoint: str = ""
     api_key: str = ""  # 由 loader 从 secrets/环境注入；config.yaml 不写
+    api_key_env: str = ""      # 本 profile 专用环境变量名（优先级最高）
     chat_path: str = "/v1/chat/completions"
     timeout: int = Field(30, gt=0)
+    models: list[str] = Field(default_factory=list)   # 可用模型列表（UI 下拉 / 展示）
+    models_path: str = ""      # 获取模型列表路径；空则从 chat_path 推导
+    compat: CompatConfig = Field(default_factory=CompatConfig)
 
 
 class LlmProfile(ProfileBase):
@@ -63,6 +96,7 @@ class TtsProfile(ProfileBase):
     voice: str = "alloy"
     format: Literal["wav", "mp3", "pcm16"] = "wav"
     voice_ref: str | None = None
+    voices: list[str] = Field(default_factory=list)   # 音色列表（UI 下拉）
 
 
 class LlmSection(BaseModel):
@@ -118,6 +152,7 @@ class AgentSection(BaseModel):
 
     recursion_limit: int = Field(12, gt=0)
     multi_agent: bool = False
+    models_failover: list[str] = Field(default_factory=list)  # 主模型故障时的备选模型（P3）
 
 
 class LlmClientSection(BaseModel):
@@ -179,6 +214,7 @@ class Settings(BaseModel):
     agent: AgentSection = Field(default_factory=lambda: AgentSection())
     llm_client: LlmClientSection = Field(default_factory=lambda: LlmClientSection())
     tools: ToolsSection = Field(default_factory=lambda: ToolsSection())
+    vendor_presets: dict[str, VendorPreset] = Field(default_factory=dict)  # 厂商目录 YAML 扩展
 
 
 # ─────────────────────────── 加载与密钥注入 ───────────────────────────
@@ -230,9 +266,13 @@ def _load_secrets() -> dict:
     return out
 
 
-def _profile_api_key(section: str, name: str, secrets: dict, legacy: object) -> str:
+def _profile_api_key(section: str, name: str, secrets: dict, profile: dict) -> str:
     """单个 profile 的 api_key 解析优先级：
-    环境变量 > secrets.profiles[name] > secrets 段默认 > 旧 config.yaml profile.api_key（弃用，仅迁移）"""
+    profile.api_key_env 指向的 env > 段全局 env > secrets.profiles[name] > secrets 段默认
+    > 旧 config.yaml profile.api_key（弃用，仅迁移）"""
+    env_name = (profile.get("api_key_env") or "").strip()
+    if env_name and os.environ.get(env_name):
+        return os.environ[env_name]
     env_val = os.environ.get(_ENV_KEY_MAP[section], "")
     if env_val:
         return env_val
@@ -241,6 +281,7 @@ def _profile_api_key(section: str, name: str, secrets: dict, legacy: object) -> 
         return sec["profiles"][name]
     if sec["api_key"]:
         return sec["api_key"]
+    legacy = profile.get("api_key")
     if isinstance(legacy, str) and legacy:
         resolved = _resolve_env(legacy)
         print(f"[WARN] {section}.profiles.{name}.api_key 已在 config.yaml 中配置（旧格式），"
@@ -259,9 +300,14 @@ def _inject_secrets(data: dict, secrets: dict) -> None:
             continue
         for name, p in profiles.items():
             if isinstance(p, dict):
-                p["api_key"] = _profile_api_key(sec_key, name, secrets, p.get("api_key"))
+                p["api_key"] = _profile_api_key(sec_key, name, secrets, p)
     if isinstance(data.get("server"), dict):
         data["server"]["api_token"] = secrets["server"]["api_token"]
+
+
+def profile_api_key(section: str, name: str, profile: dict) -> str:
+    """对外暴露单个 profile 的密钥解析（fetch-models 等服务端转发用）。"""
+    return _profile_api_key(section, name, _load_secrets(), profile)
 
 
 def _build() -> Settings:

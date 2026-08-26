@@ -115,7 +115,7 @@ async def test_retry_stream_chat_retries_then_succeeds(monkeypatch):
 async def test_retry_stream_chat_no_retry_after_partial_output(monkeypatch):
     calls = {"n": 0}
 
-    async def fake_stream_chat(messages, tools=None, client=None):
+    async def fake_stream_chat(messages, tools=None, client=None, profile=None):
         calls["n"] += 1
         yield {"type": "content_delta", "text": "部分"}
         raise httpx.ReadError("connection reset")
@@ -166,5 +166,114 @@ async def test_retry_stream_chat_breaker_open_raises():
         with pytest.raises(CircuitBreakerOpenError):
             async for _ in client.retry_stream_chat([]):
                 pass
+    finally:
+        await client._http.aclose()
+
+
+# ─── 模型 failover（openclaw 式）───
+
+async def _stream_models(models: list[str], monkeypatch, profile: dict, client: LlmClient):
+    """驱动 retry_stream_chat 并断言调用序列。"""
+    called = []
+    captured = {}
+
+    async def fake_stream_chat(messages, tools=None, client=None, profile=None):
+        called.append(profile["model"])
+        captured["last"] = profile
+        for m in models:
+            if profile["model"] == m["model"]:
+                if m.get("fail") == "missing":
+                    raise httpx.HTTPStatusError(
+                        "404 model", request=httpx.Request("POST", "http://t"),
+                        response=httpx.Response(404, text='{"error": {"message": "Model not found"}}'),
+                    )
+                if m.get("fail") == "retry":
+                    raise httpx.HTTPStatusError(
+                        "503", request=httpx.Request("POST", "http://t"),
+                        response=httpx.Response(503),
+                    )
+        yield {"type": "done", "message": {"role": "assistant", "content": "ok"}}
+
+    monkeypatch.setattr("core.llm.client.stream_chat", fake_stream_chat)
+    monkeypatch.setattr("core.llm.client._backoff", lambda attempt: 0)
+    events = [e async for e in client.retry_stream_chat([], profile=profile)]
+    assert events[-1]["type"] == "done"
+    return called, captured
+
+
+@pytest.mark.asyncio
+async def test_failover_switches_on_model_missing(monkeypatch):
+    monkeypatch.setattr("core.llm.client.config.settings.agent.models_failover", ["model-b"], raising=False)
+    profile = {"model": "model-a", "provider": "openai", "endpoint": "https://x", "api_key": "k"}
+    client = LlmClient()
+    client._http = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    try:
+        called, _ = await _stream_models([
+            {"model": "model-a", "fail": "missing"},
+            {"model": "model-b"},
+        ], monkeypatch, profile, client)
+        assert called == ["model-a", "model-b"]  # 模型缺失 → 直接切下一个
+    finally:
+        await client._http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_failover_switches_after_retries_exhausted(monkeypatch):
+    monkeypatch.setattr("core.llm.client.config.settings.agent.models_failover", ["model-b"], raising=False)
+    profile = {"model": "model-a", "provider": "openai", "endpoint": "https://x", "api_key": "k"}
+    client = LlmClient()
+    client._http = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    try:
+        called, _ = await _stream_models([
+            {"model": "model-a", "fail": "retry"},   # 503 重试耗尽
+            {"model": "model-b"},
+        ], monkeypatch, profile, client)
+        assert called == ["model-a"] * 4 + ["model-b"]  # attempt 0..3（max_retries=3）耗尽后切换
+    finally:
+        await client._http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_failover_all_models_fail_raises(monkeypatch):
+    monkeypatch.setattr("core.llm.client.config.settings.agent.models_failover", ["model-b"], raising=False)
+    profile = {"model": "model-a", "provider": "openai", "endpoint": "https://x", "api_key": "k"}
+    client = LlmClient()
+    client._http = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    try:
+        called = []
+        async def fake_stream_chat(messages, tools=None, client=None, profile=None):
+            called.append(profile["model"])
+            raise httpx.HTTPStatusError(
+                "404 model", request=httpx.Request("POST", "http://t"),
+                response=httpx.Response(404, text='{"error": {"message": "Model not found"}}'),
+            )
+            yield  # noqa: 使函数成为 async generator（raise 先于首个 yield）
+        monkeypatch.setattr("core.llm.client.stream_chat", fake_stream_chat)
+        with pytest.raises(RetryExhaustedError):
+            async for _ in client.retry_stream_chat([], profile=profile):
+                pass
+        assert called == ["model-a", "model-b"]
+        assert client._breaker._failures == 1  # 全部失败末尾只记一次
+    finally:
+        await client._http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_failover_does_not_switch_after_partial_output(monkeypatch):
+    monkeypatch.setattr("core.llm.client.config.settings.agent.models_failover", ["model-b"], raising=False)
+    profile = {"model": "model-a", "provider": "openai", "endpoint": "https://x", "api_key": "k"}
+    client = LlmClient()
+    client._http = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    try:
+        calls = {"n": 0}
+        async def fake_stream_chat(messages, tools=None, client=None, profile=None):
+            calls["n"] += 1
+            yield {"type": "content_delta", "text": "部分"}
+            raise httpx.ReadError("reset")
+        monkeypatch.setattr("core.llm.client.stream_chat", fake_stream_chat)
+        with pytest.raises(RetryExhaustedError):
+            async for _ in client.retry_stream_chat([], profile=profile):
+                pass
+        assert calls["n"] == 1  # 部分输出 → 不切模型
     finally:
         await client._http.aclose()
