@@ -1,21 +1,32 @@
 # 无限逻辑·语音助手 — 配置（非敏感部分）
 # 密钥一律不写在这里！请填到 config.secrets.yaml（或环境变量 LLM_API_KEY / ASR_API_KEY / TTS_API_KEY / SERVER_API_TOKEN）。
+#
+# 多厂商配置：建议在设置页「设置 → 新增 Profile」从内置厂商目录选择（自动预填 endpoint/model/音色），
+# 本文件仅手填兜底。profile 字段说明：
+#   provider    : 协议 openai（OpenAI 兼容）/ anthropic（Claude 原生）/ gemini（Gemini 原生）
+#   vendor      : 厂商目录 ID（UI 元数据，来自 core/providers.py 或下方 vendor_presets）
+#   api_key_env : 本 profile 专用环境变量名（优先级最高，如 DEEPSEEK_API_KEY）
+#   models      : 可用模型列表（设置页「获取模型」自动拉取，也可手写）
+#   compat      : 兼容开关 {stream_options: true/false, max_tokens_field: max_tokens|max_completion_tokens}
 
 llm:
   # 当前生效的 LLM profile 名（对应 profiles 下的键名）；改 active 切换服务商
   active: deepseek
   profiles:
-    deepseek:                 # OpenAI 兼容（示例）
+    deepseek:                 # OpenAI 兼容（示例，endpoint 为基座不含 /v1，与 chat_path 配对）
       provider: openai
+      vendor: deepseek
       endpoint: "https://api.deepseek.com"
       model: "deepseek-chat"
+      models: ["deepseek-chat", "deepseek-reasoner"]
+      api_key_env: "DEEPSEEK_API_KEY"
       chat_path: "/v1/chat/completions"
       max_tokens: 4096
       temperature: 0.7
       timeout: 60
     openai:                   # OpenAI 官方
       provider: openai
-      endpoint: "https://api.openai.com/v1"
+      endpoint: "https://api.openai.com"
       model: "gpt-4o-mini"
       chat_path: "/v1/chat/completions"
       max_tokens: 4096
@@ -25,10 +36,16 @@ llm:
       provider: openai
       endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1"
       model: "qwen-plus"
-      chat_path: "/v1/chat/completions"
+      chat_path: "/chat/completions"
       max_tokens: 4096
       temperature: 0.7
       timeout: 60
+    anthropic:                # Claude 原生协议（P2）
+      provider: anthropic
+      endpoint: "https://api.anthropic.com"
+      model: "claude-sonnet-4-20250514"
+      chat_path: "/v1/messages"
+      max_tokens: 4096
 
 voice:
   # 离线语音唤醒（浏览器端 Vosk WASM，关键词可任意改）
@@ -85,9 +102,11 @@ rag:
   auto_index: true
 
 # 任务执行：ReAct 步数上限 / 复杂任务是否转多智能体协调者（可开关）
+# models_failover：LLM 主模型故障（不存在/重试耗尽）时依次尝试的备选模型（openclaw 式 failover）
 agent:
   recursion_limit: 12
   multi_agent: false
+  models_failover: []          # 例: ["gpt-4o-mini", "qwen-turbo"]
 
 # LLM 客户端：重试 / 熔断 / 连接池
 llm_client:
@@ -101,3 +120,16 @@ llm_client:
 # 工具参数
 tools:
   search_max_results: 5
+
+# 厂商目录扩展（可选）：追加/覆盖 core/providers.py 内置预设，设置页「新增 Profile」可见。
+# 同 ID 覆盖内置；endpoint 为基座不含 /v1，chat_path 与基座配对。
+# vendor_presets:
+#   my-gateway:
+#     kind: llm                 # llm / asr / tts
+#     label: 我的网关
+#     provider: openai          # 协议
+#     endpoint: "https://gateway.example.com"
+#     chat_path: "/v1/chat/completions"
+#     models: ["m1", "m2"]
+#     api_key_env: "MY_GATEWAY_KEY"
+#     compat: { stream_options: false }

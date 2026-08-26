@@ -1,4 +1,4 @@
-import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, PingResponse, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState } from './types'
+import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, PingResponse, ProviderPreset, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState } from './types'
 import { blobToWavBase64 } from './audio'
 
 // ─── HTTP 封装 ───
@@ -63,6 +63,11 @@ export const api = {
   patchConfig: (body: Record<string, any>) => patchHttp<{ ok: boolean; restart_required: boolean; error?: string }>('/config', body),
   putSecret: (path: string, value: string) => putHttp<{ ok: boolean; set: boolean; error?: string }>('/config/secrets', { path, value }),
   getDetection: () => get<{ ok: boolean; report: DetectionReport }>('/detection'),
+
+  // 厂商目录 / 获取模型列表
+  getProviders: () => get<{ ok: boolean; catalog: Record<'llm' | 'asr' | 'tts', ProviderPreset[]> }>('/providers'),
+  fetchModels: (section: string, profile: Record<string, any>) =>
+    post<{ ok: boolean; models: string[]; count: number; error?: string }>('/providers/fetch-models', { section, profile }),
 
   // 语音
   transcribe: async (blob: Blob): Promise<TextResponse> => {

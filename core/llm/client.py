@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from core import config
+from core.config import resolve_llm_profile
 from core.llm.stream import stream_chat
 from core.logger import logger
 
@@ -80,6 +81,27 @@ _RETRYABLE = {429, 502, 503, 504}
 _PERMANENT = {400, 401, 402, 403, 404, 422}
 
 
+class _SwitchModel(Exception):
+    """当前模型不可用（不存在/重试耗尽）→ 切换到下一个备选模型（openclaw 式 failover）。"""
+
+
+def _is_model_missing(exc: Exception) -> bool:
+    """启发式判断「模型不存在/不可用」：4xx 且响应文本含 model → 应切备选而非重试。"""
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (400, 404):
+        return "model" in (exc.response.text or "").lower()
+    return False
+
+
+def _model_sequence(profile: dict) -> list[str]:
+    """failover 模型序列 = [当前模型] + agent.models_failover（去重、去空）。"""
+    primary = profile.get("model") or ""
+    seq: list[str] = []
+    for m in ([primary] + list(config.settings.agent.models_failover)):
+        if m and m not in seq:
+            seq.append(m)
+    return seq or [primary]
+
+
 def _is_retryable(exc: Exception) -> bool:
     if isinstance(exc, httpx.HTTPStatusError):
         code = exc.response.status_code
@@ -116,40 +138,76 @@ class LlmClient:
             )
         return self._http
 
-    async def retry_stream_chat(self, messages: list[dict], tools: list[dict] | None = None) -> AsyncIterator[dict]:
-        """带重试 + 熔断 + 连接池的流式聊天。"""
+    async def retry_stream_chat(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        *,
+        profile: dict | None = None,
+    ) -> AsyncIterator[dict]:
+        """带重试 + 熔断 + 连接池 + 模型 failover 的流式聊天。
+
+        模型序列 = [当前 profile.model] + config.agent.models_failover：
+        模型不存在（_is_model_missing）或重试耗尽时切下一个；已吐部分输出不切（避免重复执行）。
+        全部模型失败末尾记一次熔断失败，抛 RetryExhaustedError。
+        """
         if await self._breaker.is_open():
             raise CircuitBreakerOpenError("Circuit breaker is OPEN")
         max_retries = config.settings.llm_client.retry_max
         client = await self._get_http()
-        emitted = False
-        last_exc: Exception | None = None
+        if profile is None:
+            _, profile = resolve_llm_profile()
+        models = _model_sequence(profile)
         try:
-            for attempt in range(max_retries + 1):
+            for i, model in enumerate(models):
+                prof = dict(profile)
+                prof["model"] = model
                 try:
-                    async for event in stream_chat(messages, tools, client=client):
-                        if event["type"] in ("content_delta", "reasoning_delta", "tool_call_delta"):
-                            emitted = True
+                    async for event in self._attempt_model(prof, messages, tools, client, max_retries):
                         yield event
-                        if event["type"] == "done":
-                            await self._breaker.record_success()
-                            return
-                except Exception as exc:
-                    last_exc = exc
-                    if not _is_retryable(exc):
-                        raise
-                    if emitted:
+                    return  # done
+                except _SwitchModel:
+                    if i == len(models) - 1:
                         await self._breaker.record_failure()
-                        raise RetryExhaustedError(f"LLM stream failed after partial output: {exc}") from exc
-                    if attempt >= max_retries:
-                        await self._breaker.record_failure()
-                        raise RetryExhaustedError(f"LLM call failed after {max_retries} retries: {exc}") from exc
-                    wait = _backoff(attempt + 1)
-                    logger.warning("LLM retry in {:.1f}s (attempt {}/{}): {}", wait, attempt + 1, max_retries, exc)
-                    await asyncio.sleep(wait)
-            raise RetryExhaustedError(f"LLM call failed: {last_exc}")
+                        raise RetryExhaustedError(f"LLM call failed for all models: {model}") from None
+                    logger.warning("LLM 模型 {} 不可用，切换备选: {}", model, models[i + 1])
         finally:
             await self._breaker.release_probe()
+
+    async def _attempt_model(
+        self,
+        prof: dict,
+        messages: list[dict],
+        tools: list[dict] | None,
+        client: httpx.AsyncClient,
+        max_retries: int,
+    ) -> AsyncIterator[dict]:
+        """单个模型的重试循环：成功 yield 到 done；模型缺失/重试耗尽抛 _SwitchModel；已吐部分输出抛 RetryExhaustedError。"""
+        emitted = False
+        for attempt in range(max_retries + 1):
+            try:
+                async for event in stream_chat(messages, tools, profile=prof, client=client):
+                    if event["type"] in ("content_delta", "reasoning_delta", "tool_call_delta"):
+                        emitted = True
+                    yield event
+                    if event["type"] == "done":
+                        await self._breaker.record_success()
+                        return
+            except Exception as exc:
+                if emitted:
+                    # 已发出部分内容 → 不重试、不切模型（避免重复执行任务）
+                    await self._breaker.record_failure()
+                    raise RetryExhaustedError(f"LLM stream failed after partial output: {exc}") from exc
+                if _is_model_missing(exc):
+                    raise _SwitchModel() from exc
+                if not _is_retryable(exc):
+                    raise
+                if attempt >= max_retries:
+                    raise _SwitchModel() from exc
+                wait = _backoff(attempt + 1)
+                logger.warning("LLM retry in {:.1f}s (attempt {}/{}): {}", wait, attempt + 1, max_retries, exc)
+                await asyncio.sleep(wait)
+        raise _SwitchModel()  # 防御：attempt 循环耗尽（正常不会到这）
 
 
 _client: LlmClient | None = None

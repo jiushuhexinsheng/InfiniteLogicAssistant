@@ -471,6 +471,120 @@ def test_schedules_endpoints(client, tmp_path, monkeypatch):
     assert client.get("/api/schedules").json()["schedules"] == []
 
 
+# ─── PATCH /config：voice 归一化 / 删 profile / 保留 vendor_presets ───
+
+def test_patch_config_normalizes_asr_tts_under_voice(isolated_settings):
+    # 前端快照把 asr/tts 放顶层，PATCH 应归一化到 voice 段（Settings extra=forbid 拒绝顶层）
+    import yaml
+    from fastapi.testclient import TestClient
+    import server as server_module
+    with TestClient(server_module.app) as tc:
+        resp = tc.patch("/api/config", json={
+            "tts": {"enabled": True, "active": "openai", "profiles": {"openai": {"provider": "openai"}}},
+        })
+    assert resp.status_code == 200
+    data = yaml.safe_load(isolated_settings.CONFIG_FILE.read_text(encoding="utf-8"))
+    assert data["voice"]["tts"]["enabled"] is True
+    assert "tts" not in data
+
+
+def test_patch_config_deletes_profile(isolated_settings):
+    import yaml
+    from fastapi.testclient import TestClient
+    import server as server_module
+    isolated_settings.CONFIG_FILE.write_text(
+        "llm:\n  active: a\n  profiles:\n"
+        "    a:\n      provider: openai\n      endpoint: x\n      model: m\n      chat_path: /v1/chat/completions\n"
+        "    b:\n      provider: openai\n      endpoint: y\n      model: n\n",
+        encoding="utf-8",
+    )
+    with TestClient(server_module.app) as tc:
+        resp = tc.patch("/api/config", json={
+            "llm": {"active": "a", "profiles": {
+                "a": {"provider": "openai", "endpoint": "x", "model": "m", "chat_path": "/v1/chat/completions"},
+            }},
+        })
+    assert resp.status_code == 200
+    data = yaml.safe_load(isolated_settings.CONFIG_FILE.read_text(encoding="utf-8"))
+    assert set(data["llm"]["profiles"]) == {"a"}  # 被删的 b 不残留
+
+
+def test_patch_config_preserves_vendor_presets(isolated_settings):
+    import yaml
+    from fastapi.testclient import TestClient
+    import server as server_module
+    isolated_settings.CONFIG_FILE.write_text(
+        "vendor_presets:\n  custom:\n    kind: llm\n    label: 我的厂商\n    endpoint: https://x\n    chat_path: /v1/chat/completions\n",
+        encoding="utf-8",
+    )
+    with TestClient(server_module.app) as tc:
+        resp = tc.patch("/api/config", json={"agent": {"recursion_limit": 5}})
+    assert resp.status_code == 200
+    data = yaml.safe_load(isolated_settings.CONFIG_FILE.read_text(encoding="utf-8"))
+    assert data["vendor_presets"]["custom"]["label"] == "我的厂商"
+
+
+# ─── /api/providers ───
+
+def test_providers_catalog_no_secrets(client):
+    data = client.get("/api/providers").json()
+    assert data["ok"] is True
+    assert set(data["catalog"]) == {"llm", "asr", "tts"}
+    for items in data["catalog"].values():
+        for item in items:
+            assert "api_key" not in item and "api_token" not in item
+    ds = next(x for x in data["catalog"]["llm"] if x["id"] == "deepseek")
+    assert ds["endpoint"] == "https://api.deepseek.com"
+
+
+def test_fetch_models_requires_openai(client):
+    resp = client.post("/api/providers/fetch-models", json={
+        "section": "llm",
+        "profile": {"provider": "anthropic", "endpoint": "https://api.anthropic.com",
+                    "chat_path": "/v1/messages", "name": "anthropic"},
+    })
+    assert resp.status_code == 400
+
+
+def test_fetch_models_no_key(client, monkeypatch, tmp_path):
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.delenv("ASR_API_KEY", raising=False)
+    monkeypatch.delenv("TTS_API_KEY", raising=False)
+    sfile = tmp_path / "secrets-empty.yaml"
+    sfile.write_text("llm:\n  api_key: ''\n", encoding="utf-8")
+    monkeypatch.setattr(config_mod, "SECRETS_FILE", sfile)
+    resp = client.post("/api/providers/fetch-models", json={
+        "section": "llm",
+        "profile": {"provider": "openai", "endpoint": "https://api.deepseek.com",
+                    "chat_path": "/v1/chat/completions", "name": "ds"},
+    })
+    assert resp.status_code == 400
+    assert "API Key" in resp.json()["error"]
+
+
+def test_fetch_models_success(client, monkeypatch):
+    import core.api.providers as providers_mod
+    seen = {}
+
+    async def fake_fetch(endpoint, path, api_key, timeout):
+        seen.update(endpoint=endpoint, path=path, api_key=api_key)
+        return ["model-a", "model-b"]
+
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.setattr(providers_mod, "_fetch_models", fake_fetch)
+    resp = client.post("/api/providers/fetch-models", json={
+        "section": "llm",
+        "profile": {"provider": "openai", "endpoint": "https://api.deepseek.com",
+                    "chat_path": "/v1/chat/completions", "name": "ds"},
+    })
+    assert resp.status_code == 200
+    assert resp.json()["models"] == ["model-a", "model-b"]
+    assert seen["endpoint"] == "https://api.deepseek.com"
+    assert seen["path"] == "/v1/models"
+    assert seen["api_key"] == "sk-test"
+    assert "sk-test" not in resp.text  # 密钥不回显
+
+
 def test_mcp_integration_tools(monkeypatch):
     import sys
     from pathlib import Path

@@ -36,17 +36,50 @@
         <input type="checkbox" v-model="sec(s.key).enabled" />
       </label>
 
-      <label class="cs-field">
-        <span class="cs-label">服务商 Profile</span>
-        <select v-model="sec(s.key).active">
-          <option v-for="n in Object.keys(sec(s.key).profiles)" :key="n" :value="n">{{ n }}</option>
-        </select>
-      </label>
+      <!-- Profile 管理：切换 / 新增（厂商目录） / 删除 -->
+      <div class="cs-profrow">
+        <label class="cs-field grow">
+          <span class="cs-label">Profile</span>
+          <select v-model="sec(s.key).active">
+            <option v-for="n in Object.keys(sec(s.key).profiles)" :key="n" :value="n">{{ n }}</option>
+          </select>
+        </label>
+        <button class="cs-btn sm" :class="{ on: addingSection === s.key }" @click="addingSection = addingSection === s.key ? null : s.key">
+          <Icon name="plus" :size="12" /> 新增
+        </button>
+        <button class="cs-btn sm" :disabled="Object.keys(sec(s.key).profiles).length <= 1" @click="deleteProfile(s.key)">
+          <Icon name="trash" :size="12" /> 删除
+        </button>
+      </div>
+
+      <!-- 厂商目录选择面板（新增 Profile） -->
+      <div v-if="addingSection === s.key" class="cs-vendor">
+        <p class="cs-vendor-tip">从厂商目录新增 Profile（自动预填端点/模型，可再手动调整）</p>
+        <div class="cs-vendor-grid">
+          <button v-for="v in vendorList(s.key)" :key="v.id" class="cs-vendor-chip" @click="addProfileFromVendor(s.key, v)">
+            {{ v.label }}
+          </button>
+        </div>
+      </div>
 
       <template v-for="f in s.fields" :key="f">
         <label class="cs-field">
           <span class="cs-label">{{ fieldLabel(f) }}</span>
+          <!-- 协议下拉 -->
+          <select v-if="f === 'provider'" v-model="sec(s.key).profiles[sec(s.key).active][f]">
+            <option value="openai">OpenAI 兼容</option>
+            <option value="anthropic">Anthropic（原生）</option>
+            <option value="gemini">Gemini（原生）</option>
+          </select>
+          <!-- 模型 / 音色可输入下拉 -->
+          <template v-else-if="f === 'model' || f === 'voice'">
+            <input :list="'dl-' + s.key + '-' + f" v-model="sec(s.key).profiles[sec(s.key).active][f]" />
+            <datalist :id="'dl-' + s.key + '-' + f">
+              <option v-for="m in (f === 'model' ? modelOptions(s) : voiceOptions(s))" :key="m" :value="m" />
+            </datalist>
+          </template>
           <input
+            v-else
             :type="num(f) ? 'number' : 'text'"
             :step="num(f) ? (f === 'temperature' ? 0.1 : 1) : undefined"
             v-model="sec(s.key).profiles[sec(s.key).active][f]"
@@ -59,6 +92,7 @@
           API Key：{{ sec(s.key).api_key_set[sec(s.key).active] ? '已设置' : '未设置' }}
         </span>
         <button class="cs-btn sm" @click="setKey(s.key, sec(s.key).active)">设置</button>
+        <button class="cs-btn sm" :disabled="!openaiProtocol(s.key)" @click="fetchModelsFor(s.key)">获取模型</button>
       </div>
 
       <div v-if="connResults[s.name]" class="cs-connline" :class="'st-' + connResults[s.name].status">
@@ -132,7 +166,7 @@ import { onMounted, ref } from 'vue'
 import Icon from '../Icon.vue'
 import TtsSettings from '../assistant/TtsSettings.vue'
 import { api } from '../../api'
-import type { ConnectivityResult, DetectionIssue, EditableSnapshot } from '../../types'
+import type { ConnectivityResult, DetectionIssue, EditableSnapshot, ProfileConfig, ProviderPreset } from '../../types'
 
 const editable = ref<EditableSnapshot | null>(null)
 const saving = ref(false)
@@ -141,15 +175,18 @@ const msg = ref('')
 const restartHint = ref('')
 const connResults = ref<Record<string, ConnectivityResult>>({})
 const issues = ref<DetectionIssue[]>([])
+// 厂商目录 + 新增 Profile 面板
+const catalog = ref<Record<string, ProviderPreset[]> | null>(null)
+const addingSection = ref<string | null>(null)
 
 // 三大服务 section 定义（name 为 /api/detection 里的连通性结果名）
 const sectionDefs = [
   { key: 'llm', name: 'LLM', title: 'LLM 大模型', toggle: false,
-    fields: ['endpoint', 'model', 'chat_path', 'max_tokens', 'temperature', 'timeout'] },
+    fields: ['provider', 'endpoint', 'model', 'chat_path', 'max_tokens', 'temperature', 'timeout'] },
   { key: 'asr', name: 'ASR', title: 'ASR 语音识别', toggle: false,
-    fields: ['endpoint', 'model', 'language', 'chat_path', 'timeout'] },
+    fields: ['provider', 'endpoint', 'model', 'language', 'chat_path', 'timeout'] },
   { key: 'tts', name: 'TTS', title: 'TTS 语音合成', toggle: true,
-    fields: ['endpoint', 'model', 'voice', 'format', 'chat_path', 'timeout'] },
+    fields: ['provider', 'endpoint', 'model', 'voice', 'format', 'chat_path', 'timeout'] },
 ]
 
 const advancedDefs = [
@@ -171,7 +208,7 @@ const NUMERIC = new Set(['max_tokens', 'temperature', 'timeout', 'sensitivity', 
   'search_max_results', 'weather_timeout', 'port'])
 
 const LABELS: Record<string, string> = {
-  provider: 'Provider', endpoint: 'Endpoint', model: '模型', vision_model: '视觉模型',
+  provider: '协议', endpoint: 'Endpoint', model: '模型', vision_model: '视觉模型',
   chat_path: 'Chat Path', max_tokens: 'Max Tokens', temperature: 'Temperature', timeout: '超时(s)',
   language: '语言', voice: '音色', format: '格式', recursion_limit: 'ReAct 步数上限',
   multi_agent: '多智能体', retry_max: '重试次数', retry_backoff_base: '退避基数(s)',
@@ -194,6 +231,100 @@ function isErr(m: string): boolean {
 }
 function statusText(c: ConnectivityResult): string {
   return c.status === 'ok' ? '✓ 连通' : c.status === 'skip' ? '跳过' : '✗ 失败'
+}
+
+// ─── 厂商目录 / Profile 管理 ───
+
+function activeProfile(s: any): ProfileConfig {
+  return (editable.value as any)?.[s.key]?.profiles?.[(editable.value as any)[s.key].active] || {}
+}
+function vendorPreset(s: any): ProviderPreset | null {
+  const prof = activeProfile(s)
+  if (!prof.vendor || !catalog.value) return null
+  return catalog.value[s.key]?.find((v) => v.id === prof.vendor) || null
+}
+function vendorList(key: string): ProviderPreset[] {
+  return (catalog.value && catalog.value[key]) || []
+}
+function modelOptions(s: any): string[] {
+  const prof = activeProfile(s)
+  const v = vendorPreset(s)
+  return [...new Set([...(prof.models || []), ...(v?.models || [])])].filter(Boolean)
+}
+function voiceOptions(s: any): string[] {
+  const prof = activeProfile(s)
+  const v = vendorPreset(s)
+  return [...new Set([...(prof.voices || []), ...(v?.voices || [])])].filter(Boolean)
+}
+function openaiProtocol(s: any): boolean {
+  return (activeProfile(s).provider || 'openai') === 'openai'
+}
+
+/** 目录预设 → 可编辑 profile（与后端 core/providers.preset_to_profile 对齐） */
+function presetToProfile(v: ProviderPreset): ProfileConfig {
+  const p: any = {
+    provider: v.provider || 'openai',
+    vendor: v.id,
+    endpoint: v.endpoint,
+    chat_path: v.chat_path || '/v1/chat/completions',
+    models: [...v.models],
+    model: v.defaults?.model || v.models[0] || '',
+    api_key_env: v.api_key_env,
+    compat: { ...v.compat },
+  }
+  if (v.models_path) p.models_path = v.models_path
+  if (v.vision_models?.length) p.vision_model = v.vision_models[0]
+  if (v.voices?.length) {
+    p.voices = [...v.voices]
+    p.voice = v.defaults?.voice || v.voices[0]
+  }
+  for (const [k, val] of Object.entries(v.defaults || {})) {
+    if (p[k] === undefined) p[k] = val
+  }
+  return p
+}
+
+function addProfileFromVendor(key: string, v: ProviderPreset) {
+  const profiles = (editable.value as any)[key].profiles
+  let name = v.id
+  let i = 2
+  while (profiles[name]) name = `${v.id}-${i++}`
+  profiles[name] = presetToProfile(v)
+  ;(editable.value as any)[key].active = name
+  addingSection.value = null
+  msg.value = `已添加 Profile「${name}」，请设置 API Key 后保存`
+}
+
+function deleteProfile(key: string) {
+  const s = (editable.value as any)[key]
+  const names = Object.keys(s.profiles)
+  if (names.length <= 1) { msg.value = '至少保留一个 Profile'; return }
+  const name = s.active
+  if (!window.confirm(`删除 Profile「${name}」？`)) return
+  delete s.profiles[name]
+  const rest = Object.keys(s.profiles)
+  if (!rest.includes(s.active)) s.active = rest[0]
+  msg.value = `已删除 Profile「${name}」（保存后生效）`
+}
+
+/** 拉取 OpenAI 兼容端点的模型列表，写回当前 profile.models */
+async function fetchModelsFor(s: any) {
+  const prof = activeProfile(s)
+  if (!openaiProtocol(s)) return
+  const profile = { name: (editable.value as any)[s.key].active, ...prof }
+  msg.value = ''
+  try {
+    const r = await api.fetchModels(s.key, profile)
+    if (r.ok) {
+      prof.models = r.models
+      if (r.models.length && (!prof.model || !r.models.includes(prof.model))) prof.model = r.models[0]
+      msg.value = `已获取 ${r.count} 个模型`
+    } else {
+      msg.value = '获取模型失败: ' + (r.error || '')
+    }
+  } catch (e: any) {
+    msg.value = '获取模型失败: ' + (e?.message || '')
+  }
 }
 
 async function load() {
@@ -300,7 +431,14 @@ async function setKey(section: string, profile?: string) {
   }
 }
 
-onMounted(load)
+async function loadCatalog() {
+  try {
+    const r = await api.getProviders()
+    if (r.ok) catalog.value = r.catalog
+  } catch { /* 目录拉取失败不阻塞设置页 */ }
+}
+
+onMounted(() => { load(); loadCatalog() })
 </script>
 
 <style scoped>
@@ -386,6 +524,23 @@ onMounted(load)
 }
 .cs-field select:focus,
 .cs-field input:focus { border-color: var(--brand-c2); }
+
+.cs-profrow { display: flex; align-items: flex-end; gap: 8px; }
+.cs-profrow .grow { flex: 1; }
+.cs-profrow .cs-btn.on { color: var(--brand-c2); border-color: var(--brand-c2); }
+
+.cs-vendor {
+  border: 1px dashed var(--border-soft); border-radius: var(--r-sm);
+  padding: 8px 10px; background: rgba(15, 23, 42, .4);
+}
+.cs-vendor-tip { font-size: var(--fs-2xs); color: var(--text-3); margin: 0 0 7px; }
+.cs-vendor-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.cs-vendor-chip {
+  font-size: var(--fs-2xs); font-family: var(--font-mono); color: var(--text-2);
+  background: rgba(15, 23, 42, .6); border: 1px solid var(--border-soft);
+  border-radius: var(--r-full); padding: 3px 10px; cursor: pointer;
+}
+.cs-vendor-chip:hover { color: var(--brand-c2); border-color: var(--brand-c2); }
 
 .cs-keyrow { display: flex; align-items: center; gap: 8px; }
 .cs-keybadge {

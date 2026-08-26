@@ -33,6 +33,39 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+def _normalize_patch(patch: dict) -> dict:
+    """把前端快照的顶层 asr/tts/wake_word/vad 归一到 voice 段下（对齐 config.yaml 结构）。
+
+    前端 editable_snapshot 把这些键平铺在顶层，但 Settings 模型里它们嵌在 voice 下
+    （extra=forbid 会拒绝顶层多余键）。历史遗留：此前保存 ASR/TTS/语音设置会 400。
+    """
+    voice: dict = {}
+    for key in ("asr", "tts", "wake_word", "vad"):
+        if key in patch:
+            voice[key] = patch.pop(key)
+    if voice:
+        patch["voice"] = _deep_merge(patch.get("voice") or {}, voice)
+    return patch
+
+
+def _wholesale_profiles(merged: dict, patch: dict) -> None:
+    """前端整份提交 profiles Record → patch 里出现的 profiles 段整体替换。
+
+    _deep_merge 只遍历 override 的 key，删除的 profile 不会被移除；这里对 patch
+    中出现的 profiles 做整体替换，让「删除 profile」真正生效。
+    """
+    llm = patch.get("llm")
+    if isinstance(llm, dict) and isinstance(llm.get("profiles"), dict) and isinstance(merged.get("llm"), dict):
+        merged["llm"]["profiles"] = llm["profiles"]
+    vpatch = patch.get("voice")
+    voice_patch = vpatch if isinstance(vpatch, dict) else {}
+    voice_merged = merged.setdefault("voice", {})
+    for key in ("asr", "tts"):
+        sec = voice_patch.get(key)
+        if isinstance(sec, dict) and isinstance(sec.get("profiles"), dict) and isinstance(voice_merged.get(key), dict):
+            voice_merged[key]["profiles"] = sec["profiles"]
+
+
 def _strip_secrets(d):
     """递归移除 api_key / api_token：密钥只能走 secrets 接口。"""
     if isinstance(d, dict):
@@ -92,7 +125,9 @@ async def patch_config(request: Request):
     except Exception:
         current = {}
 
+    patch = _normalize_patch(patch)
     merged = _deep_merge(current, patch)
+    _wholesale_profiles(merged, patch)
     _strip_secrets(merged)
     try:
         config_mod.Settings(**merged)  # 校验：类型/范围/未知字段 违规即 400

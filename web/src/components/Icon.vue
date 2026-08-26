@@ -9,7 +9,7 @@ import {
   AudioWaveform, Ear, Mic, Sparkles, Brain, Wrench, MessageSquare, MessagesSquare, Check, CircleAlert,
   Search, Send, Trash2, ChevronDown, X, Play, Square, Ellipsis, User,
   Globe, CalendarClock, Database, Bot, Zap, Clock, Infinity as InfinityIcon,
-  Settings, Volume2,
+  Settings, Volume2, Plus, CirclePlus,
 } from 'lucide-vue-next'
 
 // name → lucide 图标映射（保持既有用法透明，并可随时补充新图标）
@@ -45,6 +45,8 @@ const ICONS: Record<string, Component> = {
   'messages-square': MessagesSquare,
   settings: Settings,
   volume: Volume2,
+  plus: Plus,
+  'circle-plus': CirclePlus,
 }
 
 const props = withDefaults(defineProps<{ name: string; size?: number }>(), { size: 18 })
