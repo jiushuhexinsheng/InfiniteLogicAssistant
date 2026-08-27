@@ -2,162 +2,224 @@
   <div class="console-settings">
     <div class="cs-head">
       <h2 class="cs-title"><Icon name="settings" :size="17" /> 设置</h2>
-      <p class="cs-sub">服务商切换 / 参数调节 / 密钥 / 连接检测 —— 保存后大部分配置即时生效（服务器绑定类需重启）</p>
+      <p class="cs-sub">左侧菜单切换模块，每个模块独立「保存 / 测试连接」，密钥通过弹出框设置</p>
     </div>
 
-    <!-- 操作条 -->
-    <div class="cs-actions">
-      <button class="cs-btn primary" :disabled="!editable || saving" @click="save">
-        {{ saving ? '保存中…' : '保存' }}
-      </button>
-      <button class="cs-btn" :disabled="detecting" @click="detectAll">
-        {{ detecting ? '检测中…' : '检测全部' }}
-      </button>
-      <span v-if="msg" class="cs-msg" :class="{ err: isErr(msg) }">{{ msg }}</span>
-    </div>
-    <div v-if="restartHint" class="cs-restart">{{ restartHint }}</div>
-
-    <!-- 连接状态条 -->
-    <div v-if="Object.keys(connResults).length" class="cs-conn">
-      <span v-for="c in Object.values(connResults)" :key="c.name" class="cs-conn-chip" :class="'st-' + c.status">
-        {{ c.name }} {{ c.status === 'ok' ? '✓ 连通' : c.status === 'skip' ? '跳过' : '✗ 失败' }}
-      </span>
-    </div>
-
-    <!-- LLM / ASR / TTS -->
-    <div v-for="s in sectionDefs" :key="s.key" class="cs-card">
-      <div class="cs-card-head">
-        <span class="cs-card-title">{{ s.title }}</span>
-        <button class="cs-btn sm" @click="detectOne(s.name)">检测连接</button>
-      </div>
-
-      <label v-if="s.toggle" class="cs-field row">
-        <span class="cs-label">启用</span>
-        <input type="checkbox" v-model="sec(s.key).enabled" />
-      </label>
-
-      <!-- Profile 管理：切换 / 新增（厂商目录） / 删除 -->
-      <div class="cs-profrow">
-        <label class="cs-field grow">
-          <span class="cs-label">Profile</span>
-          <select v-model="sec(s.key).active">
-            <option v-for="n in Object.keys(sec(s.key).profiles)" :key="n" :value="n">{{ n }}</option>
-          </select>
-        </label>
-        <button class="cs-btn sm" :class="{ on: addingSection === s.key }" @click="addingSection = addingSection === s.key ? null : s.key">
-          <Icon name="plus" :size="12" /> 新增
+    <div class="cs-body">
+      <!-- 左侧菜单 -->
+      <aside class="cs-menu">
+        <button
+          v-for="m in menuDefs"
+          :key="m.id"
+          class="cs-menu-item"
+          :class="{ on: activeMenu === m.id }"
+          @click="activeMenu = m.id"
+        >
+          <Icon :name="m.icon" :size="14" />
+          <span>{{ m.label }}</span>
+          <i class="cs-menu-dot" :class="{ on: menuDot(m.id) }" title="密钥已设置"></i>
         </button>
-        <button class="cs-btn sm" :disabled="Object.keys(sec(s.key).profiles).length <= 1" @click="deleteProfile(s.key)">
-          <Icon name="trash" :size="12" /> 删除
-        </button>
-      </div>
-
-      <!-- 厂商目录选择面板（新增 Profile） -->
-      <div v-if="addingSection === s.key" class="cs-vendor">
-        <p class="cs-vendor-tip">从厂商目录新增 Profile（自动预填端点/模型，可再手动调整）</p>
-        <div class="cs-vendor-grid">
-          <button class="cs-vendor-chip custom" @click="addCustomProfile(s.key)">＋ 自定义（空白）</button>
-          <button v-for="v in vendorList(s.key)" :key="v.id" class="cs-vendor-chip" @click="addProfileFromVendor(s.key, v)">
-            {{ v.label }}
+        <div class="cs-menu-extra">
+          <button class="cs-btn sm" :disabled="detecting" @click="detectAll">
+            {{ detecting ? '检测中…' : '检测全部' }}
           </button>
         </div>
-      </div>
+      </aside>
 
-      <template v-for="f in s.fields" :key="f">
-        <label class="cs-field">
-          <span class="cs-label">{{ fieldLabel(f) }}</span>
-          <!-- 协议下拉 -->
-          <select v-if="f === 'provider'" v-model="sec(s.key).profiles[sec(s.key).active][f]">
-            <option value="openai">OpenAI 兼容</option>
-            <option value="anthropic">Anthropic（原生）</option>
-            <option value="gemini">Gemini（原生）</option>
-          </select>
-          <!-- 模型 / 音色可输入下拉 -->
-          <template v-else-if="f === 'model' || f === 'voice'">
-            <input :list="'dl-' + s.key + '-' + f" v-model="sec(s.key).profiles[sec(s.key).active][f]" />
-            <datalist :id="'dl-' + s.key + '-' + f">
-              <option v-for="m in (f === 'model' ? modelOptions(s) : voiceOptions(s))" :key="m" :value="m" />
-            </datalist>
-          </template>
-          <input
-            v-else
-            :type="num(f) ? 'number' : 'text'"
-            :step="num(f) ? (f === 'temperature' ? 0.1 : 1) : undefined"
-            v-model="sec(s.key).profiles[sec(s.key).active][f]"
-          />
-        </label>
-      </template>
+      <!-- 右侧内容 -->
+      <div class="cs-main">
+        <div v-if="msg" class="cs-msg" :class="{ err: isErr(msg) }">{{ msg }}</div>
+        <div v-if="restartHint" class="cs-restart">{{ restartHint }}</div>
 
-      <div class="cs-keyrow">
-        <span class="cs-keybadge" :class="{ set: sec(s.key).api_key_set[sec(s.key).active] }">
-          API Key：{{ sec(s.key).api_key_set[sec(s.key).active] ? '已设置' : '未设置' }}
-        </span>
-        <button class="cs-btn sm" @click="setKey(s.key, sec(s.key).active)">设置</button>
-        <button class="cs-btn sm" @click="fetchModelsFor(s.key)">获取模型</button>
-      </div>
+        <!-- 连接状态条 -->
+        <div v-if="Object.keys(connResults).length" class="cs-conn">
+          <span v-for="c in Object.values(connResults)" :key="c.name" class="cs-conn-chip" :class="'st-' + c.status">
+            {{ c.name }} {{ c.status === 'ok' ? '✓ 连通' : c.status === 'skip' ? '跳过' : '✗ 失败' }}
+          </span>
+        </div>
 
-      <div v-if="connResults[s.name]" class="cs-connline" :class="'st-' + connResults[s.name].status">
-        {{ connResults[s.name].detail || connResults[s.name].status }}
-        <em v-if="connResults[s.name].latency_ms != null">{{ connResults[s.name].latency_ms }}ms</em>
-      </div>
-    </div>
+        <!-- 服务模块：LLM / ASR / TTS（activeMenu 对应才显示） -->
+        <template v-for="s in sectionDefs" :key="s.key">
+          <div v-if="activeMenu === s.key" class="cs-card">
+            <div class="cs-card-head">
+              <span class="cs-card-title">{{ s.title }}</span>
+              <div class="cs-card-btns">
+                <button class="cs-btn sm" :disabled="detecting" @click="detectOne(s.name)">测试连接</button>
+                <button class="cs-btn sm primary" :disabled="!editable || saving" @click="saveModule(s.key)">
+                  {{ saving ? '保存中…' : '保存' }}
+                </button>
+              </div>
+            </div>
 
-    <!-- 语音：唤醒词 + VAD + 本地播报 -->
-    <div class="cs-card">
-      <div class="cs-card-head"><span class="cs-card-title">语音（唤醒 / 静音检测）</span></div>
-      <label v-if="editable" class="cs-field row">
-        <span class="cs-label">唤醒启用</span>
-        <input type="checkbox" v-model="editable.wake_word.enabled" />
-      </label>
-      <label v-if="editable" class="cs-field">
-        <span class="cs-label">唤醒词</span>
-        <input type="text" v-model="editable.wake_word.keyword" />
-      </label>
-      <label v-if="editable" class="cs-field">
-        <span class="cs-label">灵敏度（0-1）</span>
-        <input type="number" step="0.05" min="0" max="1" v-model.number="editable.wake_word.sensitivity" />
-      </label>
-      <label v-if="editable" class="cs-field">
-        <span class="cs-label">静音判定阈值</span>
-        <input type="number" step="0.01" v-model.number="editable.vad.silence_threshold" />
-      </label>
-      <label v-if="editable" class="cs-field">
-        <span class="cs-label">静音停止时长（ms）</span>
-        <input type="number" v-model.number="editable.vad.silence_duration_ms" />
-      </label>
-      <label v-if="editable" class="cs-field">
-        <span class="cs-label">最长录音（ms）</span>
-        <input type="number" v-model.number="editable.vad.max_duration_ms" />
-      </label>
-      <div class="cs-tts"><TtsSettings /></div>
-    </div>
+            <label v-if="s.toggle" class="cs-field row">
+              <span class="cs-label">启用</span>
+              <input type="checkbox" v-model="sec(s.key).enabled" />
+            </label>
 
-    <!-- 高级设置 -->
-    <details class="cs-advanced">
-      <summary>高级设置（Agent / LLM 客户端 / 工具 / 服务器 / MCP）</summary>
-      <div v-for="s in advancedDefs" :key="s.key" class="cs-card slim">
-        <div class="cs-card-head"><span class="cs-card-title">{{ s.title }}</span></div>
-        <template v-for="f in s.fields" :key="f[0]">
-          <label class="cs-field">
-            <span class="cs-label">{{ fieldLabel(f[0]) }}</span>
-            <template v-if="f[1] === 'bool'">
-              <input type="checkbox" v-model="sec(s.key)[f[0]]" />
+            <!-- Profile 管理：切换 / 新增（厂商目录） / 删除 -->
+            <div class="cs-profrow">
+              <label class="cs-field grow">
+                <span class="cs-label">Profile</span>
+                <select v-model="sec(s.key).active">
+                  <option v-for="n in Object.keys(sec(s.key).profiles)" :key="n" :value="n">{{ n }}</option>
+                </select>
+              </label>
+              <button class="cs-btn sm" :class="{ on: addingSection === s.key }" @click="toggleAdding(s.key)">
+                <Icon name="plus" :size="12" /> 新增
+              </button>
+              <button class="cs-btn sm" :disabled="Object.keys(sec(s.key).profiles).length <= 1" @click="deleteProfile(s.key)">
+                <Icon name="trash" :size="12" /> 删除
+              </button>
+            </div>
+
+            <!-- 厂商目录选择面板（新增 Profile） -->
+            <div v-if="addingSection === s.key" class="cs-vendor">
+              <p class="cs-vendor-tip">从厂商目录新增 Profile（自动预填端点/模型，可再手动调整）</p>
+              <!-- 自定义名称内联输入（替代 window.prompt） -->
+              <div v-if="customAdding === s.key" class="cs-vendor-custom">
+                <input v-model="customName" placeholder="Profile 名称（如 my-gateway）" @keyup.enter="confirmCustom(s.key)" />
+                <button class="cs-btn sm primary" @click="confirmCustom(s.key)">创建</button>
+                <button class="cs-btn sm" @click="customAdding = null">取消</button>
+              </div>
+              <div v-else class="cs-vendor-grid">
+                <button class="cs-vendor-chip custom" @click="customAdding = s.key">＋ 自定义（空白）</button>
+                <button v-for="v in vendorList(s.key)" :key="v.id" class="cs-vendor-chip" @click="addProfileFromVendor(s.key, v)">
+                  {{ v.label }}
+                </button>
+              </div>
+            </div>
+
+            <template v-for="f in s.fields" :key="f">
+              <label class="cs-field">
+                <span class="cs-label">{{ fieldLabel(f) }}</span>
+                <!-- 协议下拉 -->
+                <select v-if="f === 'provider'" v-model="sec(s.key).profiles[sec(s.key).active][f]">
+                  <option value="openai">OpenAI 兼容</option>
+                  <option value="anthropic">Anthropic（原生）</option>
+                  <option value="gemini">Gemini（原生）</option>
+                </select>
+                <!-- 模型 / 音色可输入下拉 -->
+                <template v-else-if="f === 'model' || f === 'voice'">
+                  <input :list="'dl-' + s.key + '-' + f" v-model="sec(s.key).profiles[sec(s.key).active][f]" />
+                  <datalist :id="'dl-' + s.key + '-' + f">
+                    <option v-for="m in (f === 'model' ? modelOptions(s) : voiceOptions(s))" :key="m" :value="m" />
+                  </datalist>
+                </template>
+                <input
+                  v-else
+                  :type="num(f) ? 'number' : 'text'"
+                  :step="num(f) ? (f === 'temperature' ? 0.1 : 1) : undefined"
+                  v-model="sec(s.key).profiles[sec(s.key).active][f]"
+                />
+              </label>
             </template>
-            <template v-else>
-              <input :type="f[1] === 'number' ? 'number' : 'text'" v-model="sec(s.key)[f[0]]" />
-            </template>
-          </label>
+
+            <div class="cs-keyrow">
+              <span class="cs-keybadge" :class="{ set: sec(s.key).api_key_set[sec(s.key).active] }">
+                API Key：{{ sec(s.key).api_key_set[sec(s.key).active] ? '已设置' : '未设置' }}
+              </span>
+              <button class="cs-btn sm" @click="openKeyModal(s.key, sec(s.key).active)">设置</button>
+              <button class="cs-btn sm" @click="fetchModelsFor(s.key)">获取模型</button>
+            </div>
+
+            <div v-if="connResults[s.name]" class="cs-connline" :class="'st-' + connResults[s.name].status">
+              {{ connResults[s.name].detail || connResults[s.name].status }}
+              <em v-if="connResults[s.name].latency_ms != null">{{ connResults[s.name].latency_ms }}ms</em>
+            </div>
+          </div>
         </template>
-      </div>
-      <p class="cs-note">
-        MCP server 列表、服务器 host/port/api_token 建议直接编辑 config.yaml / config.secrets.yaml（改动需重启生效）。
-        密钥只报「已设置 / 未设置」，永不回显。
-      </p>
-    </details>
 
-    <!-- 配置校验问题 -->
-    <div v-if="issues.length" class="cs-issues">
-      <p v-for="i in issues" :key="i.key" :class="'lv-' + i.level">[{{ i.level }}] {{ i.key }}：{{ i.message }}</p>
+        <!-- 语音模块：唤醒词 + VAD + 本地播报 -->
+        <div v-if="activeMenu === 'voice'" class="cs-card">
+          <div class="cs-card-head">
+            <span class="cs-card-title">语音（唤醒 / 静音检测）</span>
+            <button class="cs-btn sm primary" :disabled="!editable || saving" @click="saveModule('voice')">
+              {{ saving ? '保存中…' : '保存' }}
+            </button>
+          </div>
+          <label v-if="editable" class="cs-field row">
+            <span class="cs-label">唤醒启用</span>
+            <input type="checkbox" v-model="editable.wake_word.enabled" />
+          </label>
+          <label v-if="editable" class="cs-field">
+            <span class="cs-label">唤醒词</span>
+            <input type="text" v-model="editable.wake_word.keyword" />
+          </label>
+          <label v-if="editable" class="cs-field">
+            <span class="cs-label">灵敏度（0-1）</span>
+            <input type="number" step="0.05" min="0" max="1" v-model.number="editable.wake_word.sensitivity" />
+          </label>
+          <label v-if="editable" class="cs-field">
+            <span class="cs-label">静音判定阈值</span>
+            <input type="number" step="0.01" v-model.number="editable.vad.silence_threshold" />
+          </label>
+          <label v-if="editable" class="cs-field">
+            <span class="cs-label">静音停止时长（ms）</span>
+            <input type="number" v-model.number="editable.vad.silence_duration_ms" />
+          </label>
+          <label v-if="editable" class="cs-field">
+            <span class="cs-label">最长录音（ms）</span>
+            <input type="number" v-model.number="editable.vad.max_duration_ms" />
+          </label>
+          <div class="cs-tts"><TtsSettings /></div>
+        </div>
+
+        <!-- 高级模块 -->
+        <div v-if="activeMenu === 'advanced'" class="cs-card">
+          <div class="cs-card-head">
+            <span class="cs-card-title">高级设置（Agent / LLM 客户端 / 工具 / 服务器 / MCP）</span>
+            <button class="cs-btn sm primary" :disabled="!editable || saving" @click="saveModule('advanced')">
+              {{ saving ? '保存中…' : '保存' }}
+            </button>
+          </div>
+          <div v-for="s in advancedDefs" :key="s.key" class="cs-card slim">
+            <div class="cs-card-head"><span class="cs-card-title">{{ s.title }}</span></div>
+            <template v-for="f in s.fields" :key="f[0]">
+              <label class="cs-field">
+                <span class="cs-label">{{ fieldLabel(f[0]) }}</span>
+                <template v-if="f[1] === 'bool'">
+                  <input type="checkbox" v-model="sec(s.key)[f[0]]" />
+                </template>
+                <template v-else>
+                  <input :type="f[1] === 'number' ? 'number' : 'text'" v-model="sec(s.key)[f[0]]" />
+                </template>
+              </label>
+            </template>
+          </div>
+          <p class="cs-note">
+            MCP server 列表、服务器 host/port/api_token 建议直接编辑 config.yaml / config.secrets.yaml（改动需重启生效）。
+            密钥只报「已设置 / 未设置」，永不回显。
+          </p>
+        </div>
+
+        <!-- 配置校验问题 -->
+        <div v-if="issues.length" class="cs-issues">
+          <p v-for="i in issues" :key="i.key" :class="'lv-' + i.level">[{{ i.level }}] {{ i.key }}：{{ i.message }}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 密钥弹出框（替代 window.prompt） -->
+    <div v-if="keyModal" class="cs-mask" @click.self="keyModal = null">
+      <div class="cs-dialog">
+        <div class="cs-dialog-head">
+          <span class="cs-dialog-title">设置 API Key</span>
+          <button class="cs-dialog-close" @click="keyModal = null"><Icon name="close" :size="14" /></button>
+        </div>
+        <p class="cs-dialog-sub">{{ keyModal.section }} · {{ keyModal.profile }}</p>
+        <div class="cs-key-input">
+          <input :type="showKey ? 'text' : 'password'" v-model="keyModal.value" placeholder="粘贴 API Key（留空 = 清除）" autofocus />
+          <button class="cs-btn sm" @click="showKey = !showKey">{{ showKey ? '隐藏' : '显示' }}</button>
+        </div>
+        <p v-if="keyEnvHint()" class="cs-dialog-env">
+          也可通过环境变量 <code>{{ keyEnvHint() }}</code> 配置（优先级高于此密钥）
+        </p>
+        <div class="cs-dialog-btns">
+          <button class="cs-btn" @click="clearKey">清除</button>
+          <button class="cs-btn primary" @click="confirmKey">保存</button>
+          <button class="cs-btn" @click="keyModal = null">取消</button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -179,6 +241,20 @@ const issues = ref<DetectionIssue[]>([])
 // 厂商目录 + 新增 Profile 面板
 const catalog = ref<Record<string, ProviderPreset[]> | null>(null)
 const addingSection = ref<string | null>(null)
+const customAdding = ref<string | null>(null)
+const customName = ref('')
+// 左侧菜单 + 密钥弹出框
+const activeMenu = ref('llm')
+const keyModal = ref<{ section: string; profile: string; value: string } | null>(null)
+const showKey = ref(false)
+
+const menuDefs = [
+  { id: 'llm', label: '大模型', icon: 'brain' },
+  { id: 'asr', label: '语音识别', icon: 'mic' },
+  { id: 'tts', label: '语音合成', icon: 'volume' },
+  { id: 'voice', label: '语音唤醒', icon: 'ear' },
+  { id: 'advanced', label: '高级设置', icon: 'zap' },
+]
 
 // 三大服务 section 定义（name 为 /api/detection 里的连通性结果名）
 const sectionDefs = [
@@ -230,8 +306,15 @@ function num(f: string): boolean {
 function isErr(m: string): boolean {
   return m.includes('失败') || m.includes('无效')
 }
-function statusText(c: ConnectivityResult): string {
-  return c.status === 'ok' ? '✓ 连通' : c.status === 'skip' ? '跳过' : '✗ 失败'
+
+// ─── 菜单状态点：服务模块显示「密钥已设置」绿点 ───
+
+function menuDot(id: string): boolean {
+  if (id === 'llm' || id === 'asr' || id === 'tts') {
+    const s = (editable.value as any)?.[id]
+    return !!s?.api_key_set?.[s.active]
+  }
+  return false
 }
 
 // ─── 厂商目录 / Profile 管理 ───
@@ -281,31 +364,49 @@ function presetToProfile(v: ProviderPreset): ProfileConfig {
   return p
 }
 
-/** 只持久化单个 section（active + profiles 整体提交），用于「新增 Profile 后立即生效」，不动其他 section */
+function toggleAdding(key: string) {
+  addingSection.value = addingSection.value === key ? null : key
+  customAdding.value = null
+}
+
+/** 按模块产出 PATCH body（service: 只该 section；voice: 唤醒+VAD；advanced: 全部高级段） */
+function moduleBody(id: string): Record<string, any> {
+  const e = editable.value as any
+  if (id === 'voice') return { wake_word: e.wake_word, vad: e.vad }
+  if (id === 'advanced') {
+    return {
+      agent: e.agent,
+      llm_client: e.llm_client,
+      tools: e.tools,
+      rag: e.rag,
+      server: { host: e.server.host, port: e.server.port, open_browser: e.server.open_browser, cors_origins: e.server.cors_origins },
+      mcp: e.mcp,
+    }
+  }
+  if (id === 'tts') return { tts: { enabled: e.tts.enabled, active: e.tts.active, profiles: e.tts.profiles } }
+  return { [id]: { active: e[id].active, profiles: e[id].profiles } }
+}
+
+/** 只持久化单个模块（新增/删除 Profile 用，静默不弹提示） */
 async function persistSection(key: string): Promise<boolean> {
   if (!editable.value) return false
-  const s: any = (editable.value as any)[key]
-  const body: Record<string, any> = {}
-  if (key === 'tts') body.tts = { enabled: s.enabled, active: s.active, profiles: s.profiles }
-  else body[key] = { active: s.active, profiles: s.profiles }
   try {
-    const r = await api.patchConfig(body)
+    const r = await api.patchConfig(moduleBody(key))
     return !!r.ok
   } catch {
     return false
   }
 }
 
-/** 自定义空白 Profile：弹窗取名 → 建空 profile（provider=openai + 默认 chat_path，其余手填）并立即保存 */
-async function addCustomProfile(key: string) {
-  const name0 = window.prompt('自定义 Profile 名称（如 my-gateway）：', 'custom')
-  if (name0 === null) return
-  const name = name0.trim() || 'custom'
+/** 自定义空白 Profile：内联输入取名 → 建空 profile（provider=openai + 默认 chat_path）并立即保存 */
+async function confirmCustom(key: string) {
+  const name = customName.value.trim() || 'custom'
   const profiles = (editable.value as any)[key].profiles
   if (profiles[name]) { msg.value = `Profile「${name}」已存在`; return }
   profiles[name] = { provider: 'openai', chat_path: '/v1/chat/completions', models: [] }
   ;(editable.value as any)[key].active = name
-  addingSection.value = null
+  customAdding.value = null
+  customName.value = ''
   const ok = await persistSection(key)
   msg.value = ok
     ? `已添加并保存空白 Profile「${name}」，请填写 endpoint/模型 并设置 API Key`
@@ -358,6 +459,28 @@ async function fetchModelsFor(s: any) {
   }
 }
 
+// ─── 模块级保存 / 测试 ───
+
+async function saveModule(id: string) {
+  if (!editable.value) return
+  saving.value = true
+  msg.value = ''
+  restartHint.value = ''
+  try {
+    const r = await api.patchConfig(moduleBody(id))
+    if (r.ok) {
+      msg.value = r.restart_required ? '已保存（部分设置重启后生效）' : '已保存（已即时生效）'
+      restartHint.value = r.restart_required ? '服务器绑定 / MCP 已变更，重启服务后生效' : ''
+    } else {
+      msg.value = '保存失败: ' + (r.error || '')
+    }
+  } catch (e: any) {
+    msg.value = '保存失败: ' + (e?.message || '')
+  } finally {
+    saving.value = false
+  }
+}
+
 async function load() {
   try {
     const r = await api.getConfigFull()
@@ -375,38 +498,6 @@ async function load() {
     }
   } catch (e: any) {
     msg.value = '加载配置失败: ' + (e?.message || '')
-  }
-}
-
-/** 去掉 *_set 标记，只发可编辑结构（后端 Settings extra=forbid 不接受多余键） */
-function stripMeta(e: EditableSnapshot): any {
-  const { llm, asr, tts, server, ...rest } = e as any
-  return {
-    ...rest,
-    llm: { active: llm.active, profiles: llm.profiles },
-    asr: { active: asr.active, profiles: asr.profiles },
-    tts: { enabled: tts.enabled, active: tts.active, profiles: tts.profiles },
-    server: { host: server.host, port: server.port, open_browser: server.open_browser, cors_origins: server.cors_origins },
-  }
-}
-
-async function save() {
-  if (!editable.value) return
-  saving.value = true
-  msg.value = ''
-  restartHint.value = ''
-  try {
-    const r = await api.patchConfig(stripMeta(editable.value))
-    if (r.ok) {
-      msg.value = r.restart_required ? '已保存（部分设置重启后生效）' : '已保存（已即时生效）'
-      restartHint.value = r.restart_required ? '服务器绑定 / MCP 已变更，重启服务后生效' : ''
-    } else {
-      msg.value = '保存失败: ' + (r.error || '')
-    }
-  } catch (e: any) {
-    msg.value = '保存失败: ' + (e?.message || '')
-  } finally {
-    saving.value = false
   }
 }
 
@@ -443,29 +534,41 @@ async function detectOne(name: string) {
   }
 }
 
-/** 设置/清除某服务密钥（path 形如 llm.api_key / llm.profiles.<name>） */
-async function setKey(section: string, profile?: string) {
-  const path = profile ? `${section}.profiles.${profile}` : `${section}.api_key`
-  const label = profile ? `${section} · ${profile}` : section
-  const val = window.prompt(`设置 ${label} 的 API Key（留空清除，不回显）：`)
-  if (val === null) return
+// ─── 密钥弹出框（替代 window.prompt） ───
+
+function openKeyModal(section: string, profile: string) {
+  showKey.value = false
+  keyModal.value = { section, profile, value: '' }
+}
+function keyEnvHint(): string {
+  const m = keyModal.value
+  if (!m) return ''
+  return (editable.value as any)?.[m.section]?.profiles?.[m.profile]?.api_key_env || ''
+}
+async function confirmKey() {
+  const m = keyModal.value
+  if (!m) return
+  const path = `${m.section}.profiles.${m.profile}`
+  const label = `${m.section} · ${m.profile}`
   try {
-    const r = await api.putSecret(path, val)
+    const r = await api.putSecret(path, m.value)
     if (r.ok) {
       msg.value = r.set ? `已设置 ${label} 密钥（即时生效）` : `已清除 ${label} 密钥`
-      // 只本地更新 api_key_set 徽章，不整表重载 —— 避免冲掉未保存的本地 profile 编辑
-      // （如刚「新增」的小米 profile 还没点保存，load() 会用服务端快照覆盖掉它）
-      const sec = (editable.value as any)?.[section]
-      if (sec?.api_key_set) {
-        if (profile) sec.api_key_set[profile] = r.set
-        else for (const k of Object.keys(sec.api_key_set)) sec.api_key_set[k] = r.set
-      }
+      const sec = (editable.value as any)?.[m.section]
+      if (sec?.api_key_set) sec.api_key_set[m.profile] = r.set
+      keyModal.value = null
     } else {
       msg.value = '设置密钥失败: ' + (r.error || '')
     }
   } catch (e: any) {
     msg.value = '设置密钥失败: ' + (e?.message || '')
   }
+}
+async function clearKey() {
+  const m = keyModal.value
+  if (!m) return
+  m.value = ''
+  await confirmKey()
 }
 
 async function loadCatalog() {
@@ -481,7 +584,7 @@ onMounted(() => { load(); loadCatalog() })
 <style scoped>
 .console-settings {
   width: 100%;
-  max-width: 720px;
+  max-width: 960px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -496,14 +599,40 @@ onMounted(() => { load(); loadCatalog() })
 .cs-title :deep(svg) { color: var(--brand-c2); }
 .cs-sub { font-size: var(--fs-xs); color: var(--text-3); margin: 0; }
 
-.cs-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.cs-msg { font-size: var(--fs-xs); color: var(--brand-c2); }
-.cs-msg.err { color: #f87171; }
+/* ── 左菜单 + 右内容 ── */
+.cs-body { display: flex; gap: 16px; align-items: flex-start; }
+.cs-menu {
+  width: 148px; flex-shrink: 0; position: sticky; top: 12px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.cs-menu-item {
+  display: flex; align-items: center; gap: 8px;
+  font-size: var(--fs-xs); color: var(--text-2); text-align: left;
+  background: rgba(15, 23, 42, .55); border: 1px solid transparent;
+  border-radius: var(--r-sm); padding: 7px 10px; cursor: pointer;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
+}
+.cs-menu-item:hover { color: var(--brand-c2); }
+.cs-menu-item.on {
+  color: var(--brand-c2); border-color: var(--brand-c2);
+  background: rgba(11, 17, 32, .75);
+}
+.cs-menu-dot {
+  margin-left: auto; width: 7px; height: 7px; border-radius: 50%;
+  background: rgba(148, 163, 184, .25);
+}
+.cs-menu-dot.on { background: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, .6); }
+.cs-menu-extra { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-soft); }
+
+.cs-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+
 .cs-restart {
   font-size: var(--fs-xs); color: #fbbf24;
   background: rgba(251, 191, 36, .08); border: 1px solid rgba(251, 191, 36, .3);
   border-radius: var(--r-sm); padding: 7px 10px;
 }
+.cs-msg { font-size: var(--fs-xs); color: var(--brand-c2); }
+.cs-msg.err { color: #f87171; }
 
 .cs-conn { display: flex; gap: 8px; flex-wrap: wrap; }
 .cs-conn-chip {
@@ -526,11 +655,12 @@ onMounted(() => { load(); loadCatalog() })
   display: flex; flex-direction: column; gap: 10px;
 }
 .cs-card.slim { padding: 12px; }
-.cs-card-head { display: flex; align-items: center; justify-content: space-between; }
+.cs-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .cs-card-title {
   font-size: var(--fs-sm); font-weight: 600; color: var(--text-1);
   letter-spacing: .02em;
 }
+.cs-card-btns { display: flex; align-items: center; gap: 8px; }
 
 .cs-btn {
   font-size: var(--fs-xs); font-family: var(--font-mono);
@@ -553,7 +683,8 @@ onMounted(() => { load(); loadCatalog() })
 }
 .cs-field select,
 .cs-field input[type="text"],
-.cs-field input[type="number"] {
+.cs-field input[type="number"],
+.cs-field input[type="password"] {
   background: rgba(15, 23, 42, .8); color: var(--text-1);
   border: 1px solid var(--border-soft); border-radius: var(--r-sm);
   font-size: var(--fs-xs); font-family: var(--font-mono);
@@ -579,6 +710,13 @@ onMounted(() => { load(); loadCatalog() })
 }
 .cs-vendor-chip:hover { color: var(--brand-c2); border-color: var(--brand-c2); }
 .cs-vendor-chip.custom { border-style: dashed; color: var(--brand-c2); }
+.cs-vendor-custom { display: flex; align-items: center; gap: 8px; }
+.cs-vendor-custom input {
+  flex: 1; background: rgba(15, 23, 42, .8); color: var(--text-1);
+  border: 1px solid var(--border-soft); border-radius: var(--r-sm);
+  font-size: var(--fs-xs); font-family: var(--font-mono); padding: 5px 8px; outline: none;
+}
+.cs-vendor-custom input:focus { border-color: var(--brand-c2); }
 
 .cs-keyrow { display: flex; align-items: center; gap: 8px; }
 .cs-keybadge {
@@ -597,14 +735,6 @@ onMounted(() => { load(); loadCatalog() })
 
 .cs-tts { margin-top: 2px; }
 
-.cs-advanced { border-top: 1px dashed var(--border-soft); padding-top: 8px; }
-.cs-advanced summary {
-  font-size: var(--fs-xs); color: var(--text-3); cursor: pointer;
-  padding: 4px 0; user-select: none;
-}
-.cs-advanced summary:hover { color: var(--brand-c2); }
-.cs-advanced .cs-card { margin-top: 10px; }
-
 .cs-issues { display: flex; flex-direction: column; gap: 6px; }
 .cs-issues p {
   font-size: var(--fs-2xs); margin: 0; line-height: 1.5;
@@ -618,4 +748,37 @@ onMounted(() => { load(); loadCatalog() })
   font-size: var(--fs-2xs); color: var(--text-3); line-height: 1.6;
   margin: 4px 0 0;
 }
+
+/* ── 密钥弹出框 ── */
+.cs-mask {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(2, 6, 23, .6); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+}
+.cs-dialog {
+  width: min(420px, calc(100vw - 40px));
+  background: var(--glass-bg-strong); backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--glass-border); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-3); padding: 16px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.cs-dialog-head { display: flex; align-items: center; justify-content: space-between; }
+.cs-dialog-title { font-size: var(--fs-sm); font-weight: 600; color: var(--text-1); }
+.cs-dialog-close {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; color: var(--text-3); cursor: pointer; padding: 2px;
+}
+.cs-dialog-close:hover { color: var(--brand-c2); }
+.cs-dialog-sub { font-size: var(--fs-2xs); color: var(--text-3); margin: 0; font-family: var(--font-mono); }
+.cs-key-input { display: flex; align-items: center; gap: 8px; }
+.cs-key-input input {
+  flex: 1; background: rgba(15, 23, 42, .8); color: var(--text-1);
+  border: 1px solid var(--border-soft); border-radius: var(--r-sm);
+  font-size: var(--fs-xs); font-family: var(--font-mono); padding: 7px 9px; outline: none;
+}
+.cs-key-input input:focus { border-color: var(--brand-c2); }
+.cs-dialog-env { font-size: var(--fs-2xs); color: var(--text-3); margin: 0; line-height: 1.6; }
+.cs-dialog-env code { font-family: var(--font-mono); color: var(--brand-c2); }
+.cs-dialog-btns { display: flex; justify-content: flex-end; gap: 8px; }
 </style>
