@@ -14,7 +14,13 @@ from core.logger import logger
 
 
 class ASRClient:
-    """ASR 语音识别客户端（OpenAI 兼容，async）"""
+    """ASR 语音识别客户端（OpenAI 兼容，async）
+
+    profile.compat 兼容开关（来自厂商预设，默认不影响既有行为）：
+    - auth_header: "api-key"  用 api-key 头认证（小米 MiMo ASR 要求；默认 Bearer）
+    - audio_data_url: true    input_audio.data 加 "data:{mime};base64," 前缀
+    - send_language: true     请求体带 asr_options.language（提升指定语种准确率）
+    """
 
     def __init__(self):
         self.profile_name, p = resolve_asr_profile()
@@ -25,6 +31,7 @@ class ASRClient:
         self.language = p.get("language", "zh")
         self.timeout = p.get("timeout", 60)
         self.chat_path = p.get("chat_path", "/v1/chat/completions")
+        self.compat = p.get("compat") or {}
 
         if self.profile_name:
             logger.info("ASR profile '{}'（provider={}, model={}）",
@@ -34,7 +41,10 @@ class ASRClient:
     def _headers(self) -> dict:
         h = {"Content-Type": "application/json"}
         if self.api_key:
-            h["Authorization"] = f"Bearer {self.api_key}"
+            if self.compat.get("auth_header") == "api-key":
+                h["api-key"] = self.api_key
+            else:
+                h["Authorization"] = f"Bearer {self.api_key}"
         return h
 
     def available(self) -> bool:
@@ -43,16 +53,22 @@ class ASRClient:
     async def transcribe_base64(self, audio_base64: str, audio_format: str = "wav") -> str:
         """调用 OpenAI 兼容 ASR（chat completions + input_audio）"""
         url = f"{self.endpoint.rstrip('/')}{self.chat_path}"
+        audio = audio_base64
+        if self.compat.get("audio_data_url"):
+            mime = "audio/mpeg" if audio_format in ("mp3", "mpeg") else "audio/wav"
+            audio = f"data:{mime};base64,{audio_base64}"
         body = {
             "model": self.model,
             "messages": [{
                 "role": "user",
                 "content": [
-                    {"type": "input_audio", "input_audio": {"data": audio_base64, "format": audio_format}}
+                    {"type": "input_audio", "input_audio": {"data": audio, "format": audio_format}}
                 ]
             }],
             "max_tokens": 1024,
         }
+        if self.compat.get("send_language") and self.language:
+            body["asr_options"] = {"language": self.language}
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.post(url, json=body, headers=self._headers)
             resp.raise_for_status()

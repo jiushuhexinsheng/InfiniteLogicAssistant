@@ -56,6 +56,7 @@
       <div v-if="addingSection === s.key" class="cs-vendor">
         <p class="cs-vendor-tip">从厂商目录新增 Profile（自动预填端点/模型，可再手动调整）</p>
         <div class="cs-vendor-grid">
+          <button class="cs-vendor-chip custom" @click="addCustomProfile(s.key)">＋ 自定义（空白）</button>
           <button v-for="v in vendorList(s.key)" :key="v.id" class="cs-vendor-chip" @click="addProfileFromVendor(s.key, v)">
             {{ v.label }}
           </button>
@@ -278,6 +279,19 @@ function presetToProfile(v: ProviderPreset): ProfileConfig {
     if (p[k] === undefined) p[k] = val
   }
   return p
+}
+
+/** 自定义空白 Profile：弹窗取名 → 建空 profile（provider=openai + 默认 chat_path，其余手填） */
+function addCustomProfile(key: string) {
+  const name0 = window.prompt('自定义 Profile 名称（如 my-gateway）：', 'custom')
+  if (name0 === null) return
+  const name = name0.trim() || 'custom'
+  const profiles = (editable.value as any)[key].profiles
+  if (profiles[name]) { msg.value = `Profile「${name}」已存在`; return }
+  profiles[name] = { provider: 'openai', chat_path: '/v1/chat/completions', models: [] }
+  ;(editable.value as any)[key].active = name
+  addingSection.value = null
+  msg.value = `已添加空白 Profile「${name}」，请填写 endpoint/模型 并设置 API Key`
 }
 
 function addProfileFromVendor(key: string, v: ProviderPreset) {
@@ -536,6 +550,7 @@ onMounted(() => { load(); loadCatalog() })
   border-radius: var(--r-full); padding: 3px 10px; cursor: pointer;
 }
 .cs-vendor-chip:hover { color: var(--brand-c2); border-color: var(--brand-c2); }
+.cs-vendor-chip.custom { border-style: dashed; color: var(--brand-c2); }
 
 .cs-keyrow { display: flex; align-items: center; gap: 8px; }
 .cs-keybadge {

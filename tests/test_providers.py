@@ -15,11 +15,11 @@ from core.providers import (
 
 
 def test_catalog_counts():
-    assert len(BUILTIN_LLM) == 15
-    assert len(BUILTIN_ASR) == 2
+    assert len(BUILTIN_LLM) == 16
+    assert len(BUILTIN_ASR) == 3
     assert len(BUILTIN_TTS) == 2
     ids = list(get_vendor_catalog())
-    assert len(ids) == 19
+    assert len(ids) == 21
     assert len(ids) == len(set(ids))  # 预设 ID 全目录唯一（防跨 kind 冲突）
 
 
@@ -78,6 +78,17 @@ def test_preset_to_profile_prefill():
     tprof = preset_to_profile("xiaomi-mimo", mimo)
     assert tprof["voices"][0] == "Chloe"
     assert tprof["format"] == "wav"
+
+
+def test_xiaomi_presets_compat():
+    llm = get_preset("xiaomi-mimo-llm")
+    assert llm.provider == "openai"
+    assert llm.compat == {"max_tokens_field": "max_completion_tokens"}  # 小米用 max_completion_tokens
+    assert llm.models[0] == "mimo-v2.5-pro"
+    asr = get_preset("xiaomi-mimo-asr")
+    assert asr.compat["auth_header"] == "api-key"
+    assert asr.compat["audio_data_url"] is True
+    assert asr.models == ["mimo-v2.5-asr"]
 
 
 def test_to_public_dict_strips_secrets():
