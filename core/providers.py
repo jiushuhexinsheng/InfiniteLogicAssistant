@@ -95,6 +95,12 @@ BUILTIN_LLM: dict[str, VendorPreset] = dict([
             chat_path="/v1beta/models/{model}:streamGenerateContent?alt=sse",
             models_path="/v1beta/models", models=["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
             api_key_env="GEMINI_API_KEY", defaults={"max_tokens": 4096}),
+    _preset("xiaomi-mimo-llm", kind="llm", label="小米 MiMo（大模型）", endpoint="https://api.xiaomimimo.com",
+            chat_path="/v1/chat/completions",
+            models=["mimo-v2.5-pro", "mimo-v2.5"],
+            api_key_env="MIMO_API_KEY",
+            compat={"max_tokens_field": "max_completion_tokens"},
+            defaults={"max_tokens": 4096, "temperature": 0.7}),
 ])
 
 
@@ -107,6 +113,11 @@ BUILTIN_ASR: dict[str, VendorPreset] = dict([
     _preset("siliconflow-asr", kind="asr", label="硅基流动 ASR", endpoint="https://api.siliconflow.cn/v1",
             chat_path="/chat/completions", models=["Qwen2-Audio-7B-Instruct"],
             api_key_env="SILICONFLOW_API_KEY", defaults={"language": "zh", "timeout": 30}),
+    _preset("xiaomi-mimo-asr", kind="asr", label="小米 MiMo ASR", endpoint="https://api.xiaomimimo.com",
+            chat_path="/v1/chat/completions", models=["mimo-v2.5-asr"],
+            api_key_env="MIMO_API_KEY",
+            compat={"auth_header": "api-key", "audio_data_url": True, "send_language": True},
+            defaults={"language": "zh", "timeout": 30}),
 ])
 
 
