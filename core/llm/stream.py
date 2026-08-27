@@ -74,7 +74,7 @@ async def _stream_openai(
     client: httpx.AsyncClient | None,
 ) -> AsyncIterator[dict]:
     """OpenAI chat/completions SSE 解析。"""
-    url = f"{profile.get('endpoint', '').rstrip('/')}{profile.get('chat_path', '/v1/chat/completions')}"
+    url = f"{profile.get('endpoint', '').rstrip('/')}{(profile.get('chat_path') or '/v1/chat/completions')}"
     payload = _build_payload(profile, messages, tools)
     timeout = float(profile.get("timeout", 60) or 60)
 
@@ -237,7 +237,7 @@ async def _stream_anthropic(
     """Anthropic Messages API SSE（text/thinking/tool_use）→ 内部事件。"""
     system, msgs = _split_system(messages)
     payload = _build_anthropic_payload(profile, msgs, system, tools)
-    url = f"{profile.get('endpoint', '').rstrip('/')}{profile.get('chat_path', '/v1/messages')}"
+    url = f"{profile.get('endpoint', '').rstrip('/')}{(profile.get('chat_path') or '/v1/messages')}"
     timeout = float(profile.get("timeout", 60) or 60)
     headers = {
         "Content-Type": "application/json",

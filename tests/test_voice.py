@@ -56,6 +56,13 @@ async def test_asr_mimo_compat_headers_data_url_language(monkeypatch):
     assert body.get("asr_options") == {"language": "zh"}  # 明确语种
 
 
+def test_asr_empty_chat_path_falls_back_to_default(monkeypatch):
+    # 空 chat_path 必须回退默认，否则会请求裸 endpoint（如 .../v1）→ 404
+    prof = {"provider": "openai", "endpoint": "https://api.xiaomimimo.com", "api_key": "k", "model": "m", "chat_path": ""}
+    client, _ = _client_with_profile(monkeypatch, prof)
+    assert client.chat_path == "/v1/chat/completions"
+
+
 @pytest.mark.asyncio
 async def test_asr_default_compat_preserves_behavior(monkeypatch):
     # 无 compat → Bearer 头 + 裸 base64 + 无 asr_options（与既有行为一致）
