@@ -19,7 +19,13 @@ async function initConfig() {
   return configPromise
 }
 
+/** 强制刷新配置（设置页保存后调用，让 tts_available / 当前 profile 等即时更新） */
+async function refreshConfig() {
+  config.value = null
+  return initConfig()
+}
+
 /** 配置管理 composable（读取 /api/config） */
 export function useConfig() {
-  return { config, initConfig }
+  return { config, initConfig, refreshConfig }
 }

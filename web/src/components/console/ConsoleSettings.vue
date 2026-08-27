@@ -229,8 +229,10 @@ import { onMounted, ref } from 'vue'
 import Icon from '../Icon.vue'
 import TtsSettings from '../assistant/TtsSettings.vue'
 import { api } from '../../api'
+import { useConfig } from '../../composables/useApi'
 import type { ConnectivityResult, DetectionIssue, EditableSnapshot, ProfileConfig, ProviderPreset } from '../../types'
 
+const app = useConfig()
 const editable = ref<EditableSnapshot | null>(null)
 const saving = ref(false)
 const detecting = ref(false)
@@ -471,6 +473,8 @@ async function saveModule(id: string) {
     if (r.ok) {
       msg.value = r.restart_required ? '已保存（部分设置重启后生效）' : '已保存（已即时生效）'
       restartHint.value = r.restart_required ? '服务器绑定 / MCP 已变更，重启服务后生效' : ''
+      // 刷新全局 /api/config 缓存，让 tts_available / 当前 profile 等即时更新（无需刷新页面）
+      app.refreshConfig()
     } else {
       msg.value = '保存失败: ' + (r.error || '')
     }
