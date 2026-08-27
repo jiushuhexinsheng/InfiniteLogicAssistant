@@ -292,7 +292,11 @@ def _profile_api_key(section: str, name: str, secrets: dict, profile: dict) -> s
 
 def _inject_secrets(data: dict, secrets: dict) -> None:
     for sec_key in _ENV_KEY_MAP:
+        # llm 在顶层；asr/tts 嵌在 voice 段下（config.yaml 结构），都要找到
         section = data.get(sec_key)
+        if not isinstance(section, dict):
+            voice = data.get("voice")
+            section = voice.get(sec_key) if isinstance(voice, dict) else None
         if not isinstance(section, dict):
             continue
         profiles = section.get("profiles")

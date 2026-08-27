@@ -40,6 +40,35 @@ def test_inject_secrets_server_token():
     assert data["server"]["api_token"] == "tok"
 
 
+def test_inject_secrets_asr_tts_under_voice(monkeypatch):
+    """asr/tts 密钥嵌在 voice 段下也必须注入。
+
+    曾只找顶层 data['asr']/data['tts']，而 config.yaml 把它们放在 voice 下，
+    导致 ASR/TTS 密钥永远为空（写入 secrets 也不生效 → 401）。"""
+    monkeypatch.delenv("MIMO_API_KEY", raising=False)
+    monkeypatch.delenv("ASR_API_KEY", raising=False)
+    monkeypatch.delenv("TTS_API_KEY", raising=False)
+    secrets = {
+        "llm": {"api_key": "", "profiles": {}},
+        "asr": {"api_key": "", "profiles": {"xiaomi": "tp-key"}},
+        "tts": {"api_key": "", "profiles": {"openai": "tts-key"}},
+        "server": {"api_token": "tok"},
+    }
+    data = {
+        "llm": {"active": "ds", "profiles": {"ds": {"provider": "openai"}}},
+        "voice": {
+            "asr": {"active": "xiaomi", "profiles": {"xiaomi": {"provider": "openai", "api_key_env": "MIMO_API_KEY"}}},
+            "tts": {"enabled": False, "active": "openai", "profiles": {"openai": {"provider": "openai"}}},
+        },
+    }
+    c._inject_secrets(data, secrets)
+    # env 未设（MIMO_API_KEY）→ 落到 secrets.profiles[name]
+    assert data["voice"]["asr"]["profiles"]["xiaomi"]["api_key"] == "tp-key"
+    assert data["voice"]["tts"]["profiles"]["openai"]["api_key"] == "tts-key"
+    # llm 顶层照常
+    assert data["llm"]["profiles"]["ds"]["api_key"] == ""
+
+
 def test_profile_api_key_legacy_warns(monkeypatch, capsys):
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     secrets = {"llm": {"api_key": "", "profiles": {}}}
