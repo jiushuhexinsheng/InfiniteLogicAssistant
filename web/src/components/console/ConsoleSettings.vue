@@ -281,8 +281,23 @@ function presetToProfile(v: ProviderPreset): ProfileConfig {
   return p
 }
 
-/** 自定义空白 Profile：弹窗取名 → 建空 profile（provider=openai + 默认 chat_path，其余手填） */
-function addCustomProfile(key: string) {
+/** 只持久化单个 section（active + profiles 整体提交），用于「新增 Profile 后立即生效」，不动其他 section */
+async function persistSection(key: string): Promise<boolean> {
+  if (!editable.value) return false
+  const s: any = (editable.value as any)[key]
+  const body: Record<string, any> = {}
+  if (key === 'tts') body.tts = { enabled: s.enabled, active: s.active, profiles: s.profiles }
+  else body[key] = { active: s.active, profiles: s.profiles }
+  try {
+    const r = await api.patchConfig(body)
+    return !!r.ok
+  } catch {
+    return false
+  }
+}
+
+/** 自定义空白 Profile：弹窗取名 → 建空 profile（provider=openai + 默认 chat_path，其余手填）并立即保存 */
+async function addCustomProfile(key: string) {
   const name0 = window.prompt('自定义 Profile 名称（如 my-gateway）：', 'custom')
   if (name0 === null) return
   const name = name0.trim() || 'custom'
@@ -291,10 +306,13 @@ function addCustomProfile(key: string) {
   profiles[name] = { provider: 'openai', chat_path: '/v1/chat/completions', models: [] }
   ;(editable.value as any)[key].active = name
   addingSection.value = null
-  msg.value = `已添加空白 Profile「${name}」，请填写 endpoint/模型 并设置 API Key`
+  const ok = await persistSection(key)
+  msg.value = ok
+    ? `已添加并保存空白 Profile「${name}」，请填写 endpoint/模型 并设置 API Key`
+    : `已添加 Profile「${name}」（保存失败，请检查后手动保存）`
 }
 
-function addProfileFromVendor(key: string, v: ProviderPreset) {
+async function addProfileFromVendor(key: string, v: ProviderPreset) {
   const profiles = (editable.value as any)[key].profiles
   let name = v.id
   let i = 2
@@ -302,10 +320,13 @@ function addProfileFromVendor(key: string, v: ProviderPreset) {
   profiles[name] = presetToProfile(v)
   ;(editable.value as any)[key].active = name
   addingSection.value = null
-  msg.value = `已添加 Profile「${name}」，请设置 API Key 后保存`
+  const ok = await persistSection(key)
+  msg.value = ok
+    ? `已添加并保存 Profile「${name}」，请设置 API Key`
+    : `已添加 Profile「${name}」（保存失败，请检查后手动保存）`
 }
 
-function deleteProfile(key: string) {
+async function deleteProfile(key: string) {
   const s = (editable.value as any)[key]
   const names = Object.keys(s.profiles)
   if (names.length <= 1) { msg.value = '至少保留一个 Profile'; return }
@@ -314,7 +335,8 @@ function deleteProfile(key: string) {
   delete s.profiles[name]
   const rest = Object.keys(s.profiles)
   if (!rest.includes(s.active)) s.active = rest[0]
-  msg.value = `已删除 Profile「${name}」（保存后生效）`
+  const ok = await persistSection(key)
+  msg.value = ok ? `已删除 Profile「${name}」` : `已删除 Profile「${name}」（保存失败，请检查）`
 }
 
 /** 拉取当前 profile 的模型列表（openai/anthropic/gemini 均支持），写回 profile.models */
@@ -431,7 +453,13 @@ async function setKey(section: string, profile?: string) {
     const r = await api.putSecret(path, val)
     if (r.ok) {
       msg.value = r.set ? `已设置 ${label} 密钥（即时生效）` : `已清除 ${label} 密钥`
-      await load()
+      // 只本地更新 api_key_set 徽章，不整表重载 —— 避免冲掉未保存的本地 profile 编辑
+      // （如刚「新增」的小米 profile 还没点保存，load() 会用服务端快照覆盖掉它）
+      const sec = (editable.value as any)?.[section]
+      if (sec?.api_key_set) {
+        if (profile) sec.api_key_set[profile] = r.set
+        else for (const k of Object.keys(sec.api_key_set)) sec.api_key_set[k] = r.set
+      }
     } else {
       msg.value = '设置密钥失败: ' + (r.error || '')
     }
