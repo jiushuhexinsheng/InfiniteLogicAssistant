@@ -30,7 +30,7 @@ class ASRClient:
         self.model = p.get("model", "")
         self.language = p.get("language", "zh")
         self.timeout = p.get("timeout", 60)
-        self.chat_path = p.get("chat_path", "/v1/chat/completions")
+        self.chat_path = p.get("chat_path") or "/v1/chat/completions"  # 空串也回退默认
         self.compat = p.get("compat") or {}
 
         if self.profile_name:
@@ -87,7 +87,7 @@ class TTSClient:
         self.model = p.get("model", "tts-1")
         self.voice = p.get("voice", "alloy")
         self.timeout = p.get("timeout", 30)
-        self.chat_path = p.get("chat_path", "/v1/audio/speech")
+        self.chat_path = p.get("chat_path") or "/v1/audio/speech"  # 空串也回退默认
 
     def available(self) -> bool:
         return is_tts_enabled()
