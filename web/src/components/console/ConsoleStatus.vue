@@ -1,29 +1,23 @@
 <template>
   <div class="console-status">
-    <!-- 后端连通性 -->
-    <div class="card">
-      <div class="card-title">后端连通性</div>
+    <UiCard title="后端连通性">
       <div class="status-row">
-        <StatusChip label="后端" :available="pingOk" detail="127.0.0.1:8520" />
-        <button class="mini-btn" @click="checkPing">刷新</button>
-        <span v-if="pingMs != null" class="ping-ms">{{ pingMs }}ms</span>
+        <UiChip :tone="pingOk ? 'ok' : 'err'" detail="127.0.0.1:8520">后端</UiChip>
+        <UiButton variant="ghost" size="sm" @click="checkPing">刷新</UiButton>
+        <span v-if="pingMs != null" class="ping-ms mono">{{ pingMs }}ms</span>
       </div>
-    </div>
+    </UiCard>
 
-    <!-- 能力配置 -->
-    <div class="card">
-      <div class="card-title">能力配置（OpenAI 兼容 profile）</div>
+    <UiCard title="能力配置（OpenAI 兼容 profile）">
       <div class="status-row">
-        <StatusChip label="LLM" :available="!!cfg?.llm_available" :detail="cfg?.llm_profile" />
-        <StatusChip label="ASR" :available="!!cfg?.asr_available" :detail="cfg?.asr_profile" />
-        <StatusChip label="TTS(后端)" :available="!!cfg?.tts_available" :detail="cfg?.tts_profile" />
+        <UiChip :tone="cfg?.llm_available ? 'ok' : 'neutral'" :detail="cfg?.llm_profile || '—'">LLM</UiChip>
+        <UiChip :tone="cfg?.asr_available ? 'ok' : 'neutral'" :detail="cfg?.asr_profile || '—'">ASR</UiChip>
+        <UiChip :tone="cfg?.tts_available ? 'ok' : 'neutral'" :detail="cfg?.tts_profile || '—'">TTS(后端)</UiChip>
       </div>
       <p class="hint">语音播报实际走浏览器 SpeechSynthesis；「TTS」徽章表示后端可选 TTS 配置能力，两者相互独立。</p>
-    </div>
+    </UiCard>
 
-    <!-- 唤醒词与 VAD -->
-    <div class="card">
-      <div class="card-title">唤醒词与静音检测（VAD）</div>
+    <UiCard title="唤醒词与静音检测（VAD）">
       <div class="kv">
         <template v-if="ww">
           <span>唤醒词</span><b>{{ ww.keyword }}</b>
@@ -37,18 +31,16 @@
         </template>
         <template v-if="!ww && !vad"><span>—</span><b>未加载配置</b></template>
       </div>
-    </div>
+    </UiCard>
 
-    <!-- 当前助手状态 -->
-    <div class="card">
-      <div class="card-title">当前助手状态</div>
+    <UiCard title="当前助手状态">
       <div class="status-row">
-        <span class="dot" :style="{ background: asst.stateColor.value }"></span>
+        <UiStatusDot :color="asst.stateColor.value" :size="9" :glow="8" />
         <b>{{ asst.stateLabel.value }}</b>
         <span class="muted">{{ asst.wakeEnabled.value ? '语音唤醒已开启' : '语音唤醒未开启' }}</span>
       </div>
       <p v-if="asst.statusLine.value" class="hint">{{ asst.statusLine.value }}</p>
-    </div>
+    </UiCard>
   </div>
 </template>
 
@@ -57,7 +49,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api } from '../../api'
 import { useAssistant } from '../../composables/useAssistant'
 import { useConfig } from '../../composables/useApi'
-import StatusChip from './StatusChip.vue'
+import { UiButton, UiCard, UiChip, UiStatusDot } from '../ui'
 
 const asst = useAssistant()
 const app = useConfig()
@@ -93,38 +85,12 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.console-status { max-width: 720px; width: 100%; margin: 0 auto; }
-
-.status-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.status-row .dot { width: 9px; height: 9px; border-radius: 50%; }
+.console-status { max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.status-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .status-row .muted { color: var(--text-3); font-size: 12px; }
-
-.mini-btn {
-  background: none;
-  border: 1px solid var(--border-base);
-  color: var(--text-2);
-  font-size: 11px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  cursor: pointer;
-}
-.mini-btn:hover { color: var(--brand-c2); border-color: var(--brand-c2); }
 .ping-ms { font-size: 11px; color: var(--text-3); }
-
-.hint { font-size: 11px; color: var(--text-3); margin: 8px 0 0; line-height: 1.6; }
-
-.kv {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 6px 14px;
-  font-size: 12px;
-}
+.hint { font-size: 11px; color: var(--text-3); margin-top: 8px; line-height: 1.6; }
+.kv { display: grid; grid-template-columns: 92px 1fr; gap: 8px 12px; font-size: 12px; }
 .kv span { color: var(--text-3); }
-.kv b { color: var(--text-1); font-weight: 500; }
-.kv .mono { font-family: ui-monospace, Consolas, monospace; font-size: 11px; word-break: break-all; }
+.kv b { color: var(--text-1); font-weight: 500; word-break: break-all; }
 </style>

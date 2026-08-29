@@ -1,7 +1,7 @@
 import { reactive } from 'vue'
 import { api, streamUtter } from '../../api'
 import { state, messages, tokenUsage, partialText, genId, addMessage, buildHistory, MAX_MESSAGES, pendingQuestion, currentSessionId } from './store'
-import { speakText } from './useTts'
+import { speakAuto } from './useTts'
 import type { ChatMessage, ToolCall } from './store'
 
 // ── 流式对话中止句柄（取消/停止按钮用）──
@@ -98,7 +98,7 @@ export async function runTurn() {
     onQuestion: ({ question, session_id }) => {
       currentSessionId.value = session_id
       pendingQuestion.value = question
-      speakText(question)  // 澄清/确认问题也语音播报
+      speakAuto(question)  // 澄清/确认问题也语音播报
       state.value = 'thinking'
     },
     onDone: (sessionId) => {
@@ -106,9 +106,9 @@ export async function runTurn() {
       pendingQuestion.value = ''
       flushText()
       partialText.value = ''
-      if (acc.trim()) speakText(acc)
-      else if (lastSummary) speakText(lastSummary)  // 多智能体摘要兜底
-      else if (toolAcc.length) speakText('已完成')
+      if (acc.trim()) speakAuto(acc)
+      else if (lastSummary) speakAuto(lastSummary)  // 多智能体摘要兜底
+      else if (toolAcc.length) speakAuto('已完成')
       state.value = 'done'
     },
     onAbort: () => {
@@ -123,7 +123,7 @@ export async function runTurn() {
       console.error('[Asst] LLM error:', msg)
       addMessage('system', '出错了: ' + msg)
       pendingQuestion.value = ''
-      speakText('出错了：' + msg)
+      speakAuto('出错了：' + msg)
       state.value = 'error'
     },
   }, { messages: history, signal: abortController.signal })

@@ -1,25 +1,23 @@
 <template>
   <div class="console-task">
     <div class="task-input">
-      <textarea v-model="input" rows="2" placeholder="输入指令，如：把桌面 readme.txt 复制到下载" @keydown.enter.exact.prevent="send"></textarea>
+      <UiTextarea v-model="input" :rows="2" placeholder="输入指令，如：把桌面 readme.txt 复制到下载" @keydown.enter.exact.prevent="send" />
       <div class="task-actions">
-        <button class="mini-btn" :disabled="running" @click="send">发送</button>
-        <button v-if="sessionId && running" class="mini-btn danger" @click="stop">停止</button>
+        <UiButton variant="secondary" size="sm" :disabled="running" @click="send">发送</UiButton>
+        <UiButton v-if="sessionId && running" variant="secondary" size="sm" hover="danger" @click="stop">停止</UiButton>
       </div>
     </div>
 
-    <!-- 执行流日志 -->
     <div v-if="log.length" class="task-log">
       <div v-for="(line, i) in log" :key="i" class="log-line" :class="line.kind">{{ line.text }}</div>
     </div>
 
-    <!-- 待澄清/确认问题卡片 -->
-    <div v-if="pendingQuestion" class="card confirm-card">
-      <div class="card-title">❓ 需要你回答</div>
+    <div v-if="pendingQuestion" class="confirm-card">
+      <div class="confirm-title">❓ 需要你回答</div>
       <p class="confirm-q">{{ pendingQuestion }}</p>
       <div class="confirm-row">
-        <input v-model="answer" placeholder="输入回答后回车…" @keydown.enter="sendAnswer" />
-        <button class="mini-btn" @click="sendAnswer">回答</button>
+        <UiInput v-model="answer" placeholder="输入回答后回车…" @keydown.enter="sendAnswer" />
+        <UiButton variant="secondary" size="sm" @click="sendAnswer">回答</UiButton>
       </div>
     </div>
   </div>
@@ -28,6 +26,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { api, streamUtter } from '../../api'
+import { UiButton, UiInput, UiTextarea } from '../ui'
 
 const input = ref('')
 const answer = ref('')
@@ -51,9 +50,9 @@ async function send() {
     onTaskState: (s) => {
       if (s.state === 'understanding') push('state', '🧠 理解中…')
       if (s.state === 'done') {
-        push('state', `✅ ${s.status}: ${s.summary}`)
+        push('state', '✅ ' + s.status + ': ' + s.summary)
         if (s.steps?.length) {
-          for (const st of s.steps) push('tool', `🔧 ${st.tool} ${st.status} → ${st.result}`)
+          for (const st of s.steps) push('tool', '🔧 ' + st.tool + ' ' + st.status + ' → ' + st.result)
         }
       }
     },
@@ -89,57 +88,19 @@ async function stop() {
 
 <style scoped>
 .console-task { max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
-.task-input textarea {
-  width: 100%;
-  resize: vertical;
-  background: #0b1120;
-  border: 1px solid var(--border-base);
-  border-radius: 10px;
-  color: var(--text-1);
-  padding: 10px 12px;
-  font-size: 13px;
-  font-family: inherit;
-}
-.task-actions { display: flex; gap: 8px; margin-top: 8px; }
-.mini-btn {
-  background: none;
-  border: 1px solid var(--border-base);
-  color: var(--text-2);
-  font-size: 12px;
-  padding: 5px 14px;
-  border-radius: 999px;
-  cursor: pointer;
-}
-.mini-btn:hover:not(:disabled) { color: var(--brand-c2); border-color: var(--brand-c2); }
-.mini-btn:disabled { opacity: .5; cursor: default; }
-.mini-btn.danger:hover { color: #f87171; border-color: #f87171; }
-
+.task-input { display: flex; flex-direction: column; gap: 8px; }
+.task-actions { display: flex; gap: 8px; }
 .task-log { display: flex; flex-direction: column; gap: 6px; }
-.log-line {
-  font-size: 12px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--border-base);
-  background: rgba(15, 23, 42, .6);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.log-line.user { border-color: var(--brand-c2); color: var(--text-1); }
-.log-line.assistant { color: var(--text-1); }
-.log-line.state { color: var(--brand-c2); }
-.log-line.tool { color: #a5b4fc; font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
-.log-line.error { color: #f87171; }
+.log-line { font-size: 12px; padding: 6px 10px; border-radius: 8px; background: var(--surface-control); color: var(--text-2); word-break: break-word; }
+.log-line.user { color: var(--text-1); border-left: 2px solid var(--brand-c2); }
+.log-line.state { color: var(--info); }
+.log-line.tool { color: var(--brand-c1); font-family: var(--font-mono); font-size: 11px; }
+.log-line.assistant { color: var(--text-1); background: var(--surface-raised); }
+.log-line.error { color: var(--err); }
 
-.confirm-card { border: 1px solid #f59e0b; }
-.confirm-q { font-size: 13px; margin: 0 0 10px; }
-.confirm-row { display: flex; gap: 8px; }
-.confirm-row input {
-  flex: 1;
-  background: #0b1120;
-  border: 1px solid var(--border-base);
-  border-radius: 8px;
-  color: var(--text-1);
-  padding: 6px 10px;
-  font-size: 13px;
-}
+/* 澄清/确认问题卡片（与悬浮助手 QuestionCard 一致） */
+.confirm-card { border: 1px solid #f59e0b; border-radius: 10px; background: rgba(245, 158, 11, .06); padding: 10px 12px; }
+.confirm-title { font-size: 12px; font-weight: 600; color: var(--warn); margin-bottom: 4px; }
+.confirm-q { font-size: 13px; margin: 0 0 8px; color: var(--text-1); }
+.confirm-row { display: flex; gap: 8px; align-items: center; }
 </style>

@@ -7,6 +7,7 @@ export type TtsEngine = 'browser' | 'api'
 
 export interface TtsSettings {
   engine: TtsEngine
+  speakEnabled: boolean // 语音播报总开关（关 = 回复不朗读，仅文本展示）
   volume: number    // 0–1
   rate: number      // 0.1–10（仅浏览器引擎）
   pitch: number     // 0–2（仅浏览器引擎）
@@ -31,6 +32,7 @@ function load(): TtsSettings {
       const p = JSON.parse(raw)
       return {
         engine: p.engine === 'api' ? 'api' : 'browser',
+        speakEnabled: p.speakEnabled !== false,
         volume: clamp(p.volume ?? 1, 0, 1),
         rate: clamp(p.rate ?? 1, 0.1, 10),
         pitch: clamp(p.pitch ?? 1, 0, 2),
@@ -39,7 +41,7 @@ function load(): TtsSettings {
       }
     }
   } catch { /* 解析失败则用默认 */ }
-  return { engine: 'browser', volume: 1, rate: 1, pitch: 1, voiceName: '', apiVoice: '' }
+  return { engine: 'browser', speakEnabled: true, volume: 1, rate: 1, pitch: 1, voiceName: '', apiVoice: '' }
 }
 
 /** 全局单例设置（全站共享；滑块/下拉直接改它，下次播报即生效） */
@@ -47,6 +49,12 @@ export const ttsSettings = ref<TtsSettings>(load())
 
 export function saveTts() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(ttsSettings.value)) } catch { /* ignore */ }
+}
+
+/** 语音播报总开关：关 = 回复不朗读（试听按钮仍可手动播放） */
+export function toggleSpeak() {
+  ttsSettings.value.speakEnabled = !ttsSettings.value.speakEnabled
+  saveTts()
 }
 
 /** 可用浏览器语音（中文优先，其余兜底） */
@@ -128,11 +136,16 @@ export function speakText(text: string) {
   }
 }
 
+/** 自动播报入口：总开关为关时不发声（区别于「试听」的强制播放） */
+export function speakAuto(text: string) {
+  if (ttsSettings.value.speakEnabled) speakText(text)
+}
+
 /** 试听当前设置 */
 export function testVoice() {
   speakText('你好，我是小逻。这样调整的音量和声音可以吗？')
 }
 
 export function useTts() {
-  return { ttsSettings, saveTts, getVoices, loadVoices, speakText, testVoice }
+  return { ttsSettings, saveTts, getVoices, loadVoices, speakText, testVoice, speakAuto, toggleSpeak }
 }
