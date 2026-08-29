@@ -1,7 +1,7 @@
 <template>
   <button
     class="ui-btn"
-    :class="[`v-${variant}`, `s-${size}`, { block, loading }]"
+    :class="[`v-${variant}`, `s-${size}`, `h-${hover}`, { block, loading }]"
     :disabled="disabled || loading"
     :type="type"
     v-bind="$attrs"
@@ -15,11 +15,12 @@
 withDefaults(defineProps<{
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
   size?: 'sm' | 'md' | 'lg'
+  hover?: 'brand' | 'danger'
   block?: boolean
   loading?: boolean
   disabled?: boolean
   type?: 'button' | 'submit'
-}>(), { variant: 'primary', size: 'md', block: false, loading: false, disabled: false, type: 'button' })
+}>(), { variant: 'primary', size: 'md', hover: 'brand', block: false, loading: false, disabled: false, type: 'button' })
 </script>
 
 <style scoped>
@@ -33,6 +34,7 @@ withDefaults(defineProps<{
 }
 .ui-btn:active:not(:disabled) { transform: translateY(0) scale(.97); }
 .ui-btn:disabled { opacity: .5; cursor: not-allowed; }
+.h-danger:hover:not(:disabled) { color: var(--err); border-color: var(--err); }
 
 .s-sm { padding: 5px 14px; font-size: var(--fs-xs); }
 .s-md { padding: 10px 22px; font-size: var(--fs-md); }
