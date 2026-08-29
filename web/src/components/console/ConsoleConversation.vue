@@ -1,10 +1,6 @@
 <template>
   <div class="console-conv">
-    <ConsoleMessageList
-      :messages="asst.messages.value"
-      @retry="asst.retryTool($event)"
-      @cancel="asst.cancelTool($event)"
-    />
+    <ConsoleMessageList :messages="asst.messages.value" :wake-keyword="asst.wakeKeyword.value" @retry="asst.retryTool($event)" @cancel="asst.cancelTool($event)" />
     <div class="console-input">
       <ChatInput :disabled="false" @send="onSend" />
     </div>
@@ -24,17 +20,6 @@ function onSend(text: string) {
 </script>
 
 <style scoped>
-.console-conv {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.console-input {
-  max-width: 860px;
-  width: 100%;
-  margin: 0 auto;
-  padding-bottom: 8px;
-}
+.console-conv { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.console-input { max-width: 880px; width: 100%; margin: 0 auto; padding-bottom: 6px; }
 </style>
