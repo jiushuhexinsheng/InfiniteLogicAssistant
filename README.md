@@ -230,7 +230,7 @@ cd web && npm test              # 前端单元测试（Vitest）
 ├── requirements.txt           Python 依赖（在线 / 离线 scripts/libs/ 双路）
 ├── mypy.ini                   后端静态类型检查配置
 ├── core/
-│   ├── config.py              配置加载（pydantic 强类型校验 + YAML 双文件 + 密钥注入 + 热重载）
+│   ├── config/                配置包：schema（pydantic 模型）/ loader（YAML+密钥注入）/ runtime（单例+热重载）/ constants
 │   ├── logger.py              loguru 日志（控制台 + data/agent.log）+ 审计（data/audit.log）
 │   ├── detection/             检测域：environment（环境感知）/ validator（配置校验）/ connectivity（LLM/ASR/TTS 连通性）
 │   ├── api/                   API 路由（voice / tools / memory / schedule / settings / state 会话注册表）
@@ -249,7 +249,7 @@ cd web && npm test              # 前端单元测试（Vitest）
 ├── skills/                    技能定义（YAML，文件名 = 技能名）
 ├── memory/                    长期记忆数据（facts.sqlite）
 ├── rag/                       RAG 索引数据（index.db）
-├── environment.md             环境感知快照（envprobe 生成，agent 规划时注入，gitignore 不入仓库）
+├── environment.md             环境感知快照（core/detection/environment.py 生成，agent 规划时注入，gitignore 不入仓库）
 ├── data/                      运行时数据（agent.log / audit.log / schedules.json / tasks/ 等）
 ├── scripts/                   辅助脚本（mcp_echo_server.py / verify_memory.py）+ 离线 wheel
 ├── scripts/libs/              离线 wheel 包
@@ -262,7 +262,8 @@ cd web && npm test              # 前端单元测试（Vitest）
 │       ├── App.vue / main.ts / router.ts / api.ts / types.ts
 │       ├── components/FloatingAssistant.vue + assistant/（悬浮球面板组件）
 │       ├── components/console/（控制台：任务/记忆/环境/定时/工具视图）
-│       ├── composables/        useApi.ts / useAssistant.ts / useAssistantVisuals.ts
+│       ├── components/ui/     ui/ 原语组件（UiButton/UiInput/UiSelect/UiToggle/UiCard/UiModal 等 + 语义令牌）
+│       ├── composables/        useApi.ts / useAssistant.ts / useAssistantVisuals.ts / useConsole.ts
 │       └── views/              StartPage.vue / ConsolePage.vue
 └── deploy/                     打包发布副本（package_deploy.bat 生成；含 deploy.zip）
 ```
