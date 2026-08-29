@@ -12,7 +12,7 @@
         @input="autosize"
       ></textarea>
       <button class="ci-send" :disabled="disabled || !text.trim()" @click="submit">
-        <Icon name="send" :size="16" />
+        <UiIcon name="send" :size="16" />
       </button>
     </div>
   </div>
@@ -20,12 +20,11 @@
 
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
-import Icon from '../Icon.vue'
+import { UiIcon } from '../ui'
 import QuestionCard from './QuestionCard.vue'
 import { useAssistant } from '../../composables/useAssistant'
 
 const asst = useAssistant()
-
 const props = defineProps<{ disabled?: boolean }>()
 const emit = defineEmits<{ send: [text: string] }>()
 
@@ -52,42 +51,27 @@ function submit() {
 
 <style scoped>
 .chat-input {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px 10px;
-  border-top: 1px solid var(--border-base);
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface-control);
+  border: 1px solid var(--border-soft); border-radius: 16px;
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  box-shadow: var(--shadow-2);
 }
 .chat-input-row { display: flex; align-items: flex-end; gap: 8px; }
 .chat-input textarea {
-  flex: 1;
-  resize: none;
-  max-height: 80px;
-  min-height: 36px;
-  line-height: 20px;
-  background: #1e293b;
-  border: 1px solid var(--border-base);
-  border-radius: 10px;
-  color: var(--text-1);
-  padding: 8px 10px;
-  font-size: 13px;
-  outline: none;
-  font-family: inherit;
+  flex: 1; resize: none; max-height: 80px; min-height: 32px; line-height: 20px;
+  background: transparent; border: none; color: var(--text-1);
+  padding: 6px 4px; font-size: var(--fs-sm); outline: none; font-family: inherit;
 }
-.chat-input textarea:focus { border-color: var(--brand-c2); }
 .chat-input textarea:disabled { opacity: .5; }
+.chat-input textarea::placeholder { color: var(--text-3); }
 .ci-send {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: var(--brand-grad);
-  border: none;
-  color: #0f172a;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+  background: var(--brand-grad); border: none; color: var(--text-on-brand);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--glow-brand);
 }
 .ci-send:disabled { opacity: .4; cursor: not-allowed; }
 </style>
