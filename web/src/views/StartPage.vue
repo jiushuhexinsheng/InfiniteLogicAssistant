@@ -29,7 +29,6 @@
           {{ asst.wakeEnabled.value ? '关闭语音唤醒' : '开启语音唤醒' }}
         </UiButton>
         <UiButton variant="ghost" @click="scrollToTts"><UiIcon name="settings" :size="15" /> 语音设置</UiButton>
-        <UiButton variant="ghost" @click="router.push('/console')">打开完整控制台 <UiIcon name="chevron-down" :size="14" class="chev" /></UiButton>
       </div>
 
       <div class="cards">
@@ -54,8 +53,7 @@
         </UiCard>
 
         <UiCard class="start-card tts-card" title="语音设置">
-          <p class="tts-desc">调节播报音量 / 语速 / 声音 · 自动记住</p>
-          <TtsSettings />
+          <TtsMini />
         </UiCard>
       </div>
 
@@ -73,17 +71,15 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { useAssistant } from '../composables/useAssistant'
 import { useConfig } from '../composables/useApi'
 import { api } from '../api'
 import { UiButton, UiCard, UiChip, UiIcon, UiStatusDot } from '../components/ui'
 import AppHeader from '../components/layout/AppHeader.vue'
-import TtsSettings from '../components/assistant/TtsSettings.vue'
+import TtsMini from '../components/assistant/TtsMini.vue'
 
 const asst = useAssistant()
 const app = useConfig()
-const router = useRouter()
 
 const cfg = computed(() => app.config.value)
 const pingOk = ref(false)
@@ -124,11 +120,11 @@ onMounted(async () => {
 .hero {
   flex: 1; width: 100%; max-width: 1080px; margin: 0 auto;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 14px; padding: 28px 24px 32px;
+  gap: 10px; padding: 12px 24px 20px;
 }
 
 /* ── 光球 ── */
-.orb-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.orb-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .orb { position: relative; width: 116px; height: 116px; border-radius: 50%; background: var(--brand-grad); display: grid; place-items: center; box-shadow: var(--glow-brand); }
 .orb-halo {
   position: absolute; inset: 10px; border-radius: 50%;
@@ -161,7 +157,7 @@ onMounted(async () => {
 
 /* ── 标题 ── */
 .title {
-  font-size: clamp(2.4rem, 7vw, 3.5rem); font-weight: 800; letter-spacing: .12em; margin: 0;
+  font-size: clamp(2.2rem, 6vw, 3rem); font-weight: 800; letter-spacing: .12em; margin: 0;
   background: linear-gradient(135deg, #c7d2fe 0%, #67e8f9 50%, #6ee7b7 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(0 0 26px rgba(103, 232, 249, .16));
@@ -169,12 +165,11 @@ onMounted(async () => {
 .subtitle { font-size: var(--fs-lg); color: var(--text-2); letter-spacing: .05em; margin: 0; }
 
 /* ── 操作按钮 ── */
-.actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
-.chev { transform: rotate(-90deg); }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; padding-top: 2px; }
 
 /* ── 卡片行 ── */
-.cards { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; width: 100%; }
-.start-card { flex: 1 1 460px; max-width: 520px; min-width: 320px; }
+.cards { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; width: 100%; padding-top: 4px; }
+.start-card { flex: 1 1 440px; max-width: 500px; min-width: 320px; }
 .status-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .live { display: flex; align-items: center; gap: 8px; }
 .live b { font-size: var(--fs-sm); font-weight: 600; }
@@ -184,12 +179,13 @@ onMounted(async () => {
 .status-detail { font-size: var(--fs-xs); color: var(--err); text-align: center; margin-top: 8px; }
 
 /* ── 语音设置 ── */
-.tts-desc { font-size: var(--fs-2xs); color: var(--text-3); margin-bottom: 4px; }
+
 
 /* ── 特性 ── */
 .features {
   width: 100%; max-width: 880px;
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;
+  padding-top: 2px;
 }
 .feature { display: flex; gap: 12px; align-items: flex-start; }
 .feature-ic {
@@ -202,7 +198,7 @@ onMounted(async () => {
 .feature p { font-size: var(--fs-xs); color: var(--text-3); line-height: 1.55; margin: 0; }
 
 /* ── 页脚 ── */
-.page-footer { text-align: center; font-size: var(--fs-2xs); color: var(--text-3); letter-spacing: .08em; padding: 4px 0 18px; }
+.page-footer { text-align: center; font-size: var(--fs-2xs); color: var(--text-3); letter-spacing: .08em; padding: 2px 0 14px; }
 
 /* ── 入场动效 ── */
 .orb-wrap, .title, .subtitle, .actions, .cards, .features {
