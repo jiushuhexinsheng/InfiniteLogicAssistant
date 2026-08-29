@@ -77,3 +77,27 @@
   --ease-out: cubic-bezier(.22, 1, .36, 1);
   --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
 }
+
+
+/* ── 语义令牌（ui/ 原语与业务组件共用，值仍来自上方色板）── */
+:root {
+  /* 表面 */
+  --surface-card: var(--glass-bg);
+  --surface-raised: var(--glass-bg-strong);
+  --surface-control: rgba(15, 23, 42, .5);
+  --surface-control-hover: rgba(103, 232, 249, .07);
+  --surface-input: #0b1120;
+  /* 控件 */
+  --control-border: var(--border-soft);
+  --control-text: var(--text-2);
+  --text-on-brand: #0f172a;
+  /* 对话气泡 */
+  --bubble-user: var(--brand-grad);
+  --bubble-user-text: #0f172a;
+  --bubble-ai: linear-gradient(180deg, rgba(51, 65, 85, .95), rgba(30, 41, 59, .95));
+  --bubble-ai-border: var(--brand-c2);
+  /* 布局 */
+  --nav-width: 232px;
+  --header-h: 60px;
+  --danger: var(--err);
+}
