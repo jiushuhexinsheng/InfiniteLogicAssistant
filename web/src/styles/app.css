@@ -45,3 +45,6 @@ body::after {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* 等宽（数据/时间戳） */
+.mono { font-family: var(--font-mono); }
