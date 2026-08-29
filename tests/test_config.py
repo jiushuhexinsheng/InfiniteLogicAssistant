@@ -45,6 +45,7 @@ def test_inject_secrets_asr_tts_under_voice(monkeypatch):
 
     曾只找顶层 data['asr']/data['tts']，而 config.yaml 把它们放在 voice 下，
     导致 ASR/TTS 密钥永远为空（写入 secrets 也不生效 → 401）。"""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
     monkeypatch.delenv("MIMO_API_KEY", raising=False)
     monkeypatch.delenv("ASR_API_KEY", raising=False)
     monkeypatch.delenv("TTS_API_KEY", raising=False)
