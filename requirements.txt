@@ -12,7 +12,9 @@ loguru==0.7.3
 openpyxl==3.1.5
 tomli-w==1.2.0
 mcp==2.0.0
-# GUI 自动化（pyautogui 为 sdist，离线 wheel 无法覆盖，需在线安装）
+# GUI 自动化（pyautogui 为 sdist-only；已连同依赖 pygetwindow/pyscreeze/pyrect/mouseinfo/pytweening
+# 打成 py3-none-any wheel 放入 scripts/libs，离线 --no-index 完整可用；
+# 其 macOS(pyobjc)/Linux(python-xlib) 依赖带环境标记，Windows 安装自动忽略）
 pyautogui==0.9.54
 pygetwindow==0.0.9
 pillow==12.3.0
