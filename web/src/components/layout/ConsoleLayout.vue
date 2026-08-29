@@ -39,6 +39,7 @@ const router = useRouter()
 <style scoped>
 .console-page {
   min-height: 100vh; display: flex; flex-direction: column;
+  padding-bottom: 120px; /* 避免右下角悬浮球遮挡 */
   background:
     radial-gradient(1000px 480px at 50% -5%, rgba(103, 232, 249, .06), transparent 60%),
     var(--bg-0);
