@@ -1,7 +1,7 @@
 <template>
   <div class="console-settings">
     <div class="cs-head">
-      <h2 class="cs-title"><Icon name="settings" :size="17" /> 设置</h2>
+      <h2 class="cs-title"><UiIcon name="settings" :size="17" /> 设置</h2>
       <p class="cs-sub">左侧菜单切换模块，每个模块独立「保存 / 测试连接」，密钥通过弹出框设置</p>
     </div>
 
@@ -15,14 +15,14 @@
           :class="{ on: activeMenu === m.id }"
           @click="activeMenu = m.id"
         >
-          <Icon :name="m.icon" :size="14" />
+          <UiIcon :name="m.icon" :size="14" />
           <span>{{ m.label }}</span>
           <i class="cs-menu-dot" :class="{ on: menuDot(m.id) }" title="密钥已设置"></i>
         </button>
         <div class="cs-menu-extra">
-          <button class="cs-btn sm" :disabled="detecting" @click="detectAll">
+          <UiButton variant="secondary" size="sm" :disabled="detecting" @click="detectAll" block>
             {{ detecting ? '检测中…' : '检测全部' }}
-          </button>
+          </UiButton>
         </div>
       </aside>
 
@@ -33,43 +33,41 @@
 
         <!-- 连接状态条 -->
         <div v-if="Object.keys(connResults).length" class="cs-conn">
-          <span v-for="c in Object.values(connResults)" :key="c.name" class="cs-conn-chip" :class="'st-' + c.status">
-            {{ c.name }} {{ c.status === 'ok' ? '✓ 连通' : c.status === 'skip' ? '跳过' : '✗ 失败' }}
-          </span>
+          <UiChip v-for="c in Object.values(connResults)" :key="c.name" :tone="connTone(c.status)" :dot="false">
+            {{ c.name }} {{ connStatusText(c.status) }}
+          </UiChip>
         </div>
 
         <!-- 服务模块：LLM / ASR / TTS（activeMenu 对应才显示） -->
         <template v-for="s in sectionDefs" :key="s.key">
-          <div v-if="activeMenu === s.key" class="cs-card">
+          <UiCard v-if="activeMenu === s.key" class="cs-card">
             <div class="cs-card-head">
               <span class="cs-card-title">{{ s.title }}</span>
               <div class="cs-card-btns">
-                <button class="cs-btn sm" :disabled="detecting" @click="detectOne(s.name)">测试连接</button>
-                <button class="cs-btn sm primary" :disabled="!editable || saving" @click="saveModule(s.key)">
+                <UiButton variant="secondary" size="sm" :disabled="detecting" @click="detectOne(s.name)">测试连接</UiButton>
+                <UiButton variant="primary" size="sm" :disabled="!editable || saving" @click="saveModule(s.key)">
                   {{ saving ? '保存中…' : '保存' }}
-                </button>
+                </UiButton>
               </div>
             </div>
 
-            <label v-if="s.toggle" class="cs-field row">
-              <span class="cs-label">启用</span>
-              <input type="checkbox" v-model="sec(s.key).enabled" />
-            </label>
+            <SettingsField v-if="s.toggle" label="启用" row>
+              <UiToggle :model-value="sec(s.key).enabled" @update:model-value="v => (sec(s.key).enabled = v)" />
+            </SettingsField>
 
             <!-- Profile 管理：切换 / 新增（厂商目录） / 删除 -->
             <div class="cs-profrow">
-              <label class="cs-field grow">
-                <span class="cs-label">Profile</span>
-                <select v-model="sec(s.key).active">
+              <SettingsField label="Profile" grow>
+                <UiSelect :model-value="sec(s.key).active" @update:model-value="v => (sec(s.key).active = v)">
                   <option v-for="n in Object.keys(sec(s.key).profiles)" :key="n" :value="n">{{ n }}</option>
-                </select>
-              </label>
-              <button class="cs-btn sm" :class="{ on: addingSection === s.key }" @click="toggleAdding(s.key)">
-                <Icon name="plus" :size="12" /> 新增
-              </button>
-              <button class="cs-btn sm" :disabled="Object.keys(sec(s.key).profiles).length <= 1" @click="deleteProfile(s.key)">
-                <Icon name="trash" :size="12" /> 删除
-              </button>
+                </UiSelect>
+              </SettingsField>
+              <UiButton variant="secondary" size="sm" :class="{ on: addingSection === s.key }" @click="toggleAdding(s.key)">
+                <UiIcon name="plus" :size="12" /> 新增
+              </UiButton>
+              <UiButton variant="secondary" size="sm" :disabled="Object.keys(sec(s.key).profiles).length <= 1" @click="deleteProfile(s.key)">
+                <UiIcon name="trash" :size="12" /> 删除
+              </UiButton>
             </div>
 
             <!-- 厂商目录选择面板（新增 Profile） -->
@@ -77,9 +75,9 @@
               <p class="cs-vendor-tip">从厂商目录新增 Profile（自动预填端点/模型，可再手动调整）</p>
               <!-- 自定义名称内联输入（替代 window.prompt） -->
               <div v-if="customAdding === s.key" class="cs-vendor-custom">
-                <input v-model="customName" placeholder="Profile 名称（如 my-gateway）" @keyup.enter="confirmCustom(s.key)" />
-                <button class="cs-btn sm primary" @click="confirmCustom(s.key)">创建</button>
-                <button class="cs-btn sm" @click="customAdding = null">取消</button>
+                <UiInput v-model="customName" placeholder="Profile 名称（如 my-gateway）" @keyup.enter="confirmCustom(s.key)" />
+                <UiButton variant="primary" size="sm" @click="confirmCustom(s.key)">创建</UiButton>
+                <UiButton variant="secondary" size="sm" @click="customAdding = null">取消</UiButton>
               </div>
               <div v-else class="cs-vendor-grid">
                 <button class="cs-vendor-chip custom" @click="customAdding = s.key">＋ 自定义（空白）</button>
@@ -90,107 +88,98 @@
             </div>
 
             <template v-for="f in s.fields" :key="f">
-              <label class="cs-field">
-                <span class="cs-label">{{ fieldLabel(f) }}</span>
+              <SettingsField :label="fieldLabel(f)">
                 <!-- 协议下拉 -->
-                <select v-if="f === 'provider'" v-model="sec(s.key).profiles[sec(s.key).active][f]">
+                <UiSelect v-if="f === 'provider'" :model-value="sec(s.key).profiles[sec(s.key).active][f]" @update:model-value="v => (sec(s.key).profiles[sec(s.key).active][f] = v)">
                   <option value="openai">OpenAI 兼容</option>
                   <option value="anthropic">Anthropic（原生）</option>
                   <option value="gemini">Gemini（原生）</option>
-                </select>
+                </UiSelect>
                 <!-- 模型 / 音色可输入下拉 -->
                 <template v-else-if="f === 'model' || f === 'voice'">
-                  <input :list="'dl-' + s.key + '-' + f" v-model="sec(s.key).profiles[sec(s.key).active][f]" />
-                  <datalist :id="'dl-' + s.key + '-' + f">
+                  <UiInput :model-value="sec(s.key).profiles[sec(s.key).active][f]" @update:model-value="v => (sec(s.key).profiles[sec(s.key).active][f] = v)" :list="`dl-${s.key}-${f}`" />
+                  <datalist :id="`dl-${s.key}-${f}`">
                     <option v-for="m in (f === 'model' ? modelOptions(s) : voiceOptions(s))" :key="m" :value="m" />
                   </datalist>
                 </template>
-                <input
+                <UiInput
                   v-else
+                  :model-value="sec(s.key).profiles[sec(s.key).active][f]"
+                  @update:model-value="v => (sec(s.key).profiles[sec(s.key).active][f] = v)"
                   :type="num(f) ? 'number' : 'text'"
                   :step="num(f) ? (f === 'temperature' ? 0.1 : 1) : undefined"
-                  v-model="sec(s.key).profiles[sec(s.key).active][f]"
                 />
-              </label>
+              </SettingsField>
             </template>
 
             <div class="cs-keyrow">
-              <span class="cs-keybadge" :class="{ set: sec(s.key).api_key_set[sec(s.key).active] }">
+              <UiChip :tone="sec(s.key).api_key_set[sec(s.key).active] ? 'ok' : 'warn'" :dot="false">
                 API Key：{{ sec(s.key).api_key_set[sec(s.key).active] ? '已设置' : '未设置' }}
-              </span>
-              <button class="cs-btn sm" @click="openKeyModal(s.key, sec(s.key).active)">设置</button>
-              <button class="cs-btn sm" @click="fetchModelsFor(s.key)">获取模型</button>
+              </UiChip>
+              <UiButton variant="secondary" size="sm" @click="openKeyModal(s.key, sec(s.key).active)">设置</UiButton>
+              <UiButton variant="secondary" size="sm" @click="fetchModelsFor(s.key)">获取模型</UiButton>
             </div>
 
             <div v-if="connResults[s.name]" class="cs-connline" :class="'st-' + connResults[s.name].status">
               {{ connResults[s.name].detail || connResults[s.name].status }}
               <em v-if="connResults[s.name].latency_ms != null">{{ connResults[s.name].latency_ms }}ms</em>
             </div>
-          </div>
+          </UiCard>
         </template>
 
         <!-- 语音模块：唤醒词 + VAD + 本地播报 -->
-        <div v-if="activeMenu === 'voice'" class="cs-card">
+        <UiCard v-if="activeMenu === 'voice'" class="cs-card">
           <div class="cs-card-head">
             <span class="cs-card-title">语音（唤醒 / 静音检测）</span>
-            <button class="cs-btn sm primary" :disabled="!editable || saving" @click="saveModule('voice')">
+            <UiButton variant="primary" size="sm" :disabled="!editable || saving" @click="saveModule('voice')">
               {{ saving ? '保存中…' : '保存' }}
-            </button>
+            </UiButton>
           </div>
-          <label v-if="editable" class="cs-field row">
-            <span class="cs-label">唤醒启用</span>
-            <input type="checkbox" v-model="editable.wake_word.enabled" />
-          </label>
-          <label v-if="editable" class="cs-field">
-            <span class="cs-label">唤醒词</span>
-            <input type="text" v-model="editable.wake_word.keyword" />
-          </label>
-          <label v-if="editable" class="cs-field">
-            <span class="cs-label">灵敏度（0-1）</span>
-            <input type="number" step="0.05" min="0" max="1" v-model.number="editable.wake_word.sensitivity" />
-          </label>
-          <label v-if="editable" class="cs-field">
-            <span class="cs-label">静音判定阈值</span>
-            <input type="number" step="0.01" v-model.number="editable.vad.silence_threshold" />
-          </label>
-          <label v-if="editable" class="cs-field">
-            <span class="cs-label">静音停止时长（ms）</span>
-            <input type="number" v-model.number="editable.vad.silence_duration_ms" />
-          </label>
-          <label v-if="editable" class="cs-field">
-            <span class="cs-label">最长录音（ms）</span>
-            <input type="number" v-model.number="editable.vad.max_duration_ms" />
-          </label>
+          <SettingsField v-if="editable" label="唤醒启用" row>
+            <UiToggle :model-value="ed().wake_word.enabled" @update:model-value="v => (ed().wake_word.enabled = v)" />
+          </SettingsField>
+          <SettingsField v-if="editable" label="唤醒词">
+            <UiInput v-model="ed().wake_word.keyword" />
+          </SettingsField>
+          <SettingsField v-if="editable" label="灵敏度（0-1）">
+            <UiInput type="number" step="0.05" min="0" max="1" :model-value="ed().wake_word.sensitivity" @update:model-value="v => (ed().wake_word.sensitivity = toNum(v))" />
+          </SettingsField>
+          <SettingsField v-if="editable" label="静音判定阈值">
+            <UiInput type="number" step="0.01" :model-value="ed().vad.silence_threshold" @update:model-value="v => (ed().vad.silence_threshold = toNum(v))" />
+          </SettingsField>
+          <SettingsField v-if="editable" label="静音停止时长（ms）">
+            <UiInput type="number" :model-value="ed().vad.silence_duration_ms" @update:model-value="v => (ed().vad.silence_duration_ms = toNum(v))" />
+          </SettingsField>
+          <SettingsField v-if="editable" label="最长录音（ms）">
+            <UiInput type="number" :model-value="ed().vad.max_duration_ms" @update:model-value="v => (ed().vad.max_duration_ms = toNum(v))" />
+          </SettingsField>
           <div class="cs-tts"><TtsSettings /></div>
-        </div>
+        </UiCard>
 
         <!-- 高级模块 -->
-        <div v-if="activeMenu === 'advanced'" class="cs-card">
+        <UiCard v-if="activeMenu === 'advanced'" class="cs-card">
           <div class="cs-card-head">
             <span class="cs-card-title">高级设置（Agent / LLM 客户端 / 工具 / 服务器 / MCP）</span>
-            <button class="cs-btn sm primary" :disabled="!editable || saving" @click="saveModule('advanced')">
+            <UiButton variant="primary" size="sm" :disabled="!editable || saving" @click="saveModule('advanced')">
               {{ saving ? '保存中…' : '保存' }}
-            </button>
+            </UiButton>
           </div>
-          <div v-for="s in advancedDefs" :key="s.key" class="cs-card slim">
-            <div class="cs-card-head"><span class="cs-card-title">{{ s.title }}</span></div>
+          <div v-for="s in advancedDefs" :key="s.key" class="cs-subcard">
+            <div class="cs-subcard-title">{{ s.title }}</div>
             <template v-for="f in s.fields" :key="f[0]">
-              <label class="cs-field">
-                <span class="cs-label">{{ fieldLabel(f[0]) }}</span>
-                <template v-if="f[1] === 'bool'">
-                  <input type="checkbox" v-model="sec(s.key)[f[0]]" />
-                </template>
-                <template v-else>
-                  <input :type="f[1] === 'number' ? 'number' : 'text'" v-model="sec(s.key)[f[0]]" />
-                </template>
-              </label>
+              <SettingsField v-if="f[1] === 'bool'" :label="fieldLabel(f[0])" row>
+                <UiToggle :model-value="sec(s.key)[f[0]]" @update:model-value="v => (sec(s.key)[f[0]] = v)" />
+              </SettingsField>
+              <SettingsField v-else :label="fieldLabel(f[0])">
+                <UiInput :type="f[1] === 'number' ? 'number' : 'text'" v-model="sec(s.key)[f[0]]" />
+              </SettingsField>
             </template>
           </div>
           <p class="cs-note">
             MCP server 列表、服务器 host/port/api_token 建议直接编辑 config.yaml / config.secrets.yaml（改动需重启生效）。
             密钥只报「已设置 / 未设置」，永不回显。
           </p>
-        </div>
+        </UiCard>
 
         <!-- 配置校验问题 -->
         <div v-if="issues.length" class="cs-issues">
@@ -200,36 +189,37 @@
     </div>
 
     <!-- 密钥弹出框（替代 window.prompt） -->
-    <div v-if="keyModal" class="cs-mask" @click.self="keyModal = null">
-      <div class="cs-dialog">
-        <div class="cs-dialog-head">
-          <span class="cs-dialog-title">设置 API Key</span>
-          <button class="cs-dialog-close" @click="keyModal = null"><Icon name="close" :size="14" /></button>
-        </div>
-        <p class="cs-dialog-sub">{{ keyModal.section }} · {{ keyModal.profile }}</p>
+    <UiModal :model-value="!!keyModal" @update:model-value="v => { if (!v) keyModal = null }" title="设置 API Key">
+        <p class="cs-dialog-sub">{{ keyModal?.section }} · {{ keyModal?.profile }}</p>
         <div class="cs-key-input">
-          <input :type="showKey ? 'text' : 'password'" v-model="keyModal.value" placeholder="粘贴 API Key（留空 = 清除）" autofocus />
-          <button class="cs-btn sm" @click="showKey = !showKey">{{ showKey ? '隐藏' : '显示' }}</button>
+          <UiInput
+            :type="showKey ? 'text' : 'password'"
+            :model-value="keyModal ? keyModal.value : ''"
+            @update:model-value="v => { if (keyModal) keyModal.value = v }"
+            placeholder="粘贴 API Key（留空 = 清除）"
+            autofocus
+          />
+          <UiButton variant="secondary" size="sm" @click="showKey = !showKey">{{ showKey ? '隐藏' : '显示' }}</UiButton>
         </div>
         <p v-if="keyEnvHint()" class="cs-dialog-env">
           也可通过环境变量 <code>{{ keyEnvHint() }}</code> 配置（优先级高于此密钥）
         </p>
         <div class="cs-dialog-btns">
-          <button class="cs-btn" @click="clearKey">清除</button>
-          <button class="cs-btn primary" @click="confirmKey">保存</button>
-          <button class="cs-btn" @click="keyModal = null">取消</button>
+          <UiButton variant="ghost" size="sm" @click="clearKey">清除</UiButton>
+          <UiButton variant="primary" size="sm" @click="confirmKey">保存</UiButton>
+          <UiButton variant="ghost" size="sm" @click="keyModal = null">取消</UiButton>
         </div>
-      </div>
-    </div>
+    </UiModal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import Icon from '../Icon.vue'
 import TtsSettings from '../assistant/TtsSettings.vue'
 import { api } from '../../api'
 import { useConfig } from '../../composables/useApi'
+import SettingsField from './settings/SettingsField.vue'
+import { UiButton, UiCard, UiChip, UiIcon, UiInput, UiModal, UiSelect, UiToggle } from '../ui'
 import type { ConnectivityResult, DetectionIssue, EditableSnapshot, ProfileConfig, ProviderPreset } from '../../types'
 
 const app = useConfig()
@@ -299,6 +289,10 @@ const LABELS: Record<string, string> = {
 function sec(key: string): any {
   return (editable.value as any)?.[key]
 }
+/** 语音模块顶层对象（wake_word / vad 不在模块 key 下，直接挂在 editable 根） */
+function ed(): any {
+  return editable.value
+}
 function fieldLabel(f: string): string {
   return LABELS[f] || f
 }
@@ -307,6 +301,16 @@ function num(f: string): boolean {
 }
 function isErr(m: string): boolean {
   return m.includes('失败') || m.includes('无效')
+}
+function connTone(status: string): 'ok' | 'warn' | 'err' | 'info' | 'neutral' {
+  return status === 'ok' ? 'ok' : status === 'skip' ? 'neutral' : 'err'
+}
+function connStatusText(status: string): string {
+  return status === 'ok' ? '✓ 连通' : status === 'skip' ? '跳过' : '✗ 失败'
+}
+/** 数值输入：保留空串（清空），其余转 number（与原生 v-model.number 行为一致） */
+function toNum(v: string): number | '' {
+  return v === '' ? '' : Number(v)
 }
 
 // ─── 菜单状态点：服务模块显示「密钥已设置」绿点 ───
@@ -639,26 +643,11 @@ onMounted(() => { load(); loadCatalog() })
 .cs-msg.err { color: #f87171; }
 
 .cs-conn { display: flex; gap: 8px; flex-wrap: wrap; }
-.cs-conn-chip {
-  font-size: var(--fs-2xs); font-family: var(--font-mono);
-  padding: 4px 10px; border-radius: var(--r-full);
-  border: 1px solid var(--border-soft); color: var(--text-2);
-}
 .st-ok { color: #34d399 !important; border-color: rgba(52, 211, 153, .4) !important; background: rgba(52, 211, 153, .07); }
 .st-skip { color: var(--text-3) !important; }
 .st-fail { color: #f87171 !important; border-color: rgba(248, 113, 113, .4) !important; background: rgba(248, 113, 113, .07); }
 
-.cs-card {
-  background: var(--glass-bg-strong);
-  backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-2);
-  padding: 14px;
-  display: flex; flex-direction: column; gap: 10px;
-}
-.cs-card.slim { padding: 12px; }
+.cs-card { display: flex; flex-direction: column; gap: 12px; }
 .cs-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .cs-card-title {
   font-size: var(--fs-sm); font-weight: 600; color: var(--text-1);
@@ -666,40 +655,7 @@ onMounted(() => { load(); loadCatalog() })
 }
 .cs-card-btns { display: flex; align-items: center; gap: 8px; }
 
-.cs-btn {
-  font-size: var(--fs-xs); font-family: var(--font-mono);
-  color: var(--text-2); background: rgba(15, 23, 42, .6);
-  border: 1px solid var(--border-soft); border-radius: var(--r-full);
-  padding: 5px 14px; cursor: pointer;
-  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
-}
-.cs-btn:hover { color: var(--brand-c2); border-color: var(--brand-c2); }
-.cs-btn.primary { color: #0b1120; background: linear-gradient(90deg, var(--brand-c2), var(--brand-c3)); border-color: transparent; font-weight: 600; }
-.cs-btn.primary:hover { filter: brightness(1.1); }
-.cs-btn.sm { font-size: 10px; padding: 3px 10px; }
-.cs-btn:disabled { opacity: .5; cursor: not-allowed; }
-
-.cs-field { display: flex; flex-direction: column; gap: 4px; }
-.cs-field.row { flex-direction: row; align-items: center; gap: 8px; }
-.cs-label {
-  font-size: var(--fs-2xs); color: var(--text-3);
-  display: flex; justify-content: space-between; align-items: baseline;
-}
-.cs-field select,
-.cs-field input[type="text"],
-.cs-field input[type="number"],
-.cs-field input[type="password"] {
-  background: rgba(15, 23, 42, .8); color: var(--text-1);
-  border: 1px solid var(--border-soft); border-radius: var(--r-sm);
-  font-size: var(--fs-xs); font-family: var(--font-mono);
-  padding: 5px 8px; outline: none;
-}
-.cs-field select:focus,
-.cs-field input:focus { border-color: var(--brand-c2); }
-
 .cs-profrow { display: flex; align-items: flex-end; gap: 8px; }
-.cs-profrow .grow { flex: 1; }
-.cs-profrow .cs-btn.on { color: var(--brand-c2); border-color: var(--brand-c2); }
 
 .cs-vendor {
   border: 1px dashed var(--border-soft); border-radius: var(--r-sm);
@@ -715,21 +671,12 @@ onMounted(() => { load(); loadCatalog() })
 .cs-vendor-chip:hover { color: var(--brand-c2); border-color: var(--brand-c2); }
 .cs-vendor-chip.custom { border-style: dashed; color: var(--brand-c2); }
 .cs-vendor-custom { display: flex; align-items: center; gap: 8px; }
-.cs-vendor-custom input {
-  flex: 1; background: rgba(15, 23, 42, .8); color: var(--text-1);
-  border: 1px solid var(--border-soft); border-radius: var(--r-sm);
-  font-size: var(--fs-xs); font-family: var(--font-mono); padding: 5px 8px; outline: none;
-}
-.cs-vendor-custom input:focus { border-color: var(--brand-c2); }
 
 .cs-keyrow { display: flex; align-items: center; gap: 8px; }
-.cs-keybadge {
-  font-size: var(--fs-2xs); font-family: var(--font-mono);
-  color: #fbbf24; background: rgba(251, 191, 36, .08);
-  border: 1px solid rgba(251, 191, 36, .3); border-radius: var(--r-sm);
-  padding: 3px 8px;
-}
-.cs-keybadge.set { color: #34d399; background: rgba(52, 211, 153, .08); border-color: rgba(52, 211, 153, .3); }
+
+/* 输入框在 flex 行里占满剩余空间（UiInput 默认 width:100%） */
+.cs-vendor-custom :deep(.ui-input),
+.cs-key-input :deep(.ui-input) { flex: 1; min-width: 0; }
 
 .cs-connline {
   font-size: var(--fs-2xs); color: var(--text-3);
@@ -738,6 +685,20 @@ onMounted(() => { load(); loadCatalog() })
 .cs-connline em { font-style: normal; font-family: var(--font-mono); color: var(--brand-c2); margin-left: 6px; }
 
 .cs-tts { margin-top: 2px; }
+
+.cs-subcard {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft); border-radius: var(--r-md);
+  background: rgba(15, 23, 42, .4);
+}
+.cs-subcard-title {
+  font-size: var(--fs-xs); font-weight: 600; color: var(--text-2);
+  letter-spacing: .02em;
+}
+
+/* 新增 Profile 按钮激活态（UiButton 透传 class） */
+.cs-profrow :deep(.ui-btn.on) { color: var(--brand-c2); border-color: var(--brand-c2); }
 
 .cs-issues { display: flex; flex-direction: column; gap: 6px; }
 .cs-issues p {
@@ -754,34 +715,8 @@ onMounted(() => { load(); loadCatalog() })
 }
 
 /* ── 密钥弹出框 ── */
-.cs-mask {
-  position: fixed; inset: 0; z-index: 1000;
-  background: rgba(2, 6, 23, .6); backdrop-filter: blur(4px);
-  display: flex; align-items: center; justify-content: center;
-}
-.cs-dialog {
-  width: min(420px, calc(100vw - 40px));
-  background: var(--glass-bg-strong); backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  border: 1px solid var(--glass-border); border-radius: var(--r-lg);
-  box-shadow: var(--shadow-3); padding: 16px;
-  display: flex; flex-direction: column; gap: 10px;
-}
-.cs-dialog-head { display: flex; align-items: center; justify-content: space-between; }
-.cs-dialog-title { font-size: var(--fs-sm); font-weight: 600; color: var(--text-1); }
-.cs-dialog-close {
-  display: inline-flex; align-items: center; justify-content: center;
-  background: none; border: none; color: var(--text-3); cursor: pointer; padding: 2px;
-}
-.cs-dialog-close:hover { color: var(--brand-c2); }
 .cs-dialog-sub { font-size: var(--fs-2xs); color: var(--text-3); margin: 0; font-family: var(--font-mono); }
 .cs-key-input { display: flex; align-items: center; gap: 8px; }
-.cs-key-input input {
-  flex: 1; background: rgba(15, 23, 42, .8); color: var(--text-1);
-  border: 1px solid var(--border-soft); border-radius: var(--r-sm);
-  font-size: var(--fs-xs); font-family: var(--font-mono); padding: 7px 9px; outline: none;
-}
-.cs-key-input input:focus { border-color: var(--brand-c2); }
 .cs-dialog-env { font-size: var(--fs-2xs); color: var(--text-3); margin: 0; line-height: 1.6; }
 .cs-dialog-env code { font-family: var(--font-mono); color: var(--brand-c2); }
 .cs-dialog-btns { display: flex; justify-content: flex-end; gap: 8px; }
