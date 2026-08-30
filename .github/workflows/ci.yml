@@ -38,7 +38,11 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Install deps
         run: |
-          npm ci || { echo "::error::npm ci failed, retrying with verbose log"; npm ci --loglevel=verbose 2>&1 | tail -120; exit 1; }
+          if ! npm ci; then
+            LOG=$(npm ci --loglevel=verbose 2>&1 | tail -50)
+            echo "::error::npm ci failed. verbose tail:${LOG//$'\n'/%0A}"
+            exit 1
+          fi
         env:
           # npm 11 allowScripts：全新 CI 环境默认阻止 esbuild postinstall（vite 依赖）→ 显式允许
           NPM_CONFIG_ALLOW_SCRIPTS: "true"
