@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from core.llm.client import get_llm_client
 from core.logger import logger
 from core.orchestrator.intent import IntentResult
+from core.prompts import FORM_TASK_SYSTEM
 
 _FORM_TOOL = {
     "type": "function",
@@ -43,7 +44,7 @@ class Task:
 async def form_task(intent: IntentResult) -> Task:
     """用 LLM 结构化形成任务；失败兜底为纯 goal、无缺失。"""
     messages = [
-        {"role": "system", "content": "根据用户意图形成结构化任务。missing 里列出需要向操作者确认的问题；risk 按操作判定：read只读/write写/exec执行任意命令。"},
+        {"role": "system", "content": FORM_TASK_SYSTEM},
         {"role": "user", "content": intent.summary},
     ]
     fallback = Task(id=uuid.uuid4().hex[:12], goal=intent.summary, params={}, missing=[], risk="read")

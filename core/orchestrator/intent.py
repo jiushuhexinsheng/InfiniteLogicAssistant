@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from core.llm.client import get_llm_client
 from core.logger import logger
+from core.prompts import INTENT_SYSTEM
 
 _JUDGE_TOOL = {
     "type": "function",
@@ -39,7 +40,7 @@ async def judge_intent(text: str) -> IntentResult:
         logger.info("judge_intent(规则): {} → task", text)
         return IntentResult(type="task", summary=f"记住用户偏好：{text.strip()}")
     messages = [
-        {"role": "system", "content": "判断用户输入意图，用 judge 工具返回。chit_chat=闲聊/提问，无需执行动作直接回复即可；task=需要形成任务执行，包括操作/查询类。"},
+        {"role": "system", "content": INTENT_SYSTEM},
         {"role": "user", "content": text},
     ]
     try:
