@@ -131,7 +131,7 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 | `GET /api/env` | 环境感知快照（environment.md 内容） |
 | `GET /api/memory` · `DELETE /api/memory/{topic}` | 长期记忆浏览/删除 |
 | `GET/POST /api/schedules` · `DELETE /api/schedules/{sid}` | 定时任务列表/注册/取消 |
-| `POST/GET /api/sessions` · `PATCH/DELETE /api/sessions/{sid}` | 会话管理：新建/列表/重命名/删除（可续接对话线） |
+| `POST/GET /api/sessions` · `PATCH/DELETE /api/sessions/{sid}` | 会话管理：新建/列表/重命名/删除；`POST /sessions/{sid}/clear` 清除上下文；`PATCH {archived}` 归档；`GET ?archived=` 过滤（可续接对话线） |
 | `GET /api/config/full` | 设置页可编辑配置快照（密钥不回显，只报 `*_set`） |
 | `PATCH /api/config` | 持久化非敏感配置并热重载（`restart_required` 标记服务器绑定类） |
 | `PUT /api/config/secrets` | 设置/清除密钥（写 `config.secrets.yaml`，永不回显） |

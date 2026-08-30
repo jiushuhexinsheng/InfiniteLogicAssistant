@@ -23,12 +23,14 @@ class HistoryStore:
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS conversations ("
                 "id TEXT PRIMARY KEY, name TEXT DEFAULT '', created TEXT, updated TEXT, "
-                "status TEXT, summary TEXT)"
+                "status TEXT, summary TEXT, archived INTEGER DEFAULT 0)"
             )
-            # 迁移：老库无 name 列 → 补列
+            # 迁移：老库缺 name / archived 列 → 补列
             cols = [r[1] for r in conn.execute("PRAGMA table_info(conversations)").fetchall()]
             if "name" not in cols:
                 conn.execute("ALTER TABLE conversations ADD COLUMN name TEXT DEFAULT ''")
+            if "archived" not in cols:
+                conn.execute("ALTER TABLE conversations ADD COLUMN archived INTEGER DEFAULT 0")
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS messages ("
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id TEXT, "
@@ -56,6 +58,15 @@ class HistoryStore:
         with self._conn() as conn:
             conn.execute("UPDATE conversations SET name=? WHERE id=?", (name, conv_id))
 
+    async def clear_messages(self, conv_id: str) -> None:
+        """清除上下文：清空会话消息（保留会话记录与 name）。"""
+        with self._conn() as conn:
+            conn.execute("DELETE FROM messages WHERE conversation_id=?", (conv_id,))
+
+    async def set_archived(self, conv_id: str, archived: bool) -> None:
+        with self._conn() as conn:
+            conn.execute("UPDATE conversations SET archived=? WHERE id=?", (1 if archived else 0, conv_id))
+
     # ── 消息读写 ──
 
     async def save_conversation(self, conv_id: str, messages: list[dict],
@@ -82,24 +93,33 @@ class HistoryStore:
                     (conv_id, m.get("role", ""), m.get("content", "") or "", tool_calls, now),
                 )
 
-    async def list_conversations(self, limit: int = 30) -> list[dict]:
+    async def list_conversations(self, limit: int = 30, archived: bool | None = False) -> list[dict]:
+        """会话列表。
+
+        archived=False（默认）排除归档 / True 只归档 / None 全部。
+        """
+        where = ""
+        if archived is True:
+            where = "WHERE c.archived = 1"
+        elif archived is False:
+            where = "WHERE c.archived = 0"
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT c.id, c.name, c.created, c.updated, c.status, c.summary, COUNT(m.id) "
-                "FROM conversations c LEFT JOIN messages m ON c.id = m.conversation_id "
-                "GROUP BY c.id ORDER BY c.updated DESC LIMIT ?",
+                f"SELECT c.id, c.name, c.created, c.updated, c.status, c.summary, c.archived, COUNT(m.id) "
+                f"FROM conversations c LEFT JOIN messages m ON c.id = m.conversation_id "
+                f"{where} GROUP BY c.id ORDER BY c.updated DESC LIMIT ?",
                 (limit,),
             ).fetchall()
         return [
             {"id": r[0], "name": r[1], "created": r[2], "updated": r[3], "status": r[4] or "",
-             "summary": r[5] or "", "message_count": r[6]}
+             "summary": r[5] or "", "archived": bool(r[6]), "message_count": r[7]}
             for r in rows
         ]
 
     async def get_conversation(self, conv_id: str) -> dict | None:
         with self._conn() as conn:
             c = conn.execute(
-                "SELECT id, name, created, updated, status, summary FROM conversations WHERE id=?", (conv_id,)
+                "SELECT id, name, created, updated, status, summary, archived FROM conversations WHERE id=?", (conv_id,)
             ).fetchone()
             if not c:
                 return None
@@ -108,6 +128,7 @@ class HistoryStore:
             ).fetchall()
         return {
             "id": c[0], "name": c[1], "created": c[2], "updated": c[3], "status": c[4] or "", "summary": c[5] or "",
+            "archived": bool(c[6]),
             "messages": [
                 {"role": m[0], "content": m[1] or "",
                  "tool_calls": json.loads(m[2]) if m[2] else None}

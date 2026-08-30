@@ -46,3 +46,30 @@ def test_sessions_rename_requires_name(client):
     sid = client.post("/api/sessions").json()["session"]["id"]
     resp = client.patch(f"/api/sessions/{sid}", json={})
     assert resp.status_code == 400
+
+
+# ─── 清除上下文 / 归档 ───
+
+
+def test_sessions_clear_context_keeps_session(client):
+    sid = client.post("/api/sessions").json()["session"]["id"]
+    r = client.post(f"/api/sessions/{sid}/clear").json()
+    assert r["ok"] is True
+    # 会话仍存在（未被删除）
+    assert any(s["id"] == sid for s in client.get("/api/sessions").json()["sessions"])
+
+
+def test_sessions_archive_and_filter(client):
+    sid = client.post("/api/sessions").json()["session"]["id"]
+    # 默认列表含
+    assert any(s["id"] == sid for s in client.get("/api/sessions").json()["sessions"])
+
+    # 归档 → 默认列表排除，?archived=true 可见
+    assert client.patch(f"/api/sessions/{sid}", json={"archived": True}).json()["ok"] is True
+    assert all(s["id"] != sid for s in client.get("/api/sessions").json()["sessions"])
+    arch = client.get("/api/sessions?archived=true").json()["sessions"]
+    assert any(s["id"] == sid for s in arch)
+
+    # 取消归档 → 恢复显示
+    assert client.patch(f"/api/sessions/{sid}", json={"archived": False}).json()["ok"] is True
+    assert any(s["id"] == sid for s in client.get("/api/sessions").json()["sessions"])

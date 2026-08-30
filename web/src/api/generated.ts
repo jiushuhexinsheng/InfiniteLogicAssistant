@@ -310,7 +310,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Sessions List */
+        /**
+         * Sessions List
+         * @description 会话列表；?archived=true 只归档 / false(默认) 排除归档。
+         */
         get: operations["sessions_list_api_sessions_get"];
         put?: never;
         /**
@@ -338,8 +341,31 @@ export interface paths {
         delete: operations["sessions_delete_api_sessions__sid__delete"];
         options?: never;
         head?: never;
-        /** Sessions Rename */
-        patch: operations["sessions_rename_api_sessions__sid__patch"];
+        /**
+         * Sessions Patch
+         * @description 更新会话：body {name} 重命名 或 {archived: bool} 归档/取消归档（可同时）。
+         */
+        patch: operations["sessions_patch_api_sessions__sid__patch"];
+        trace?: never;
+    };
+    "/api/sessions/{sid}/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sessions Clear
+         * @description 清除上下文：清空该会话消息（会话记录与 name 保留）。
+         */
+        post: operations["sessions_clear_api_sessions__sid__clear_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/config/full": {
@@ -1245,6 +1271,11 @@ export interface components {
              * @default 0
              */
             message_count: number;
+            /**
+             * Archived
+             * @default false
+             */
+            archived: boolean;
         };
         /** TextResponse */
         TextResponse: {
@@ -1860,7 +1891,9 @@ export interface operations {
     };
     sessions_list_api_sessions_get: {
         parameters: {
-            query?: never;
+            query?: {
+                archived?: boolean | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1874,6 +1907,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1929,7 +1971,38 @@ export interface operations {
             };
         };
     };
-    sessions_rename_api_sessions__sid__patch: {
+    sessions_patch_api_sessions__sid__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sessions_clear_api_sessions__sid__clear_post: {
         parameters: {
             query?: never;
             header?: never;

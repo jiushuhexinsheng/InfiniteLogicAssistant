@@ -33,23 +33,40 @@ async def sessions_create(request: Request):
 
 
 @router.get("/sessions", response_model=SessionListResponse)
-async def sessions_list():
+async def sessions_list(archived: bool | None = None):
+    """会话列表；?archived=true 只归档 / false(默认) 排除归档。"""
     from core.session.history import get_history_store
-    return {"ok": True, "sessions": await get_history_store().list_conversations()}
+    flag = archived if archived is not None else False
+    return {"ok": True, "sessions": await get_history_store().list_conversations(archived=flag)}
 
 
 @router.patch("/sessions/{sid}", response_model=ApiResponse)
-async def sessions_rename(sid: str, request: Request):
+async def sessions_patch(sid: str, request: Request):
+    """更新会话：body {name} 重命名 或 {archived: bool} 归档/取消归档（可同时）。"""
     from core.session.history import get_history_store
     body = await request.body()
     try:
         params = json.loads(body.decode("utf-8")) if body else {}
     except Exception:
         return JSONResponse({"ok": False, "error": "无效 JSON"}, status_code=400)
-    name = (params.get("name") or "").strip()
-    if not name:
-        return JSONResponse({"ok": False, "error": "name 必填"}, status_code=400)
-    await get_history_store().rename_conversation(sid, name)
+    if not isinstance(params, dict) or not (params.get("name") or params.get("archived") is not None):
+        return JSONResponse({"ok": False, "error": "需提供 name 或 archived"}, status_code=400)
+    store = get_history_store()
+    if "name" in params:
+        name = (params.get("name") or "").strip()
+        if not name:
+            return JSONResponse({"ok": False, "error": "name 必填"}, status_code=400)
+        await store.rename_conversation(sid, name)
+    if params.get("archived") is not None:
+        await store.set_archived(sid, bool(params.get("archived")))
+    return {"ok": True}
+
+
+@router.post("/sessions/{sid}/clear", response_model=ApiResponse)
+async def sessions_clear(sid: str):
+    """清除上下文：清空该会话消息（会话记录与 name 保留）。"""
+    from core.session.history import get_history_store
+    await get_history_store().clear_messages(sid)
     return {"ok": True}
 
 
