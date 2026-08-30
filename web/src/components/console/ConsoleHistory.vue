@@ -1,79 +1,87 @@
 <template>
   <div class="console-history">
     <div class="history-actions">
+      <UiButton variant="primary" size="sm" @click="create">＋ 新建会话</UiButton>
       <UiButton variant="ghost" size="sm" @click="load">刷新</UiButton>
       <span v-if="loading" class="hint">加载中…</span>
     </div>
 
-    <div v-if="!selected" class="history-list">
+    <div class="history-list">
       <UiCard v-for="c in list" :key="c.id" class="history-item" @click="open(c.id)">
         <div class="hi-row">
+          <span class="hi-name">{{ c.name || '（未命名会话）' }}</span>
           <span class="hi-time">{{ fmt(c.updated) }}</span>
-          <span class="hi-status" :class="c.status">{{ statusLabel(c.status) }}</span>
           <span class="hi-count">{{ c.message_count }} 条</span>
+          <span class="hi-ops">
+            <UiButton variant="ghost" size="sm" @click.stop="rename(c)">重命名</UiButton>
+            <UiButton variant="ghost" size="sm" hover="danger" @click.stop="remove(c.id)">删除</UiButton>
+          </span>
         </div>
-        <div class="hi-summary">{{ c.summary || '（无摘要）' }}</div>
-        <UiButton variant="ghost" size="sm" hover="danger" @click.stop="remove(c.id)">删除</UiButton>
+        <div class="hi-summary">{{ c.summary || '（暂无内容）' }}</div>
       </UiCard>
-      <p v-if="!list.length && !loading" class="empty">暂无历史记录</p>
-    </div>
-
-    <div v-else class="history-detail">
-      <UiButton variant="ghost" size="sm" @click="selected = null">← 返回列表</UiButton>
-      <div class="hi-title">{{ selected.summary || selected.id }}</div>
-      <div class="hi-meta">{{ fmt(selected.created) }} · {{ statusLabel(selected.status) }} · {{ selected.messages.length }} 条消息</div>
-      <div class="msg-list">
-        <div v-for="(m, i) in selected.messages" :key="i" class="msg" :class="m.role">
-          <span class="msg-role">{{ roleLabel(m.role) }}</span>
-          <div class="msg-content">{{ m.content }}</div>
-        </div>
-      </div>
+      <p v-if="!list.length && !loading" class="empty">暂无会话，点「新建会话」开始对话</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { api, type HistoryConversation, type HistoryConversationDetail } from '../../api'
+import { api } from '../../api'
+import type { SessionItem } from '../../types'
 import { UiButton, UiCard } from '../ui'
+import { useConsole } from '../../composables/useConsole'
+import { createNewSession, switchSession } from '../../composables/assistant/store'
 
-const list = ref<HistoryConversation[]>([])
-const selected = ref<HistoryConversationDetail | null>(null)
+const { activeTab } = useConsole()
+const list = ref<SessionItem[]>([])
 const loading = ref(false)
 
 async function load() {
   loading.value = true
   try {
-    const r = await api.getHistory()
-    list.value = r.conversations
+    const r = await api.listSessions()
+    list.value = r.sessions
   } catch { /* 后端未就绪时静默 */ } finally {
     loading.value = false
   }
 }
 
+/** 新建会话 → 清空当前对话，切到对话视图续写新会话 */
+async function create() {
+  try {
+    const r = await api.createSession()
+    createNewSession(r.session.id)
+    activeTab.value = 'conv'
+  } catch { /* ignore */ }
+}
+
+/** 点击会话 = 切换：加载其历史消息填充对话视图，后续对话续接该会话 */
 async function open(id: string) {
   try {
     const r = await api.getHistoryDetail(id)
-    selected.value = r.conversation
+    const msgs = (r.conversation.messages || []).map(m => ({ role: m.role, content: m.content }))
+    switchSession(id, msgs)
+    activeTab.value = 'conv'
   } catch { /* ignore */ }
 }
 
 async function remove(id: string) {
   try {
-    await api.deleteHistory(id)
-    if (selected.value?.id === id) selected.value = null
+    await api.deleteSession(id)
+    await load()
+  } catch { /* ignore */ }
+}
+
+async function rename(c: SessionItem) {
+  const name = window.prompt('重命名会话', c.name)
+  if (!name || name === c.name) return
+  try {
+    await api.renameSession(c.id, name.trim())
     await load()
   } catch { /* ignore */ }
 }
 
 function fmt(ts: string) { return ts ? ts.replace('T', ' ').slice(0, 19) : '' }
-function statusLabel(s: string) {
-  return ({ done: '完成', failed: '失败', stopped: '已停止', cancelled: '已取消',
-            idle: '空闲', understanding: '理解中', executing: '执行中' } as Record<string, string>)[s] || s || '—'
-}
-function roleLabel(r: string) {
-  return ({ user: '用户', assistant: '小逻', tool: '🔧 工具', system: '系统' } as Record<string, string>)[r] || r
-}
 
 onMounted(load)
 </script>
@@ -86,18 +94,9 @@ onMounted(load)
 .history-item { padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; }
 .history-item:hover { border-color: var(--brand-c2); }
 .hi-row { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-3); }
-.hi-status { padding: 1px 8px; border-radius: 999px; font-size: 11px; }
-.hi-status.done { color: #6ee7b7; background: rgba(110,231,183,.1); }
-.hi-status.failed, .hi-status.stopped { color: #f87171; background: rgba(248,113,113,.1); }
-.hi-count { margin-left: auto; }
-.hi-summary { font-size: 13px; color: var(--text-1); }
+.hi-name { font-size: 14px; font-weight: 600; color: var(--text-1); }
+.hi-ops { margin-left: auto; display: flex; gap: 6px; }
+.hi-count { white-space: nowrap; }
+.hi-summary { font-size: 13px; color: var(--text-2); }
 .empty { text-align: center; color: var(--text-3); font-size: 13px; padding: 30px 0; }
-.history-detail { display: flex; flex-direction: column; gap: 10px; }
-.hi-title { font-size: 15px; font-weight: 600; color: var(--text-1); }
-.hi-meta { font-size: 12px; color: var(--text-3); }
-.msg-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
-.msg { border: 1px solid var(--border-base); border-radius: 10px; background: rgba(15,23,42,.6); padding: 8px 12px; font-size: 13px; color: var(--text-1); white-space: pre-wrap; word-break: break-word; }
-.msg.user { border-color: var(--brand-c2); }
-.msg.tool { font-size: 12px; color: #a5b4fc; font-family: var(--font-mono); }
-.msg-role { display: block; font-size: 11px; color: var(--text-3); margin-bottom: 4px; }
 </style>

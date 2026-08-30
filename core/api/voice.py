@@ -99,6 +99,7 @@ async def voice_utter(request: Request):
 
     事件：task_state / content_delta / question / error / done。
     question 事件后需操作者回答：POST /api/voice/answer {session_id, text}。
+    请求体可带 session_id：续接已有会话（加载其历史作为多轮种子）。
     """
     from core.orchestrator.control import StopController
     from core.orchestrator.pipeline import run_pipeline
@@ -116,6 +117,22 @@ async def voice_utter(request: Request):
         messages = None
 
     session = Session()
+    session_id = params.get("session_id")
+    if isinstance(session_id, str) and session_id:
+        # 续接已有会话：固定 id；请求未带历史种子时从存储加载
+        session = Session(session_id=session_id)
+        if messages is None:
+            try:
+                from core.session.history import get_history_store
+                conv = await get_history_store().get_conversation(session_id)
+                if conv and conv.get("messages"):
+                    messages = [
+                        {"role": m["role"], "content": m["content"]}
+                        for m in conv["messages"]
+                        if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)
+                    ]
+            except Exception:
+                pass
     controller = StopController()
     state.register(session, controller)
     events: asyncio.Queue = asyncio.Queue()

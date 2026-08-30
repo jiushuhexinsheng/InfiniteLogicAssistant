@@ -158,6 +158,27 @@ class HistoryDetailResponse(ApiResponse):
     conversation: HistoryConversationDetail | None = None
 
 
+# ─────────────────────────── sessions（会话管理）───────────────────────────
+
+
+class SessionOut(BaseModel):
+    id: str
+    name: str = ""
+    created: str = ""
+    updated: str = ""
+    status: str = ""
+    summary: str = ""
+    message_count: int = 0
+
+
+class SessionListResponse(ApiResponse):
+    sessions: list[SessionOut] = []
+
+
+class SessionCreateResponse(ApiResponse):
+    session: SessionOut
+
+
 # ─────────────────────────── providers ───────────────────────────
 
 
