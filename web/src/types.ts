@@ -53,3 +53,69 @@ export interface ToolStep {
   args?: Record<string, any>
   result?: string
 }
+
+// ─── 编排 SSE 事件（/api/voice/utter，对应后端 core/orchestrator/events.py）───
+
+export interface TaskStateEvent {
+  type: 'task_state'
+  state: string
+  session_id?: string
+  text?: string
+  status?: string
+  summary?: string
+  steps?: TaskStep[]
+}
+
+export interface ContentDeltaEvent {
+  type: 'content_delta'
+  text: string
+}
+
+export interface ReasoningDeltaEvent {
+  type: 'reasoning_delta'
+  text: string
+}
+
+export interface UsageEvent {
+  type: 'usage'
+  usage: TokenUsage
+}
+
+export interface ToolStartEvent {
+  type: 'tool_start'
+  name: string
+  args: Record<string, any>
+}
+
+export interface ToolEndEvent {
+  type: 'tool_end'
+  name: string
+  status: string
+  output: string
+}
+
+export interface QuestionEvent {
+  type: 'question'
+  question: string
+  session_id: string
+}
+
+export interface ErrorEvent {
+  type: 'error'
+  message: string
+}
+
+export interface DoneEvent {
+  type: 'done'
+}
+
+export type SseEvent =
+  | TaskStateEvent
+  | ContentDeltaEvent
+  | ReasoningDeltaEvent
+  | UsageEvent
+  | ToolStartEvent
+  | ToolEndEvent
+  | QuestionEvent
+  | ErrorEvent
+  | DoneEvent

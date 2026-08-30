@@ -12,6 +12,9 @@ from core.memory.extract import extract_and_store
 from core.orchestrator.clarify import run_clarify
 from core.orchestrator.confirm import confirm_if_needed
 from core.orchestrator.control import StopController
+from core.orchestrator.events import (
+    ContentDeltaEvent, DoneEvent, ErrorEvent, QuestionEvent, TaskStateEvent,
+)
 from core.orchestrator.executor import execute_task
 from core.orchestrator.intent import judge_intent
 from core.orchestrator.session import OperatorChannel, Session, SessionState
@@ -28,12 +31,12 @@ class EventQueueChannel(OperatorChannel):
         self._ask_lock = asyncio.Lock()
 
     async def notify(self, text: str) -> None:
-        await self.events.put({"type": "task_state", "state": "notify", "text": text, "session_id": self.session_id})
+        await self.events.put(TaskStateEvent(state="notify", text=text, session_id=self.session_id).emit())
 
     async def ask(self, question: str) -> str:
         # 串行化提问：同会话同时最多一个待答问题，避免并发子代理答非所问
         async with self._ask_lock:
-            await self.events.put({"type": "question", "question": question, "session_id": self.session_id})
+            await self.events.put(QuestionEvent(question=question, session_id=self.session_id).emit())
             return await self.answers.get()
 
     def answer(self, text: str) -> None:
@@ -47,7 +50,7 @@ async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str) -
     # 走 LLM client：与任务执行共享重试/熔断/模型 failover
     async for evt in get_llm_client().retry_stream_chat(messages):
         if evt["type"] == "content_delta":
-            await events.put({"type": "content_delta", "text": evt["text"]})
+            await events.put(ContentDeltaEvent(text=evt["text"]).emit())
             reply_parts.append(evt["text"])
     if reply_parts:
         session.append("assistant", "".join(reply_parts))  # 记录完整回复到会话历史
@@ -75,7 +78,7 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
     else:
         session.append("user", text)
     session.set_state(SessionState.UNDERSTANDING)
-    await events.put({"type": "task_state", "state": "understanding", "session_id": session.id})
+    await events.put(TaskStateEvent(state="understanding", session_id=session.id).emit())
 
     intent = await judge_intent(text)
     if intent.type == "chit_chat":
@@ -83,8 +86,8 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
         try:
             await _chit_chat_reply(session, events, text)
         except Exception as e:
-            await events.put({"type": "error", "message": str(e)})
-        await events.put({"type": "done"})
+            await events.put(ErrorEvent(message=str(e)).emit())
+        await events.put(DoneEvent().emit())
         return
 
     session.set_state(SessionState.FORMING_TASK)
@@ -98,8 +101,8 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
     session.set_state(SessionState.CONFIRMING)
     ok = await confirm_if_needed(task, f"执行任务：{task.goal}", session)
     if not ok:
-        await events.put({"type": "task_state", "state": "done", "status": "cancelled", "summary": "操作者未确认，任务取消"})
-        await events.put({"type": "done"})
+        await events.put(TaskStateEvent(state="done", status="cancelled", summary="操作者未确认，任务取消").emit())
+        await events.put(DoneEvent().emit())
         return
 
     session.set_state(SessionState.EXECUTING)
@@ -108,8 +111,7 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
     if result.get("status") in ("done", "failed"):
         asyncio.ensure_future(extract_and_store(task, result, get_facts_store()))
     session.set_state(SessionState.REPORTING)
-    await events.put({
-        "type": "task_state", "state": "done", "status": result["status"],
-        "summary": result["summary"], "steps": result["steps"],
-    })
-    await events.put({"type": "done"})
+    await events.put(TaskStateEvent(
+        state="done", status=result["status"], summary=result["summary"], steps=result["steps"],
+    ).emit())
+    await events.put(DoneEvent().emit())

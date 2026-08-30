@@ -14,6 +14,7 @@ from core.logger import logger
 from core.memory.context import build_context
 from core.orchestrator.confirm import confirm_tool
 from core.orchestrator.control import CancellationToken
+from core.orchestrator.events import ContentDeltaEvent, ToolEndEvent, ToolStartEvent
 from core.orchestrator.session import Session
 from core.orchestrator.task import Task
 from core.tools import TOOLS
@@ -49,7 +50,7 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
         # 把最终摘要按 content_delta 流式返回（前端累积 → 语音播报真实结论）
         if events is not None and summary:
             for i in range(0, len(summary), 200):
-                await events.put({"type": "content_delta", "text": summary[i:i + 200]})
+                await events.put(ContentDeltaEvent(text=summary[i:i + 200]).emit())
         session.append("assistant", summary)
         return {"status": cr["status"], "summary": summary, "steps": steps}
 
@@ -108,13 +109,13 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
                 except json.JSONDecodeError:
                     args = {}
                 if events is not None:
-                    await events.put({"type": "tool_start", "name": name, "args": args})
+                    await events.put(ToolStartEvent(name=name, args=args).emit())
                 # 高风险工具先确认（基于工具实际风险，而非任务声明的 risk）
                 ok = await confirm_tool(session, name, args)
                 result = await TOOLS.acall(name, args) if ok else f"Error: 操作者拒绝调用 {name}"
                 status = "error" if result.startswith("Error") else "ok"
                 if events is not None:
-                    await events.put({"type": "tool_end", "name": name, "status": status, "output": result[:500]})
+                    await events.put(ToolEndEvent(name=name, status=status, output=result[:500]).emit())
                 return (
                     {"step": step, "tool": name, "args": args, "status": status, "result": result[:500]},
                     {"role": "tool", "tool_call_id": tc.get("id", ""), "content": result},

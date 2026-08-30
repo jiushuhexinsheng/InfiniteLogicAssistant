@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from core import config as config
 from core.api import state
 from core.api.schemas import AckResponse, ApiResponse, ConfigResponse, PingResponse, TextResponse
+from core.orchestrator.events import DoneEvent, ErrorEvent
 from core.logger import logger
 
 router = APIRouter()
@@ -137,8 +138,8 @@ async def voice_utter(request: Request):
                         continue
                     exc = runner.exception()
                     if exc is not None:
-                        yield _sse({"type": "error", "message": f"编排异常: {exc}"})
-                    yield _sse({"type": "done"})
+                        yield _sse(ErrorEvent(message=f"编排异常: {exc}").emit())
+                    yield _sse(DoneEvent().emit())
                     break
         finally:
             getter.cancel()

@@ -1,4 +1,4 @@
-import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, PingResponse, ProviderPreset, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState } from './types'
+import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, PingResponse, ProviderPreset, SseEvent, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState } from './types'
 import type { components } from './api/generated'
 import { blobToWavBase64 } from './audio'
 
@@ -173,18 +173,23 @@ export async function streamUtter(
           if (!line) continue
           const data = line.slice(6).trim()
           if (data === '[DONE]') break
-          let evt: any
-          try { evt = JSON.parse(data) } catch { continue }
+          let evt: SseEvent
+          try { evt = JSON.parse(data) as SseEvent } catch { continue }
           received = true
-          if (evt.session_id) sessionId = evt.session_id
           switch (evt.type) {
-            case 'task_state': h.onTaskState?.(evt); break
+            case 'task_state':
+              if (evt.session_id) sessionId = evt.session_id
+              h.onTaskState?.(evt)
+              break
             case 'content_delta': h.onContent?.(evt.text); break
             case 'reasoning_delta': h.onReasoning?.(evt.text); break
             case 'tool_start': h.onToolStart?.(evt.name, evt.args || {}); break
             case 'tool_end': h.onToolEnd?.(evt.name, evt.status, evt.output || ''); break
             case 'usage': h.onUsage?.(evt.usage); break
-            case 'question': h.onQuestion?.({ question: evt.question, session_id: evt.session_id }); break
+            case 'question':
+              if (evt.session_id) sessionId = evt.session_id
+              h.onQuestion?.({ question: evt.question, session_id: evt.session_id })
+              break
             case 'error': h.onError?.(evt.message); return 'done'
             case 'done': h.onDone?.(sessionId); return 'done'
           }
