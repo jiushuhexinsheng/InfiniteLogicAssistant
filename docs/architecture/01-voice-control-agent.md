@@ -77,7 +77,8 @@
 
 ```
 无限逻辑-语音全控智能体/
-├── main.py                     # 入口：serve / test（连通性检测）
+├── main.py                     # 入口：CLI 分派（命令实现在 cli/）
+├── cli/                        # CLI 命令：serve（启动）/ check（聚合检测，argparse 子命令）
 ├── server.py                   # FastAPI 宿主：/api/* + SSE + 静态托管 + SPA 兜底
 ├── start.bat / install_deps.bat / package_deploy.bat
 ├── config.yaml.example         # 非敏感配置模板（不含密钥）
@@ -248,12 +249,12 @@ plan（拆步骤）→ 每步：选工具/子代理 → act → observe（工具
 ### 4.1 环境感知调查（`core/detection/environment.py`）
 
 ```
-安装/首次运行 / 前端「检测」或 python main.py test → environment.py 全量调查：
+安装/首次运行 / 前端「检测」或 python main.py check → environment.py 全量调查：
   OS 版本/架构/主机名 · CPU/内存/磁盘 · 已装软件与常用命令
   网络与代理 · PATH/默认 Shell · 桌面/文档/下载路径
   浏览器/编辑器/Python 版本 · 可用的 LLM/ASR/TTS provider
 → 结构化 + 自然语言写入 environment.md（独立文件，前端/执行层/RAG 都读它）
-可随时触发：`python main.py test` / 控制台「检测」/ 任务前按需 → 重新 probe 并合并增量到 environment.md
+可随时触发：`python main.py check` / 控制台「检测」/ 任务前按需 → 重新 probe 并合并增量到 environment.md
 ```
 
 agent 每次规划时把 `environment.md`（或其相关段）注入上下文，让工具参数（路径、命令）贴合真实系统。

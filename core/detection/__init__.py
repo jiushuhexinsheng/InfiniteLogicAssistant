@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """检测域 — 环境感知 + 配置校验 + 连通性 三合一
 
-供启动自检、`python main.py test`、`GET /api/detection`（设置页「检测」按钮）使用。
+供启动自检、`python main.py check`、`GET /api/detection`（设置页「检测」按钮）使用。
 """
 import asyncio
 

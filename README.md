@@ -27,7 +27,7 @@ OpenAI 兼容接口，支持离线/在线任意部署。
 | 安全审计 | 非 localhost 绑定强制 API Token；工具执行与高风险确认写入 data/audit.log |
 | 语音播报 | 浏览器 SpeechSynthesis API 播报助手回复（可选后端 TTS） |
 | 设置面板 | 控制台「设置」页：切换服务商 profile / 调节参数 / 设密钥（不回显）/ 检测连接，热重载即时生效 |
-| 检测域 | `core/detection/`：环境感知 + 配置校验 + LLM/ASR/TTS 连通性三合一（`python main.py test` / 设置页「检测」） |
+| 检测域 | `core/detection/`：环境感知 + 配置校验 + LLM/ASR/TTS 连通性三合一（`python main.py check` / 设置页「检测」） |
 
 ## 快速开始
 
@@ -53,7 +53,7 @@ python main.py serve                  # 浏览器自动打开 http://127.0.0.1:8
 
 `python main.py serve` 同时提供前端页面（`web/dist`）与 `/api/*` 接口，打开一个端口即可使用。
 
-**一键启动脚本**（Windows，含 LLM/ASR 连通性测试）：
+**一键启动脚本**（Windows，含 LLM/ASR 连通性检查）：
 
 ```bat
 start.bat
@@ -150,9 +150,9 @@ SSE 事件类型（`/api/voice/utter`）：
 ## 命令
 
 ```
-start.bat                   一键启动（Windows，含 LLM/ASR 连通性测试）
+start.bat                   一键启动（Windows，含 LLM/ASR 连通性检查）
 python main.py serve        启动 Web 服务（前端 + 后端 API）
-python main.py test         测试 LLM / ASR 连通性
+python main.py check        聚合检测（环境 / 配置 / LLM·ASR·TTS 连通性）
 ```
 
 ## 测试
