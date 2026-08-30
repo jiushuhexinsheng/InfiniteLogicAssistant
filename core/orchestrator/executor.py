@@ -19,9 +19,7 @@ from core.orchestrator.session import Session
 from core.orchestrator.task import Task
 from core.tools import TOOLS
 
-_SYSTEM = ("你是执行助手。用工具完成任务。每步：需要时就调用工具；拿到结果后判断是否已达成目标；"
-           "达成目标就给出最终结论（不要再调工具）。"
-           "若用户要求'记住/以后/偏好/我喜欢'等记忆类陈述，调用 memory_put 写入长期记忆。")
+from core.prompts import EXECUTOR_SYSTEM as _SYSTEM
 
 
 def should_use_multi_agent(task: Task) -> bool:

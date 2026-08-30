@@ -19,6 +19,7 @@ from core.orchestrator.executor import execute_task
 from core.orchestrator.intent import judge_intent
 from core.orchestrator.session import OperatorChannel, Session, SessionState
 from core.orchestrator.task import Task, form_task
+from core.prompts import CHIT_CHAT_SYSTEM
 
 
 class EventQueueChannel(OperatorChannel):
@@ -44,7 +45,7 @@ class EventQueueChannel(OperatorChannel):
 
 
 async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str) -> None:
-    messages = [{"role": "system", "content": "你是小逻，用中文简洁友好地回复。"}]
+    messages = [{"role": "system", "content": CHIT_CHAT_SYSTEM}]
     messages.extend(session.summary(8))  # 含当前用户消息 → 多轮闲聊
     reply_parts: list[str] = []
     # 走 LLM client：与任务执行共享重试/熔断/模型 failover

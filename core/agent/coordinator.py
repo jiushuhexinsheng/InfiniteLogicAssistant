@@ -12,15 +12,9 @@ from core.orchestrator.confirm import confirm_tool
 from core.orchestrator.control import CancellationToken
 from core.orchestrator.session import Session
 from core.orchestrator.task import Task
+from core.prompts import DECOMPOSE_SYSTEM, ROLE_PROMPTS as _ROLE_PROMPTS
 
 MAX_CONCURRENT = 4
-
-_ROLE_PROMPTS = {
-    "planner": "你是规划子代理：把目标拆成有序、可执行的步骤，给出清晰计划。",
-    "doer": "你是执行子代理：用工具完成子任务，直接给出结果。",
-    "searcher": "你是检索子代理：搜索/查询信息（网络/文件/记忆），给出信息摘要。",
-    "critic": "你是批评子代理：审查执行结果是否达成目标、有无遗漏或错误，指出问题并给出改进建议。",
-}
 
 _DECOMPOSE_TOOL = {
     "type": "function",
@@ -51,7 +45,7 @@ _DECOMPOSE_TOOL = {
 
 async def _decompose(task: Task) -> list[dict]:
     messages = [
-        {"role": "system", "content": "把任务拆成子任务，用 decompose 工具返回。每项含 goal、agent_type（planner/doer/searcher）、independent（是否可并行）。"},
+        {"role": "system", "content": DECOMPOSE_SYSTEM},
         {"role": "user", "content": f"任务：{task.goal}，参数：{json.dumps(task.params, ensure_ascii=False)}"},
     ]
     try:

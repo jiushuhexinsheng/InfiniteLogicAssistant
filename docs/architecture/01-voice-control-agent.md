@@ -13,9 +13,9 @@
 > ## 与当前实现的差异（2026-08-30 同步，以代码为准）
 >
 > 本文撰写于实现之前，以下设计点已按落地方式调整：
-> - **提示词内联**：原 `prompts/` 目录未落地，系统提示分散在编排模块内联字符串
->   （`core/orchestrator/executor.py` 的 `_SYSTEM`、`core/agent/coordinator.py` 的
->   `_ROLE_PROMPTS`、`core/orchestrator/intent.py`、`core/orchestrator/task.py`），无热编辑。
+> - **提示词集中管理**：原 `prompts/` 目录未落地；系统提示集中在 `core/prompts.py` 常量模块
+>   （`CHIT_CHAT_SYSTEM`/`INTENT_SYSTEM`/`FORM_TASK_SYSTEM`/`EXECUTOR_SYSTEM`/`ROLE_PROMPTS`/
+>   `DECOMPOSE_SYSTEM`），各编排模块 import 引用，无热编辑。
 > - **子代理合一**：规划/执行/检索/批评不再各自独立文件，统一由 `core/agent/base.py`
 >   的 `run_subagent` 按角色 prompt 分派；`critic` 只把审查意见追加到摘要，**不打回重做**。
 > - **环境感知**：`execution/envprobe.py` → `core/detection/environment.py`，只产出
@@ -92,8 +92,7 @@
 │   ├── api/                    # FastAPI 路由：voice / tools / memory / schedule / settings /
 │   │                           #   history / providers / state（会话注册表+落盘）
 │   ├── llm/                    # LLM 客户端：stream（SSE 解析）/ client（重试+熔断+连接池+failover）
-│   ├── voice/                  # 语音层（当前：ASR OpenAI 兼容客户端，core/voice/__init__.py）
-│   ├── tts.py                  # 后端 TTS（OpenAI 兼容 speech/chat 双协议）
+│   ├── voice/                  # 语音层：ASR（__init__.py）+ TTS（tts.py，OpenAI 兼容双协议）
 │   ├── orchestrator/           # ★ 编排层（核心，全部自研）
 │   │   ├── session.py          #   会话状态机与管理
 │   │   ├── intent.py           #   意图判断：闲聊 or 任务（结构化输出）
@@ -102,7 +101,8 @@
 │   │   ├── confirm.py          #   高风险操作确认（工具实际风险 read/write/exec）
 │   │   ├── executor.py         #   执行循环：plan → act → observe → reflect
 │   │   ├── control.py          #   ★ 停止控制器（CancellationToken → stop_task）
-│   │   └── pipeline.py         #   编排主链：意图→任务→澄清→确认→执行→汇报（SSE）
+│   │   ├── pipeline.py         #   编排主链：意图→任务→澄清→确认→执行→汇报（SSE）
+│   │   └── events.py           #   SSE 事件模型（task_state/tool_start/question/done...）
 │   ├── agent/                  # ★ 多智能体
 │   │   ├── coordinator.py      #   协调者：LLM 拆解/分派（独立并发≤4）/critic 审查/合并
 │   │   └── base.py             #   子代理统一基座：run_subagent（按角色 prompt 分派）
@@ -117,8 +117,9 @@
 │   ├── mcp/                    # 外部 MCP 客户端（client.py stdio）+ 生命周期（manager.py 注册工具）
 │   ├── skills/                 # 技能包加载（loader.py 热重载）+ 执行（executor.py）
 │   ├── scheduler/              # cron 定时（scheduler.py 持久化）+ 无人值守执行（runner.py 落盘历史）
-│   ├── history.py              # 会话历史（data/history.db，控制台「历史」tab 数据源）
-│   └── providers.py            # 多 provider 协议分派（openai/anthropic/gemini）
+│   ├── session/                # 会话域：会话历史落盘（history.py → data/history.db）
+│   ├── prompts.py              # 系统提示词集中管理（单一来源）
+│   └── vendors.py              # 多 provider 协议分派（openai/anthropic/gemini）
 ├── skills/                     # 技能定义（YAML，文件名 = 技能名）
 ├── memory/                     # 长期记忆数据（facts.sqlite）
 ├── rag/                        # RAG 索引数据（index.db）
@@ -282,10 +283,10 @@ agent 每次规划时把 `environment.md`（或其相关段）注入上下文，
 ## 5. 工程方法论：提示词 / 驾驭 / 循环
 
 ### 提示词工程
-- 系统提示**内联在各编排模块**（无 `prompts/` 目录），改动需改代码：
-  - `core/orchestrator/intent.py`（意图判断）、`core/orchestrator/task.py`（任务形成）
-  - `core/orchestrator/executor.py` 的 `_SYSTEM`（ReAct 执行）
-  - `core/agent/coordinator.py` 的 `_ROLE_PROMPTS`（各子代理角色）、`core/orchestrator/pipeline.py`（闲聊）
+- 系统提示集中在 `core/prompts.py` 常量模块（单一来源）：
+  - `CHIT_CHAT_SYSTEM`（闲聊）· `INTENT_SYSTEM`（意图判断）· `FORM_TASK_SYSTEM`（任务形成）
+  - `EXECUTOR_SYSTEM`（ReAct 执行）· `ROLE_PROMPTS`（各子代理角色）· `DECOMPOSE_SYSTEM`（任务拆解）
+- 改动提示词 = 改 `core/prompts.py` 一处，随代码审查/提交（无热编辑）。
 - 工具说明由 `@tool` schema 自动注入（现有机制）。
 
 ### 驾驭工程（Steering）
