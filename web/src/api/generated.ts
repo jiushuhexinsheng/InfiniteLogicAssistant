@@ -425,6 +425,249 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AckResponse */
+        AckResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Ack
+             * @default
+             */
+            ack: string;
+        };
+        /** AgentConfigOut */
+        AgentConfigOut: {
+            /**
+             * Recursion Limit
+             * @default 12
+             */
+            recursion_limit: number;
+            /**
+             * Multi Agent
+             * @default false
+             */
+            multi_agent: boolean;
+            /**
+             * Models Failover
+             * @default []
+             */
+            models_failover: string[];
+        };
+        /** ApiResponse */
+        ApiResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+        };
+        /** CatalogResponse */
+        CatalogResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Catalog
+             * @default {}
+             */
+            catalog: {
+                [key: string]: components["schemas"]["ProviderPreset"][];
+            };
+        };
+        /** ConfigFullResponse */
+        ConfigFullResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            editable: components["schemas"]["EditableSnapshot"];
+        };
+        /** ConfigHealthOut */
+        ConfigHealthOut: {
+            /** Ok */
+            ok: boolean;
+            /**
+             * Issues
+             * @default []
+             */
+            issues: components["schemas"]["DetectionIssue"][];
+        };
+        /** ConfigResponse */
+        ConfigResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Llm Available
+             * @default false
+             */
+            llm_available: boolean;
+            /**
+             * Llm Profile
+             * @default
+             */
+            llm_profile: string;
+            /**
+             * Asr Available
+             * @default false
+             */
+            asr_available: boolean;
+            /**
+             * Asr Profile
+             * @default
+             */
+            asr_profile: string;
+            /**
+             * Tts Available
+             * @default false
+             */
+            tts_available: boolean;
+            /**
+             * Tts Profile
+             * @default
+             */
+            tts_profile: string;
+            /** Tts Voice */
+            tts_voice?: string | null;
+            /** Tts Model */
+            tts_model?: string | null;
+            wake_word: components["schemas"]["WakeWordConfig"];
+            vad: components["schemas"]["VadConfig"];
+        };
+        /** ConnectivityResult */
+        ConnectivityResult: {
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+        };
+        /** DetectionIssue */
+        DetectionIssue: {
+            /** Level */
+            level: string;
+            /** Key */
+            key: string;
+            /** Message */
+            message: string;
+        };
+        /** DetectionReportOut */
+        DetectionReportOut: {
+            /**
+             * Environment
+             * @default {}
+             */
+            environment: {
+                [key: string]: unknown;
+            };
+            config: components["schemas"]["ConfigHealthOut"];
+            /**
+             * Connectivity
+             * @default []
+             */
+            connectivity: components["schemas"]["ConnectivityResult"][];
+        };
+        /** DetectionResponse */
+        DetectionResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            report: components["schemas"]["DetectionReportOut"];
+        };
+        /** EditableSnapshot */
+        EditableSnapshot: {
+            llm: components["schemas"]["SectionEditable"];
+            asr: components["schemas"]["SectionEditable"];
+            tts: components["schemas"]["TtsSectionEditable"];
+            wake_word: components["schemas"]["WakeWordConfig"];
+            vad: components["schemas"]["VadConfig"];
+            agent: components["schemas"]["AgentConfigOut"];
+            llm_client: components["schemas"]["LlmClientConfigOut"];
+            tools: components["schemas"]["ToolsConfigOut"];
+            mcp: components["schemas"]["McpConfigOut"];
+            rag: components["schemas"]["RagConfigOut"];
+            server: components["schemas"]["ServerConfigOut"];
+        };
+        /** EnvResponse */
+        EnvResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+        };
+        /** FactItem */
+        FactItem: {
+            /** Topic */
+            topic: string;
+            /** Content */
+            content: string;
+            /**
+             * Source
+             * @default
+             */
+            source: string;
+            /**
+             * Ts
+             * @default
+             */
+            ts: string;
+        };
+        /** FetchModelsResponse */
+        FetchModelsResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Models
+             * @default []
+             */
+            models: string[];
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+        };
         /** FunctionParams */
         FunctionParams: {
             /**
@@ -450,6 +693,473 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HistoryConversation */
+        HistoryConversation: {
+            /** Id */
+            id: string;
+            /** Created */
+            created: string;
+            /** Updated */
+            updated: string;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: string;
+            /** Message Count */
+            message_count: number;
+        };
+        /**
+         * HistoryConversationDetail
+         * @description 会话详情：详情响应不含 message_count（仅列表接口统计）。
+         */
+        HistoryConversationDetail: {
+            /** Id */
+            id: string;
+            /** Created */
+            created: string;
+            /** Updated */
+            updated: string;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: string;
+            /**
+             * Messages
+             * @default []
+             */
+            messages: components["schemas"]["HistoryMessage"][];
+        };
+        /** HistoryDetailResponse */
+        HistoryDetailResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            conversation?: components["schemas"]["HistoryConversationDetail"] | null;
+        };
+        /** HistoryListResponse */
+        HistoryListResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Conversations
+             * @default []
+             */
+            conversations: components["schemas"]["HistoryConversation"][];
+        };
+        /** HistoryMessage */
+        HistoryMessage: {
+            /** Role */
+            role: string;
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /** Tool Calls */
+            tool_calls?: {
+                [key: string]: unknown;
+            }[] | null;
+        };
+        /** LlmClientConfigOut */
+        LlmClientConfigOut: {
+            /**
+             * Retry Max
+             * @default 3
+             */
+            retry_max: number;
+            /**
+             * Retry Backoff Base
+             * @default 0.5
+             */
+            retry_backoff_base: number;
+            /**
+             * Retry Backoff Max
+             * @default 10
+             */
+            retry_backoff_max: number;
+            /**
+             * Circuit Breaker Threshold
+             * @default 5
+             */
+            circuit_breaker_threshold: number;
+            /**
+             * Circuit Breaker Cooldown
+             * @default 30
+             */
+            circuit_breaker_cooldown: number;
+            /**
+             * Request Timeout
+             * @default 60
+             */
+            request_timeout: number;
+        };
+        /** McpConfigOut */
+        McpConfigOut: {
+            /**
+             * Servers
+             * @default []
+             */
+            servers: components["schemas"]["McpServerOut"][];
+        };
+        /** McpServerOut */
+        McpServerOut: {
+            /** Name */
+            name: string;
+            /** Command */
+            command: string;
+            /**
+             * Args
+             * @default []
+             */
+            args: string[];
+        };
+        /** MemoryListResponse */
+        MemoryListResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Facts
+             * @default []
+             */
+            facts: components["schemas"]["FactItem"][];
+        };
+        /** PatchConfigResponse */
+        PatchConfigResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Restart Required
+             * @default false
+             */
+            restart_required: boolean;
+        };
+        /** PingResponse */
+        PingResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /** Time */
+            time: string;
+        };
+        /**
+         * ProfileEditable
+         * @description editable_snapshot 的 profile（去 api_key）。extra=allow 保留用户透传键。
+         */
+        ProfileEditable: {
+            /**
+             * Provider
+             * @default openai
+             */
+            provider: string;
+            /**
+             * Vendor
+             * @default
+             */
+            vendor: string;
+            /**
+             * Endpoint
+             * @default
+             */
+            endpoint: string;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Vision Model
+             * @default
+             */
+            vision_model: string;
+            /**
+             * Chat Path
+             * @default
+             */
+            chat_path: string;
+            /**
+             * Api Key Env
+             * @default
+             */
+            api_key_env: string;
+            /**
+             * Timeout
+             * @default 30
+             */
+            timeout: number;
+            /**
+             * Max Tokens
+             * @default 4096
+             */
+            max_tokens: number;
+            /**
+             * Temperature
+             * @default 0.7
+             */
+            temperature: number;
+            /**
+             * Language
+             * @default zh
+             */
+            language: string;
+            /**
+             * Voice
+             * @default
+             */
+            voice: string;
+            /**
+             * Format
+             * @default wav
+             */
+            format: string;
+            /** Voice Ref */
+            voice_ref?: string | null;
+            /**
+             * Models
+             * @default []
+             */
+            models: string[];
+            /**
+             * Models Path
+             * @default
+             */
+            models_path: string;
+            /**
+             * Voices
+             * @default []
+             */
+            voices: string[];
+            /**
+             * Compat
+             * @default {}
+             */
+            compat: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        /** ProviderPreset */
+        ProviderPreset: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "llm" | "asr" | "tts";
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /**
+             * Provider
+             * @default openai
+             */
+            provider: string;
+            /**
+             * Endpoint
+             * @default
+             */
+            endpoint: string;
+            /**
+             * Chat Path
+             * @default
+             */
+            chat_path: string;
+            /** Models Path */
+            models_path?: string | null;
+            /**
+             * Models
+             * @default []
+             */
+            models: string[];
+            /**
+             * Vision Models
+             * @default []
+             */
+            vision_models: string[];
+            /**
+             * Voices
+             * @default []
+             */
+            voices: string[];
+            /**
+             * Api Key Env
+             * @default
+             */
+            api_key_env: string;
+            /**
+             * Compat
+             * @default {}
+             */
+            compat: {
+                [key: string]: unknown;
+            };
+            /**
+             * Defaults
+             * @default {}
+             */
+            defaults: {
+                [key: string]: unknown;
+            };
+        };
+        /** PutSecretsResponse */
+        PutSecretsResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Set
+             * @default false
+             */
+            set: boolean;
+            /**
+             * Path
+             * @default
+             */
+            path: string;
+        };
+        /** RagConfigOut */
+        RagConfigOut: {
+            /**
+             * Auto Index
+             * @default true
+             */
+            auto_index: boolean;
+        };
+        /** ScheduleAddResponse */
+        ScheduleAddResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            schedule?: components["schemas"]["ScheduleItem"] | null;
+        };
+        /** ScheduleItem */
+        ScheduleItem: {
+            /** Id */
+            id: string;
+            /** Cron */
+            cron: string;
+            /** Prompt */
+            prompt: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+        };
+        /** SchedulesResponse */
+        SchedulesResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Schedules
+             * @default []
+             */
+            schedules: components["schemas"]["ScheduleItem"][];
+        };
+        /** SectionEditable */
+        SectionEditable: {
+            /**
+             * Active
+             * @default
+             */
+            active: string;
+            /**
+             * Profiles
+             * @default {}
+             */
+            profiles: {
+                [key: string]: components["schemas"]["ProfileEditable"];
+            };
+            /**
+             * Api Key Set
+             * @default {}
+             */
+            api_key_set: {
+                [key: string]: boolean;
+            };
+        };
+        /** ServerConfigOut */
+        ServerConfigOut: {
+            /**
+             * Host
+             * @default 127.0.0.1
+             */
+            host: string;
+            /**
+             * Port
+             * @default 8520
+             */
+            port: number;
+            /**
+             * Open Browser
+             * @default true
+             */
+            open_browser: boolean;
+            /**
+             * Cors Origins
+             * @default []
+             */
+            cors_origins: string[];
+            /**
+             * Api Token Set
+             * @default false
+             */
+            api_token_set: boolean;
+        };
+        /** TextResponse */
+        TextResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+        };
         /** ToolCallResponse */
         ToolCallResponse: {
             /**
@@ -457,14 +1167,14 @@ export interface components {
              * @default true
              */
             ok: boolean;
+            /** Error */
+            error?: string | null;
             /** Status */
             status?: string | null;
             /** Output */
             output?: string | null;
             /** Needs Confirm */
             needs_confirm?: boolean | null;
-            /** Error */
-            error?: string | null;
         };
         /** ToolFunction */
         ToolFunction: {
@@ -483,6 +1193,19 @@ export interface components {
             type: string;
             function: components["schemas"]["ToolFunction"];
         };
+        /** ToolsConfigOut */
+        ToolsConfigOut: {
+            /**
+             * Search Max Results
+             * @default 5
+             */
+            search_max_results: number;
+            /**
+             * Weather Timeout
+             * @default 10
+             */
+            weather_timeout: number;
+        };
         /** ToolsResponse */
         ToolsResponse: {
             /**
@@ -490,13 +1213,58 @@ export interface components {
              * @default true
              */
             ok: boolean;
+            /** Error */
+            error?: string | null;
             /**
              * Tools
              * @default []
              */
             tools: components["schemas"]["ToolSchema"][];
-            /** Error */
-            error?: string | null;
+        };
+        /** TtsSectionEditable */
+        TtsSectionEditable: {
+            /**
+             * Active
+             * @default
+             */
+            active: string;
+            /**
+             * Profiles
+             * @default {}
+             */
+            profiles: {
+                [key: string]: components["schemas"]["ProfileEditable"];
+            };
+            /**
+             * Api Key Set
+             * @default {}
+             */
+            api_key_set: {
+                [key: string]: boolean;
+            };
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+        };
+        /** VadConfig */
+        VadConfig: {
+            /**
+             * Silence Threshold
+             * @default 0.02
+             */
+            silence_threshold: number;
+            /**
+             * Silence Duration Ms
+             * @default 1500
+             */
+            silence_duration_ms: number;
+            /**
+             * Max Duration Ms
+             * @default 10000
+             */
+            max_duration_ms: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -510,6 +1278,29 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** WakeWordConfig */
+        WakeWordConfig: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Keyword
+             * @default
+             */
+            keyword: string;
+            /**
+             * Sensitivity
+             * @default 0.5
+             */
+            sensitivity: number;
+            /**
+             * Model Path
+             * @default
+             */
+            model_path: string;
         };
     };
     responses: never;
@@ -535,7 +1326,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PingResponse"];
                 };
             };
         };
@@ -555,7 +1346,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ConfigResponse"];
                 };
             };
         };
@@ -575,7 +1366,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PatchConfigResponse"];
                 };
             };
         };
@@ -615,7 +1406,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TextResponse"];
                 };
             };
         };
@@ -655,7 +1446,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ApiResponse"];
                 };
             };
         };
@@ -677,7 +1468,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AckResponse"];
                 };
             };
             /** @description Validation Error */
@@ -746,7 +1537,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["EnvResponse"];
                 };
             };
         };
@@ -766,7 +1557,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["MemoryListResponse"];
                 };
             };
         };
@@ -788,7 +1579,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ApiResponse"];
                 };
             };
             /** @description Validation Error */
@@ -817,7 +1608,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SchedulesResponse"];
                 };
             };
         };
@@ -837,7 +1628,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ScheduleAddResponse"];
                 };
             };
         };
@@ -859,7 +1650,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ApiResponse"];
                 };
             };
             /** @description Validation Error */
@@ -890,7 +1681,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["HistoryListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -921,7 +1712,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["HistoryDetailResponse"];
                 };
             };
             /** @description Validation Error */
@@ -952,7 +1743,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ApiResponse"];
                 };
             };
             /** @description Validation Error */
@@ -981,7 +1772,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ConfigFullResponse"];
                 };
             };
         };
@@ -1001,7 +1792,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PutSecretsResponse"];
                 };
             };
         };
@@ -1021,7 +1812,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["DetectionResponse"];
                 };
             };
         };
@@ -1041,7 +1832,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CatalogResponse"];
                 };
             };
         };
@@ -1061,7 +1852,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["FetchModelsResponse"];
                 };
             };
         };

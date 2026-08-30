@@ -12,6 +12,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from core import config as config_mod
+from core.api.schemas import CatalogResponse, FetchModelsResponse
 from core.logger import logger
 from core.vendors import get_presets_by_kind, models_path_for, resolve_protocol, to_public_dict
 
@@ -20,7 +21,7 @@ router = APIRouter()
 _MODEL_LIMIT = 200  # 模型列表上限，避免写爆 config.yaml
 
 
-@router.get("/providers")
+@router.get("/providers", response_model=CatalogResponse)
 async def list_providers():
     catalog: dict = {}
     for kind in ("llm", "asr", "tts"):
@@ -31,7 +32,7 @@ async def list_providers():
     return {"ok": True, "catalog": catalog}
 
 
-@router.post("/providers/fetch-models")
+@router.post("/providers/fetch-models", response_model=FetchModelsResponse)
 async def fetch_models(request: Request):
     """拉取某 profile 的可用模型列表（按协议分派：openai / anthropic / gemini）。
 

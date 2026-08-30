@@ -6,16 +6,18 @@ from dataclasses import asdict
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from core.api.schemas import ApiResponse, ScheduleAddResponse, SchedulesResponse
+
 router = APIRouter()
 
 
-@router.get("/schedules")
+@router.get("/schedules", response_model=SchedulesResponse)
 async def schedules_list():
     from core.scheduler.scheduler import get_scheduler
     return {"ok": True, "schedules": [asdict(s) for s in get_scheduler().all()]}
 
 
-@router.post("/schedules")
+@router.post("/schedules", response_model=ScheduleAddResponse)
 async def schedules_add(request: Request):
     from core.scheduler.scheduler import get_scheduler
     body = await request.body()
@@ -31,7 +33,7 @@ async def schedules_add(request: Request):
     return {"ok": True, "schedule": asdict(sc)}
 
 
-@router.delete("/schedules/{sid}")
+@router.delete("/schedules/{sid}", response_model=ApiResponse)
 async def schedules_delete(sid: str):
     from core.scheduler.scheduler import get_scheduler
     get_scheduler().remove(sid)

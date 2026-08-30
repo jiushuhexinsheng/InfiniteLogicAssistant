@@ -3,16 +3,18 @@
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
+from core.api.schemas import ApiResponse, HistoryDetailResponse, HistoryListResponse
+
 router = APIRouter()
 
 
-@router.get("/history")
+@router.get("/history", response_model=HistoryListResponse)
 async def history_list(limit: int = 30):
     from core.session.history import get_history_store
     return {"ok": True, "conversations": await get_history_store().list_conversations(limit)}
 
 
-@router.get("/history/{conv_id}")
+@router.get("/history/{conv_id}", response_model=HistoryDetailResponse)
 async def history_get(conv_id: str):
     from core.session.history import get_history_store
     conv = await get_history_store().get_conversation(conv_id)
@@ -21,7 +23,7 @@ async def history_get(conv_id: str):
     return {"ok": True, "conversation": conv}
 
 
-@router.delete("/history/{conv_id}")
+@router.delete("/history/{conv_id}", response_model=ApiResponse)
 async def history_delete(conv_id: str):
     from core.session.history import get_history_store
     await get_history_store().delete(conv_id)
