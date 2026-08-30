@@ -60,8 +60,8 @@ async def tts_synthesize(request: Request):
             status_code=400,
         )
     try:
-        from core.tts import synthesize
-        from core.tts import TtsConfigError
+        from core.voice.tts import synthesize
+        from core.voice.tts import TtsConfigError
         audio, media_type = await synthesize(text, voice)
     except TtsConfigError as e:
         # 配置问题（未启用/缺 voice_ref 等）：客户端可修复 → 400

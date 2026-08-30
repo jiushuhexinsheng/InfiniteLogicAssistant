@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """异步 LLM 流式客户端 — httpx 解析 SSE → 事件流（参照 InfiniteLogic src/llm.py）
 
-多协议分派（core.providers.resolve_protocol，按 profile.provider / vendor / chat_path）：
+多协议分派（core.vendors.resolve_protocol，按 profile.provider / vendor / chat_path）：
 - openai   : POST {endpoint}{chat_path}，OpenAI chat/completions SSE
 - anthropic: POST {endpoint}/v1/messages，Anthropic Messages API SSE
 - gemini   : POST {endpoint}/v1beta/models/{model}:streamGenerateContent?alt=sse
@@ -20,7 +20,7 @@ from typing import Any
 import httpx
 
 from core.config import resolve_llm_profile
-from core.providers import resolve_protocol
+from core.vendors import resolve_protocol
 
 
 # ─────────────────────────── OpenAI 兼容 ───────────────────────────

@@ -47,7 +47,7 @@ def client(monkeypatch, tmp_path):
     # 会话落盘（data/tasks）与 ROOT_DIR 隔离到临时目录，避免污染真实 data/
     monkeypatch.setattr(config_mod, "ROOT_DIR", tmp_path)
     # 历史存储隔离到临时目录
-    import core.history as history_mod
+    import core.session.history as history_mod
     monkeypatch.setattr(history_mod, "get_history_store", lambda: history_mod.HistoryStore(tmp_path / "history.db"))
     return TestClient(server_module.app)
 
@@ -117,7 +117,7 @@ def test_voice_transcribe_unconfigured(client):
 # ─── TTS：配置错误应映射为 400（可修复），而非 500 ───
 
 def test_tts_config_error_maps_to_400(client, monkeypatch):
-    import core.tts as tts_mod
+    import core.voice.tts as tts_mod
     # 启用后端 TTS，但 voiceclone 缺 voice_ref → 配置错误
     monkeypatch.setattr(config_mod, "is_tts_enabled", lambda: True)  # voice.py 前置检查
     monkeypatch.setattr(tts_mod, "is_tts_enabled", lambda: True)     # synthesize() 内检查
@@ -192,7 +192,7 @@ def test_tools_call_high_risk_with_confirm_executes(client, monkeypatch):
 @pytest.mark.asyncio
 async def test_persist_session_writes_task_json(tmp_path, monkeypatch):
     import json
-    import core.history as history_mod
+    import core.session.history as history_mod
     from core.orchestrator.session import Session
     monkeypatch.setattr(config_mod, "ROOT_DIR", tmp_path)
     monkeypatch.setattr(history_mod, "get_history_store",
@@ -219,7 +219,7 @@ async def test_persist_session_writes_task_json(tmp_path, monkeypatch):
 
 def test_history_endpoints(client, monkeypatch, tmp_path):
     import asyncio
-    import core.history as history_mod
+    import core.session.history as history_mod
     store = history_mod.HistoryStore(tmp_path / "h.db")
     monkeypatch.setattr(history_mod, "get_history_store", lambda: store)
     asyncio.run(store.save_conversation(

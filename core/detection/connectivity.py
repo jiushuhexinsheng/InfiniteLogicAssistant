@@ -82,7 +82,7 @@ async def check_tts(timeout: int = 30) -> CheckResult:
     """TTS 连通性：合成一小段语音。"""
     if not config.is_tts_enabled():
         return CheckResult("TTS", "skip", detail="未启用（voice.tts.enabled=false 或未配置）")
-    from core.tts import synthesize
+    from core.voice.tts import synthesize
     start = time.monotonic()
     try:
         audio, _ = await synthesize("连通测试")
