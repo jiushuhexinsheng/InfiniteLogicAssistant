@@ -20,6 +20,7 @@ web/node_modules/
 web/dist/
 node_modules/
 dist/
+web/src/api/openapi.json
 
 # 部署包副本
 deploy/

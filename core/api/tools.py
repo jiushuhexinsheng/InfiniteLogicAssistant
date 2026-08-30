@@ -1,23 +1,58 @@
 # -*- coding: utf-8 -*-
 """tools 域 API — 工具清单 / 单工具执行"""
 import json
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from core.logger import logger
 from core.tools import TOOLS
 
 router = APIRouter()
 
+# 响应模型：同时作为 openapi schema（供前端 openapi-typescript 生成 TS 类型）
 
-@router.get("/tools")
+
+class FunctionParams(BaseModel):
+    type: str = "object"
+    properties: dict[str, Any] = {}
+    required: list[str] = []
+
+
+class ToolFunction(BaseModel):
+    name: str
+    description: str
+    parameters: FunctionParams
+
+
+class ToolSchema(BaseModel):
+    type: str = "function"
+    function: ToolFunction
+
+
+class ToolsResponse(BaseModel):
+    ok: bool = True
+    tools: list[ToolSchema] = []
+    error: str | None = None
+
+
+class ToolCallResponse(BaseModel):
+    ok: bool = True
+    status: str | None = None
+    output: str | None = None
+    needs_confirm: bool | None = None
+    error: str | None = None
+
+
+@router.get("/tools", response_model=ToolsResponse)
 async def tools_list():
     """工具清单：后端 @tool 注册中心的 OpenAI schema 数组（供控制台展示）。"""
     return {"ok": True, "tools": TOOLS.schemas()}
 
 
-@router.post("/tools/call")
+@router.post("/tools/call", response_model=ToolCallResponse)
 async def tools_call(request: Request):
     body = await request.body()
     try:

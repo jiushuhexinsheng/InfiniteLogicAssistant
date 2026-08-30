@@ -1,3 +1,5 @@
+import type { components } from './api/generated'
+
 export interface ApiResponse {
   ok: boolean
   error?: string
@@ -24,11 +26,8 @@ export interface TextResponse extends ApiResponse {
   text: string
 }
 
-export interface ToolCallResponse extends ApiResponse {
-  status?: 'ok' | 'error'
-  output?: string
-  needs_confirm?: boolean
-}
+/** 工具调用响应（由后端 response_model 生成，见 npm run gen:api） */
+export type ToolCallResponse = components['schemas']['ToolCallResponse']
 
 /** OpenAI SSE usage（usage-only chunk，逐轮累计） */
 export interface TokenUsage {
@@ -37,22 +36,10 @@ export interface TokenUsage {
   total_tokens?: number
 }
 
-export interface ToolSchema {
-  type: string
-  function: {
-    name: string
-    description: string
-    parameters: {
-      type: string
-      properties: Record<string, any>
-      required?: string[]
-    }
-  }
-}
+/** 工具 OpenAI schema（由后端 response_model 生成，见 npm run gen:api） */
+export type ToolSchema = components['schemas']['ToolSchema']
 
-export interface ToolsResponse extends ApiResponse {
-  tools: ToolSchema[]
-}
+export type ToolsResponse = components['schemas']['ToolsResponse']
 
 export interface TaskStep {
   step: number

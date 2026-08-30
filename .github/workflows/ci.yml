@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # 后端：与本地/目标平台一致（Windows），离线 wheel 兜底
+  backend:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Install deps
+        # 在线优先，失败回退 scripts/libs 离线 wheel（按 CPython 3.14 win_amd64 打包）
+        run: pip install --find-links=scripts/libs -r requirements.txt -r requirements-dev.txt
+      - name: Type check (mypy)
+        run: python -m mypy core/ server.py
+      - name: Tests (pytest)
+        run: python -m pytest tests/ -q
+
+  # 前端：类型检查（vue-tsc）+ 生产构建 + 单元测试（Vitest）
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Type check & build
+        run: npm run build
+      - name: Unit tests
+        run: npm test
