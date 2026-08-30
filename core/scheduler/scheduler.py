@@ -155,11 +155,7 @@ class Scheduler:
             pass
 
 
-_scheduler: Scheduler | None = None
-
-
 def get_scheduler() -> Scheduler:
-    global _scheduler
-    if _scheduler is None:
-        _scheduler = Scheduler()
-    return _scheduler
+    """返回容器持有的全局 Scheduler（测试可 monkeypatch 本函数）。"""
+    from core.container import AppContext
+    return AppContext.get().scheduler()

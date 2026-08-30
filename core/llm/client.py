@@ -10,6 +10,7 @@ import httpx
 
 from core import config
 from core.config import resolve_llm_profile
+from core.container import AppContext
 from core.llm.stream import stream_chat
 from core.logger import logger
 
@@ -138,6 +139,12 @@ class LlmClient:
             )
         return self._http
 
+    async def close(self) -> None:
+        """关闭底层 httpx 连接池（AppContext.shutdown 时调用）。"""
+        if self._http is not None:
+            await self._http.aclose()
+            self._http = None
+
     async def retry_stream_chat(
         self,
         messages: list[dict],
@@ -210,11 +217,6 @@ class LlmClient:
         raise _SwitchModel()  # 防御：attempt 循环耗尽（正常不会到这）
 
 
-_client: LlmClient | None = None
-
-
 def get_llm_client() -> LlmClient:
-    global _client
-    if _client is None:
-        _client = LlmClient()
-    return _client
+    """返回容器持有的全局 LLM 客户端（测试可 monkeypatch 本函数）。"""
+    return AppContext.get().llm_client()

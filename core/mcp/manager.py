@@ -36,11 +36,7 @@ class McpManager:
         return [c.cfg.name for c in self._conns]
 
 
-_mcp_manager: McpManager | None = None
-
-
 def get_mcp_manager() -> McpManager:
-    global _mcp_manager
-    if _mcp_manager is None:
-        _mcp_manager = McpManager()
-    return _mcp_manager
+    """返回容器持有的全局 MCP 管理器（测试可 monkeypatch 本函数）。"""
+    from core.container import AppContext
+    return AppContext.get().mcp_manager()

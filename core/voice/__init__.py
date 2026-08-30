@@ -123,30 +123,22 @@ def _play_audio(data: bytes) -> bool:
     return True
 
 
-# 全局单例
-_asr: ASRClient | None = None
-_tts: TTSClient | None = None
-
-
 def get_asr() -> ASRClient:
-    global _asr
-    if _asr is None:
-        _asr = ASRClient()
-    return _asr
+    """返回容器持有的全局 ASR 客户端（测试可 monkeypatch 本函数）。"""
+    from core.container import AppContext
+    return AppContext.get().asr()
 
 
 def get_tts() -> TTSClient:
-    global _tts
-    if _tts is None:
-        _tts = TTSClient()
-    return _tts
+    """返回容器持有的全局 TTS 客户端（测试可 monkeypatch 本函数）。"""
+    from core.container import AppContext
+    return AppContext.get().tts()
 
 
 def _reset_clients() -> None:
-    """配置热重载后清空客户端单例，下次访问用新 profile 重建。"""
-    global _asr, _tts
-    _asr = None
-    _tts = None
+    """配置热重载后清空语音客户端，下次访问用新 profile 重建。"""
+    from core.container import AppContext
+    AppContext.get().reset_voice()
 
 
 add_reload_hook(_reset_clients)

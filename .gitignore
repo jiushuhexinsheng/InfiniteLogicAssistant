@@ -9,9 +9,9 @@ venv/
 config.yaml
 config.secrets.yaml
 environment.md
-data/
-memory/
-rag/
+/data/
+/memory/
+/rag/
 *.sqlite
 *.db
 
