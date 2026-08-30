@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from core import config as config
 from core.api import state
+from core.api.schemas import AckResponse, ApiResponse, ConfigResponse, PingResponse, TextResponse
 from core.logger import logger
 
 router = APIRouter()
@@ -17,13 +18,13 @@ def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-@router.get("/ping")
+@router.get("/ping", response_model=PingResponse)
 async def ping():
     from datetime import datetime
     return {"ok": True, "time": datetime.now().isoformat()}
 
 
-@router.get("/config")
+@router.get("/config", response_model=ConfigResponse)
 async def config_endpoint():
     return {
         "llm_available": config.is_llm_configured(),
@@ -72,7 +73,7 @@ async def tts_synthesize(request: Request):
     return Response(content=audio, media_type=media_type)
 
 
-@router.post("/voice/transcribe")
+@router.post("/voice/transcribe", response_model=TextResponse)
 async def voice_transcribe(request: Request):
     from core.voice import get_asr
     asr = get_asr()
@@ -149,7 +150,7 @@ async def voice_utter(request: Request):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-@router.post("/voice/answer")
+@router.post("/voice/answer", response_model=ApiResponse)
 async def voice_answer(request: Request):
     """投递操作者对澄清/确认问题的回答，解除 pipeline 的 ask() 阻塞。"""
     body = await request.body()
@@ -165,7 +166,7 @@ async def voice_answer(request: Request):
     return {"ok": True}
 
 
-@router.post("/task/{session_id}/stop")
+@router.post("/task/{session_id}/stop", response_model=AckResponse)
 async def task_stop(session_id: str):
     """停止该会话的整个任务（CancellationToken → executor/子进程中止）。"""
     ctrl = state.get_controller(session_id)

@@ -1,4 +1,5 @@
 import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, PingResponse, ProviderPreset, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState } from './types'
+import type { components } from './api/generated'
 import { blobToWavBase64 } from './audio'
 
 // ─── HTTP 封装 ───
@@ -102,38 +103,12 @@ export const api = {
   deleteHistory: (id: string) => del<ApiResponse>(`/history/${encodeURIComponent(id)}`),
 }
 
-export interface MemoryFact {
-  topic: string
-  content: string
-  source: string
-  ts: string
-}
-
-export interface ScheduleItem {
-  id: string
-  cron: string
-  prompt: string
-  enabled: boolean
-}
-
-export interface HistoryConversation {
-  id: string
-  created: string
-  updated: string
-  status: string
-  summary: string
-  message_count: number
-}
-
-export interface HistoryMessage {
-  role: string
-  content: string
-  tool_calls: { name: string; result?: string }[] | null
-}
-
-export interface HistoryConversationDetail extends HistoryConversation {
-  messages: HistoryMessage[]
-}
+// ─── 会话/记忆/定时类型（由后端 response_model 生成）───
+export type MemoryFact = components['schemas']['FactItem']
+export type ScheduleItem = components['schemas']['ScheduleItem']
+export type HistoryConversation = components['schemas']['HistoryConversation']
+export type HistoryMessage = components['schemas']['HistoryMessage']
+export type HistoryConversationDetail = components['schemas']['HistoryConversationDetail']
 
 // ─── 编排 SSE：/api/voice/utter（唯一 agent 路径，含澄清/确认 question 事件）───
 

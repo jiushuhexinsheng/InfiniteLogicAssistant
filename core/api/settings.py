@@ -14,6 +14,9 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from core import config as config_mod
+from core.api.schemas import (
+    ConfigFullResponse, DetectionResponse, PatchConfigResponse, PutSecretsResponse,
+)
 from core.detection import run_all
 from core.logger import logger
 
@@ -107,13 +110,13 @@ def _read_json_body(body: bytes):
 # ─────────────────────────── 端点 ───────────────────────────
 
 
-@router.get("/config/full")
+@router.get("/config/full", response_model=ConfigFullResponse)
 async def config_full():
     """设置页可编辑快照（密钥不回显）。"""
     return {"ok": True, "editable": config_mod.editable_snapshot()}
 
 
-@router.patch("/config")
+@router.patch("/config", response_model=PatchConfigResponse)
 async def patch_config(request: Request):
     """持久化非敏感配置并热重载；server 绑定类 / MCP 变更返回 restart_required=true。"""
     patch = _read_json_body(await request.body())
@@ -146,7 +149,7 @@ async def patch_config(request: Request):
     return {"ok": True, "restart_required": restart_required}
 
 
-@router.put("/config/secrets")
+@router.put("/config/secrets", response_model=PutSecretsResponse)
 async def put_secrets(request: Request):
     """设置/清除密钥（value 为空字符串=清除）。path 形如 llm.api_key / llm.profiles.deepseek / server.api_token。
 
@@ -187,7 +190,7 @@ async def put_secrets(request: Request):
     return {"ok": True, "set": bool(value), "path": path}
 
 
-@router.get("/detection")
+@router.get("/detection", response_model=DetectionResponse)
 async def detection():
     """聚合检测：环境快照 + 配置健康 + 三项连通性（设置页「检测全部」按钮）。"""
     try:
