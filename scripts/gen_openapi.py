@@ -8,6 +8,10 @@ import json
 import sys
 from pathlib import Path
 
+# CI(GitHub Actions) 的 Windows Python stdout 为 cp1252，打印 → 等 Unicode 会抛
+# UnicodeEncodeError → 强制 UTF-8 输出
+sys.stdout.reconfigure(encoding="utf-8")
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
