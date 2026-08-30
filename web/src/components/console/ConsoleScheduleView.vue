@@ -66,7 +66,7 @@ onMounted(load)
 </script>
 
 <style scoped>
-.console-schedule { max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+.console-schedule { max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; overflow-y: auto;}
 .sched-form { display: flex; flex-direction: column; gap: 10px; }
 .form-row { display: flex; gap: 8px; align-items: center; }
 .cron-input { max-width: 150px; font-family: var(--font-mono); }

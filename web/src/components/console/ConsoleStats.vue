@@ -52,7 +52,7 @@ const statCards = computed(() => [
 </script>
 
 <style scoped>
-.console-stats { max-width: 720px; width: 100%; margin: 0 auto; }
+.console-stats { max-width: 720px; width: 100%; margin: 0 auto; flex: 1; min-height: 0; overflow-y: auto;}
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
 .stat { text-align: center; padding: 18px 12px; }
 .num { font-size: 26px; font-weight: 700; color: var(--brand-c2); }

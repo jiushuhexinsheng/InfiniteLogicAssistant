@@ -45,7 +45,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.console-tools { max-width: 720px; width: 100%; margin: 0 auto; }
+.console-tools { max-width: 720px; width: 100%; margin: 0 auto; flex: 1; min-height: 0; overflow-y: auto;}
 .console-empty { display: flex; align-items: center; justify-content: center; color: var(--text-3); font-size: 13px; padding: 40px 0; }
 .tool-cards { display: flex; flex-direction: column; gap: 10px; }
 .tool-card { padding: 14px 16px; }

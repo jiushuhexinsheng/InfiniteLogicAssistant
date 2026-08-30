@@ -85,7 +85,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.console-status { max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.console-status { max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; overflow-y: auto;}
 .status-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .status-row .muted { color: var(--text-3); font-size: 12px; }
 .ping-ms { font-size: 11px; color: var(--text-3); }

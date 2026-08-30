@@ -50,7 +50,7 @@ onMounted(load)
 </script>
 
 <style scoped>
-.console-memory { max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+.console-memory { max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; overflow-y: auto;}
 .mem-head { display: flex; align-items: center; gap: 10px; }
 .mem-loading { font-size: 12px; color: var(--text-3); }
 .console-empty { display: flex; justify-content: center; color: var(--text-3); font-size: 13px; padding: 40px 0; }
