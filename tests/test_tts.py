@@ -2,7 +2,7 @@
 """core/tts.py — 配置错误应抛 TtsConfigError（API 层映射 400）且提示可操作"""
 import pytest
 
-from core.tts import TtsConfigError, _synthesize_chat, synthesize
+from core.voice.tts import TtsConfigError, _synthesize_chat, synthesize
 
 
 @pytest.mark.asyncio
@@ -25,7 +25,7 @@ async def test_synthesize_chat_preset_uses_passed_voice(monkeypatch):
         captured["payload"] = payload
         return _Resp()
 
-    monkeypatch.setattr("core.tts._post", fake_post)
+    monkeypatch.setattr("core.voice.tts._post", fake_post)
     await _synthesize_chat("你好", {"chat_path": "/v1/chat/completions", "voice": "Chloe"}, voice="Mia")
     assert captured["payload"]["audio"]["voice"] == "Mia"
 
@@ -43,7 +43,7 @@ async def test_synthesize_chat_preset_uses_default_voice(monkeypatch):
         captured["payload"] = payload
         return _Resp()
 
-    monkeypatch.setattr("core.tts._post", fake_post)
+    monkeypatch.setattr("core.voice.tts._post", fake_post)
     await _synthesize_chat("你好", {"chat_path": "/v1/chat/completions"})
     assert captured["payload"]["model"] == "mimo-v2.5-tts"
     assert captured["payload"]["audio"]["voice"] == "mimo_default"
@@ -52,6 +52,6 @@ async def test_synthesize_chat_preset_uses_default_voice(monkeypatch):
 @pytest.mark.asyncio
 async def test_synthesize_disabled_raises_config_error(monkeypatch):
     """未启用 TTS 属配置错误"""
-    monkeypatch.setattr("core.tts.is_tts_enabled", lambda: False)
+    monkeypatch.setattr("core.voice.tts.is_tts_enabled", lambda: False)
     with pytest.raises(TtsConfigError):
         await synthesize("你好")

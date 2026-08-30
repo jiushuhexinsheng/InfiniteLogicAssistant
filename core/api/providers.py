@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 
 from core import config as config_mod
 from core.logger import logger
-from core.providers import get_presets_by_kind, models_path_for, resolve_protocol, to_public_dict
+from core.vendors import get_presets_by_kind, models_path_for, resolve_protocol, to_public_dict
 
 router = APIRouter()
 

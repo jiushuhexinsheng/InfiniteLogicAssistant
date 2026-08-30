@@ -78,7 +78,7 @@ async def persist(session: Session, created: float | None = None) -> None:
             json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
         # 完整会话历史（控制台「历史」tab 数据源）
         try:
-            from core.history import get_history_store
+            from core.session.history import get_history_store
             await get_history_store().save_conversation(
                 session.id, session.messages,
                 status=state_str,

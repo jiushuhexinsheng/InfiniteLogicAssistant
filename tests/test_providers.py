@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""core/providers.py — 厂商目录 / 协议分派 / 模型路径 / 预填 / 剥密钥"""
+"""core/vendors.py — 厂商目录 / 协议分派 / 模型路径 / 预填 / 剥密钥"""
 import core.config as c
-from core.providers import (
+from core.vendors import (
     BUILTIN_ASR,
     BUILTIN_LLM,
     BUILTIN_TTS,

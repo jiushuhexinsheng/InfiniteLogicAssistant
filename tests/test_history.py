@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import pytest
 
-from core.history import HistoryStore
+from core.session.history import HistoryStore
 
 
 @pytest.fixture
