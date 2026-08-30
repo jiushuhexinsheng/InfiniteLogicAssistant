@@ -169,7 +169,12 @@ cd web && npm test              # 前端单元测试（Vitest）
 全部 JSON 端点均以 `response_model`（pydantic，见 `core/api/schemas.py`）声明 → FastAPI 自动生成
 openapi.json → 前端 `openapi-typescript` 生成 `web/src/api/generated.ts`；`web/src/types.ts` 与
 `web/src/api.ts` 的 **API 类型全部 re-export generated**（单一事实来源：后端 schema 改动 →
-前端类型同步，避免手写漂移）。仅 SSE 事件（`/api/voice/utter`）与前端内部类型保留手写。
+前端类型同步，避免手写漂移）。
+
+**SSE 事件**（`/api/voice/utter`）不经 openapi：由 `core/orchestrator/events.py` 定义 pydantic
+事件模型（pipeline/executor/voice 构造事件），前端 `web/src/types.ts` 手写对应类型
+（`TaskStateEvent`/`ContentDeltaEvent`/… 及 `SseEvent` 联合），`api.ts` 的 streamUtter 类型化解析。
+仅前端内部类型（`ToolStep`/`TokenUsage` 等）保留手写。
 
 ```bash
 cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
