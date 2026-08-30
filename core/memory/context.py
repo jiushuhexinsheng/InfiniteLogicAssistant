@@ -2,7 +2,7 @@
 """上下文注入 — RAG 检索片段 + 长期事实 合并为系统提示片段"""
 import re
 
-from core.memory.facts import FACTS_DB, FactStore
+from core.memory.facts import FactStore
 from core.rag.retriever import rag_context
 
 _KEYWORD_RE = re.compile(r"[a-z0-9_]+|[一-鿿]+")
@@ -12,15 +12,10 @@ def _keywords(query: str) -> list[str]:
     return [t for t in _KEYWORD_RE.findall(query.lower()) if len(t) >= 2]
 
 
-_facts_store: FactStore | None = None
-
-
 def get_facts_store() -> FactStore:
-    """全局长期事实记忆单例（惰性创建）。"""
-    global _facts_store
-    if _facts_store is None:
-        _facts_store = FactStore(FACTS_DB)
-    return _facts_store
+    """返回容器持有的全局事实记忆存储（测试可 monkeypatch 本函数）。"""
+    from core.container import AppContext
+    return AppContext.get().facts_store()
 
 
 async def build_context(query: str, store: FactStore | None = None) -> str:

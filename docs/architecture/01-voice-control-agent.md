@@ -118,6 +118,7 @@
 │   ├── skills/                 # 技能包加载（loader.py 热重载）+ 执行（executor.py）
 │   ├── scheduler/              # cron 定时（scheduler.py 持久化）+ 无人值守执行（runner.py 落盘历史）
 │   ├── session/                # 会话域：会话历史落盘（history.py → data/history.db）
+│   ├── container.py            # ★ 应用上下文容器：全局服务生命周期（LLM/语音/scheduler/MCP）
 │   ├── prompts.py              # 系统提示词集中管理（单一来源）
 │   └── vendors.py              # 多 provider 协议分派（openai/anthropic/gemini）
 ├── skills/                     # 技能定义（YAML，文件名 = 技能名）

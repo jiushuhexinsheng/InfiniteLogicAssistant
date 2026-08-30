@@ -18,39 +18,11 @@ from core.logger import logger
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动时连接 MCP server 并注册其工具
-    try:
-        from core.mcp.manager import get_mcp_manager
-        await get_mcp_manager().start_all()
-    except Exception as e:
-        logger.warning("MCP 启动失败: {}", e)
-    # 启动定时调度（到点触发无人值守执行）
-    try:
-        from core.scheduler.runner import run_scheduled
-        from core.scheduler.scheduler import get_scheduler
-        sched = get_scheduler()
-        sched.set_on_fire(run_scheduled)
-        await sched.start()
-    except Exception as e:
-        logger.warning("定时调度启动失败: {}", e)
-    # 启动时按需重建 RAG 索引（best-effort）
-    try:
-        if config.settings.rag.auto_index:
-            from core.rag import maybe_rebuild_index
-            await maybe_rebuild_index()
-    except Exception as e:
-        logger.warning("RAG 索引构建失败: {}", e)
+    # 应用上下文容器统一启动/关闭（MCP / 定时调度 / RAG 索引 / LLM 连接池）
+    from core.container import AppContext
+    await AppContext.get().start()
     yield
-    try:
-        from core.scheduler.scheduler import get_scheduler
-        await get_scheduler().stop()
-    except Exception:
-        pass
-    try:
-        from core.mcp.manager import get_mcp_manager
-        await get_mcp_manager().stop_all()
-    except Exception:
-        pass
+    await AppContext.get().shutdown()
 
 
 app = FastAPI(title="无限逻辑·语音助手", lifespan=lifespan)

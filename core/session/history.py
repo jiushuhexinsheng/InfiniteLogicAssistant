@@ -92,11 +92,7 @@ class HistoryStore:
             conn.execute("DELETE FROM conversations WHERE id=?", (conv_id,))
 
 
-_history_store: HistoryStore | None = None
-
-
 def get_history_store() -> HistoryStore:
-    global _history_store
-    if _history_store is None:
-        _history_store = HistoryStore()
-    return _history_store
+    """返回容器持有的全局历史存储（测试可 monkeypatch 本函数）。"""
+    from core.container import AppContext
+    return AppContext.get().history_store()
