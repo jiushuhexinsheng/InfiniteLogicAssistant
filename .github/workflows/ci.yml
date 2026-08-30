@@ -28,30 +28,9 @@ jobs:
         working-directory: web
         run: |
           git config core.autocrlf false   # 消除 windows 行尾转换对 diff 的干扰
-          set +e
-          python ../scripts/gen_openapi.py > gen_out.txt 2>&1
-          RC=$?
-          if [ $RC -ne 0 ]; then
-            echo "::error::STEP1 gen_openapi.py failed (rc=$RC)"
-            echo "::error::$(base64 -w0 gen_out.txt | head -c 3000)"
-            exit 1
-          fi
-          echo "STEP1 OK: $(tail -1 gen_out.txt)"
-          npx --yes openapi-typescript@7.13.0 src/api/openapi.json -o src/api/generated.ts || { echo "::error::STEP2 openapi-typescript failed"; exit 1; }
-          echo "STEP2 OK"
-          if git diff --exit-code src/api/generated.ts; then
-            echo "STEP3 OK: generated.ts in sync"
-          else
-            echo "::error::STEP3 generated.ts out of sync"
-            git diff src/api/generated.ts | head -20
-            exit 1
-          fi
-      - name: Upload gen:api error log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gen-api-error
-          path: web/gen_out.txt
+          python ../scripts/gen_openapi.py
+          npx --yes openapi-typescript@7.13.0 src/api/openapi.json -o src/api/generated.ts
+          git diff --exit-code src/api/generated.ts || { echo "::error::generated.ts 与后端 schema 不同步 — 请运行 cd web && npm run gen:api 并提交"; exit 1; }
 
   # 前端：类型检查（vue-tsc）+ 生产构建 + 单元测试（Vitest）
   frontend:
