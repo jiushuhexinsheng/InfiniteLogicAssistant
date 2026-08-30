@@ -30,13 +30,14 @@ jobs:
           echo "git:$(git --version) node:$(node --version) npm:$(npm --version)"
           git config core.autocrlf false   # 消除 windows 行尾转换对 diff 的干扰
           set +e
-          OUT=$(python ../scripts/gen_openapi.py 2>&1)
+          python ../scripts/gen_openapi.py > /tmp/gen_out.txt 2>&1
           RC=$?
           if [ $RC -ne 0 ]; then
-            echo "::error::STEP1 gen_openapi.py failed (rc=$RC):${OUT//$'\n'/%0A}" | head -c 1500
+            echo "::error::STEP1 gen_openapi.py failed (rc=$RC)"
+            sed 's/^/::error::/' /tmp/gen_out.txt | tail -30
             exit 1
           fi
-          echo "STEP1 OK: $(echo "$OUT" | tail -1)"
+          echo "STEP1 OK: $(tail -1 /tmp/gen_out.txt)"
           npx --yes openapi-typescript@7.13.0 src/api/openapi.json -o src/api/generated.ts || { echo "::error::STEP2 openapi-typescript failed"; exit 1; }
           echo "STEP2 OK"
           if git diff --exit-code src/api/generated.ts; then
