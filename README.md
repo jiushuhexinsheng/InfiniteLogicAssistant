@@ -164,6 +164,18 @@ cd web && npm run build         # 前端类型检查（vue-tsc）+ 生产构建
 cd web && npm test              # 前端单元测试（Vitest）
 ```
 
+### 前后端类型共享（openapi-typescript）
+
+后端 API 响应用 `response_model`（pydantic）声明 → FastAPI 自动生成 openapi.json →
+前端 `openapi-typescript` 生成 `web/src/api/generated.ts`；`web/src/types.ts` 中已迁移的类型
+re-export generated（**单一事实来源**：后端 schema 改动 → 前端类型同步，避免手写漂移）。
+
+```bash
+cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
+```
+
+修改后端响应模型后需重跑 `gen:api`；`generated.ts` 入库，`openapi.json` 为中间产物（gitignore）。
+
 ## 配置
 
 配置采用 **pydantic 强类型校验 + 双文件分离**（非敏感配置 / 密钥独立存储），参考 InfiniteLogic-main 的强类型方案，保留多 profile YAML 结构：
