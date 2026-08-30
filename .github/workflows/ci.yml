@@ -46,9 +46,6 @@ jobs:
             echo "::error::npm ci failed. verbose tail:${LOG//$'\n'/%0A}"
             exit 1
           fi
-        env:
-          # npm 11 allowScripts：全新 CI 环境默认阻止 esbuild postinstall（vite 依赖）→ 显式允许
-          NPM_CONFIG_ALLOW_SCRIPTS: "true"
       - name: Type check & build
         run: npm run build
       - name: Unit tests
