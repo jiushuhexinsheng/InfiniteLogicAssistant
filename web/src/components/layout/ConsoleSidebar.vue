@@ -34,8 +34,8 @@ const emit = defineEmits<{ select: [key: ConsoleTabKey] }>()
 <style scoped>
 .console-sidebar {
   width: var(--nav-width); flex-shrink: 0;
-  display: flex; flex-direction: column; gap: 6px;
-  padding: 14px 12px;
+  display: flex; flex-direction: column; gap: 7px;
+  padding: 16px 12px;
   border: 1px solid var(--glass-border); border-radius: var(--r-xl);
   background: var(--surface-raised); backdrop-filter: blur(14px) saturate(140%);
   -webkit-backdrop-filter: blur(14px) saturate(140%);
@@ -57,7 +57,7 @@ const emit = defineEmits<{ select: [key: ConsoleTabKey] }>()
 }
 .sb-foot {
   display: flex; align-items: center; gap: 8px;
-  margin-top: auto; padding: 10px;
+  margin-top: auto; padding: 11px 10px;
   border: 1px solid rgba(52, 211, 153, .3); border-radius: var(--r-md);
   background: rgba(52, 211, 153, .06);
 }

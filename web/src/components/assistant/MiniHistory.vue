@@ -114,10 +114,10 @@ watch(
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 4px 2px;
+  padding: 6px 4px 2px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .mini-empty {
@@ -152,10 +152,11 @@ watch(
 .mini-bubble {
   position: relative;
   max-width: 88%;
-  padding: 6px 10px;
+  padding: 7px 11px;
   border-radius: var(--r-lg);
   font-size: var(--fs-sm);
   line-height: 1.5;
+  box-shadow: var(--shadow-1);
   word-break: break-word;
   white-space: pre-wrap;
 }

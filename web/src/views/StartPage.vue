@@ -120,7 +120,7 @@ onMounted(async () => {
 .hero {
   flex: 1; width: 100%; max-width: 1080px; margin: 0 auto;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 10px; padding: 12px 24px 20px;
+  gap: 12px; padding: 16px 24px 24px;
 }
 
 /* ── 光球 ── */
@@ -185,7 +185,7 @@ onMounted(async () => {
 .features {
   width: 100%; max-width: 880px;
   display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;
-  padding-top: 2px;
+  padding-top: 6px;
 }
 .feature { display: flex; gap: 12px; align-items: flex-start; }
 .feature-ic {

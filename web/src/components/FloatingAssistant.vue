@@ -137,9 +137,9 @@ const panelStyle = computed(() => ({
   background: transparent;
   color: var(--text-2);
   font-size: 12px;
-  padding: 7px 0 8px;
+  padding: 8px 0 9px;
   cursor: pointer;
   transition: color .15s, background .15s;
 }
-.open-console:hover { color: var(--brand-c2); background: rgba(103, 232, 249, .05); }
+.open-console:hover { color: var(--brand-c2); background: rgba(103, 232, 249, .06); }
 </style>

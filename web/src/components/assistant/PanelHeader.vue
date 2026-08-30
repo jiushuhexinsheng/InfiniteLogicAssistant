@@ -33,8 +33,8 @@ const statusText = computed(() => resolveStateLabel(props.visual, props.wakeKeyw
 .panel-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 9px;
+  padding: 11px 14px;
   background: rgba(15, 23, 42, .9);
   border-bottom: 1px solid var(--border-soft);
 }
@@ -55,8 +55,8 @@ const statusText = computed(() => resolveStateLabel(props.visual, props.wakeKeyw
 .ph-text { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ph-btn {
   background: none; border: none; color: var(--text-2); cursor: pointer;
-  padding: 4px; border-radius: 6px; display: flex; flex-shrink: 0;
+  padding: 5px; border-radius: 8px; display: flex; flex-shrink: 0;
   transition: color var(--dur-fast), background var(--dur-fast);
 }
-.ph-btn:hover { background: #334155; color: var(--text-1); }
+.ph-btn:hover { background: rgba(51, 65, 85, .55); color: var(--text-1); }
 </style>
