@@ -51,7 +51,7 @@ onMounted(scrollToBottom)
 }
 .welcome {
   display: flex; align-items: center; gap: 8px;
-  padding: 6px 4px 12px;
+  padding: 4px 4px 14px;
 }
 .w-avatar {
   width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
@@ -62,7 +62,7 @@ onMounted(scrollToBottom)
 .w-state { font-size: var(--fs-2xs); color: var(--text-3); }
 .console-msgs {
   display: flex; flex-direction: column; gap: 14px;
-  padding: 4px 2px 8px; max-width: 860px; width: 100%; margin: 0 auto;
+  padding: 4px 2px 10px; max-width: 860px; width: 100%; margin: 0 auto;
 }
 .console-empty {
   flex: 1; display: flex; align-items: center; justify-content: center;

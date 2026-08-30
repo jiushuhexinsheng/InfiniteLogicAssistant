@@ -49,7 +49,7 @@ const router = useRouter()
 .console-header {
   height: var(--header-h); flex-shrink: 0;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 24px;
+  padding: 0 26px;
   background: rgba(2, 6, 23, .8);
   backdrop-filter: blur(10px) saturate(140%);
   -webkit-backdrop-filter: blur(10px) saturate(140%);
@@ -68,7 +68,7 @@ const router = useRouter()
 
 .console-body {
   flex: 1; min-height: 0;
-  display: flex; gap: 16px; padding: 16px 20px;
+  display: flex; gap: 18px; padding: 18px 22px;
 }
 .console-main {
   flex: 1; min-width: 0; min-height: 0; overflow: hidden;

@@ -35,12 +35,12 @@ async function newSession() {
 </script>
 
 <style scoped>
-.console-conv { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.console-conv { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
 .conv-top {
   /* 顶部固定浮动：不随消息滚动 */
   display: flex; justify-content: flex-end;
   padding: 2px 4px 0;
   position: relative; z-index: 5;
 }
-.console-input { max-width: 880px; width: 100%; margin: 0 auto; padding-bottom: 6px; }
+.console-input { max-width: 880px; width: 100%; margin: 0 auto; padding-bottom: 8px; }
 </style>

@@ -41,8 +41,8 @@ const emit = defineEmits<{ clear: []; close: [] }>()
 .float-panel {
   position: fixed;
   z-index: 9998;
-  width: 360px;
-  max-height: 520px;
+  width: 368px;
+  max-height: 528px;
   /* 品牌渐变细边框（background-clip 双层技巧，支持圆角）+ 玻璃质感 + 深空晕染背景 */
   border: 1px solid transparent;
   background:
@@ -52,10 +52,10 @@ const emit = defineEmits<{ clear: []; close: [] }>()
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
   border-radius: var(--r-2xl);
+  box-shadow: var(--shadow-3), 0 0 0 1px rgba(139, 157, 255, .04);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: var(--shadow-3);
 }
 /* 聆听/录音：边框切彩虹 */
 .float-panel.fx-rainbow {
@@ -71,6 +71,7 @@ const emit = defineEmits<{ clear: []; close: [] }>()
   min-height: 0;
   display: flex;
   flex-direction: column;
+  padding: 0 2px;
 }
 
 /* 移动端 */
