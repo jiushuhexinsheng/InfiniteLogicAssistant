@@ -33,7 +33,7 @@ onMounted(load)
 </script>
 
 <style scoped>
-.console-env { max-width: 860px; width: 100%; margin: 0 auto; }
+.console-env { max-width: 860px; width: 100%; margin: 0 auto; flex: 1; min-height: 0; overflow-y: auto;}
 .env-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .env-loading { font-size: 12px; color: var(--text-3); }
 .env-pre { background: var(--surface-input); border: 1px solid var(--border-base); border-radius: 10px; padding: 14px 16px; font-size: 12px; line-height: 1.7; color: var(--text-1); overflow: auto; max-height: 60vh; white-space: pre-wrap; word-break: break-all; }

@@ -114,7 +114,7 @@ onMounted(load)
 </script>
 
 <style scoped>
-.console-history { max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.console-history { max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; overflow-y: auto;}
 .history-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .hint { font-size: 12px; color: var(--text-3); }
 .history-list { display: flex; flex-direction: column; gap: 10px; }

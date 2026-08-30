@@ -596,8 +596,7 @@ onMounted(() => { load(); loadCatalog() })
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-}
+  gap: 14px; flex: 1; min-height: 0; overflow-y: auto;}
 .cs-head { display: flex; flex-direction: column; gap: 4px; }
 .cs-title {
   display: inline-flex; align-items: center; gap: 8px;
