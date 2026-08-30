@@ -27,12 +27,14 @@ jobs:
         shell: bash
         working-directory: web
         run: |
+          git config core.autocrlf false   # 消除 windows 行尾转换对 diff 的干扰
           python ../scripts/gen_openapi.py
           npx --yes openapi-typescript@7.13.0 src/api/openapi.json -o src/api/generated.ts
           if git diff --exit-code src/api/generated.ts; then
             echo "OK: generated.ts in sync"
           else
-            echo "::error::generated.ts 与后端 schema 不同步 — 请运行 cd web && npm run gen:api 并提交"
+            DIFF=$(git diff src/api/generated.ts | head -30)
+            echo "::error::generated.ts out of sync. diff:${DIFF//$'\n'/%0A}"
             exit 1
           fi
 
