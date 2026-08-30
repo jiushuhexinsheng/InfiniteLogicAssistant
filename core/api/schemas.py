@@ -169,6 +169,7 @@ class SessionOut(BaseModel):
     status: str = ""
     summary: str = ""
     message_count: int = 0
+    archived: bool = False
 
 
 class SessionListResponse(ApiResponse):

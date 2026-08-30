@@ -103,8 +103,10 @@ export const api = {
   deleteHistory: (id: string) => del<ApiResponse>(`/history/${encodeURIComponent(id)}`),
   // 会话管理（可续接对话线）
   createSession: (name?: string) => post<{ ok: boolean; session: SessionItem }>('/sessions', name ? { name } : undefined),
-  listSessions: () => get<{ ok: boolean; sessions: SessionItem[] }>('/sessions'),
+  listSessions: (archived?: boolean) => get<{ ok: boolean; sessions: SessionItem[] }>(archived ? '/sessions?archived=true' : '/sessions'),
   renameSession: (id: string, name: string) => patchHttp<ApiResponse>(`/sessions/${encodeURIComponent(id)}`, { name }),
+  archiveSession: (id: string, archived: boolean) => patchHttp<ApiResponse>(`/sessions/${encodeURIComponent(id)}`, { archived }),
+  clearSession: (id: string) => post<ApiResponse>(`/sessions/${encodeURIComponent(id)}/clear`),
   deleteSession: (id: string) => del<ApiResponse>(`/sessions/${encodeURIComponent(id)}`),
 }
 

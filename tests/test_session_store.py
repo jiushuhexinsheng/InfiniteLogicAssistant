@@ -56,3 +56,38 @@ async def test_delete_conversation(store):
     cid = await store.create_conversation("待删")
     await store.delete(cid)
     assert await store.get_conversation(cid) is None
+
+
+# ─── 清除上下文 / 归档 ───
+
+
+@pytest.mark.asyncio
+async def test_clear_messages_keeps_session(store):
+    cid = await store.create_conversation("清空测试")
+    await store.save_conversation(cid, [
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "yo"},
+    ], status="done", summary="s")
+    await store.clear_messages(cid)
+    conv = await store.get_conversation(cid)
+    assert conv["messages"] == []
+    assert conv["name"] == "清空测试"  # 会话记录保留
+
+
+@pytest.mark.asyncio
+async def test_archive_and_filter(store):
+    cid = await store.create_conversation("归档会话")
+    # 默认列表含（未归档）
+    assert any(c["id"] == cid for c in await store.list_conversations())
+
+    await store.set_archived(cid, True)
+    conv = await store.get_conversation(cid)
+    assert conv["archived"] is True
+    # 默认列表排除归档；归档分区可见；全部含
+    assert all(c["id"] != cid for c in await store.list_conversations())
+    assert any(c["id"] == cid for c in await store.list_conversations(archived=True))
+    assert any(c["id"] == cid for c in await store.list_conversations(archived=None))
+
+    # 取消归档恢复显示
+    await store.set_archived(cid, False)
+    assert any(c["id"] == cid for c in await store.list_conversations())
