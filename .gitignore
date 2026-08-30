@@ -23,6 +23,7 @@ dist/
 
 # 部署包副本
 deploy/
+deploy.zip
 
 # 系统
 .DS_Store
