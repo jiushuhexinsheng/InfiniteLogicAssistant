@@ -25,15 +25,15 @@ if errorlevel 1 goto :deps_fail
 
 :deps_ok
 
-REM ---- 3. Connectivity test (LLM / ASR) ----
-echo [TEST] Checking LLM / ASR connectivity ...
-python main.py test
-if errorlevel 1 goto :test_warn
-echo [TEST] LLM / ASR connectivity OK.
+REM ---- 3. Connectivity check (LLM / ASR) ----
+echo [CHECK] Checking LLM / ASR connectivity ...
+python main.py check
+if errorlevel 1 goto :check_warn
+echo [CHECK] LLM / ASR connectivity OK.
 goto :dist_check
 
-:test_warn
-echo [WARN] LLM / ASR connectivity test failed - see data/agent.log.
+:check_warn
+echo [WARN] LLM / ASR connectivity check failed - see data/agent.log.
 echo   Starting anyway (services will report errors when used).
 
 :dist_check
