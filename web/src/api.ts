@@ -1,4 +1,4 @@
-import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, PingResponse, ProviderPreset, SseEvent, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState } from './types'
+import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, PingResponse, ProviderPreset, SessionItem, SseEvent, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState } from './types'
 import type { components } from './api/generated'
 import { blobToWavBase64 } from './audio'
 
@@ -101,6 +101,11 @@ export const api = {
   getHistory: () => get<{ ok: boolean; conversations: HistoryConversation[] }>('/history'),
   getHistoryDetail: (id: string) => get<{ ok: boolean; conversation: HistoryConversationDetail }>(`/history/${encodeURIComponent(id)}`),
   deleteHistory: (id: string) => del<ApiResponse>(`/history/${encodeURIComponent(id)}`),
+  // 会话管理（可续接对话线）
+  createSession: (name?: string) => post<{ ok: boolean; session: SessionItem }>('/sessions', name ? { name } : undefined),
+  listSessions: () => get<{ ok: boolean; sessions: SessionItem[] }>('/sessions'),
+  renameSession: (id: string, name: string) => patchHttp<ApiResponse>(`/sessions/${encodeURIComponent(id)}`, { name }),
+  deleteSession: (id: string) => del<ApiResponse>(`/sessions/${encodeURIComponent(id)}`),
 }
 
 // ─── 会话/记忆/定时类型（由后端 response_model 生成）───
@@ -132,11 +137,12 @@ export interface UtterHandlers {
 export async function streamUtter(
   text: string,
   h: UtterHandlers,
-  opts?: { messages?: { role: string; content: string }[]; signal?: AbortSignal },
+  opts?: { messages?: { role: string; content: string }[]; signal?: AbortSignal; sessionId?: string },
 ): Promise<string> {
   let sessionId = ''
   const body: Record<string, unknown> = { text }
   if (opts?.messages?.length) body.messages = opts.messages
+  if (opts?.sessionId) body.session_id = opts.sessionId
   const MAX_RETRY = 1
 
   /** 单次尝试：'done' = 正常/业务/中断（不重试）；'retry' = 网络错误且未收到事件（可重试）。 */

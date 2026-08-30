@@ -126,7 +126,7 @@ export async function runTurn() {
       speakAuto('出错了：' + msg)
       state.value = 'error'
     },
-  }, { messages: history, signal: abortController.signal })
+  }, { messages: history, sessionId: currentSessionId.value || undefined, signal: abortController.signal })
 }
 
 // ── 回答澄清/确认问题（解除后端 ask() 阻塞）──

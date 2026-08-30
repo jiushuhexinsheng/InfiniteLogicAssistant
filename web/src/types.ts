@@ -17,6 +17,7 @@ export type EditableSnapshot = components['schemas']['EditableSnapshot']
 export type DetectionIssue = components['schemas']['DetectionIssue']
 export type ConnectivityResult = components['schemas']['ConnectivityResult']
 export type DetectionReport = components['schemas']['DetectionReportOut']
+export type SessionItem = components['schemas']['SessionOut']
 
 // ─── SSE 事件 / 前端内部类型（不走 openapi，保留手写）───
 

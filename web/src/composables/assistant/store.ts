@@ -137,3 +137,21 @@ export function buildHistory(): { role: string; content: string }[] {
   }
   return history
 }
+
+// ── 会话管理（控制台会话视图用）：新建 / 切换会话 ──
+export function createNewSession(sessionId = '') {
+  messages.value = []
+  tokenUsage.value = {}
+  partialText.value = ''
+  currentSessionId.value = sessionId
+}
+
+/** 切换到某会话：用其历史消息填充对话视图，设置当前会话 id。 */
+export function switchSession(sessionId: string, msgs: { role: string; content: string }[]) {
+  messages.value = msgs
+    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .map(m => ({ id: genId(), role: m.role as 'user' | 'assistant', text: m.content, timestamp: Date.now() }))
+  tokenUsage.value = {}
+  pendingQuestion.value = ''
+  currentSessionId.value = sessionId
+}

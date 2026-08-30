@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
-"""会话历史 — SQLite data/history.db，完整保存每轮对话（用户/助手/工具摘要）
+"""会话历史/存储 — SQLite data/history.db，完整保存每轮对话（用户/助手/工具摘要）
 
-会话结束时（state.persist）整段覆盖写入；控制台「历史」tab 列表/详情/删除。
+会话 = 可续接对话线（有稳定 id + name）：create_conversation / rename_conversation 管理，
+save_conversation 按会话覆盖写消息（保留 name），控制台「历史/会话」tab 列表/详情/删除。
 """
 import json
 import sqlite3
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -20,8 +22,13 @@ class HistoryStore:
         with self._conn() as conn:
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS conversations ("
-                "id TEXT PRIMARY KEY, created TEXT, updated TEXT, status TEXT, summary TEXT)"
+                "id TEXT PRIMARY KEY, name TEXT DEFAULT '', created TEXT, updated TEXT, "
+                "status TEXT, summary TEXT)"
             )
+            # 迁移：老库无 name 列 → 补列
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(conversations)").fetchall()]
+            if "name" not in cols:
+                conn.execute("ALTER TABLE conversations ADD COLUMN name TEXT DEFAULT ''")
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS messages ("
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id TEXT, "
@@ -32,16 +39,38 @@ class HistoryStore:
     def _conn(self):
         return sqlite3.connect(str(self.path))
 
-    async def save_conversation(self, conv_id: str, messages: list[dict],
-                                status: str = "", summary: str = "") -> None:
-        """整段覆盖保存一个会话的完整消息（会话结束时调用）。"""
+    # ── 会话管理 ──
+
+    async def create_conversation(self, name: str = "新会话") -> str:
+        """新建会话，返回 id。"""
+        cid = uuid.uuid4().hex[:12]
         now = datetime.now().isoformat(timespec="milliseconds")
         with self._conn() as conn:
             conn.execute(
-                "INSERT INTO conversations (id, created, updated, status, summary) VALUES (?,?,?,?,?) "
+                "INSERT INTO conversations (id, name, created, updated) VALUES (?,?,?,?)",
+                (cid, name, now, now),
+            )
+        return cid
+
+    async def rename_conversation(self, conv_id: str, name: str) -> None:
+        with self._conn() as conn:
+            conn.execute("UPDATE conversations SET name=? WHERE id=?", (name, conv_id))
+
+    # ── 消息读写 ──
+
+    async def save_conversation(self, conv_id: str, messages: list[dict],
+                                status: str = "", summary: str = "") -> None:
+        """整段覆盖保存一个会话的完整消息（会话结束时调用）。
+
+        新会话 INSERT 用默认名「新会话」；已存在会话 UPDATE 时保留 name。
+        """
+        now = datetime.now().isoformat(timespec="milliseconds")
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO conversations (id, name, created, updated, status, summary) VALUES (?,?,?,?,?,?) "
                 "ON CONFLICT(id) DO UPDATE SET updated=excluded.updated, "
                 "status=excluded.status, summary=excluded.summary",
-                (conv_id, now, now, status, summary),
+                (conv_id, "新会话", now, now, status, summary),
             )
             conn.execute("DELETE FROM messages WHERE conversation_id=?", (conv_id,))
             for m in messages:
@@ -56,21 +85,21 @@ class HistoryStore:
     async def list_conversations(self, limit: int = 30) -> list[dict]:
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT c.id, c.created, c.updated, c.status, c.summary, COUNT(m.id) "
+                "SELECT c.id, c.name, c.created, c.updated, c.status, c.summary, COUNT(m.id) "
                 "FROM conversations c LEFT JOIN messages m ON c.id = m.conversation_id "
                 "GROUP BY c.id ORDER BY c.updated DESC LIMIT ?",
                 (limit,),
             ).fetchall()
         return [
-            {"id": r[0], "created": r[1], "updated": r[2], "status": r[3],
-             "summary": r[4], "message_count": r[5]}
+            {"id": r[0], "name": r[1], "created": r[2], "updated": r[3], "status": r[4] or "",
+             "summary": r[5] or "", "message_count": r[6]}
             for r in rows
         ]
 
     async def get_conversation(self, conv_id: str) -> dict | None:
         with self._conn() as conn:
             c = conn.execute(
-                "SELECT id, created, updated, status, summary FROM conversations WHERE id=?", (conv_id,)
+                "SELECT id, name, created, updated, status, summary FROM conversations WHERE id=?", (conv_id,)
             ).fetchone()
             if not c:
                 return None
@@ -78,7 +107,7 @@ class HistoryStore:
                 "SELECT role, content, tool_calls FROM messages WHERE conversation_id=? ORDER BY id", (conv_id,)
             ).fetchall()
         return {
-            "id": c[0], "created": c[1], "updated": c[2], "status": c[3], "summary": c[4],
+            "id": c[0], "name": c[1], "created": c[2], "updated": c[3], "status": c[4] or "", "summary": c[5] or "",
             "messages": [
                 {"role": m[0], "content": m[1] or "",
                  "tool_calls": json.loads(m[2]) if m[2] else None}
@@ -90,6 +119,9 @@ class HistoryStore:
         with self._conn() as conn:
             conn.execute("DELETE FROM messages WHERE conversation_id=?", (conv_id,))
             conn.execute("DELETE FROM conversations WHERE id=?", (conv_id,))
+
+
+_history_store: HistoryStore | None = None
 
 
 def get_history_store() -> HistoryStore:

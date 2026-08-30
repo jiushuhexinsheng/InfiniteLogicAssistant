@@ -96,6 +96,7 @@ export interface paths {
          *
          *     事件：task_state / content_delta / question / error / done。
          *     question 事件后需操作者回答：POST /api/voice/answer {session_id, text}。
+         *     请求体可带 session_id：续接已有会话（加载其历史作为多轮种子）。
          */
         post: operations["voice_utter_api_voice_utter_post"];
         delete?: never;
@@ -300,6 +301,45 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sessions List */
+        get: operations["sessions_list_api_sessions_get"];
+        put?: never;
+        /**
+         * Sessions Create
+         * @description 新建会话（可选 body {"name"}；缺省名「新会话」），返回 {id, name, ...}。
+         */
+        post: operations["sessions_create_api_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{sid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Sessions Delete */
+        delete: operations["sessions_delete_api_sessions__sid__delete"];
+        options?: never;
+        head?: never;
+        /** Sessions Rename */
+        patch: operations["sessions_rename_api_sessions__sid__patch"];
         trace?: never;
     };
     "/api/config/full": {
@@ -1145,6 +1185,67 @@ export interface components {
              */
             api_token_set: boolean;
         };
+        /** SessionCreateResponse */
+        SessionCreateResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            session: components["schemas"]["SessionOut"];
+        };
+        /** SessionListResponse */
+        SessionListResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Sessions
+             * @default []
+             */
+            sessions: components["schemas"]["SessionOut"][];
+        };
+        /** SessionOut */
+        SessionOut: {
+            /** Id */
+            id: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Created
+             * @default
+             */
+            created: string;
+            /**
+             * Updated
+             * @default
+             */
+            updated: string;
+            /**
+             * Status
+             * @default
+             */
+            status: string;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /**
+             * Message Count
+             * @default 0
+             */
+            message_count: number;
+        };
         /** TextResponse */
         TextResponse: {
             /**
@@ -1732,6 +1833,108 @@ export interface operations {
             header?: never;
             path: {
                 conv_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sessions_list_api_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionListResponse"];
+                };
+            };
+        };
+    };
+    sessions_create_api_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionCreateResponse"];
+                };
+            };
+        };
+    };
+    sessions_delete_api_sessions__sid__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sessions_rename_api_sessions__sid__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
             };
             cookie?: never;
         };
