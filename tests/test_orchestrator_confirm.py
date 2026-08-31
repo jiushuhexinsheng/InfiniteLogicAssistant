@@ -47,6 +47,57 @@ async def test_confirm_no_channel_rejects():
     assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s) is False
 
 
+# ─── _classify_answer：否定感知判定（不是/不执行/不可以 不得误判为同意）───
+
+from core.orchestrator.confirm import _classify_answer
+
+
+@pytest.mark.parametrize(
+    "ans",
+    [
+        "不是",
+        "不执行",
+        "不可以",
+        "不同意",
+        "别执行",
+        "不要",
+        "取消",
+        "拒绝",
+        "不行",
+        "停下",
+    ],
+)
+def test_classify_negative(ans):
+    assert _classify_answer(ans) is False
+
+
+@pytest.mark.parametrize(
+    "ans",
+    ["确认", "执行吧", "可以", "是的", "同意", "确定", "好", "嗯，执行", "没错，执行"],
+)
+def test_classify_positive(ans):
+    assert _classify_answer(ans) is True
+
+
+@pytest.mark.parametrize("ans", ["", "   ", "随便", "听你的", "再想想"])
+def test_classify_ambiguous(ans):
+    assert _classify_answer(ans) is None
+
+
+@pytest.mark.asyncio
+async def test_confirm_negated_answer_rejected():
+    s = Session()
+    s.channel = _Channel(["不是"])
+    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s) is False
+
+
+@pytest.mark.asyncio
+async def test_confirm_negated_tool_rejected():
+    s = Session()
+    s.channel = _Channel(["不执行"])
+    assert await confirm_tool(s, "write_file", {"path": "x", "content": "y"}) is False
+
+
 # ─── confirm_tool：基于工具实际风险（TOOLS.risk），不依赖任务声明的 risk ───
 
 @pytest.mark.asyncio
