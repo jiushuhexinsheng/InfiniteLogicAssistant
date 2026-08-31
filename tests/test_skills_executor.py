@@ -12,6 +12,28 @@ def test_fill_template():
     assert fill_template({"command": "echo {{msg}}"}, {"msg": "hi"}) == {"command": "echo hi"}
 
 
+def test_fill_template_windows_path():
+    # 参数含反斜杠/引号（Windows 路径）不得导致整体回退
+    path = r"C:\Users\许广瑞\Downloads\my file.txt"
+    assert fill_template({"command": 'dir "{{path}}"', "meta": {"p": "{{path}}"}},
+                         {"path": path}) == {
+        "command": f'dir "{path}"',
+        "meta": {"p": path},
+    }
+
+
+def test_fill_template_nested_and_multiple():
+    assert fill_template(
+        {"a": {"b": "{{x}}", "c": "x={{x}} y={{y}}"}, "list": ["{{x}}", "{{y}}"], "n": 1},
+        {"x": "X", "y": "Y"},
+    ) == {"a": {"b": "X", "c": "x=X y=Y"}, "list": ["X", "Y"], "n": 1}
+
+
+def test_fill_template_missing_param_keeps_placeholder():
+    # 缺参数时占位符原样保留，但不影响其他已替换部分
+    assert fill_template({"a": "{{x}}", "b": "{{y}}"}, {"y": "Y"}) == {"a": "{{x}}", "b": "Y"}
+
+
 @pytest.mark.asyncio
 async def test_run_skill_with_params():
     skill = Skill("显示", steps=[SkillStep("run_shell_tool", {"command": "echo {{msg}}"})])
