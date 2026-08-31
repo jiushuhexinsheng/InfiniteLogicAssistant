@@ -3,6 +3,7 @@
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 from core.detection.environment import read_environment_md
 from core.execution.fs import list_dir as _fs_list_dir
@@ -86,14 +87,14 @@ async def stat_path(path: str) -> str:
 
 
 @tool("执行 Shell 命令（返回 stdout/stderr/退出码）", risk="exec")
-async def run_shell_tool(command: str) -> str:
-    r = await run_shell(command, timeout=30)
+async def run_shell_tool(command: str, cancel: Any | None = None) -> str:
+    r = await run_shell(command, timeout=30, cancel=cancel)
     return f"exit={r.returncode}\n{r.stdout}{r.stderr}".strip()
 
 
 @tool("执行 Python 代码（独立子进程，返回 stdout/stderr/退出码）", risk="exec")
-async def run_python_tool(code: str) -> str:
-    r = await run_python(code, timeout=30)
+async def run_python_tool(code: str, cancel: Any | None = None) -> str:
+    r = await run_python(code, timeout=30, cancel=cancel)
     return f"exit={r.returncode}\n{r.stdout}{r.stderr}".strip()
 
 

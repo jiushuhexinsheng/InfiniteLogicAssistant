@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import asyncio
+
 import pytest
 
 from core.tools import TOOLS
@@ -36,6 +38,32 @@ async def test_read_write_file_tools(tmp_path):
 async def test_run_shell_tool():
     out = await TOOLS.acall("run_shell_tool", {"command": "echo hi"})
     assert "hi" in out and "exit=0" in out
+
+
+def test_schema_excludes_service_param_cancel():
+    # cancel 是服务注入的取消令牌，不进 LLM schema
+    by_name = {s["function"]["name"]: s for s in TOOLS.schemas()}
+    params = by_name["run_shell_tool"]["function"]["parameters"]
+    assert "cancel" not in params["properties"]
+    assert "cancel" not in params.get("required", [])
+
+
+@pytest.mark.asyncio
+async def test_run_shell_tool_cancel_mid_run():
+    # cancel token 贯穿到工具层：执行中的长命令被 kill，抛 CancelledError
+    from core.orchestrator.control import CancellationToken
+
+    token = CancellationToken()
+
+    async def cancel_later():
+        await asyncio.sleep(0.3)
+        token.cancel()
+
+    t = asyncio.ensure_future(cancel_later())
+    with pytest.raises(asyncio.CancelledError):
+        await TOOLS.acall("run_shell_tool", {"command": "ping -n 8 127.0.0.1"}, cancel=token)
+    t.cancel()
+    await asyncio.gather(t, return_exceptions=True)
 
 
 @pytest.mark.asyncio
