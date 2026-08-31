@@ -110,7 +110,8 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
                     await events.put(ToolStartEvent(name=name, args=args).emit())
                 # 高风险工具先确认（基于工具实际风险，而非任务声明的 risk）
                 ok = await confirm_tool(session, name, args)
-                result = await TOOLS.acall(name, args) if ok else f"Error: 操作者拒绝调用 {name}"
+                result = (await TOOLS.acall(name, args, cancel=cancel, session=session)
+                          if ok else f"Error: 操作者拒绝调用 {name}")
                 status = "error" if result.startswith("Error") else "ok"
                 if events is not None:
                     await events.put(ToolEndEvent(name=name, status=status, output=result[:500]).emit())

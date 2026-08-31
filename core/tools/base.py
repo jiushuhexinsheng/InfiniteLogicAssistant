@@ -53,29 +53,46 @@ class _ToolRegistry:
         args_str = json.dumps(args, ensure_ascii=False, default=str)
         audit(f"tool={name} risk={risk} args={args_str} status={status}{detail}")
 
-    def call(self, name: str, args: dict[str, Any]) -> str:
+    @staticmethod
+    def _inject_service_params(func: ToolFunc, args: dict[str, Any], **service: Any) -> dict[str, Any]:
+        """把服务注入参数（cancel 取消令牌 / session 会话）传给声明了对应形参的工具。
+
+        这些参数不进 LLM schema（_build_schema 已跳过），由调用方在 acall/call 时注入。
+        """
+        sig = inspect.signature(func)
+        merged = dict(args)
+        for name, value in service.items():
+            if value is not None and name in sig.parameters:
+                merged[name] = value
+        return merged
+
+    def call(self, name: str, args: dict[str, Any],
+             cancel: Any | None = None, session: Any | None = None) -> str:
         if name not in self._tools:
             return f"Error: unknown tool '{name}'"
         func = self._tools[name]["func"]
+        call_args = self._inject_service_params(func, args, cancel=cancel, session=session)
         try:
             if inspect.iscoroutinefunction(func):
                 return f"Error: '{name}' is async; use acall()"
-            result = _to_string(func(**args))
+            result = _to_string(func(**call_args))
             self._audit(name, args, "error" if result.startswith("Error") else "ok")
             return result
         except Exception as exc:
             self._audit(name, args, "error", f" error={exc}")
             return f"Error in {name}: {exc}"
 
-    async def acall(self, name: str, args: dict[str, Any]) -> str:
+    async def acall(self, name: str, args: dict[str, Any],
+                    cancel: Any | None = None, session: Any | None = None) -> str:
         if name not in self._tools:
             return f"Error: unknown tool '{name}'"
         func = self._tools[name]["func"]
+        call_args = self._inject_service_params(func, args, cancel=cancel, session=session)
         try:
             if inspect.iscoroutinefunction(func):
-                result = _to_string(await func(**args))
+                result = _to_string(await func(**call_args))
             else:
-                result = _to_string(await asyncio.to_thread(lambda: func(**args)))
+                result = _to_string(await asyncio.to_thread(lambda: func(**call_args)))
             self._audit(name, args, "error" if result.startswith("Error") else "ok")
             return result
         except Exception as exc:
@@ -110,7 +127,8 @@ def _build_schema(func: ToolFunc, description: str) -> dict[str, Any]:
     properties: dict[str, dict[str, Any]] = {}
     required: list[str] = []
     for name, param in sig.parameters.items():
-        if name in ("self", "cls"):
+        # self/cls 是方法绑定；cancel/session 是服务注入参数，都不进 LLM schema
+        if name in ("self", "cls", "cancel", "session"):
             continue
         prop = _python_type_to_json(hints.get(name, str))
         if param.default is inspect.Parameter.empty:

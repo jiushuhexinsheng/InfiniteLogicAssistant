@@ -68,11 +68,11 @@ async def run_subagent(
             # 非 read 工具需操作者确认；无确认通道时一律拒绝（与主 ReAct 路径一致）
             risk = TOOLS.risk(name)
             if risk == "read":
-                result = await TOOLS.acall(name, args)
+                result = await TOOLS.acall(name, args, cancel=cancel)
             elif confirm is None:
                 result = f"Error: 工具 {name} 需要操作者确认，但当前无确认通道，已拒绝"
             elif await confirm(name, args):
-                result = await TOOLS.acall(name, args)
+                result = await TOOLS.acall(name, args, cancel=cancel)
             else:
                 result = f"Error: 操作者拒绝调用 {name}"
             used.append(name)

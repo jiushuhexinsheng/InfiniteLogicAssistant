@@ -52,7 +52,7 @@ def _spy_acall(monkeypatch):
     """替换 TOOLS.acall 为 spy，返回 ok 且记录调用；不真正执行任何工具。"""
     calls = []
 
-    async def fake_acall(name, args):
+    async def fake_acall(name, args, cancel=None):
         calls.append(name)
         return "ok"
     monkeypatch.setattr("core.agent.base.TOOLS.acall", fake_acall)
