@@ -22,7 +22,10 @@ export const CONSOLE_TABS: ConsoleTab[] = [
   { key: 'schedule', label: '定时', icon: 'calendar-clock' },
 ]
 
+// 模块级单例：ConsolePage 与其懒加载子视图（如 ConsoleHistory）必须共享同一 activeTab，
+// 否则子视图里 `activeTab.value = 'conv'` 只改到自己的本地 ref，无法真正切换控制台视图。
+const activeTab = ref<ConsoleTabKey>('conv')
+
 export function useConsole() {
-  const activeTab = ref<ConsoleTabKey>('conv')
   return { activeTab }
 }
