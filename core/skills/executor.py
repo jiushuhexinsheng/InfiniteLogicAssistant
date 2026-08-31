@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """Skill 执行器 — 把 args_template（{{param}} 占位）填参后逐步骤调工具"""
-import json
 from typing import Any
 
 from core.logger import logger
@@ -12,14 +11,26 @@ from core.tools.base import TOOLS  # 从 base 导入，避免 core.tools.__init_
 
 
 def fill_template(template: dict, params: dict) -> dict:
-    """把 args_template 里 {{key}} 替换为 params[key]。"""
-    s = json.dumps(template, ensure_ascii=False)
-    for k, v in (params or {}).items():
-        s = s.replace("{{" + k + "}}", str(v))
-    try:
-        return json.loads(s)
-    except json.JSONDecodeError:
-        return template
+    """把 args_template 里 {{key}} 替换为 params[key]。
+
+    递归替换字符串值中的占位符，不做 JSON round-trip：参数含引号/反斜杠
+    （如 Windows 路径 `C:\\Users\\...`）时不会因 json.loads 失败而整体回退。
+    """
+    subs = params or {}
+
+    def _sub(value: Any) -> Any:
+        if isinstance(value, str):
+            s = value
+            for k, v in subs.items():
+                s = s.replace("{{" + k + "}}", str(v))
+            return s
+        if isinstance(value, dict):
+            return {k: _sub(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [_sub(v) for v in value]
+        return value
+
+    return _sub(template)
 
 
 async def run_skill(skill: Skill, params: dict, session: Session | None = None, cancel: Any | None = None) -> str:
@@ -36,6 +47,6 @@ async def run_skill(skill: Skill, params: dict, session: Session | None = None, 
         if cancel is not None and cancel.is_cancelled:
             return "已停止"
         args = fill_template(step.args_template, params)
-        result = await TOOLS.acall(step.tool, args)
+        result = await TOOLS.acall(step.tool, args, cancel=cancel, session=session)
         out.append(f"[{step.tool}] {result[:500]}")
     return "\n".join(out) or "（技能无步骤）"
