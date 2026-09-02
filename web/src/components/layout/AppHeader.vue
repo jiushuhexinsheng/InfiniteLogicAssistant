@@ -1,22 +1,33 @@
 <template>
+  <!-- 应用顶部导航栏。Application top navigation header. -->
   <header class="app-header">
+    <!-- 品牌按钮：点击跳转首页。Brand button: click to navigate to home page. -->
     <button class="ah-brand" type="button" @click="router.push('/')">
       <span class="ah-mark"><UiIcon name="infinity" :size="16" /></span>
       <span class="ah-name">无限逻辑</span>
       <span class="ah-sub">VOICE · OMNICONTROL</span>
     </button>
+    <!-- 主导航区域。Main navigation area. -->
     <nav class="ah-nav">
+      <!-- 开始页导航项。Start page navigation item. -->
       <button class="ah-nav-item" :class="{ active: route.path === '/' }" type="button" @click="router.push('/')">开始页</button>
+      <!-- 控制台导航项。Console navigation item. -->
       <button class="ah-nav-item" :class="{ active: route.path === '/console' }" type="button" @click="router.push('/console')">控制台</button>
     </nav>
   </header>
 </template>
 
 <script setup lang="ts">
+/**
+ * 应用顶部导航栏组件，包含品牌标识和页面导航。
+ * Application top navigation header component, contains brand logo and page navigation.
+ */
 import { useRoute, useRouter } from 'vue-router'
 import { UiIcon } from '../ui'
 
+/** 路由实例，用于页面跳转。Router instance for page navigation. */
 const router = useRouter()
+/** 当前路由信息，用于判断激活状态。Current route info for determining active state. */
 const route = useRoute()
 </script>
 

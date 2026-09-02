@@ -1,4 +1,5 @@
 <template>
+  <!-- 悬浮球触发器：支持拖拽、点击展开面板、双击事件。Floating trigger ball: supports drag, click to expand, double-click events. -->
   <div
     class="float-trigger"
     :class="[visual.fx, visual.grad === 'rainbow' ? 'fx-rainbow' : '', { active: expanded }]"
@@ -10,11 +11,11 @@
     @click="onClick"
     @dblclick="emit('dblclick')"
   >
-    <!-- 状态环层：recording 时 conic 进度环；聆听时品牌色环 -->
+    <!-- 状态环层：recording 时 conic 进度环；聆听时品牌色环。Status ring: conic progress during recording; brand-color ring during listening. -->
     <span class="ball-status-ring" :class="state" :style="ringStyle"></span>
-    <!-- 图标层 -->
+    <!-- 图标层。Icon layer. -->
     <Icon :name="visual.icon" :size="24" class="trigger-icon" style="color:#fff" />
-    <!-- 语音开关徽章（mic） -->
+    <!-- 语音开关徽章（mic）。Voice toggle badge (mic). -->
     <button
       class="ball-mic"
       :class="{ on: wakeEnabled }"
@@ -23,6 +24,7 @@
     >
       <Icon name="mic" :size="10" />
     </button>
+    <!-- 新消息红点提示（面板未展开时）。New message dot indicator (when panel is collapsed). -->
     <span v-if="!expanded && messageDot" class="new-dot"></span>
   </div>
 </template>
@@ -33,6 +35,15 @@ import Icon from '../Icon.vue'
 import type { AsstState } from '../../composables/useAssistant'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
 
+/**
+ * 组件属性定义。Component props definition.
+ * @property pos - 悬浮球在视口中的坐标。Position of the floating ball in viewport.
+ * @property state - 助手当前状态。Current assistant state.
+ * @property visual - 状态对应的视觉配置。Visual configuration for the current state.
+ * @property messageDot - 是否显示新消息红点。Whether to show new message dot.
+ * @property expanded - 面板是否已展开。Whether the panel is expanded.
+ * @property wakeEnabled - 语音唤醒是否开启。Whether voice wake is enabled.
+ */
 const props = defineProps<{
   pos: { x: number; y: number }
   state: AsstState
@@ -42,6 +53,13 @@ const props = defineProps<{
   wakeEnabled?: boolean
 }>()
 
+/**
+ * 组件事件定义。Component events definition.
+ * @event update:pos - 拖拽时更新位置。Update position during drag.
+ * @event click - 单击事件。Click event.
+ * @event dblclick - 双击事件。Double-click event.
+ * @event toggleWake - 切换语音唤醒。Toggle voice wake.
+ */
 const emit = defineEmits<{
   'update:pos': [pos: { x: number; y: number }]
   click: []
@@ -49,10 +67,17 @@ const emit = defineEmits<{
   toggleWake: []
 }>()
 
+/** 是否正在拖拽。Whether dragging is in progress. */
 const dragging = ref(false)
+/** 拖拽偏移量（鼠标相对球心的偏移）。Drag offset (pointer offset relative to ball center). */
 const dragOffset = ref({ x: 0, y: 0 })
+/** 点击时间戳，用于区分单击与拖拽。Click timestamp for distinguishing click from drag. */
 const clickTime = ref(0)
 
+/**
+ * Pointer 按下时开始拖拽追踪。Start drag tracking on pointer down.
+ * @param e - PointerEvent
+ */
 function onDragStart(e: PointerEvent) {
   dragOffset.value = { x: e.clientX - props.pos.x, y: e.clientY - props.pos.y }
   clickTime.value = Date.now()
@@ -62,6 +87,10 @@ function onDragStart(e: PointerEvent) {
   document.addEventListener('pointerup', onDragEnd)
 }
 
+/**
+ * Pointer 移动时更新位置，超过 3px 阈值视为拖拽。Update position on pointer move; treat as drag if moved > 3px.
+ * @param e - PointerEvent
+ */
 function onDragMove(e: PointerEvent) {
   if (Math.abs(e.clientX - dragOffset.value.x - props.pos.x) > 3 ||
       Math.abs(e.clientY - dragOffset.value.y - props.pos.y) > 3) dragging.value = true
@@ -71,12 +100,20 @@ function onDragMove(e: PointerEvent) {
   })
 }
 
+/**
+ * Pointer 松开时结束拖拽。End drag on pointer up.
+ * @param e - PointerEvent
+ */
 function onDragEnd(e: PointerEvent) {
   (e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
   document.removeEventListener('pointermove', onDragMove)
   document.removeEventListener('pointerup', onDragEnd)
 }
 
+/**
+ * 触摸开始事件处理。Touch start handler.
+ * @param e - TouchEvent
+ */
 function onTouchStart(e: TouchEvent) {
   if (e.touches.length === 1) {
     const t = e.touches[0]
@@ -85,6 +122,10 @@ function onTouchStart(e: TouchEvent) {
   }
 }
 
+/**
+ * 触摸移动事件处理，更新位置。Touch move handler, updates position.
+ * @param e - TouchEvent
+ */
 function onTouchMove(e: TouchEvent) {
   if (e.touches.length === 1) {
     const t = e.touches[0]
@@ -97,30 +138,46 @@ function onTouchMove(e: TouchEvent) {
   }
 }
 
+/** 触摸结束事件（单击由 click 事件处理）。Touch end handler (tap is handled by click event). */
 function onTouchEnd() { /* 单击由 click 事件处理 */ }
 
+/**
+ * 点击事件：若为拖拽则忽略，300ms 内视为有效单击。
+ * Click handler: ignore if dragged, treat as valid tap within 300ms.
+ */
 function onClick() {
   if (dragging.value) { dragging.value = false; return }
   if (Date.now() - clickTime.value < 300) emit('click')
 }
 
+/** 组件卸载时清理全局事件监听和进度定时器。Clean up global listeners and progress timer on unmount. */
 onUnmounted(() => {
   document.removeEventListener('pointermove', onDragMove)
   document.removeEventListener('pointerup', onDragEnd)
   stopProgress()
 })
 
+/**
+ * 计算悬浮球的定位样式（使用 right/bottom 定位）。
+ * Compute trigger positioning style (using right/bottom).
+ */
 const triggerStyle = computed(() => ({
   right: (window.innerWidth - props.pos.x - 56) + 'px',
   bottom: (window.innerHeight - props.pos.y - 56) + 'px',
 }))
 
 // ── 录音进度环（recording 时按 VAD 上限推进 conic 进度）──
+// Recording progress ring (advances conic gradient toward VAD max during recording).
+/** 录音最大时长（毫秒）。Maximum recording duration in milliseconds. */
 const recordingMaxMs = 10000
+/** 录音进度（0~1）。Recording progress (0~1). */
 const recordingProgress = ref(0)
 let progTimer: ReturnType<typeof setInterval> | null = null
 let progStart = 0
 
+/**
+ * 启动录音进度计时器。Start recording progress timer.
+ */
 function startProgress() {
   stopProgress()
   progStart = Date.now()
@@ -129,15 +186,27 @@ function startProgress() {
     recordingProgress.value = Math.min(1, elapsed / recordingMaxMs)
   }, 100)
 }
+
+/**
+ * 停止录音进度计时器并重置进度。Stop recording progress timer and reset progress.
+ */
 function stopProgress() {
   if (progTimer) { clearInterval(progTimer); progTimer = null }
   recordingProgress.value = 0
 }
+
+/**
+ * 监听状态变化：进入 recording 时启动进度，离开时停止。
+ * Watch state changes: start progress on recording, stop otherwise.
+ */
 watch(() => props.state, (s) => {
   if (s === 'recording') startProgress()
   else stopProgress()
 })
 
+/**
+ * 计算录音状态环样式（conic 渐变进度）。Compute recording ring style (conic gradient progress).
+ */
 const ringStyle = computed(() => {
   if (props.state !== 'recording') return {}
   const pct = Math.round(recordingProgress.value * 360)
@@ -146,6 +215,7 @@ const ringStyle = computed(() => {
 </script>
 
 <style scoped>
+/* 悬浮球主体样式。Main floating ball styles. */
 .float-trigger {
   position: fixed;
   z-index: 9999;
@@ -153,7 +223,7 @@ const ringStyle = computed(() => {
   height: 56px;
   border-radius: 50%;
   background: #1e293b;
-  /* 品牌渐变描边 + 慢呼吸光晕 */
+  /* 品牌渐变描边 + 慢呼吸光晕。Brand gradient border + slow breathing glow. */
   border: 1px solid transparent;
   background:
     linear-gradient(#1e293b, #1e293b) padding-box,
@@ -169,13 +239,14 @@ const ringStyle = computed(() => {
 }
 .float-trigger:hover { transform: scale(1.08); }
 .float-trigger.active { transform: scale(0.95); }
+/* 呼吸光晕动画。Breathing glow animation. */
 @keyframes ball-breathe {
   0%, 100% { box-shadow: 0 0 8px rgba(165, 180, 252, .25); }
   50%      { box-shadow: 0 0 18px rgba(110, 231, 183, .4), 0 0 30px rgba(103, 232, 249, .2); }
 }
 .trigger-icon { z-index: 1; position: relative; }
 
-/* 状态环层 */
+/* 状态环层。Status ring layer. */
 .ball-status-ring {
   position: absolute;
   inset: 2px;
@@ -185,7 +256,7 @@ const ringStyle = computed(() => {
 .ball-status-ring.listening { box-shadow: inset 0 0 0 2px rgba(52, 211, 153, .35); }
 .ball-status-ring.recording { box-shadow: inset 0 0 0 2px rgba(52, 211, 153, .6); }
 
-/* 语音开关徽章 */
+/* 语音开关徽章。Voice toggle badge. */
 .ball-mic {
   position: absolute;
   right: -1px;
@@ -207,6 +278,7 @@ const ringStyle = computed(() => {
 .ball-mic.on { color: #34d399; border-color: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, .5); }
 .ball-mic:hover { color: var(--brand-c2); }
 
+/* 新消息红点。New message dot. */
 .new-dot {
   position: absolute;
   top: 4px;
@@ -219,7 +291,8 @@ const ringStyle = computed(() => {
 }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-/* ── 状态特效（accent 色来自 STATE_VISUALS.color，经 --fx-color 注入）── */
+/* ── 状态特效（accent 色来自 STATE_VISUALS.color，经 --fx-color 注入）──
+   State effects (accent color from STATE_VISUALS.color, injected via --fx-color) ── */
 .float-trigger::after {
   content: '';
   position: absolute;
@@ -228,10 +301,12 @@ const ringStyle = computed(() => {
   border: 2px solid transparent;
   pointer-events: none;
 }
+/* 聆听状态：品牌色雷达脉冲。Listening state: brand-color radar pulse. */
 .float-trigger.fx-listening::after {
   border-color: var(--fx-color, #22c55e);
   animation: fx-radar 1.6s ease-out infinite;
 }
+/* 录音状态：红色雷达脉冲 + 抖动。Recording state: red radar pulse + shake. */
 .float-trigger.fx-recording::after {
   border-color: var(--fx-color, #ef4444);
   animation: fx-radar 1.1s ease-out infinite;
@@ -239,25 +314,31 @@ const ringStyle = computed(() => {
 .float-trigger.fx-recording {
   animation: fx-shake 0.25s linear infinite;
 }
+/* 识别中：紫色旋转。Transcribing: purple spin. */
 .float-trigger.fx-transcribing::after {
   border-top-color: var(--fx-color, #a855f7);
   animation: fx-spin 1.1s linear infinite;
 }
+/* 思考中：橙色旋转。Thinking: orange spin. */
 .float-trigger.fx-thinking::after {
   border-top-color: var(--fx-color, #f97316);
   animation: fx-spin 0.8s linear infinite;
 }
+/* 工具调用中：青色快速旋转。Tool calling: cyan fast spin. */
 .float-trigger.fx-tool_calling::after {
   border-top-color: var(--fx-color, #06b6d4);
   animation: fx-spin 0.6s linear infinite;
 }
+/* 回复中：蓝色雷达脉冲。Responding: blue radar pulse. */
 .float-trigger.fx-responding::after {
   border-color: var(--fx-color, #3b82f6);
   animation: fx-radar 1.3s ease-out infinite;
 }
+/* 完成闪光。Done flash. */
 .float-trigger.fx-done {
   animation: fx-done-flash 0.6s ease-out;
 }
+/* 错误状态：红色边框 + 抖动。Error state: red border + shake. */
 .float-trigger.fx-error::after {
   border-color: var(--fx-color, #ef4444);
 }
@@ -279,7 +360,7 @@ const ringStyle = computed(() => {
   100% { box-shadow: 0 0 0 22px rgba(34, 197, 94, 0); }
 }
 
-/* ── 彩虹激活（listening / recording）── */
+/* ── 彩虹激活（listening / recording）── Rainbow activation (listening / recording). */
 .float-trigger.fx-rainbow {
   border-color: transparent;
   background:

@@ -10,7 +10,9 @@
   />
 </template>
 
+<!-- 文本输入框组件，支持 v-model 双向绑定。Text input field with v-model two-way binding. -->
 <script setup lang="ts">
+/** 输入框 Props：绑定值/占位文本/输入类型/是否禁用；Emits `update:modelValue` 实现 v-model。Input props: bound value, placeholder, input type, disabled; emits `update:modelValue` for v-model. */
 withDefaults(defineProps<{ modelValue?: string; placeholder?: string; type?: string; disabled?: boolean }>(), { modelValue: '', placeholder: '', type: 'text', disabled: false })
 defineEmits<{ 'update:modelValue': [v: string] }>()
 </script>

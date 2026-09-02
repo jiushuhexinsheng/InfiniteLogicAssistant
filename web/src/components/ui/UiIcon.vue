@@ -12,7 +12,10 @@ import {
   Settings, Volume2, Plus, CirclePlus, Activity, BarChart3, History, List, Sun, Moon, Loader2,
 } from 'lucide-vue-next'
 
-// name → lucide 图标映射（统一入口，可随时补充新图标）
+/**
+ * name → lucide 图标映射（统一入口，可随时补充新图标）。
+ * Name-to-Lucide icon mapping; centralized entry point, easily extendable.
+ */
 const ICONS: Record<string, Component> = {
   wave: AudioWaveform,
   ear: Ear,
@@ -44,7 +47,7 @@ const ICONS: Record<string, Component> = {
   volume: Volume2,
   plus: Plus,
   'circle-plus': CirclePlus,
-  // 控制台侧边栏
+  // 控制台侧边栏 Console sidebar
   activity: Activity,
   'bar-chart': BarChart3,
   history: History,
@@ -54,6 +57,7 @@ const ICONS: Record<string, Component> = {
   'loader-2': Loader2,
 }
 
+/** 图标组件 Props：图标名称(对应 ICONS 映射表键)/图标尺寸(像素)。Icon props: icon name (key in ICONS map), size in pixels. */
 const props = withDefaults(defineProps<{ name: string; size?: number }>(), { size: 18 })
 const strokeWidth = 1.8
 const icon = computed(() => ICONS[props.name] || CircleAlert)

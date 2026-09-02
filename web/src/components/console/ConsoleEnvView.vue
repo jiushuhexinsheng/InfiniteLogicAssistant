@@ -1,9 +1,11 @@
 <template>
   <div class="console-env">
+    <!-- 环境快照头部：刷新按钮和加载状态。Environment snapshot header: refresh button and loading state. -->
     <div class="env-head">
       <UiButton variant="ghost" size="sm" @click="load">刷新</UiButton>
       <span v-if="loading" class="env-loading">加载中…</span>
     </div>
+    <!-- 环境快照内容区域：有内容时显示 <pre>，否则显示空提示。Environment snapshot content: shows <pre> when content exists, otherwise an empty hint. -->
     <pre v-if="content" class="env-pre">{{ content }}</pre>
     <div v-else-if="!loading" class="console-empty">暂无环境快照（首次运行会自动生成）</div>
   </div>
@@ -14,9 +16,12 @@ import { onMounted, ref } from 'vue'
 import { api } from '../../api'
 import { UiButton } from '../ui'
 
+/** 环境快照内容。Environment snapshot content. */
 const content = ref('')
+/** 加载状态标志。Loading state flag. */
 const loading = ref(false)
 
+/** 从后端拉取环境快照并更新 content。Fetch environment snapshot from backend and update content. */
 async function load() {
   loading.value = true
   try {

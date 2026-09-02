@@ -1,12 +1,13 @@
 <template>
   <div class="console-settings">
+    <!-- 设置页头部：标题和说明文字。Settings page header: title and description text. -->
     <div class="cs-head">
       <h2 class="cs-title"><UiIcon name="settings" :size="17" /> 设置</h2>
       <p class="cs-sub">左侧菜单切换模块，每个模块独立「保存 / 测试连接」，密钥通过弹出框设置</p>
     </div>
 
     <div class="cs-body">
-      <!-- 左侧菜单 -->
+      <!-- 左侧菜单：模块切换（LLM / ASR / TTS / 语音唤醒 / 高级设置）。Left sidebar menu: switch between modules (LLM / ASR / TTS / Voice Wake / Advanced). -->
       <aside class="cs-menu">
         <button
           v-for="m in menuDefs"
@@ -26,19 +27,19 @@
         </div>
       </aside>
 
-      <!-- 右侧内容 -->
+      <!-- 右侧内容区域：根据左侧菜单选择展示对应模块配置。Right content area: displays the corresponding module config based on left menu selection. -->
       <div class="cs-main">
         <div v-if="msg" class="cs-msg" :class="{ err: isErr(msg) }">{{ msg }}</div>
         <div v-if="restartHint" class="cs-restart">{{ restartHint }}</div>
 
-        <!-- 连接状态条 -->
+        <!-- 连接状态条：展示各服务模块的连通性检测结果。Connection status bar: shows connectivity test results for each service module. -->
         <div v-if="Object.keys(connResults).length" class="cs-conn">
           <UiChip v-for="c in Object.values(connResults)" :key="c.name" :tone="connTone(c.status)" :dot="false">
             {{ c.name }} {{ connStatusText(c.status) }}
           </UiChip>
         </div>
 
-        <!-- 服务模块：LLM / ASR / TTS（activeMenu 对应才显示） -->
+        <!-- 服务模块：LLM / ASR / TTS（仅在 activeMenu 匹配时显示）。Service modules: LLM / ASR / TTS (shown only when activeMenu matches). -->
         <template v-for="s in sectionDefs" :key="s.key">
           <UiCard v-if="activeMenu === s.key" class="cs-card">
             <div class="cs-card-head">
@@ -55,7 +56,7 @@
               <UiToggle :model-value="sec(s.key).enabled" @update:model-value="v => (sec(s.key).enabled = v)" />
             </SettingsField>
 
-            <!-- Profile 管理：切换 / 新增（厂商目录） / 删除 -->
+            <!-- Profile 管理：切换 / 新增（厂商目录） / 删除。Profile management: switch / add from vendor catalog / delete. -->
             <div class="cs-profrow">
               <SettingsField label="Profile" grow>
                 <UiSelect :model-value="sec(s.key).active" @update:model-value="v => (sec(s.key).active = v)">
@@ -70,10 +71,10 @@
               </UiButton>
             </div>
 
-            <!-- 厂商目录选择面板（新增 Profile） -->
+            <!-- 厂商目录选择面板（新增 Profile）：从预设厂商快速创建配置。Vendor catalog panel (add Profile): quickly create config from vendor presets. -->
             <div v-if="addingSection === s.key" class="cs-vendor">
               <p class="cs-vendor-tip">从厂商目录新增 Profile（自动预填端点/模型，可再手动调整）</p>
-              <!-- 自定义名称内联输入（替代 window.prompt） -->
+              <!-- 自定义名称内联输入（替代 window.prompt）。Custom name inline input (replaces window.prompt). -->
               <div v-if="customAdding === s.key" class="cs-vendor-custom">
                 <UiInput v-model="customName" placeholder="Profile 名称（如 my-gateway）" @keyup.enter="confirmCustom(s.key)" />
                 <UiButton variant="primary" size="sm" @click="confirmCustom(s.key)">创建</UiButton>
@@ -89,13 +90,13 @@
 
             <template v-for="f in s.fields" :key="f">
               <SettingsField :label="fieldLabel(f)">
-                <!-- 协议下拉 -->
+                <!-- 协议下拉：选择 OpenAI 兼容 / Anthropic / Gemini。Protocol dropdown: choose OpenAI compatible / Anthropic / Gemini. -->
                 <UiSelect v-if="f === 'provider'" :model-value="sec(s.key).profiles[sec(s.key).active][f]" @update:model-value="v => (sec(s.key).profiles[sec(s.key).active][f] = v)">
                   <option value="openai">OpenAI 兼容</option>
                   <option value="anthropic">Anthropic（原生）</option>
                   <option value="gemini">Gemini（原生）</option>
                 </UiSelect>
-                <!-- 模型 / 音色可输入下拉 -->
+                <!-- 模型 / 音色可输入下拉：支持手动输入或从列表选择。Model / voice input with datalist: supports manual input or selection from list. -->
                 <template v-else-if="f === 'model' || f === 'voice'">
                   <UiInput :model-value="sec(s.key).profiles[sec(s.key).active][f]" @update:model-value="v => (sec(s.key).profiles[sec(s.key).active][f] = v)" :list="`dl-${s.key}-${f}`" />
                   <datalist :id="`dl-${s.key}-${f}`">
@@ -127,7 +128,7 @@
           </UiCard>
         </template>
 
-        <!-- 语音模块：唤醒词 + VAD + 本地播报 -->
+        <!-- 语音模块：唤醒词 + VAD + 本地播报配置。Voice module: wake word + VAD + local speech settings. -->
         <UiCard v-if="activeMenu === 'voice'" class="cs-card">
           <div class="cs-card-head">
             <span class="cs-card-title">语音（唤醒 / 静音检测）</span>
@@ -156,7 +157,7 @@
           <div class="cs-tts"><TtsSettings /></div>
         </UiCard>
 
-        <!-- 高级模块 -->
+        <!-- 高级模块：Agent / LLM 客户端 / 工具 / 服务器 / MCP 参数配置。Advanced module: Agent / LLM client / Tools / Server / MCP parameter settings. -->
         <UiCard v-if="activeMenu === 'advanced'" class="cs-card">
           <div class="cs-card-head">
             <span class="cs-card-title">高级设置（Agent / LLM 客户端 / 工具 / 服务器 / MCP）</span>
@@ -181,14 +182,14 @@
           </p>
         </UiCard>
 
-        <!-- 配置校验问题 -->
+        <!-- 配置校验问题：检测到的错误和警告列表。Config validation issues: list of detected errors and warnings. -->
         <div v-if="issues.length" class="cs-issues">
           <p v-for="i in issues" :key="i.key" :class="'lv-' + i.level">[{{ i.level }}] {{ i.key }}：{{ i.message }}</p>
         </div>
       </div>
     </div>
 
-    <!-- 密钥弹出框（替代 window.prompt） -->
+    <!-- 密钥弹出框（替代 window.prompt）：用于安全设置/清除 API Key。API Key modal (replaces window.prompt): securely set/clear API keys. -->
     <UiModal :model-value="!!keyModal" @update:model-value="v => { if (!v) keyModal = null }" title="设置 API Key">
         <p class="cs-dialog-sub">{{ keyModal?.section }} · {{ keyModal?.profile }}</p>
         <div class="cs-key-input">
@@ -222,24 +223,38 @@ import SettingsField from './settings/SettingsField.vue'
 import { UiButton, UiCard, UiChip, UiIcon, UiInput, UiModal, UiSelect, UiToggle } from '../ui'
 import type { ConnectivityResult, DetectionIssue, EditableSnapshot, ProfileConfig, ProviderPreset } from '../../types'
 
+/** 全局配置缓存（tts_available、当前 profile 等）。Global config cache (tts_available, current profile, etc.). */
 const app = useConfig()
+/** 可编辑配置快照（从后端 /api/config/full 获取）。Editable config snapshot (from backend /api/config/full). */
 const editable = ref<EditableSnapshot | null>(null)
+/** 保存中状态标志。Saving state flag. */
 const saving = ref(false)
+/** 检测中状态标志。Detection in progress flag. */
 const detecting = ref(false)
+/** 状态/错误提示消息。Status/error message. */
 const msg = ref('')
+/** 重启提示（部分设置需重启生效）。Restart hint (some settings require restart). */
 const restartHint = ref('')
+/** 连通性检测结果（按服务名索引）。Connectivity test results (indexed by service name). */
 const connResults = ref<Record<string, ConnectivityResult>>({})
+/** 配置校验问题列表。Config validation issues list. */
 const issues = ref<DetectionIssue[]>([])
-// 厂商目录 + 新增 Profile 面板
+/** 厂商目录预设列表（按模块分组）。Vendor catalog presets (grouped by module). */
 const catalog = ref<Record<string, ProviderPreset[]> | null>(null)
+/** 当前正在新增 Profile 的模块 key。Module key currently adding a new Profile. */
 const addingSection = ref<string | null>(null)
+/** 是否正在输入自定义 Profile 名称。Whether custom Profile name input is active. */
 const customAdding = ref<string | null>(null)
+/** 自定义 Profile 名称。Custom Profile name. */
 const customName = ref('')
-// 左侧菜单 + 密钥弹出框
+/** 左侧菜单当前选中项。Currently selected left menu item. */
 const activeMenu = ref('llm')
+/** 密钥弹出框状态（section / profile / value）。API Key modal state (section / profile / value). */
 const keyModal = ref<{ section: string; profile: string; value: string } | null>(null)
+/** 是否显示明文密钥。Whether to show API key in plain text. */
 const showKey = ref(false)
 
+/** 左侧菜单定义（id / label / icon）。Left menu definitions (id / label / icon). */
 const menuDefs = [
   { id: 'llm', label: '大模型', icon: 'brain' },
   { id: 'asr', label: '语音识别', icon: 'mic' },
@@ -248,7 +263,7 @@ const menuDefs = [
   { id: 'advanced', label: '高级设置', icon: 'zap' },
 ]
 
-// 三大服务 section 定义（name 为 /api/detection 里的连通性结果名）
+/** 三大服务 section 定义（name 对应 /api/detection 的连通性结果名）。Three service section definitions (name corresponds to /api/detection connectivity result name). */
 const sectionDefs = [
   { key: 'llm', name: 'LLM', title: 'LLM 大模型', toggle: false,
     fields: ['provider', 'endpoint', 'model', 'chat_path', 'max_tokens', 'temperature', 'timeout'] },
@@ -258,6 +273,7 @@ const sectionDefs = [
     fields: ['provider', 'endpoint', 'model', 'voice', 'format', 'chat_path', 'timeout'] },
 ]
 
+/** 高级模块定义（Agent / LLM 客户端 / 工具 / RAG / 服务器）。Advanced module definitions (Agent / LLM client / Tools / RAG / Server). */
 const advancedDefs = [
   { key: 'agent', title: 'Agent 任务执行',
     fields: [['recursion_limit', 'number'], ['multi_agent', 'bool'], ['structured_temperature', 'number'] as const] },
@@ -271,11 +287,13 @@ const advancedDefs = [
     fields: [['host', 'text'], ['port', 'number'], ['open_browser', 'bool'] as const] },
 ]
 
+/** 需要数值类型的字段集合。Set of fields that require numeric type. */
 const NUMERIC = new Set(['max_tokens', 'temperature', 'timeout', 'sensitivity', 'silence_threshold',
   'silence_duration_ms', 'max_duration_ms', 'recursion_limit', 'structured_temperature', 'retry_max',
   'retry_backoff_base', 'retry_backoff_max', 'circuit_breaker_threshold', 'circuit_breaker_cooldown',
   'request_timeout', 'search_max_results', 'weather_timeout', 'port'])
 
+/** 字段中文标签映射。Chinese label mapping for fields. */
 const LABELS: Record<string, string> = {
   provider: '协议', endpoint: 'Endpoint', model: '模型', vision_model: '视觉模型',
   chat_path: 'Chat Path', max_tokens: 'Max Tokens', temperature: 'Temperature', timeout: '超时(s)',
@@ -287,35 +305,42 @@ const LABELS: Record<string, string> = {
   auto_index: '自动建索引', host: 'Host', port: 'Port', open_browser: '启动打开浏览器',
 }
 
+/** 获取指定模块的可编辑配置对象。Get the editable config object for a given module. */
 function sec(key: string): any {
   return (editable.value as any)?.[key]
 }
-/** 语音模块顶层对象（wake_word / vad 不在模块 key 下，直接挂在 editable 根） */
+/** 语音模块顶层对象（wake_word / vad 不在模块 key 下，直接挂在 editable 根）。Voice module top-level object (wake_word / vad sit at editable root, not under a module key). */
 function ed(): any {
   return editable.value
 }
+/** 根据字段名获取中文标签。Get Chinese label by field name. */
 function fieldLabel(f: string): string {
   return LABELS[f] || f
 }
+/** 判断字段是否为数值类型。Check if a field is numeric type. */
 function num(f: string): boolean {
   return NUMERIC.has(f)
 }
+/** 判断消息是否包含错误关键词。Check if message contains error keywords. */
 function isErr(m: string): boolean {
   return m.includes('失败') || m.includes('无效')
 }
+/** 将连通性状态映射为 UI 色调。Map connectivity status to UI tone. */
 function connTone(status: string): 'ok' | 'warn' | 'err' | 'info' | 'neutral' {
   return status === 'ok' ? 'ok' : status === 'skip' ? 'neutral' : 'err'
 }
+/** 将连通性状态转为中文文本。Convert connectivity status to Chinese text. */
 function connStatusText(status: string): string {
   return status === 'ok' ? '✓ 连通' : status === 'skip' ? '跳过' : '✗ 失败'
 }
-/** 数值输入：保留空串（清空），其余转 number（与原生 v-model.number 行为一致） */
+/** 数值输入：保留空串（清空），其余转 number（与原生 v-model.number 行为一致）。Numeric input: keep empty string (clear), otherwise convert to number (consistent with native v-model.number). */
 function toNum(v: string): number | '' {
   return v === '' ? '' : Number(v)
 }
 
-// ─── 菜单状态点：服务模块显示「密钥已设置」绿点 ───
+// ─── 菜单状态点：服务模块显示「密钥已设置」绿点。Menu dot: service modules show green dot when API key is set. ───
 
+/** 判断指定菜单项是否显示绿点（密钥已设置）。Check if a menu item should show green dot (API key is set). */
 function menuDot(id: string): boolean {
   if (id === 'llm' || id === 'asr' || id === 'tts') {
     const s = (editable.value as any)?.[id]
@@ -324,30 +349,35 @@ function menuDot(id: string): boolean {
   return false
 }
 
-// ─── 厂商目录 / Profile 管理 ───
+// ─── 厂商目录 / Profile 管理。Vendor catalog / Profile management. ───
 
+/** 获取当前活跃的 Profile 配置。Get the currently active Profile config. */
 function activeProfile(s: any): ProfileConfig {
   return (editable.value as any)?.[s.key]?.profiles?.[(editable.value as any)[s.key].active] || {}
 }
+/** 根据 Profile 的 vendor 字段查找对应的厂商预设。Find the vendor preset matching the Profile's vendor field. */
 function vendorPreset(s: any): ProviderPreset | null {
   const prof = activeProfile(s)
   if (!prof.vendor || !catalog.value) return null
   return catalog.value[s.key]?.find((v) => v.id === prof.vendor) || null
 }
+/** 获取指定模块的厂商预设列表。Get vendor preset list for a given module. */
 function vendorList(key: string): ProviderPreset[] {
   return (catalog.value && catalog.value[key]) || []
 }
+/** 合并 Profile 和厂商预设的模型列表（去重）。Merge model lists from Profile and vendor preset (deduplicated). */
 function modelOptions(s: any): string[] {
   const prof = activeProfile(s)
   const v = vendorPreset(s)
   return [...new Set([...(prof.models || []), ...(v?.models || [])])].filter(Boolean)
 }
+/** 合并 Profile 和厂商预设的音色列表（去重）。Merge voice lists from Profile and vendor preset (deduplicated). */
 function voiceOptions(s: any): string[] {
   const prof = activeProfile(s)
   const v = vendorPreset(s)
   return [...new Set([...(prof.voices || []), ...(v?.voices || [])])].filter(Boolean)
 }
-/** 目录预设 → 可编辑 profile（与后端 core/providers.preset_to_profile 对齐） */
+/** 目录预设 → 可编辑 profile（与后端 core/providers.preset_to_profile 对齐）。Convert catalog preset to editable profile (aligned with backend core/providers.preset_to_profile). */
 function presetToProfile(v: ProviderPreset): ProfileConfig {
   const p: any = {
     provider: v.provider || 'openai',
@@ -371,12 +401,13 @@ function presetToProfile(v: ProviderPreset): ProfileConfig {
   return p
 }
 
+/** 切换"新增 Profile"面板的展开/折叠。Toggle the "Add Profile" panel expand/collapse. */
 function toggleAdding(key: string) {
   addingSection.value = addingSection.value === key ? null : key
   customAdding.value = null
 }
 
-/** 按模块产出 PATCH body（service: 只该 section；voice: 唤醒+VAD；advanced: 全部高级段） */
+/** 按模块产出 PATCH body（service: 只该 section；voice: 唤醒+VAD；advanced: 全部高级段）。Build PATCH body by module (service: single section; voice: wake+VAD; advanced: all advanced sections). */
 function moduleBody(id: string): Record<string, any> {
   const e = editable.value as any
   if (id === 'voice') return { wake_word: e.wake_word, vad: e.vad }
@@ -394,7 +425,7 @@ function moduleBody(id: string): Record<string, any> {
   return { [id]: { active: e[id].active, profiles: e[id].profiles } }
 }
 
-/** 只持久化单个模块（新增/删除 Profile 用，静默不弹提示） */
+/** 只持久化单个模块（新增/删除 Profile 用，静默不弹提示）。Persist a single module only (for add/delete Profile, silently without popup). */
 async function persistSection(key: string): Promise<boolean> {
   if (!editable.value) return false
   try {
@@ -405,7 +436,7 @@ async function persistSection(key: string): Promise<boolean> {
   }
 }
 
-/** 自定义空白 Profile：内联输入取名 → 建空 profile（provider=openai + 默认 chat_path）并立即保存 */
+/** 自定义空白 Profile：内联输入取名 → 建空 profile（provider=openai + 默认 chat_path）并立即保存。Custom blank Profile: inline name input → create empty profile (provider=openai + default chat_path) and save immediately. */
 async function confirmCustom(key: string) {
   const name = customName.value.trim() || 'custom'
   const profiles = (editable.value as any)[key].profiles
@@ -420,6 +451,7 @@ async function confirmCustom(key: string) {
     : `已添加 Profile「${name}」（保存失败，请检查后手动保存）`
 }
 
+/** 从厂商目录新增 Profile 并立即保存。Add a new Profile from vendor catalog and save immediately. */
 async function addProfileFromVendor(key: string, v: ProviderPreset) {
   const profiles = (editable.value as any)[key].profiles
   let name = v.id
@@ -434,6 +466,7 @@ async function addProfileFromVendor(key: string, v: ProviderPreset) {
     : `已添加 Profile「${name}」（保存失败，请检查后手动保存）`
 }
 
+/** 删除指定 Profile（至少保留一个）。Delete specified Profile (at least one must remain). */
 async function deleteProfile(key: string) {
   const s = (editable.value as any)[key]
   const names = Object.keys(s.profiles)
@@ -447,7 +480,7 @@ async function deleteProfile(key: string) {
   msg.value = ok ? `已删除 Profile「${name}」` : `已删除 Profile「${name}」（保存失败，请检查）`
 }
 
-/** 拉取当前 profile 的模型列表（openai/anthropic/gemini 均支持），写回 profile.models */
+/** 拉取当前 profile 的模型列表（openai/anthropic/gemini 均支持），写回 profile.models。Fetch model list for current profile (supports openai/anthropic/gemini), write back to profile.models. */
 async function fetchModelsFor(s: any) {
   const prof = activeProfile(s)
   const profile = { name: (editable.value as any)[s.key].active, ...prof }
@@ -466,8 +499,9 @@ async function fetchModelsFor(s: any) {
   }
 }
 
-// ─── 模块级保存 / 测试 ───
+// ─── 模块级保存 / 测试。Module-level save / test. ───
 
+/** 保存单个模块的配置到后端。Save a single module's config to backend. */
 async function saveModule(id: string) {
   if (!editable.value) return
   saving.value = true
@@ -490,6 +524,7 @@ async function saveModule(id: string) {
   }
 }
 
+/** 从后端加载完整可编辑配置。Load full editable config from backend. */
 async function load() {
   try {
     const r = await api.getConfigFull()
@@ -510,6 +545,7 @@ async function load() {
   }
 }
 
+/** 检测全部服务连通性。Test connectivity for all services. */
 async function detectAll() {
   detecting.value = true
   issues.value = []
@@ -528,6 +564,7 @@ async function detectAll() {
   }
 }
 
+/** 检测单个服务连通性。Test connectivity for a single service. */
 async function detectOne(name: string) {
   detecting.value = true
   try {
@@ -543,17 +580,20 @@ async function detectOne(name: string) {
   }
 }
 
-// ─── 密钥弹出框（替代 window.prompt） ───
+// ─── 密钥弹出框（替代 window.prompt）。API Key modal (replaces window.prompt). ───
 
+/** 打开密钥设置弹窗。Open the API Key settings modal. */
 function openKeyModal(section: string, profile: string) {
   showKey.value = false
   keyModal.value = { section, profile, value: '' }
 }
+/** 获取当前密钥对应的环境变量名（用于提示用户可通过 env 配置）。Get the environment variable name for the current key (to hint user about env config). */
 function keyEnvHint(): string {
   const m = keyModal.value
   if (!m) return ''
   return (editable.value as any)?.[m.section]?.profiles?.[m.profile]?.api_key_env || ''
 }
+/** 确认保存 API Key（通过 PUT secret 接口）。Confirm and save API Key (via PUT secret endpoint). */
 async function confirmKey() {
   const m = keyModal.value
   if (!m) return
@@ -573,6 +613,7 @@ async function confirmKey() {
     msg.value = '设置密钥失败: ' + (e?.message || '')
   }
 }
+/** 清除当前 API Key（将 value 设为空串后调用 confirmKey）。Clear current API Key (set value to empty string then call confirmKey). */
 async function clearKey() {
   const m = keyModal.value
   if (!m) return
@@ -580,6 +621,7 @@ async function clearKey() {
   await confirmKey()
 }
 
+/** 从后端拉取厂商目录预设（失败不阻塞设置页）。Fetch vendor catalog presets from backend (failure does not block settings page). */
 async function loadCatalog() {
   try {
     const r = await api.getProviders()

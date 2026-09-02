@@ -1,5 +1,7 @@
 <template>
+  <!-- 过渡动画容器。Transition animation container. -->
   <Transition name="mini">
+    <!-- 迷你播放器：悬浮球收起时显示，展示最新对话摘要。Mini player: shown when floating ball is collapsed, displays latest conversation summary. -->
     <div
       v-if="showMini"
       class="mini-player"
@@ -7,15 +9,19 @@
       :style="miniStyle"
       @click="emit('open')"
     >
+      <!-- 音频均衡器动画。Audio equalizer animation. -->
       <div class="mini-eq">
         <span v-for="n in 4" :key="n"></span>
       </div>
       <div class="mini-meta">
+        <!-- 角色名（你说/小逻/系统）。Role name (You/XiaoLuo/System). -->
         <div class="mini-role">{{ miniRole }}</div>
+        <!-- 消息文本（超长时跑马灯）。Message text (marquee when too long). -->
         <div class="mini-text" :class="{ marquee: miniLong }">
           <span class="mini-content">{{ miniText }}</span>
         </div>
       </div>
+      <!-- 隐藏按钮。Dismiss button. -->
       <button class="mini-close" title="隐藏" @click.stop="emit('dismiss')">×</button>
     </div>
   </Transition>
@@ -26,6 +32,17 @@ import { computed } from 'vue'
 import type { AsstState, ChatMessage } from '../../composables/useAssistant'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
 
+/**
+ * 组件属性定义。Component props definition.
+ * @property expanded - 主面板是否已展开。Whether the main panel is expanded.
+ * @property pos - 悬浮球在视口中的坐标。Position of the floating ball in viewport.
+ * @property state - 助手当前状态。Current assistant state.
+ * @property visual - 状态对应的视觉配置。Visual configuration for the current state.
+ * @property messages - 聊天消息列表。Chat message list.
+ * @property partialText - 录音/识别中的部分文本。Partial text during recording/transcribing.
+ * @property statusLine - 状态行文本。Status line text.
+ * @property miniDismiss - 迷你播放器是否已被用户隐藏。Whether mini player has been dismissed by user.
+ */
 const props = defineProps<{
   expanded: boolean
   pos: { x: number; y: number }
@@ -37,13 +54,29 @@ const props = defineProps<{
   miniDismiss: boolean
 }>()
 
+/**
+ * 组件事件定义。Component events definition.
+ * @event open - 点击迷你播放器展开主面板。Click mini player to expand main panel.
+ * @event dismiss - 用户隐藏迷你播放器。User dismisses mini player.
+ */
 const emit = defineEmits<{ open: []; dismiss: [] }>()
 
+/** 处于活跃状态的助手状态列表。List of active assistant states. */
 const ACTIVE_STATES: AsstState[] = ['listening', 'recording', 'transcribing', 'thinking', 'tool_calling', 'responding']
+
+/**
+ * 计算当前是否为活跃状态（控制 EQ 动画）。
+ * Compute whether current state is active (controls EQ animation).
+ */
 const isMiniActive = computed(() => ACTIVE_STATES.includes(props.state))
 
+/** 获取最后一条消息。Get the last message. */
 const lastMsg = computed<ChatMessage | null>(() => props.messages[props.messages.length - 1] || null)
 
+/**
+ * 计算迷你播放器显示文本：优先显示录音中的部分文本，否则显示最后一条消息。
+ * Compute mini player display text: prioritize partial text during recording, otherwise show last message.
+ */
 const miniText = computed(() => {
   const p = props.partialText
   if (p && ['recording', 'listening'].includes(props.state)) return p
@@ -51,6 +84,9 @@ const miniText = computed(() => {
   return props.statusLine || ''
 })
 
+/**
+ * 计算迷你播放器角色名。Compute mini player role name.
+ */
 const miniRole = computed(() => {
   if (!lastMsg.value) return 'AI 助手'
   if (lastMsg.value.role === 'user') return '你说'
@@ -58,13 +94,22 @@ const miniRole = computed(() => {
   return '系统'
 })
 
+/** 文本是否过长需要跑马灯效果。Whether text is too long and needs marquee effect. */
 const miniLong = computed(() => miniText.value.length > 16)
 
+/**
+ * 计算迷你播放器是否显示：主面板未展开、未被隐藏、且有内容或处于活跃/错误状态。
+ * Compute whether mini player should show: panel not expanded, not dismissed, and has content or is active/error.
+ */
 const showMini = computed(() =>
   !props.expanded && !props.miniDismiss &&
   (props.messages.length > 0 || isMiniActive.value || props.state === 'error')
 )
 
+/**
+ * 计算迷你播放器定位样式，根据悬浮球位置决定左右侧。
+ * Compute mini player positioning style, determining left/right side based on ball position.
+ */
 const miniStyle = computed(() => {
   const w = window.innerWidth
   const h = window.innerHeight
@@ -78,6 +123,7 @@ const miniStyle = computed(() => {
 </script>
 
 <style scoped>
+/* 迷你播放器主体。Mini player main container. */
 .mini-player {
   position: fixed;
   z-index: 9998;
@@ -87,7 +133,7 @@ const miniStyle = computed(() => {
   width: 210px;
   padding: 6px 10px;
   border: 1px solid transparent;
-  /* 品牌渐变描边 + 玻璃质感 */
+  /* 品牌渐变描边 + 玻璃质感。Brand gradient border + glass effect. */
   background:
     linear-gradient(var(--glass-bg-strong), var(--glass-bg-strong)) padding-box,
     var(--brand-grad) border-box;
@@ -100,6 +146,7 @@ const miniStyle = computed(() => {
 }
 .mini-player:hover { border-color: transparent; opacity: .92; }
 
+/* 音频均衡器。Audio equalizer. */
 .mini-eq {
   display: flex;
   align-items: flex-end;
@@ -113,6 +160,7 @@ const miniStyle = computed(() => {
   border-radius: 1px;
   background: linear-gradient(180deg, var(--brand-c1), var(--brand-c3));
 }
+/* 活跃状态时 EQ 播放动画。EQ animation when active. */
 .mini-player.active .mini-eq span {
   background: var(--brand-grad);
   animation: eq 1s ease-in-out infinite;
@@ -126,6 +174,7 @@ const miniStyle = computed(() => {
   50% { height: 14px; }
 }
 
+/* 元信息区域。Meta info area. */
 .mini-meta {
   flex: 1;
   min-width: 0;
@@ -134,6 +183,7 @@ const miniStyle = computed(() => {
   gap: 2px;
 }
 .mini-role { font-size: 11px; color: var(--text-3); line-height: 1; }
+/* 消息文本（单行截断）。Message text (single line truncation). */
 .mini-text {
   font-size: 12px;
   color: var(--text-1);
@@ -142,6 +192,7 @@ const miniStyle = computed(() => {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* 跑马灯效果（文本超长时）。Marquee effect (when text is too long). */
 .mini-text.marquee .mini-content {
   display: inline-block;
   padding-left: 100%;
@@ -151,6 +202,7 @@ const miniStyle = computed(() => {
   0% { transform: translateX(0); }
   100% { transform: translateX(-100%); }
 }
+/* 隐藏按钮。Dismiss button. */
 .mini-close {
   background: none;
   border: none;

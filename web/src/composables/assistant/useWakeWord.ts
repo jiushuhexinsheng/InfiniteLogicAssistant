@@ -2,16 +2,24 @@ import { api } from '../../api'
 import { state, partialText, statusLine, expanded, wakeEnabled, wakeConfig, vadConfig, addMessage, failWake, modelLoading, modelProgress } from './store'
 import { runTurn } from './useChat'
 
-// ── 录音管线 ──
+/** 录音管线相关变量。Recording pipeline variables. */
 let wakeRecorder: MediaRecorder | null = null
 let wakeChunks: Blob[] = []
 let silenceTimer: ReturnType<typeof setInterval> | null = null
 let maxTimer: ReturnType<typeof setTimeout> | null = null
 let vadAudioCtx: AudioContext | null = null
 
-// ── 唤醒词引擎 ──
+/** 唤醒词引擎加载状态。Wake word engine loading state. */
 let modelLoaded = false
 
+/** 初始化唤醒模型。Initialize wake word model.
+ *  注意：vosk.js 的 worker 只支持按 URL 加载模型（load() 内 modelUrl.replace），
+ *  不支持传入 ArrayBuffer 字节——因此不能预下载字节，直接交给引擎按 URL 下载/解压
+ *  （首次约 44MB，之后走 IndexedDB 缓存）。
+ *  Note: vosk.js worker only supports URL-based model loading (modelUrl.replace in load()),
+ *  does not support ArrayBuffer input — so cannot pre-download bytes, let engine download/decompress by URL
+ *  (first time ~44MB, then IndexedDB cached).
+ *  @returns 模型是否加载成功。Whether model loaded successfully. */
 async function initWakeModel() {
   if (typeof WakeWordEngine === 'undefined') {
     console.warn('[Asst] WakeWordEngine missing')
@@ -20,9 +28,6 @@ async function initWakeModel() {
   if (modelLoaded) return true
   try {
     modelLoading.value = true
-    // 注意：vosk.js 的 worker 只支持按 URL 加载模型（load() 内 modelUrl.replace），
-    // 不支持传入 ArrayBuffer 字节——因此不能预下载字节，直接交给引擎按 URL 下载/解压
-    // （首次约 44MB，之后走 IndexedDB 缓存）。
     statusLine.value = '正在加载语音模型（首次需下载约 44MB，请稍候）...'
     const ok = await WakeWordEngine.init({
       modelPath: wakeConfig.model_path,
@@ -42,9 +47,11 @@ async function initWakeModel() {
   }
 }
 
-/** 初始化唤醒模型（供测试与 toggleWake 复用）。 */
+/** 初始化唤醒模型（供测试与 toggleWake 复用）。
+ *  Initialize wake word model (shared by tests and toggleWake). */
 export { initWakeModel }
 
+/** 播放提示音。Play beep sound. */
 function playBeep() {
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
@@ -62,13 +69,17 @@ function playBeep() {
   } catch { /* mute */ }
 }
 
+/** 清除所有定时器。Clear all timers. */
 function clearTimers() {
   if (silenceTimer) { clearInterval(silenceTimer); silenceTimer = null }
   if (maxTimer) { clearTimeout(maxTimer); maxTimer = null }
   if (vadAudioCtx) { try { vadAudioCtx.close() } catch { /* ignore */ } vadAudioCtx = null }
 }
 
-// ── 麦克风错误 → 用户可理解的中文提示（getUserMedia 常见异常映射）──
+/** 麦克风错误 → 用户可理解的中文提示（getUserMedia 常见异常映射）。
+ *  Microphone error → user-friendly Chinese message (common getUserMedia exception mapping).
+ *  @param e - 错误对象。Error object.
+ *  @returns 用户友好的错误消息。User-friendly error message. */
 function describeMicError(e: any): string {
   const name = e?.name || ''
   switch (name) {
@@ -89,6 +100,7 @@ function describeMicError(e: any): string {
   }
 }
 
+/** 停止录音。Stop recording. */
 function stopRecording() {
   clearTimers()
   if (wakeRecorder && wakeRecorder.state === 'recording') {
@@ -96,10 +108,13 @@ function stopRecording() {
   }
 }
 
+/** 启动 VAD（语音活动检测）。Start VAD (Voice Activity Detection).
+ *  @param stream - 媒体流。Media stream. */
 function startVAD(stream: MediaStream) {
   let analyser: AnalyserNode | null = null
   try {
-    // 关闭上一次残留的 AudioContext
+    // 关闭上一次残留的 AudioContext。
+    // Close residual AudioContext from previous session.
     if (vadAudioCtx) { try { vadAudioCtx.close() } catch { /* ignore */ } }
     vadAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
     const ctx = vadAudioCtx
@@ -145,6 +160,7 @@ function startVAD(stream: MediaStream) {
   }, checkInterval)
 }
 
+/** 启动最大录音时长定时器。Start max recording duration timer. */
 function startMaxTimer() {
   maxTimer = setTimeout(() => {
     console.log('[Asst] max duration reached')
@@ -152,7 +168,7 @@ function startMaxTimer() {
   }, vadConfig.max_duration_ms || 10000)
 }
 
-// ── 唤醒检测回调 ──
+/** 唤醒检测回调。Wake detection callback. */
 function onWakeDetected() {
   console.log('[Asst] WAKE!')
   state.value = 'recording'
@@ -193,7 +209,7 @@ function onWakeDetected() {
 
     await handleTranscript(blob)
 
-    // 回到聆听状态
+    // 回到聆听状态。Return to listening state.
     setTimeout(() => {
       if (state.value === 'done' || state.value === 'error') {
         state.value = 'listening'
@@ -206,7 +222,8 @@ function onWakeDetected() {
   startMaxTimer()
 }
 
-// ── ASR 转写 ──
+/** ASR 转写处理。ASR transcription handling.
+ *  @param blob - 音频 Blob。Audio Blob. */
 async function handleTranscript(blob: Blob) {
   try {
     const r = await api.transcribe(blob)
@@ -227,13 +244,14 @@ async function handleTranscript(blob: Blob) {
   }
 }
 
-// ── 开启/关闭唤醒 ──
+/** 开启/关闭唤醒。Toggle wake word detection on/off.
+ *  副作用：修改状态、加载模型、启动/停止引擎。Side effects: modify state, load model, start/stop engine. */
 export async function toggleWake() {
   console.log('[Asst] toggleWake called, current state:', state.value, 'modelLoaded:', modelLoaded)
   statusLine.value = ''
 
   if (state.value === 'idle' || state.value === 'done' || state.value === 'error') {
-    // ── 开启 ──
+    // 开启。Enable.
     if (typeof WakeWordEngine === 'undefined') {
       console.error('[Asst] WakeWordEngine not defined')
       failWake('唤醒引擎未加载，请刷新页面重试')
@@ -242,7 +260,7 @@ export async function toggleWake() {
 
     if (!modelLoaded) {
       statusLine.value = '正在加载语音模型...'
-      state.value = 'listening' // 先切到 listening 让用户看到变化
+      state.value = 'listening' // 先切到 listening 让用户看到变化。Switch to listening first for user feedback.
       console.log('[Asst] loading model...')
       try {
         const ok = await initWakeModel()
@@ -261,7 +279,8 @@ export async function toggleWake() {
     statusLine.value = '正在启动唤醒...'
     console.log('[Asst] starting WakeWordEngine...')
 
-    // 预检麦克风设备：无可用录音设备时提前提示，避免模糊的 NotFoundError
+    // 预检麦克风设备：无可用录音设备时提前提示，避免模糊的 NotFoundError。
+    // Pre-check microphone devices: prompt early when no recording device available, avoid ambiguous NotFoundError.
     try {
       const devices = await navigator.mediaDevices.enumerateDevices()
       const mics = devices.filter((d) => d.kind === 'audioinput')
@@ -276,7 +295,8 @@ export async function toggleWake() {
     }
 
     try {
-      // start() 内部会 catch 错误并返回 false（如麦克风被系统/浏览器拦截），需检查返回值
+      // start() 内部会 catch 错误并返回 false（如麦克风被系统/浏览器拦截），需检查返回值。
+      // start() internally catches errors and returns false (e.g., mic blocked by system/browser), need to check return value.
       const started = await WakeWordEngine.start(onWakeDetected, (info: any) => {
         partialText.value = info.partial || ''
       })
@@ -294,7 +314,7 @@ export async function toggleWake() {
       failWake(describeMicError(e))
     }
   } else {
-    // ── 关闭 ──
+    // 关闭。Disable.
     console.log('[Asst] stopping...')
     try { WakeWordEngine.stop() } catch (e) { console.error('[Asst] stop error:', e) }
     wakeEnabled.value = false
@@ -304,7 +324,8 @@ export async function toggleWake() {
   }
 }
 
-// ── 页面销毁时收尾：停唤醒、清定时器、停录音 ──
+/** 页面销毁时收尾：停唤醒、清定时器、停录音。
+ *  Cleanup on page destruction: stop wake, clear timers, stop recording. */
 export function stopWake() {
   try { WakeWordEngine.stop() } catch { /* ignore */ }
   clearTimers()

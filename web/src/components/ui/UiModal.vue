@@ -14,8 +14,10 @@
   </Teleport>
 </template>
 
+<!-- 模态对话框组件，通过 Teleport 挂载到 body，点击遮罩层可关闭。Modal dialog, teleported to body; closes on overlay click. -->
 <script setup lang="ts">
 import UiIcon from './UiIcon.vue'
+/** 模态框 Props：显示/隐藏状态(v-model)/标题文本；Emits `update:modelValue` 控制开关。Modal props: visibility (v-model), title text; emits `update:modelValue` to toggle. */
 withDefaults(defineProps<{ modelValue: boolean; title?: string }>(), { title: '' })
 defineEmits<{ 'update:modelValue': [v: boolean] }>()
 </script>

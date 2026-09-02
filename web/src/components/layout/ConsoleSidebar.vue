@@ -1,10 +1,14 @@
 <template>
+  <!-- 控制台侧边导航栏。Console sidebar navigation. -->
   <aside class="console-sidebar">
+    <!-- 品牌标识区域。Brand identity area. -->
     <div class="sb-brand">
       <span class="sb-mark"><UiIcon name="infinity" :size="14" /></span>
       <div class="sb-name"><b>完整控制台</b><span class="mono">CONSOLE</span></div>
     </div>
+    <!-- 导航标题。Navigation heading. -->
     <span class="sb-eyebrow mono">导航</span>
+    <!-- 标签页导航列表。Tab navigation list. -->
     <UiNavItem
       v-for="t in CONSOLE_TABS"
       :key="t.key"
@@ -13,10 +17,12 @@
       :active="active === t.key"
       @click="emit('select', t.key)"
     />
+    <!-- 语音唤醒状态底栏。Voice wake status footer. -->
     <div class="sb-foot">
       <UiStatusDot :color="wakeEnabled ? '#34d399' : '#64748b'" :size="7" :glow="wakeEnabled ? 8 : 0" />
       <div class="sb-foot-txt">
         <b>{{ wakeEnabled ? '语音唤醒已开启' : '语音唤醒未开启' }}</b>
+        <!-- 双击悬浮球切换语音唤醒。Double-click the floating ball to toggle voice wake. -->
         <span class="mono">双击悬浮球切换</span>
       </div>
     </div>
@@ -24,10 +30,16 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 控制台侧边栏组件，包含品牌标识、标签页导航和语音唤醒状态显示。
+ * Console sidebar component, contains brand identity, tab navigation and voice wake status display.
+ */
 import { CONSOLE_TABS, type ConsoleTabKey } from '../../composables/useConsole'
 import { UiIcon, UiNavItem, UiStatusDot } from '../ui'
 
+/** 属性：当前激活标签页和语音唤醒开关状态。Props: currently active tab key and voice wake toggle state. */
 defineProps<{ active: ConsoleTabKey; wakeEnabled: boolean }>()
+/** 事件：选择标签页。Event: select a tab. */
 const emit = defineEmits<{ select: [key: ConsoleTabKey] }>()
 </script>
 

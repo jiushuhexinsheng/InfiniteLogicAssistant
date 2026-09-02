@@ -6,8 +6,10 @@
   </button>
 </template>
 
+<!-- 侧边栏导航项组件，支持图标、激活高亮和徽章计数。Sidebar navigation item with icon, active highlight, and badge count. -->
 <script setup lang="ts">
 import UiIcon from './UiIcon.vue'
+/** 导航项 Props：标签文本/图标名称/是否激活/徽章内容(数字或文字)；Emits `click`。NavItem props: label, icon name, active state, badge content (number or text); emits `click`. */
 withDefaults(defineProps<{ label?: string; icon?: string; active?: boolean; badge?: string | number }>(), { label: '', icon: '', active: false, badge: undefined })
 defineEmits<{ click: [] }>()
 </script>

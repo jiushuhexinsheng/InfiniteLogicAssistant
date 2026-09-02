@@ -1,8 +1,11 @@
+<!-- 启动页面模板 / Start page template -->
 <template>
   <div class="page">
+    <!-- 应用头部组件 / App header component -->
     <AppHeader />
 
     <main class="hero">
+      <!-- 光球动画区域 / Orb animation area -->
       <div class="orb-wrap">
         <div class="orb" :class="asst.state.value">
           <span class="orb-halo"></span>
@@ -17,9 +20,11 @@
         </div>
       </div>
 
+      <!-- 页面标题 / Page title -->
       <h1 class="title">无限逻辑</h1>
       <p class="subtitle">说「{{ asst.wakeKeyword.value }}」唤醒 · 或直接输入文字开聊</p>
 
+      <!-- 操作按钮区域 / Action buttons area -->
       <div class="actions">
         <UiButton variant="primary" @click="asst.expanded.value = true">
           <UiIcon name="messages-square" :size="16" /> 开始对话
@@ -31,7 +36,9 @@
         <UiButton variant="ghost" @click="scrollToTts"><UiIcon name="settings" :size="15" /> 语音设置</UiButton>
       </div>
 
+      <!-- 状态卡片区域 / Status cards area -->
       <div class="cards">
+        <!-- 实时状态卡片 / Real-time status card -->
         <UiCard class="start-card" title="实时状态">
           <div class="status-row">
             <div class="live">
@@ -52,11 +59,13 @@
           <p v-if="asst.statusLine.value" class="status-detail">{{ asst.statusLine.value }}</p>
         </UiCard>
 
+        <!-- 语音设置卡片 / Voice settings card -->
         <UiCard class="start-card tts-card" title="语音设置">
           <TtsMini />
         </UiCard>
       </div>
 
+      <!-- 功能特性区域 / Features area -->
       <div class="features">
         <UiCard v-for="f in features" :key="f.title" class="feature" hover>
           <span class="feature-ic"><UiIcon :name="f.icon" :size="18" /></span>
@@ -64,12 +73,18 @@
         </UiCard>
       </div>
 
+      <!-- 页面页脚 / Page footer -->
       <footer class="page-footer mono">无限逻辑 · 本地优先 AI 助手 — v2.4</footer>
     </main>
   </div>
 </template>
 
+<!-- 启动页面脚本 / Start page script -->
 <script setup lang="ts">
+/**
+ * 启动页面组件 - 展示应用状态、功能特性和语音设置
+ * Start page component - displays application status, features, and voice settings
+ */
 import { computed, onMounted, ref } from 'vue'
 import { useAssistant } from '../composables/useAssistant'
 import { useConfig } from '../composables/useApi'
@@ -78,13 +93,19 @@ import { UiButton, UiCard, UiChip, UiIcon, UiStatusDot } from '../components/ui'
 import AppHeader from '../components/layout/AppHeader.vue'
 import TtsMini from '../components/assistant/TtsMini.vue'
 
+/** 获取助手实例 / Get assistant instance */
 const asst = useAssistant()
+/** 获取应用配置 / Get application config */
 const app = useConfig()
 
+/** 应用配置计算属性 / Application config computed property */
 const cfg = computed(() => app.config.value)
+/** 后端连接状态 / Backend connection status */
 const pingOk = ref(false)
+/** 后端延迟（毫秒） / Backend latency in milliseconds */
 const pingMs = ref<number | null>(null)
 
+/** 功能特性列表 / Features list */
 const features = [
   { icon: 'sparkles', title: '灵感对话', desc: '自然语言直达任务，不必记指令' },
   { icon: 'mic', title: '语音控制', desc: '一句话完成查询、调度与操作' },
@@ -92,10 +113,18 @@ const features = [
   { icon: 'wrench', title: '工具调用', desc: '挂载 MCP 与系统能力' },
 ]
 
+/**
+ * 滚动到语音设置卡片
+ * Scroll to voice settings card
+ */
 function scrollToTts() {
   document.querySelector('.tts-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
+/**
+ * 检查后端连接延迟
+ * Check backend connection latency
+ */
 async function checkPing() {
   try {
     const t0 = performance.now()
@@ -108,6 +137,7 @@ async function checkPing() {
   }
 }
 
+/** 组件挂载时初始化配置并检查后端连接 / Initialize config and check backend connection on mount */
 onMounted(async () => {
   if (!app.config.value) await app.initConfig()
   checkPing()
@@ -124,6 +154,7 @@ onMounted(async () => {
 }
 
 /* ── 光球 ── */
+/* ── Orb ── */
 .orb-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .orb { position: relative; width: 116px; height: 116px; border-radius: 50%; background: var(--brand-grad); display: grid; place-items: center; box-shadow: var(--glow-brand); }
 .orb-halo {
@@ -156,6 +187,7 @@ onMounted(async () => {
 }
 
 /* ── 标题 ── */
+/* ── Title ── */
 .title {
   font-size: clamp(2.2rem, 6vw, 3rem); font-weight: 800; letter-spacing: .12em; margin: 0;
   background: linear-gradient(135deg, #c7d2fe 0%, #67e8f9 50%, #6ee7b7 100%);
@@ -165,9 +197,11 @@ onMounted(async () => {
 .subtitle { font-size: var(--fs-lg); color: var(--text-2); letter-spacing: .05em; margin: 0; }
 
 /* ── 操作按钮 ── */
+/* ── Action Buttons ── */
 .actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; padding-top: 2px; }
 
 /* ── 卡片行 ── */
+/* ── Card Row ── */
 .cards { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; width: 100%; padding-top: 4px; }
 .start-card { flex: 1 1 440px; max-width: 500px; min-width: 320px; }
 .status-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
@@ -179,9 +213,11 @@ onMounted(async () => {
 .status-detail { font-size: var(--fs-xs); color: var(--err); text-align: center; margin-top: 8px; }
 
 /* ── 语音设置 ── */
+/* ── Voice Settings ── */
 
 
 /* ── 特性 ── */
+/* ── Features ── */
 .features {
   width: 100%; max-width: 880px;
   display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;
@@ -198,9 +234,11 @@ onMounted(async () => {
 .feature p { font-size: var(--fs-xs); color: var(--text-3); line-height: 1.55; margin: 0; }
 
 /* ── 页脚 ── */
+/* ── Footer ── */
 .page-footer { text-align: center; font-size: var(--fs-2xs); color: var(--text-3); letter-spacing: .08em; padding: 2px 0 14px; }
 
 /* ── 入场动效 ── */
+/* ── Entrance Animation ── */
 .orb-wrap, .title, .subtitle, .actions, .cards, .features {
   animation: rise-in .6s var(--ease-out) both;
 }

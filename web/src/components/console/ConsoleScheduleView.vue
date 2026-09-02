@@ -1,5 +1,6 @@
 <template>
   <div class="console-schedule">
+    <!-- 定时任务注册表单：输入 cron 表达式和执行内容。Schedule registration form: input cron expression and prompt content. -->
     <UiCard title="注册定时任务" class="sched-form">
       <div class="form-row">
         <UiInput v-model="cron" placeholder="cron 5段，如 0 9 * * *" class="cron-input" />
@@ -8,6 +9,7 @@
       </div>
     </UiCard>
 
+    <!-- 定时任务列表：展示每条任务的 cron 表达式和执行内容，支持删除。Schedule list: shows cron expression and prompt for each task, with delete support. -->
     <div v-if="!list.length && !loading" class="console-empty">暂无定时任务</div>
     <UiCard v-for="s in list" :key="s.id" class="sched-item">
       <div class="sched-line">
@@ -24,11 +26,16 @@ import { onMounted, ref } from 'vue'
 import { api, type ScheduleItem } from '../../api'
 import { UiButton, UiCard, UiInput } from '../ui'
 
+/** cron 表达式输入。Cron expression input. */
 const cron = ref('')
+/** 定时执行的 prompt 内容。Scheduled prompt content. */
 const prompt = ref('')
+/** 定时任务列表。Schedule items list. */
 const list = ref<ScheduleItem[]>([])
+/** 加载状态标志。Loading state flag. */
 const loading = ref(false)
 
+/** 从后端拉取定时任务列表。Fetch schedule list from backend. */
 async function load() {
   loading.value = true
   try {
@@ -41,6 +48,7 @@ async function load() {
   }
 }
 
+/** 注册新的定时任务并刷新列表。Register a new scheduled task and refresh the list. */
 async function add() {
   if (!cron.value.trim() || !prompt.value.trim()) return
   try {
@@ -53,6 +61,7 @@ async function add() {
   }
 }
 
+/** 删除定时任务并刷新列表。Delete a scheduled task and refresh the list. */
 async function remove(sid: string) {
   try {
     await api.deleteSchedule(sid)

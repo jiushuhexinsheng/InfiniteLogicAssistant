@@ -1,4 +1,7 @@
-// 通用 UI 原语统一出口
+/**
+ * 通用 UI 原语统一出口，集中导出所有基础 UI 组件。
+ * Centralized barrel export for all base UI primitives.
+ */
 export { default as UiButton } from './UiButton.vue'
 export { default as UiIcon } from './UiIcon.vue'
 export { default as UiChip } from './UiChip.vue'
