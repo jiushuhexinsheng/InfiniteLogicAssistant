@@ -4,6 +4,12 @@
 pipeline / executor / voice 用这些模型构造事件 dict（`model_dump()`），
 结构经 /api/voice/utter SSE 序列化；前端在 web/src/types.ts 手写对应类型
 （SSE 不走 openapi，无法 openapi-typescript 自动生成）。
+
+Orchestration SSE events — a typed event contract. pipeline / executor / voice
+build event dicts with these models (`model_dump()`); the structure is serialized
+over the /api/voice/utter SSE stream; the frontend hand-writes matching types in
+web/src/types.ts (SSE does not go through openapi, so openapi-typescript cannot
+generate them).
 """
 from typing import Any, Literal
 
@@ -11,13 +17,25 @@ from pydantic import BaseModel
 
 
 class _BaseEvent(BaseModel):
+    """SSE 事件基类：提供统一的 emit() 序列化。
+
+    Base class for SSE events: provides the unified emit() serialization.
+    """
+
     def emit(self) -> dict:
-        """事件 dict（剔除 None 默认字段，保持与历史事件结构一致）。"""
+        """事件 dict（剔除 None 默认字段，保持与历史事件结构一致）。
+
+        Event dict (dropping None default fields to stay consistent with the
+        historical event structure).
+        """
         return self.model_dump(exclude_none=True)
 
 
 class TaskStateEvent(_BaseEvent):
-    """状态流转：understanding / notify / done。"""
+    """状态流转：understanding / notify / done。
+
+    State transition: understanding / notify / done.
+    """
 
     type: Literal["task_state"] = "task_state"
     state: str
@@ -29,27 +47,37 @@ class TaskStateEvent(_BaseEvent):
 
 
 class ContentDeltaEvent(_BaseEvent):
+    """内容增量事件（SSE：content_delta）。Content delta event (SSE: content_delta)."""
+
     type: Literal["content_delta"] = "content_delta"
     text: str
 
 
 class ReasoningDeltaEvent(_BaseEvent):
+    """推理增量事件（SSE：reasoning_delta）。Reasoning delta event (SSE: reasoning_delta)."""
+
     type: Literal["reasoning_delta"] = "reasoning_delta"
     text: str
 
 
 class UsageEvent(_BaseEvent):
+    """用量事件（SSE：usage）。Usage event (SSE: usage)."""
+
     type: Literal["usage"] = "usage"
     usage: dict[str, Any] = {}    # OpenAI 风格 {prompt_tokens, completion_tokens, total_tokens}
 
 
 class ToolStartEvent(_BaseEvent):
+    """工具调用开始事件（SSE：tool_start）。Tool start event (SSE: tool_start)."""
+
     type: Literal["tool_start"] = "tool_start"
     name: str
     args: dict[str, Any] = {}
 
 
 class ToolEndEvent(_BaseEvent):
+    """工具调用结束事件（SSE：tool_end）。Tool end event (SSE: tool_end)."""
+
     type: Literal["tool_end"] = "tool_end"
     name: str
     status: str
@@ -57,7 +85,11 @@ class ToolEndEvent(_BaseEvent):
 
 
 class QuestionEvent(_BaseEvent):
-    """澄清/确认问题：前端回答走 POST /api/voice/answer。"""
+    """澄清/确认问题：前端回答走 POST /api/voice/answer。
+
+    Clarification/confirmation question: the frontend answers via POST
+    /api/voice/answer.
+    """
 
     type: Literal["question"] = "question"
     question: str
@@ -65,9 +97,13 @@ class QuestionEvent(_BaseEvent):
 
 
 class ErrorEvent(_BaseEvent):
+    """错误事件（SSE：error）。Error event (SSE: error)."""
+
     type: Literal["error"] = "error"
     message: str
 
 
 class DoneEvent(_BaseEvent):
+    """结束事件（SSE：done）。Done event (SSE: done)."""
+
     type: Literal["done"] = "done"

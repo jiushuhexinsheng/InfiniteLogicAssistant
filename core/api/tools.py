@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""tools 域 API — 工具清单 / 单工具执行"""
+"""tools 域 API — 工具清单 / 单工具执行
+
+tools domain API — tool listing / single-tool invocation
+"""
 import json
 
 from fastapi import APIRouter, Request
@@ -14,12 +17,28 @@ router = APIRouter()
 
 @router.get("/tools", response_model=ToolsResponse)
 async def tools_list():
-    """工具清单：后端 @tool 注册中心的 OpenAI schema 数组（供控制台展示）。"""
+    """工具清单：后端 @tool 注册中心的 OpenAI schema 数组（供控制台展示）。
+
+    Tool listing: OpenAI schemas from the backend @tool registry (for console display).
+    """
     return {"ok": True, "tools": TOOLS.schemas()}
 
 
 @router.post("/tools/call", response_model=ToolCallResponse)
 async def tools_call(request: Request):
+    """执行单个工具：校验 name/args、非 read 工具需显式确认、返回执行输出。
+
+    Invoke a single tool: validate name/args, require explicit confirmation for
+    non-read tools, and return the execution output.
+
+    Args:
+        request: FastAPI 请求，JSON 体为 {name, args, confirm?}。The FastAPI request
+            with a JSON body of {name, args, confirm?}.
+
+    Returns:
+        执行结果 {ok, status, output}，或错误 JSONResponse。The execution result
+        {ok, status, output}, or an error JSONResponse.
+    """
     body = await request.body()
     try:
         params = json.loads(body.decode("utf-8")) if body else {}

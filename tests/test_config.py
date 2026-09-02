@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""core/config.py — 密钥优先级 / 新字段 / 设置快照"""
+"""core/config.py — 密钥优先级 / 新字段 / 设置快照。
+Tests core/config.py — API key priority, new fields, and the settings snapshot.
+"""
 import pytest
 
 import core.config as c
@@ -12,6 +14,7 @@ def _mk_profile(**kw) -> dict:
 # ─── _profile_api_key 优先级 ───
 
 def test_profile_api_key_env_priority(monkeypatch):
+    """验证 profile.api_key_env 指向的环境变量优先于段全局环境变量。Verifies the env var pointed to by profile.api_key_env takes priority over the section-level global env var."""
     monkeypatch.setenv("LLM_API_KEY", "global")
     monkeypatch.setenv("DEEPSEEK_API_KEY", "specific")
     secrets = {"llm": {"api_key": "sec_default", "profiles": {}}}
@@ -22,6 +25,7 @@ def test_profile_api_key_env_priority(monkeypatch):
 
 
 def test_profile_api_key_secrets_fallback(monkeypatch):
+    """验证无环境变量时按 secrets.profiles 再到段默认值回退。Verifies the fallback from secrets.profiles to the section default when no env var is set."""
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     secrets = {"llm": {"api_key": "sec_default", "profiles": {"deepseek": "sec_ds"}}}
     # secrets.profiles[name] > secrets 段默认
@@ -30,7 +34,9 @@ def test_profile_api_key_secrets_fallback(monkeypatch):
 
 
 def test_inject_secrets_server_token():
-    """server.api_token 从 secrets 注入（防回归：曾因插入函数悬空成死代码）。"""
+    """server.api_token 从 secrets 注入（防回归：曾因插入函数悬空成死代码）。
+    Verifies server.api_token is injected from secrets (regression guard: it was once dead code because an inserted function dangled).
+    """
     secrets = {
         "llm": {"api_key": "", "profiles": {}}, "asr": {"api_key": "", "profiles": {}},
         "tts": {"api_key": "", "profiles": {}}, "server": {"api_token": "tok"},
@@ -44,7 +50,9 @@ def test_inject_secrets_asr_tts_under_voice(monkeypatch):
     """asr/tts 密钥嵌在 voice 段下也必须注入。
 
     曾只找顶层 data['asr']/data['tts']，而 config.yaml 把它们放在 voice 下，
-    导致 ASR/TTS 密钥永远为空（写入 secrets 也不生效 → 401）。"""
+    导致 ASR/TTS 密钥永远为空（写入 secrets 也不生效 → 401）。
+    Verifies ASR/TTS keys nested under the voice section are still injected; previously only top-level data['asr']/data['tts'] were checked, leaving the keys empty (401).
+    """
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     monkeypatch.delenv("MIMO_API_KEY", raising=False)
     monkeypatch.delenv("ASR_API_KEY", raising=False)
@@ -71,6 +79,7 @@ def test_inject_secrets_asr_tts_under_voice(monkeypatch):
 
 
 def test_profile_api_key_legacy_warns(monkeypatch, capsys):
+    """验证旧式 ${ENV} 写法被弃用并输出迁移提示。Verifies the legacy ${ENV} syntax is deprecated and prints a migration notice."""
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     secrets = {"llm": {"api_key": "", "profiles": {}}}
     assert c._profile_api_key("llm", "deepseek", secrets, _mk_profile(api_key="${LLM_API_KEY}")) == ""
@@ -80,6 +89,7 @@ def test_profile_api_key_legacy_warns(monkeypatch, capsys):
 # ─── Settings 接受新字段 ───
 
 def test_settings_accepts_vendor_presets_and_failover():
+    """验证 Settings 接受 vendor_presets 与 models_failover 新字段。Verifies Settings accepts the new vendor_presets and models_failover fields."""
     s = c.Settings(
         vendor_presets={"myllm": c.VendorPreset(kind="llm", label="我的", endpoint="https://x", chat_path="/v1/chat/completions")},
         agent=c.AgentSection(models_failover=["model-b"]),
@@ -89,6 +99,7 @@ def test_settings_accepts_vendor_presets_and_failover():
 
 
 def test_profile_accepts_vendor_models_compat_api_key_env():
+    """验证 LlmProfile 接受 vendor/models/compat/api_key_env 字段。Verifies LlmProfile accepts the vendor, models, compat, and api_key_env fields."""
     prof = c.LlmProfile(
         vendor="deepseek", api_key_env="DEEPSEEK_API_KEY",
         models=["deepseek-chat"], models_path="/v1/models",
@@ -100,6 +111,7 @@ def test_profile_accepts_vendor_models_compat_api_key_env():
 
 
 def test_compat_defaults_preserve_behavior():
+    """验证 CompatConfig 默认值保持原有行为。Verifies CompatConfig defaults preserve the original behavior."""
     assert c.CompatConfig().stream_options is True
     assert c.CompatConfig().max_tokens_field == "max_tokens"
 
@@ -107,6 +119,7 @@ def test_compat_defaults_preserve_behavior():
 # ─── editable_snapshot：剥 api_key，留新字段 ───
 
 def test_editable_snapshot_keeps_new_fields_strips_key(monkeypatch):
+    """验证设置快照保留新字段并剥离 api_key。Verifies the editable snapshot keeps new fields and strips the api_key."""
     settings = c.Settings(llm=c.LlmSection(profiles={
         "ds": c.LlmProfile(vendor="deepseek", api_key_env="DEEPSEEK_API_KEY",
                            models=["deepseek-chat"], compat={"stream_options": False}, api_key="SECRET"),

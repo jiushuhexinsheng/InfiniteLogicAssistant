@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+"""RAG 索引与检索（core.rag）的测试。
+Tests for RAG indexing and retrieval (core.rag).
+"""
 import pytest
 
 from core import rag as rag_mod
@@ -8,6 +11,7 @@ from core.rag.retriever import rag_context, retrieve
 
 @pytest.mark.asyncio
 async def test_index_and_retrieve(tmp_path, monkeypatch):
+    """测试索引后可按关键词检索命中内容。Tests retrieval hitting indexed content by keyword."""
     monkeypatch.setattr(rag_mod, "INDEX_DB", tmp_path / "index.db")
     src = tmp_path / "env.md"
     src.write_text(
@@ -23,6 +27,7 @@ async def test_index_and_retrieve(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_rag_context_joins_topk(tmp_path, monkeypatch):
+    """测试 rag_context 拼接 top-k 片段生成上下文。Tests rag_context joining top-k chunks into a context."""
     monkeypatch.setattr(rag_mod, "INDEX_DB", tmp_path / "index.db")
     src = tmp_path / "a.md"
     src.write_text("## 系统\n\nPython 版本 3.14", encoding="utf-8")
@@ -33,12 +38,14 @@ async def test_rag_context_joins_topk(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_retrieve_empty_db(tmp_path, monkeypatch):
+    """测试空数据库检索返回空列表。Tests retrieval on an empty database returning an empty list."""
     monkeypatch.setattr(rag_mod, "INDEX_DB", tmp_path / "empty.db")
     assert await retrieve("anything") == []
 
 
 @pytest.mark.asyncio
 async def test_index_sources_hermetic_index_db(tmp_path):
+    """测试 index_sources 使用指定 index_db 建库（隔离测试）。Tests index_sources building a hermetic index database."""
     src = tmp_path / "src.md"
     src.write_text("## 主题\n\n内容", encoding="utf-8")
     db = tmp_path / "hermetic.db"
@@ -54,6 +61,7 @@ async def test_index_sources_hermetic_index_db(tmp_path):
 
 @pytest.mark.asyncio
 async def test_maybe_rebuild_missing_db(tmp_path, monkeypatch):
+    """测试索引缺失时 maybe_rebuild_index 自动重建。Tests maybe_rebuild_index rebuilding when the index is missing."""
     from core.rag import maybe_rebuild_index
     import core.rag as rag_mod
     src = tmp_path / "env.md"
@@ -68,6 +76,7 @@ async def test_maybe_rebuild_missing_db(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_maybe_rebuild_when_stale(tmp_path, monkeypatch):
+    """测试源文件变更后 maybe_rebuild_index 重建索引。Tests maybe_rebuild_index rebuilding after source files change."""
     import os
     import time
     from core.rag import maybe_rebuild_index
@@ -86,7 +95,9 @@ async def test_maybe_rebuild_when_stale(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_index_stores_terms(tmp_path):
-    """索引期应预计算并存储分词结果（避免检索时全量重分词）"""
+    """索引期应预计算并存储分词结果（避免检索时全量重分词）。
+    The indexer should precompute and store tokenization results to avoid re-tokenizing during retrieval.
+    """
     src = tmp_path / "src.md"
     src.write_text("## 主题\n\nPython 版本 3.14 与 磁盘 检查", encoding="utf-8")
     db = tmp_path / "index.db"
@@ -105,7 +116,9 @@ async def test_index_stores_terms(tmp_path):
 
 @pytest.mark.asyncio
 async def test_retrieve_legacy_db_without_terms(tmp_path, monkeypatch):
-    """旧索引（无 chunk_terms 表）仍可检索（向后兼容）"""
+    """旧索引（无 chunk_terms 表）仍可检索（向后兼容）。
+    Legacy indexes without a chunk_terms table remain searchable (backward compatibility).
+    """
     import sqlite3
     import core.rag as rag_mod
     db = tmp_path / "legacy.db"
@@ -123,6 +136,7 @@ async def test_retrieve_legacy_db_without_terms(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_bm25_ranks_relevant_higher(tmp_path, monkeypatch):
+    """测试 BM25 将命中更多查询词的片段排在前面。Tests BM25 ranking chunks matching more query terms first."""
     import core.rag as rag_mod
     db = tmp_path / "index.db"
     monkeypatch.setattr(rag_mod, "INDEX_DB", db)
@@ -138,6 +152,7 @@ async def test_bm25_ranks_relevant_higher(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_maybe_rebuild_skips_fresh(tmp_path):
+    """测试源文件未变化时 maybe_rebuild_index 跳过重建。Tests maybe_rebuild_index skipping rebuild when sources are unchanged."""
     from core.rag import maybe_rebuild_index
     src = tmp_path / "env.md"
     src.write_text("## 系统\n\nPython 3.14", encoding="utf-8")

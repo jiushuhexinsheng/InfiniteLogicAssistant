@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
-"""配置校验 — Settings 强类型加载后的语义检查（detection 域）
+"""配置校验 — Settings 强类型加载后的语义检查（detection 域）。Config validation — semantic checks after strong-typed Settings loading (detection domain).
 
 pydantic 已保证类型/范围/枚举；这里做跨字段规则：
+pydantic already guarantees types/ranges/enums; here we enforce cross-field rules:
 非 localhost 绑定必须 token、profile 缺失 / 未配密钥等。
+non-localhost binds require a token, missing profiles / unset API keys, etc.
 """
 from dataclasses import dataclass, field
 from typing import Any
@@ -14,25 +16,31 @@ _LOCALHOST = ("", "127.0.0.1", "localhost", "::1")
 
 @dataclass
 class Issue:
+    """一条配置问题记录。A single configuration issue record."""
+
     level: str  # error / warning / info
     key: str
     message: str
 
     def as_dict(self) -> dict:
+        """转为可序列化字典。Convert to a serializable dict."""
         return {"level": self.level, "key": self.key, "message": self.message}
 
 
 @dataclass
 class ConfigHealth:
+    """配置健康度汇总。Aggregated configuration health summary."""
+
     ok: bool
     issues: list[Issue] = field(default_factory=list)
 
     def as_dict(self) -> dict:
+        """转为可序列化字典（含每条问题）。Convert to a serializable dict (including each issue)."""
         return {"ok": self.ok, "issues": [i.as_dict() for i in self.issues]}
 
 
 def _active_profile(section: Any) -> tuple[str, Any] | None:
-    """返回 (profile_name, profile)；无 profile 返回 None。"""
+    """返回 (profile_name, profile)；无 profile 返回 None。Return (profile_name, profile); None if there is no profile."""
     if not section.profiles:
         return None
     active = section.active or next(iter(section.profiles))
@@ -42,6 +50,7 @@ def _active_profile(section: Any) -> tuple[str, Any] | None:
 
 
 def validate(settings: Settings) -> ConfigHealth:
+    """执行配置语义校验并汇总问题。Run semantic config validation and aggregate issues."""
     issues: list[Issue] = []
 
     # server：非 localhost 绑定必须 api_token（否则拒绝启动）

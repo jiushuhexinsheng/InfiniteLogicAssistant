@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+"""管道（EventQueueChannel / run_pipeline）的测试。
+Tests for the pipeline (EventQueueChannel / run_pipeline).
+"""
 import asyncio
 
 import pytest
@@ -7,7 +10,7 @@ from core.orchestrator.pipeline import EventQueueChannel
 
 
 class _FakeLLMClient:
-    """模拟 LlmClient.retry_stream_chat；check 可选，用于断言收到的 messages。"""
+    """模拟 LlmClient.retry_stream_chat；check 可选，用于断言收到的 messages。Simulates LlmClient.retry_stream_chat; check is optional for asserting the received messages."""
 
     def __init__(self, events=None, check=None):
         self.events = events or [
@@ -16,7 +19,7 @@ class _FakeLLMClient:
         ]
         self.check = check
 
-    async def retry_stream_chat(self, messages, tools=None, *, profile=None):
+    async def retry_stream_chat(self, messages, tools=None, *, profile=None, **kwargs):
         if self.check:
             self.check(messages)
         for e in self.events:
@@ -25,6 +28,7 @@ class _FakeLLMClient:
 
 @pytest.mark.asyncio
 async def test_channel_ask_blocks_until_answer():
+    """ask 阻塞直到收到回答。ask blocks until an answer arrives."""
     events: asyncio.Queue = asyncio.Queue()
     ch = EventQueueChannel(events, session_id="s1")
 
@@ -43,6 +47,7 @@ async def test_channel_ask_blocks_until_answer():
 
 @pytest.mark.asyncio
 async def test_channel_notify_puts_event():
+    """notify 向事件队列写入通知事件。notify puts a notification event into the queue."""
     events: asyncio.Queue = asyncio.Queue()
     ch = EventQueueChannel(events, session_id="s1")
     await ch.notify("开始执行")
@@ -51,6 +56,7 @@ async def test_channel_notify_puts_event():
 
 @pytest.mark.asyncio
 async def test_chit_chat_records_assistant_reply(monkeypatch):
+    """闲聊回复记录进会话历史。Chit-chat replies are recorded into the session history."""
     from core.orchestrator.pipeline import run_pipeline
     from core.orchestrator.control import StopController
     from core.orchestrator.session import Session
@@ -70,6 +76,7 @@ async def test_chit_chat_records_assistant_reply(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_run_pipeline_seeds_messages(monkeypatch):
+    """管道把多轮历史与当前输入一起喂给 LLM。The pipeline seeds the LLM with multi-turn history plus the current input."""
     from core.orchestrator.pipeline import run_pipeline
     from core.orchestrator.control import StopController
     from core.orchestrator.session import Session

@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""voice 域 API — 配置 / TTS / ASR 转写 / 编排 SSE 入口（唯一 agent 路径）"""
+"""voice 域 API — 配置 / TTS / ASR 转写 / 编排 SSE 入口（唯一 agent 路径）
+
+voice domain API — config / TTS / ASR transcription / orchestration SSE entry
+(the only agent path)
+"""
 import asyncio
 import json
 
@@ -16,17 +20,42 @@ router = APIRouter()
 
 
 def _sse(payload: dict) -> str:
+    """把事件 dict 编码为一条 SSE 消息（data: <json>\\n\\n）。
+
+    Encode an event dict into a single SSE message (data: <json>\\n\\n).
+
+    Args:
+        payload: 事件数据。The event data.
+
+    Returns:
+        SSE 格式字符串。The SSE-formatted string.
+    """
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
 @router.get("/ping", response_model=PingResponse)
 async def ping():
+    """心跳：返回当前服务器时间。
+
+    Heartbeat: return the current server time.
+
+    Returns:
+        {"ok": True, "time": ISO 时间戳}。{"ok": True, "time": ISO timestamp}.
+    """
     from datetime import datetime
     return {"ok": True, "time": datetime.now().isoformat()}
 
 
 @router.get("/config", response_model=ConfigResponse)
 async def config_endpoint():
+    """返回前端启动所需的语音/模型配置快照（可用性 + 当前 profile + 语音参数）。
+
+    Return the voice/model config snapshot needed by the frontend on startup
+    (availability + current profile + voice parameters).
+
+    Returns:
+        配置字典。The config dict.
+    """
     return {
         "llm_available": config.is_llm_configured(),
         "llm_profile": config.resolve_llm_profile()[0],
@@ -46,6 +75,10 @@ async def tts_synthesize(request: Request):
     """文本转语音：调后端配置的 OpenAI 兼容 TTS 端点，返回音频字节。
 
     请求体：{"text": "...", "voice": "可选，缺省用配置里的 voice"}
+
+    Text-to-speech: call the backend-configured OpenAI-compatible TTS endpoint and
+    return the audio bytes. Request body: {"text": "...", "voice": "optional,
+    defaults to the voice from config"}
     """
     body = await request.body()
     try:
@@ -76,6 +109,17 @@ async def tts_synthesize(request: Request):
 
 @router.post("/voice/transcribe", response_model=TextResponse)
 async def voice_transcribe(request: Request):
+    """语音转写：接收 base64 音频 → 返回识别文本。
+
+    ASR transcription: accept base64 audio and return the recognized text.
+
+    Args:
+        request: FastAPI 请求，JSON 体含 audio_base64。The FastAPI request with
+            audio_base64 in the JSON body.
+
+    Returns:
+        {"ok": True, "text": ...}，或错误响应。{"ok": True, "text": ...}, or an error response.
+    """
     from core.voice import get_asr
     asr = get_asr()
     if not asr.available():
@@ -100,6 +144,12 @@ async def voice_utter(request: Request):
     事件：task_state / content_delta / question / error / done。
     question 事件后需操作者回答：POST /api/voice/answer {session_id, text}。
     请求体可带 session_id：续接已有会话（加载其历史作为多轮种子）。
+
+    Orchestration entry: text (post-ASR or typed input) → SSE event stream. Events:
+    task_state / content_delta / question / error / done. After a question event the
+    operator must answer via POST /api/voice/answer {session_id, text}. The request
+    body may carry session_id to resume an existing session (loading its history as
+    the multi-turn seed).
     """
     from core.orchestrator.control import StopController
     from core.orchestrator.pipeline import run_pipeline
@@ -139,6 +189,11 @@ async def voice_utter(request: Request):
     runner = asyncio.ensure_future(run_pipeline(text, session, events, controller, messages=messages))
 
     async def event_stream():
+        """SSE 事件流生成器：转发队列事件，处理 runner 异常兜底并做收尾清理。
+
+        SSE event stream generator: forward queued events, fall back on runner
+        exceptions, and do final cleanup.
+        """
         getter = asyncio.ensure_future(events.get())
         try:
             while True:
@@ -170,7 +225,11 @@ async def voice_utter(request: Request):
 
 @router.post("/voice/answer", response_model=ApiResponse)
 async def voice_answer(request: Request):
-    """投递操作者对澄清/确认问题的回答，解除 pipeline 的 ask() 阻塞。"""
+    """投递操作者对澄清/确认问题的回答，解除 pipeline 的 ask() 阻塞。
+
+    Deliver the operator's answer to a clarification/confirmation question,
+    unblocking the pipeline's ask().
+    """
     body = await request.body()
     try:
         params = json.loads(body.decode("utf-8")) if body else {}
@@ -186,7 +245,10 @@ async def voice_answer(request: Request):
 
 @router.post("/task/{session_id}/stop", response_model=AckResponse)
 async def task_stop(session_id: str):
-    """停止该会话的整个任务（CancellationToken → executor/子进程中止）。"""
+    """停止该会话的整个任务（CancellationToken → executor/子进程中止）。
+
+    Stop the whole task of the session (CancellationToken → executor/subprocess abort).
+    """
     ctrl = state.get_controller(session_id)
     if ctrl:
         ctrl.stop_task()

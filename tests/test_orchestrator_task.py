@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+"""任务形成（form_task）与澄清（run_clarify）的测试。
+Tests for task formation (form_task) and clarification (run_clarify).
+"""
 import json
 
 import pytest
@@ -25,10 +28,12 @@ def _done_with_form(goal, params, missing, risk) -> dict:
 
 
 class _FakeLLM:
+    """模拟 LLM 客户端，按脚本回放事件。Simulates an LLM client replaying scripted events."""
+
     def __init__(self, script):
         self.script = script
 
-    def retry_stream_chat(self, messages, tools=None):
+    def retry_stream_chat(self, messages, tools=None, **kwargs):
         async def gen():
             for evt in self.script.pop(0):
                 yield evt
@@ -37,6 +42,7 @@ class _FakeLLM:
 
 @pytest.mark.asyncio
 async def test_form_task(monkeypatch):
+    """从 LLM 的 form_task 调用形成任务。Forms a task from the LLM's form_task call."""
     fake = _FakeLLM([[_done_with_form("复制文件", {"src": "桌面readme.txt"}, ["复制到哪里？"], "write")]])
     monkeypatch.setattr("core.orchestrator.task.get_llm_client", lambda: fake)
     t = await form_task(IntentResult(type="task", summary="把桌面readme.txt复制到下载"))
@@ -49,6 +55,7 @@ async def test_form_task(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_run_clarify_asks_operator(monkeypatch):
+    """澄清流程向操作者提问并返回补齐的参数。Clarification asks the operator and returns the completed params."""
     class _Channel:
         def __init__(self, answers):
             self.answers = list(answers)
@@ -67,7 +74,7 @@ async def test_run_clarify_asks_operator(monkeypatch):
     ]
     calls = {"n": 0}
 
-    async def fake_form(intent):
+    async def fake_form(intent, confirmed=None):
         # script[0] 是初始任务，澄清内部的首次 form_task 应返回已解析的 script[1]
         t = script[min(calls["n"] + 1, len(script) - 1)]
         calls["n"] += 1
@@ -81,3 +88,30 @@ async def test_run_clarify_asks_operator(monkeypatch):
     params = await run_clarify(s, task)
     assert s.channel.asked == ["目标位置？"]
     assert params == {"src": "桌面readme.txt", "dest": "下载"}
+
+
+@pytest.mark.asyncio
+async def test_form_task_confirmed_keeps_goal_clean(monkeypatch):
+    """confirmed 作为结构化信息单独传入 user 消息，goal/summary 不被污染。confirmed is passed to the user message separately as structured info so goal/summary stay clean."""
+    captured = {}
+
+    class _Capture:
+        def retry_stream_chat(self, messages, tools=None, **kwargs):
+            captured["messages"] = messages
+
+            async def gen():
+                yield _done_with_form(
+                    "复制文件", {"src": "桌面readme.txt", "dest": "下载"}, [], "write",
+                )
+            return gen()
+
+    monkeypatch.setattr("core.orchestrator.task.get_llm_client", lambda: _Capture())
+    t = await form_task(
+        IntentResult(type="task", summary="把桌面readme.txt复制到下载"),
+        confirmed={"目标位置": "下载"},
+    )
+    user = captured["messages"][-1]["content"]
+    assert "把桌面readme.txt复制到下载" in user  # goal 保持干净
+    assert "已确认信息" in user                  # confirmed 单独呈现
+    assert t.goal == "复制文件"
+    assert t.params == {"src": "桌面readme.txt", "dest": "下载"}

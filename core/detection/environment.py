@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
-"""环境感知（detection 域）— 采集系统信息 → environment.md
+"""环境感知（detection 域）— 采集系统信息 → environment.md。Environment sensing (detection domain) — collects system info → environment.md.
 
 采集结果写入独立的 environment.md（人可读、可随时更新）；
+Collected results are written to a separate environment.md (human-readable, updatable anytime);
 agent 规划时把该文件（或其相关段）注入上下文，让工具参数贴合真实系统。
+during planning the agent injects this file (or its relevant sections) into context so tool parameters match the real system.
 （原 core/execution/envprobe.py，迁入检测域）
+(Originally core/execution/envprobe.py, moved into the detection domain)
 """
 import ctypes
 import os
@@ -27,6 +30,7 @@ _COMMON_TOOLS = [
 
 
 def _total_memory_gb() -> float:
+    """总内存（GB）。Get total physical memory in GB."""
     try:
         import psutil  # 可选：装了更准
         return round(psutil.virtual_memory().total / (1024 ** 3), 1)
@@ -56,6 +60,7 @@ def _total_memory_gb() -> float:
 
 
 def _disk_gb() -> dict:
+    """磁盘总容量与可用空间（GB）。Get total and free disk space in GB."""
     try:
         total, used, free = shutil.disk_usage("/")
         return {"total_gb": round(total / 2 ** 30, 1), "free_gb": round(free / 2 ** 30, 1)}
@@ -64,12 +69,14 @@ def _disk_gb() -> dict:
 
 
 def _shell() -> str:
+    """当前默认 Shell 路径。Get the current default shell path."""
     if sys.platform == "win32":
         return os.environ.get("COMSPEC", "cmd.exe")
     return os.environ.get("SHELL", "/bin/sh")
 
 
 def _software() -> dict:
+    """探测常用软件及版本（可执行文件 --version）。Probe common tools and their versions (executable --version)."""
     out: Dict[str, str] = {}
     for t in _COMMON_TOOLS:
         p = shutil.which(t)
@@ -85,6 +92,7 @@ def _software() -> dict:
 
 
 def _net_ok() -> bool:
+    """检查外网可达（TCP 8.8.8.8:53）。Check outbound network reachability (TCP 8.8.8.8:53)."""
     try:
         socket.setdefaulttimeout(3)
         socket.create_connection(("8.8.8.8", 53))
@@ -94,7 +102,7 @@ def _net_ok() -> bool:
 
 
 async def probe() -> Dict[str, Any]:
-    """采集系统信息（纯本地，无外部依赖）。"""
+    """采集系统信息（纯本地，无外部依赖）。Collect system information (purely local, no external dependencies)."""
     return {
         "os": f"{platform.system()} {platform.release()}",
         "hostname": socket.gethostname(),
@@ -111,11 +119,12 @@ async def probe() -> Dict[str, Any]:
 
 
 def _fmt_soft_line(name: str, val: str) -> str:
+    """格式化单条软件信息为 Markdown 列表行。Format a single software entry as a Markdown list line."""
     return f"- {name}: `{val}`"
 
 
 async def write_environment_md(data: Dict[str, Any], path: Path | None = None) -> Path:
-    """把采集结果写成结构化 Markdown 并落盘。"""
+    """把采集结果写成结构化 Markdown 并落盘。Write the collected results as structured Markdown to disk."""
     if path is None:
         path = ENVIRONMENT_MD
     disk = data.get("disk") or {}
@@ -157,7 +166,7 @@ async def write_environment_md(data: Dict[str, Any], path: Path | None = None) -
 
 
 async def read_environment_md() -> str:
-    """读取已生成的环境快照（未生成则先生成）。"""
+    """读取已生成的环境快照（未生成则先生成）。Read the generated environment snapshot (generate it first if missing)."""
     if not ENVIRONMENT_MD.exists():
         await write_environment_md(await probe())
     return ENVIRONMENT_MD.read_text(encoding="utf-8")

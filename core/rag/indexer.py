@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 """RAG 索引 — 把文本文件按标题/段落切块，写入 sqlite
+RAG indexer — chunks text files by heading/paragraph and writes them into sqlite.
 
 每个 chunk 同时把分词结果（terms）预计算进 chunk_terms 表，
 检索时只加载 terms 而不必全量重分词/加载全文（见 retriever.py）。
+For each chunk, the tokenized result (terms) is also precomputed into the chunk_terms table,
+so retrieval only loads terms without re-tokenizing or loading the full text (see retriever.py).
 """
 import re
 import sqlite3
@@ -17,6 +20,8 @@ _HEADING_RE = re.compile(r"^#{1,3} .*$")
 
 
 def _flush(buf: str, title: str, chunks: list[dict], path: str) -> None:
+    """把一段缓冲文本按空行分段落切块（超长段落再按 MAX_CHUNK 截断），追加进 chunks。
+    Splits a buffered text block into chunks by blank-line-separated paragraphs (long paragraphs are further truncated by MAX_CHUNK) and appends them to chunks."""
     for para in re.split(r"\n\s*\n", buf):
         para = para.strip()
         while len(para) > MAX_CHUNK:
@@ -27,6 +32,8 @@ def _flush(buf: str, title: str, chunks: list[dict], path: str) -> None:
 
 
 def _chunk_text(text: str, path: str) -> list[dict]:
+    """按 Markdown 标题（1-3 级）把全文切成带 section 标注的块列表。
+    Splits the full text by Markdown headings (levels 1-3) into a list of chunks annotated with their section."""
     parts = re.split(r"(?m)^(#{1,3} .*)$", text)
     chunks: list[dict] = []
     buf = ""
@@ -45,6 +52,8 @@ def _chunk_text(text: str, path: str) -> list[dict]:
 
 
 def _iter_files(src: Path):
+    """遍历文件或目录，产出可索引的文本类文件（.md/.txt/.py/.yaml/.yml/.json/.toml）。
+    Iterates a file or directory and yields indexable text-like files (.md/.txt/.py/.yaml/.yml/.json/.toml)."""
     if src.is_file():
         yield src
     elif src.is_dir():
@@ -55,9 +64,11 @@ def _iter_files(src: Path):
 
 async def index_sources(sources: list[Path], index_db: Path | None = None) -> int:
     """重建索引：把 sources（文件或目录）全部切块写入 sqlite，并预计算每块 terms。
+    Rebuilds the index: chunks all sources (files or directories) into sqlite and precomputes terms for each chunk.
 
     index_db 缺省用 rag_mod.INDEX_DB（动态读取，测试可 monkeypatch core.rag.INDEX_DB）。
-    返回写入的 chunk 数。
+    index_db defaults to rag_mod.INDEX_DB (read dynamically; tests may monkeypatch core.rag.INDEX_DB).
+    返回写入的 chunk 数。Returns the number of chunks written.
     """
     db = Path(index_db) if index_db is not None else Path(rag_mod.INDEX_DB)
     db.parent.mkdir(parents=True, exist_ok=True)

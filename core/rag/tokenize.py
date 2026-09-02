@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """RAG 分词 — 索引与检索共用的统一分词（保证两边 token 一致）
+RAG tokenization — unified tokenizer shared by indexing and retrieval (ensuring identical tokens on both sides).
 
 ASCII 词（≥2 字符）按整词；中文按字符二元组（无外部依赖的中文近似分词）。
+ASCII words (>=2 chars) are kept whole; Chinese is split into character bigrams (a dependency-free approximate Chinese tokenizer).
 """
 import re
 
@@ -9,7 +11,8 @@ TOKEN_RE = re.compile(r"[a-z0-9_]+|[一-鿿]+")
 
 
 def tokenize(text: str) -> list[str]:
-    """文本 → token 列表。空文本/无有效 token 返回 []。"""
+    """文本 → token 列表。空文本/无有效 token 返回 []。
+    Converts text into a token list. Returns [] for empty text or when no valid tokens are found."""
     tokens: list[str] = []
     for m in TOKEN_RE.findall(text.lower()):
         if not m:

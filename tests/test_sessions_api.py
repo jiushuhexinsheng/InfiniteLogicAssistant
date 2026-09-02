@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""会话管理 API 测试 — 新建 / 列表 / 重命名 / 删除"""
+"""会话管理 API 测试 — 新建 / 列表 / 重命名 / 删除。
+Session management API tests — create / list / rename / delete.
+"""
 import pytest
 from fastapi.testclient import TestClient
 
@@ -15,6 +17,7 @@ def client(tmp_path, monkeypatch):
 
 
 def test_sessions_crud(client):
+    """测试会话的完整增删改查流程。Tests the full CRUD flow for sessions."""
     # 新建（默认名）
     r = client.post("/api/sessions").json()
     assert r["ok"]
@@ -38,11 +41,13 @@ def test_sessions_crud(client):
 
 
 def test_sessions_create_with_name(client):
+    """测试创建会话时指定名称。Tests creating a session with a given name."""
     r = client.post("/api/sessions", json={"name": "命名会话"}).json()
     assert r["session"]["name"] == "命名会话"
 
 
 def test_sessions_rename_requires_name(client):
+    """测试重命名缺少 name 时返回 400。Tests renaming returning 400 when name is missing."""
     sid = client.post("/api/sessions").json()["session"]["id"]
     resp = client.patch(f"/api/sessions/{sid}", json={})
     assert resp.status_code == 400
@@ -52,6 +57,7 @@ def test_sessions_rename_requires_name(client):
 
 
 def test_sessions_clear_context_keeps_session(client):
+    """测试清除上下文后会话仍保留。Tests sessions remaining after clearing their context."""
     sid = client.post("/api/sessions").json()["session"]["id"]
     r = client.post(f"/api/sessions/{sid}/clear").json()
     assert r["ok"] is True
@@ -60,6 +66,7 @@ def test_sessions_clear_context_keeps_session(client):
 
 
 def test_sessions_archive_and_filter(client):
+    """测试会话的归档与归档过滤。Tests archiving sessions and filtering by archived flag."""
     sid = client.post("/api/sessions").json()["session"]["id"]
     # 默认列表含
     assert any(s["id"] == sid for s in client.get("/api/sessions").json()["sessions"])

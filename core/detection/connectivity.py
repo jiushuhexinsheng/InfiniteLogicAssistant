@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""连通性检测 — LLM / ASR / TTS（从 main.py 迁入并新增 TTS）"""
+"""连通性检测 — LLM / ASR / TTS（从 main.py 迁入并新增 TTS）。Connectivity detection — LLM / ASR / TTS (migrated from main.py with TTS added)."""
 import asyncio
 import base64
 import io
@@ -13,6 +13,8 @@ from core.logger import logger
 
 @dataclass
 class CheckResult:
+    """单项连通性检测结果。A single connectivity check result."""
+
     name: str
     status: str  # ok / skip / fail
     latency_ms: int | None = None
@@ -20,15 +22,17 @@ class CheckResult:
 
     @property
     def ok(self) -> bool:
+        """是否通过（status == "ok"）。Whether the check passed (status == "ok")."""
         return self.status == "ok"
 
     def as_dict(self) -> dict:
+        """转为可序列化字典。Convert to a serializable dict."""
         return {"name": self.name, "status": self.status,
                 "latency_ms": self.latency_ms, "detail": self.detail}
 
 
 def _silence_wav_base64(seconds: float = 0.3, rate: int = 16000) -> str:
-    """生成一小段静音 WAV 的 base64（ASR 连通性测试，无需真实语音）。"""
+    """生成一小段静音 WAV 的 base64（ASR 连通性测试，无需真实语音）。Generate a short silence WAV as base64 (for ASR connectivity tests, no real speech required)."""
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
         w.setnchannels(1)
@@ -39,7 +43,7 @@ def _silence_wav_base64(seconds: float = 0.3, rate: int = 16000) -> str:
 
 
 async def check_llm(timeout: int = 8) -> CheckResult:
-    """LLM 连通性：stream_chat 消费 done 事件。"""
+    """LLM 连通性：stream_chat 消费 done 事件。LLM connectivity: consume the done event from stream_chat."""
     from core.llm.stream import stream_chat
     if not config.is_llm_configured():
         return CheckResult("LLM", "skip", detail="未配置（endpoint/model 缺失）")
@@ -63,7 +67,7 @@ async def check_llm(timeout: int = 8) -> CheckResult:
 
 
 async def check_asr(timeout: int = 30) -> CheckResult:
-    """ASR 连通性：静音 WAV base64 过一遍链路。"""
+    """ASR 连通性：静音 WAV base64 过一遍链路。ASR connectivity: run a silence WAV base64 through the pipeline."""
     if not config.is_asr_configured():
         return CheckResult("ASR", "skip", detail="未配置（endpoint/model 缺失）")
     from core.voice import get_asr
@@ -79,7 +83,7 @@ async def check_asr(timeout: int = 30) -> CheckResult:
 
 
 async def check_tts(timeout: int = 30) -> CheckResult:
-    """TTS 连通性：合成一小段语音。"""
+    """TTS 连通性：合成一小段语音。TTS connectivity: synthesize a short speech clip."""
     if not config.is_tts_enabled():
         return CheckResult("TTS", "skip", detail="未启用（voice.tts.enabled=false 或未配置）")
     from core.voice.tts import synthesize
@@ -94,6 +98,6 @@ async def check_tts(timeout: int = 30) -> CheckResult:
 
 
 async def run_checks() -> list[CheckResult]:
-    """并行跑三项连通性检测。"""
+    """并行跑三项连通性检测。Run the three connectivity checks in parallel."""
     llm, asr, tts = await asyncio.gather(check_llm(), check_asr(), check_tts())
     return [llm, asr, tts]

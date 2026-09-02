@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+"""执行器（execute_task）各路径的测试。
+Tests for the executor (execute_task) covering its main paths.
+"""
 import json
 
 import pytest
@@ -17,6 +20,8 @@ def _done(content=None, tool=None, args="{}"):
 
 
 class _FakeLLM:
+    """模拟 LLM 客户端，按脚本逐轮回放事件。Simulates an LLM client that replays scripted events turn by turn."""
+
     def __init__(self, script):
         self.script = script
 
@@ -28,6 +33,8 @@ class _FakeLLM:
 
 
 class _Channel:
+    """模拟会话通道，返回预设答案。Simulates a session channel returning preset answers."""
+
     def __init__(self, answers):
         self.answers = list(answers)
 
@@ -40,6 +47,7 @@ class _Channel:
 
 @pytest.mark.asyncio
 async def test_execute_converges(monkeypatch):
+    """工具调用后收敛到 done。Converges to done after a tool call."""
     fake = _FakeLLM([
         [_done(tool="calculate", args=json.dumps({"expression": "1+1"}))],
         [_done(content="结果是 2")],
@@ -55,6 +63,7 @@ async def test_execute_converges(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_execute_step_limit(monkeypatch):
+    """达到步数上限后失败。Fails after hitting the step limit."""
     class _Fake:
         def retry_stream_chat(self, messages, tools=None):
             async def gen():
@@ -70,6 +79,7 @@ async def test_execute_step_limit(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_execute_cancelled_before(monkeypatch):
+    """执行前已取消则返回 stopped。Returns stopped when cancelled before execution."""
     token = CancellationToken()
     token.cancel()
     s = Session()
@@ -80,9 +90,10 @@ async def test_execute_cancelled_before(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_execute_uses_coordinator_for_complex(monkeypatch):
+    """复杂任务交给多智能体协调器。Complex tasks are delegated to the multi-agent coordinator."""
     from core import config as config_mod
 
-    async def fake_coordinator(task, session, cancel):
+    async def fake_coordinator(task, session, cancel, events=None):
         return {"status": "done", "summary": "多智能体结果", "subtasks": [
             {"goal": "a", "agent_type": "doer", "status": "done", "output": "ok", "tools": []}]}
 
@@ -103,6 +114,7 @@ async def test_execute_uses_coordinator_for_complex(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_execute_injects_context(monkeypatch):
+    """上下文注入到首条用户消息。Context is injected into the first user message."""
     async def fake_build_context(query):
         return "【相关文档/环境】\nPython 3.14"
 
@@ -130,10 +142,11 @@ async def test_execute_injects_context(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_execute_multi_agent_streams_summary_and_records(monkeypatch):
+    """多智能体摘要流式输出并记录到会话。The multi-agent summary streams out and is recorded in the session."""
     import asyncio
     from core import config as config_mod
 
-    async def fake_coordinator(task, session, cancel):
+    async def fake_coordinator(task, session, cancel, events=None):
         return {"status": "done", "summary": "多智能体最终结论：已全部完成", "subtasks": [
             {"goal": "a", "agent_type": "doer", "status": "done", "output": "ok", "tools": []}]}
 
@@ -156,6 +169,7 @@ async def test_execute_multi_agent_streams_summary_and_records(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_execute_records_assistant_reply(monkeypatch):
+    """助手回复记录进会话历史。The assistant reply is recorded in the session history."""
     fake = _FakeLLM([
         [_done(content="结果是 2")],
     ])
@@ -176,6 +190,7 @@ def _drain(q):
 
 @pytest.mark.asyncio
 async def test_execute_read_tools_run_concurrently(monkeypatch):
+    """read 级工具并发执行且按序回喂。Read-level tools run concurrently and feed back in order."""
     msg = {
         "role": "assistant", "content": "",
         "tool_calls": [
@@ -200,6 +215,7 @@ async def test_execute_read_tools_run_concurrently(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_execute_high_risk_confirm_rejected(monkeypatch):
+    """高风险工具经操作者取消后记为错误。A high-risk tool cancelled by the operator is recorded as an error."""
     fake = _FakeLLM([
         [_done(tool="write_file", args=json.dumps({"path": "C:/x.txt", "content": "hi"}))],
         [_done(content="已跳过")],
@@ -214,6 +230,7 @@ async def test_execute_high_risk_confirm_rejected(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_execute_high_risk_tool_confirm_ignores_task_risk_read(monkeypatch):
+    """任务误标 read 时仍按工具实际风险确认。Tool risk still gates confirmation even when the task is mislabeled as read."""
     # 堵洞：任务被 LLM 误标为 read，但调用了 write_file → 仍必须经操作者确认（答「取消」被拒）
     fake = _FakeLLM([
         [_done(tool="write_file", args=json.dumps({"path": "C:/x.txt", "content": "hi"}))],
@@ -229,6 +246,7 @@ async def test_execute_high_risk_tool_confirm_ignores_task_risk_read(monkeypatch
 
 @pytest.mark.asyncio
 async def test_execute_emits_streaming_events(monkeypatch):
+    """执行过程发出流式事件。Execution emits streaming events."""
     import asyncio
     fake = _FakeLLM([
         [_done(tool="calculate", args=json.dumps({"expression": "1+1"})),

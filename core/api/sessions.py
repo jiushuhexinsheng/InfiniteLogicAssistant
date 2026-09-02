@@ -3,6 +3,11 @@
 
 会话 = 可续接对话线（history.db 的 conversations 记录，含 name）；对话续接走
 POST /api/voice/utter 的 session_id 参数。
+
+Sessions domain API — session management (create / list / rename / delete).
+
+A session is a resumable conversation thread (a conversations record in history.db, with a name);
+conversation resumption goes through the session_id parameter of POST /api/voice/utter.
 """
 import json
 
@@ -16,7 +21,10 @@ router = APIRouter()
 
 @router.post("/sessions", response_model=SessionCreateResponse)
 async def sessions_create(request: Request):
-    """新建会话（可选 body {"name"}；缺省名「新会话」），返回 {id, name, ...}。"""
+    """新建会话（可选 body {"name"}；缺省名「新会话」），返回 {id, name, ...}。
+
+    Create a new session (optional body {"name"}; defaults to "新会话"), returns {id, name, ...}.
+    """
     from core.session.history import get_history_store
     body = await request.body()
     name = ""
@@ -34,7 +42,10 @@ async def sessions_create(request: Request):
 
 @router.get("/sessions", response_model=SessionListResponse)
 async def sessions_list(archived: bool | None = None):
-    """会话列表；?archived=true 只归档 / false(默认) 排除归档。"""
+    """会话列表；?archived=true 只归档 / false(默认) 排除归档。
+
+    List sessions; ?archived=true returns only archived ones, false (default) excludes archived.
+    """
     from core.session.history import get_history_store
     flag = archived if archived is not None else False
     return {"ok": True, "sessions": await get_history_store().list_conversations(archived=flag)}
@@ -42,7 +53,10 @@ async def sessions_list(archived: bool | None = None):
 
 @router.patch("/sessions/{sid}", response_model=ApiResponse)
 async def sessions_patch(sid: str, request: Request):
-    """更新会话：body {name} 重命名 或 {archived: bool} 归档/取消归档（可同时）。"""
+    """更新会话：body {name} 重命名 或 {archived: bool} 归档/取消归档（可同时）。
+
+    Update a session: body {name} renames or {archived: bool} archives/unarchives (both allowed at once).
+    """
     from core.session.history import get_history_store
     body = await request.body()
     try:
@@ -64,7 +78,10 @@ async def sessions_patch(sid: str, request: Request):
 
 @router.post("/sessions/{sid}/clear", response_model=ApiResponse)
 async def sessions_clear(sid: str):
-    """清除上下文：清空该会话消息（会话记录与 name 保留）。"""
+    """清除上下文：清空该会话消息（会话记录与 name 保留）。
+
+    Clear the context: wipe the session's messages (the session record and its name are kept).
+    """
     from core.session.history import get_history_store
     await get_history_store().clear_messages(sid)
     return {"ok": True}
@@ -72,6 +89,10 @@ async def sessions_clear(sid: str):
 
 @router.delete("/sessions/{sid}", response_model=ApiResponse)
 async def sessions_delete(sid: str):
+    """删除指定会话（含其全部消息）。
+
+    Delete the specified session (including all of its messages).
+    """
     from core.session.history import get_history_store
     await get_history_store().delete(sid)
     return {"ok": True}

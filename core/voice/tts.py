@@ -6,6 +6,14 @@
           - mimo-v2.5-tts（预置音色）：voice = 内置音色名（如 Chloe / mimo_default）
           - mimo-v2.5-tts-voiceclone（音色复刻）：voice = 参考音频 base64（需 voice_ref）
           - mimo-v2.5-tts-voicedesign（音色描述）：voice 不支持，user 消息给风格描述
+
+TTS speech synthesis — supports two OpenAI-compatible protocols:
+- speech: POST /v1/audio/speech, body {model, input, voice}; returns audio bytes directly
+- chat  : POST /v1/chat/completions, messages + audio{format, voice};
+          audio is in choices[0].message.audio.data (base64) — used for the MiMo TTS family:
+          - mimo-v2.5-tts (preset voices): voice = built-in voice name (e.g. Chloe / mimo_default)
+          - mimo-v2.5-tts-voiceclone (voice cloning): voice = reference audio base64 (voice_ref required)
+          - mimo-v2.5-tts-voicedesign (voice design): voice unsupported; the user message carries the style description
 """
 import base64
 from pathlib import Path
@@ -20,14 +28,32 @@ _MEDIA_TYPES = {"wav": "audio/wav", "mp3": "audio/mpeg", "pcm16": "audio/pcm"}
 
 
 class TtsConfigError(RuntimeError):
-    """TTS 配置错误（未启用 / 缺 voice_ref 等）。API 层映射为 400，非服务端故障。"""
+    """TTS 配置错误（未启用 / 缺 voice_ref 等）。API 层映射为 400，非服务端故障。
+
+    TTS configuration error (not enabled / missing voice_ref, etc.). Mapped to 400 at the API layer; not a server fault.
+    """
 
 
 async def synthesize(text: str, voice: str | None = None) -> tuple[bytes, str]:
     """调用配置的 TTS 端点合成语音，返回 (音频字节, media_type)。
 
+    Call the configured TTS endpoint to synthesize speech and return (audio bytes, media_type).
+
     按 profile.chat_path 自动选择协议：含 'chat/completions' → chat 模式，否则 speech 模式。
     配置错误抛 TtsConfigError；网络/端点错误抛 RuntimeError。
+    The protocol is chosen automatically by profile.chat_path: contains 'chat/completions' → chat mode, otherwise speech mode.
+    Configuration errors raise TtsConfigError; network/endpoint errors raise RuntimeError.
+
+    Args:
+        text: 要合成的文本。 / The text to synthesize.
+        voice: 可选的音色覆盖。 / Optional voice override.
+
+    Returns:
+        (音频字节, MIME 类型) 元组。 / A tuple of (audio bytes, MIME type).
+
+    Raises:
+        TtsConfigError: TTS 未启用或配置缺失。 / TTS is not enabled or the configuration is missing.
+        RuntimeError: 文本为空、网络或端点错误。 / Empty text, or network/endpoint errors.
     """
     if not is_tts_enabled():
         raise TtsConfigError(
@@ -45,16 +71,52 @@ async def synthesize(text: str, voice: str | None = None) -> tuple[bytes, str]:
 
 
 def _build_url(profile: dict, path: str) -> str:
+    """拼接端点 URL，确保 path 以斜杠开头。
+
+    Build the endpoint URL, ensuring the path starts with a slash.
+
+    Args:
+        profile: TTS profile 配置。 / The TTS profile configuration.
+        path: 请求路径。 / The request path.
+
+    Returns:
+        完整的请求 URL。 / The full request URL.
+    """
     endpoint = (profile.get("endpoint") or "").rstrip("/")
     return f"{endpoint}{path if path.startswith('/') else '/' + path}"
 
 
 def _build_headers(profile: dict) -> dict:
+    """构建 Bearer 认证请求头；无 api_key 时返回空字典。
+
+    Build a Bearer auth request header; return an empty dict when no api_key is set.
+
+    Args:
+        profile: TTS profile 配置。 / The TTS profile configuration.
+
+    Returns:
+        请求头字典。 / The request header dict.
+    """
     api_key = profile.get("api_key") or ""
     return {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
 
 async def _post(profile: dict, path: str, payload: dict) -> httpx.Response:
+    """向 TTS 端点发起 POST 请求，非 200 或网络错误统一转 RuntimeError。
+
+    POST to the TTS endpoint; convert non-200 responses and network errors into RuntimeError.
+
+    Args:
+        profile: TTS profile 配置。 / The TTS profile configuration.
+        path: 请求路径。 / The request path.
+        payload: 请求体。 / The request payload.
+
+    Returns:
+        httpx 响应对象。 / The httpx response object.
+
+    Raises:
+        RuntimeError: 网络错误或端点返回非 200。 / Network errors or non-200 endpoint responses.
+    """
     url = _build_url(profile, path)
     timeout = float(profile.get("timeout") or 30)
     try:
@@ -70,7 +132,16 @@ async def _post(profile: dict, path: str, payload: dict) -> httpx.Response:
 
 
 def _audio_data_url(p: Path) -> str:
-    """参考音频 → data URL（mp3/wav，VoiceClone 必需）"""
+    """参考音频 → data URL（mp3/wav，VoiceClone 必需）。
+
+    Convert a reference audio file into a data URL (mp3/wav; required by VoiceClone).
+
+    Args:
+        p: 参考音频文件路径。 / The reference audio file path.
+
+    Returns:
+        形如 data:{mime};base64,... 的 data URL。 / A data URL of the form data:{mime};base64,...
+    """
     suffix = p.suffix.lower()
     mime = "audio/wav" if suffix == ".wav" else ("audio/mpeg" if suffix in (".mp3", ".mpeg") else "audio/wav")
     b64 = base64.b64encode(p.read_bytes()).decode()
@@ -80,9 +151,22 @@ def _audio_data_url(p: Path) -> str:
 async def _synthesize_chat(text: str, profile: dict, voice: str | None = None) -> tuple[bytes, str]:
     """MiMo TTS 系列：chat completions + audio.voice。
 
+    MiMo TTS family: chat completions + audio.voice.
+
     voiceclone 模型 → voice = 参考音频 base64（需 voice_ref）；
     标准/预置音色模型（mimo-v2.5-tts）→ voice = 内置音色名。
     优先使用前端显式传入的 voice（UI 音色切换），其次配置 voice，空则默认 mimo_default。
+    voiceclone models → voice = reference audio base64 (voice_ref required);
+    standard/preset-voice models (mimo-v2.5-tts) → voice = built-in voice name.
+    Priority: explicit voice from the frontend (UI voice switching), then the configured voice, defaulting to mimo_default when empty.
+
+    Args:
+        text: 要合成的文本。 / The text to synthesize.
+        profile: TTS profile 配置。 / The TTS profile configuration.
+        voice: 前端传入的音色名（可空）。 / The voice name passed from the frontend (may be empty).
+
+    Returns:
+        (音频字节, MIME 类型) 元组。 / A tuple of (audio bytes, MIME type).
     """
     model = profile.get("model") or "mimo-v2.5-tts"
     fmt = profile.get("format") or "wav"
@@ -116,7 +200,18 @@ async def _synthesize_chat(text: str, profile: dict, voice: str | None = None) -
 
 
 async def _synthesize_speech(text: str, voice: str | None, profile: dict) -> tuple[bytes, str]:
-    """OpenAI /v1/audio/speech：{model, input, voice}"""
+    """OpenAI /v1/audio/speech：{model, input, voice}。
+
+    OpenAI /v1/audio/speech: {model, input, voice}.
+
+    Args:
+        text: 要合成的文本。 / The text to synthesize.
+        voice: 前端传入的音色名（可空）。 / The voice name passed from the frontend (may be empty).
+        profile: TTS profile 配置。 / The TTS profile configuration.
+
+    Returns:
+        (音频字节, MIME 类型) 元组。 / A tuple of (audio bytes, MIME type).
+    """
     use_voice = voice or profile.get("voice") or "alloy"
     payload = {
         "model": profile.get("model") or "tts-1",

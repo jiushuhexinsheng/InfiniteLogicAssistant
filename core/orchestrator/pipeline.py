@@ -3,6 +3,11 @@
 
 事件写进 asyncio.Queue，由 server 的 SSE 生成器消费；
 ask() 抛出 question 事件后阻塞，等待 /api/voice/answer 投递回答（人类在环）。
+
+Orchestration pipeline — one voice input → intent → (chit-chat reply | task:
+clarify → confirm → execute → report). Events are written into an asyncio.Queue
+consumed by the server's SSE generator; ask() blocks after emitting a question
+event until /api/voice/answer delivers the answer (human in the loop).
 """
 import asyncio
 
@@ -23,28 +28,53 @@ from core.prompts import CHIT_CHAT_SYSTEM
 
 
 class EventQueueChannel(OperatorChannel):
-    """notify/question 写事件队列；ask 等待操作者回答（/api/voice/answer 投递）。"""
+    """notify/question 写事件队列；ask 等待操作者回答（/api/voice/answer 投递）。
+
+    Writes notify/question into the event queue; ask waits for the operator's
+    answer (delivered via /api/voice/answer).
+    """
 
     def __init__(self, events: asyncio.Queue, session_id: str):
+        """初始化通道：绑定事件队列与会话 ID，并创建回答队列与提问锁。
+
+        Initialize the channel with the event queue and session id, creating an
+        answer queue and an ask lock.
+        """
         self.events = events
         self.session_id = session_id
         self.answers: asyncio.Queue = asyncio.Queue()
         self._ask_lock = asyncio.Lock()
 
     async def notify(self, text: str) -> None:
+        """向事件队列写入 notify 状态事件。Write a notify state event into the event queue."""
         await self.events.put(TaskStateEvent(state="notify", text=text, session_id=self.session_id).emit())
 
     async def ask(self, question: str) -> str:
+        """写入 question 事件并阻塞等待操作者回答（串行化，同会话同时最多一个待答问题）。
+
+        Write a question event and block until the operator answers (serialized:
+        at most one pending question per session).
+        """
         # 串行化提问：同会话同时最多一个待答问题，避免并发子代理答非所问
         async with self._ask_lock:
             await self.events.put(QuestionEvent(question=question, session_id=self.session_id).emit())
             return await self.answers.get()
 
     def answer(self, text: str) -> None:
+        """投递操作者回答到回答队列（由 /api/voice/answer 调用）。
+
+        Deliver the operator's answer into the answer queue (called by
+        /api/voice/answer).
+        """
         self.answers.put_nowait(text)
 
 
 async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str) -> None:
+    """生成闲聊回复：流式发射 content_delta 事件并把完整回复记入会话历史。
+
+    Generate a chit-chat reply: stream content_delta events and record the full
+    reply into the session history.
+    """
     messages = [{"role": "system", "content": CHIT_CHAT_SYSTEM}]
     messages.extend(session.summary(8))  # 含当前用户消息 → 多轮闲聊
     reply_parts: list[str] = []
@@ -63,6 +93,11 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
     """完整编排，产出事件（以 done 事件收尾）。channel 缺省用 SSE 队列通道。
 
     messages 为前端多轮历史种子（含当前用户消息）；缺省时把 text 记为当前用户消息。
+
+    Full orchestration that emits events (ending with a done event). The channel
+    defaults to the SSE queue channel. messages is the frontend multi-turn history
+    seed (including the current user message); when absent, text is recorded as
+    the current user message.
     """
     if channel is None:
         channel = EventQueueChannel(events, session.id)

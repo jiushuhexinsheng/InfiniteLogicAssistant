@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
-"""异步 LLM 流式客户端 — httpx 解析 SSE → 事件流（参照 InfiniteLogic src/llm.py）
+"""异步 LLM 流式客户端 — httpx 解析 SSE → 事件流（参照 InfiniteLogic src/llm.py）。Asynchronous LLM streaming client — httpx parses SSE into an event stream (ported from InfiniteLogic src/llm.py).
 
 多协议分派（core.vendors.resolve_protocol，按 profile.provider / vendor / chat_path）：
 - openai   : POST {endpoint}{chat_path}，OpenAI chat/completions SSE
 - anthropic: POST {endpoint}/v1/messages，Anthropic Messages API SSE
+- gemini   : POST {endpoint}/v1beta/models/{model}:streamGenerateContent?alt=sse
+
+Protocol dispatch (core.vendors.resolve_protocol, keyed by profile.provider / vendor / chat_path):
+- openai   : POST {endpoint}{chat_path}, OpenAI chat/completions SSE
+- anthropic: POST {endpoint}/v1/messages, Anthropic Messages API SSE
 - gemini   : POST {endpoint}/v1beta/models/{model}:streamGenerateContent?alt=sse
 
 事件（协议无关，消费方不变）:
@@ -11,6 +16,13 @@
     reasoning_delta  {"type":"reasoning_delta","text":str}
     tool_call_delta  {"type":"tool_call_delta","index":int,"id":str|None,"name":str,"arguments":str}
     usage            {"type":"usage","usage":{...}}   # 末尾 usage-only chunk
+    done             {"type":"done","message":{role,content,reasoning_content?,tool_calls?}}
+
+Events (protocol-agnostic, consumers unchanged):
+    content_delta    {"type":"content_delta","text":str}
+    reasoning_delta  {"type":"reasoning_delta","text":str}
+    tool_call_delta  {"type":"tool_call_delta","index":int,"id":str|None,"name":str,"arguments":str}
+    usage            {"type":"usage","usage":{...}}   # trailing usage-only chunk
     done             {"type":"done","message":{role,content,reasoning_content?,tool_calls?}}
 """
 import json
@@ -27,6 +39,16 @@ from core.vendors import resolve_protocol
 
 
 def _build_payload(profile: dict, messages: list, tools=None) -> dict:
+    """构建 OpenAI 兼容请求体（含 stream_options / max_tokens 字段兼容开关）。Build an OpenAI-compatible request payload (with stream_options / max_tokens field compatibility toggles).
+
+    Args:
+        profile: LLM profile 配置。LLM profile config.
+        messages: 对话消息列表。Conversation messages.
+        tools: 可选工具定义。Optional tool definitions.
+
+    Returns:
+        POST 请求体 dict。The POST request body dict.
+    """
     compat = profile.get("compat") or {}
     payload: dict = {
         "model": profile.get("model", ""),
@@ -47,6 +69,14 @@ def _build_payload(profile: dict, messages: list, tools=None) -> dict:
 
 
 def _headers(profile: dict) -> dict:
+    """构造 OpenAI 风格请求头（Bearer 鉴权）。Build OpenAI-style request headers (Bearer auth).
+
+    Args:
+        profile: LLM profile 配置。LLM profile config.
+
+    Returns:
+        请求头 dict。The headers dict.
+    """
     h = {"Content-Type": "application/json", "Accept": "text/event-stream"}
     if profile.get("api_key"):
         h["Authorization"] = f"Bearer {profile['api_key']}"
@@ -54,6 +84,12 @@ def _headers(profile: dict) -> dict:
 
 
 def _accumulate_tool_calls(buffer: dict, tc: dict) -> None:
+    """按 index 累加流式 tool_call 分片（id / name / arguments 拼接）。Accumulate streaming tool_call fragments by index (concatenating id / name / arguments).
+
+    Args:
+        buffer: index → 工具调用槽位 的累积字典。Buffer mapping index → tool-call slot.
+        tc: 单个 delta 中的 tool_call 分片。A tool_call fragment from a single delta.
+    """
     idx = tc.get("index", 0)
     if idx not in buffer:
         buffer[idx] = {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
@@ -73,7 +109,17 @@ async def _stream_openai(
     profile: dict,
     client: httpx.AsyncClient | None,
 ) -> AsyncIterator[dict]:
-    """OpenAI chat/completions SSE 解析。"""
+    """OpenAI chat/completions SSE 解析。Parse the OpenAI chat/completions SSE stream.
+
+    Args:
+        messages: 对话消息列表。Conversation messages.
+        tools: 可选工具定义。Optional tool definitions.
+        profile: LLM profile 配置。LLM profile config.
+        client: 可复用的 httpx 客户端（None 时自建并在结束时关闭）。Reusable httpx client (created and closed internally when None).
+
+    Yields:
+        协议无关的事件 dict。Protocol-agnostic event dicts.
+    """
     url = f"{profile.get('endpoint', '').rstrip('/')}{(profile.get('chat_path') or '/v1/chat/completions')}"
     payload = _build_payload(profile, messages, tools)
     timeout = float(profile.get("timeout", 60) or 60)
@@ -143,12 +189,13 @@ async def _stream_openai(
 
 
 def _split_system(messages: list[dict]) -> tuple[str, list[dict]]:
+    """从消息中拆出 system 内容（合并为一段），返回 (system, 其余消息)。Extract the system content from messages (joined into one string), returning (system, remaining messages)."""
     system_parts = [str(m.get("content") or "") for m in messages if m.get("role") == "system"]
     return "\n\n".join(system_parts), [m for m in messages if m.get("role") != "system"]
 
 
 def _to_anthropic_messages(messages: list[dict]) -> list[dict]:
-    """OpenAI 消息 → Anthropic messages（system 已拆走；连续 tool 消息合并为一个 tool_result 用户消息）。"""
+    """OpenAI 消息 → Anthropic messages（system 已拆走；连续 tool 消息合并为一个 tool_result 用户消息）。Convert OpenAI messages → Anthropic messages (system already split out; consecutive tool messages merged into one tool_result user message)."""
     out: list[dict] = []
     for m in messages:
         role = m.get("role")
@@ -197,6 +244,14 @@ def _to_anthropic_messages(messages: list[dict]) -> list[dict]:
 
 
 def _to_anthropic_tools(tools: list[dict] | None) -> list[dict]:
+    """OpenAI 工具定义 → Anthropic tools（input_schema）。Convert OpenAI tool definitions → Anthropic tools (input_schema).
+
+    Args:
+        tools: 可选 OpenAI 风格工具定义。Optional OpenAI-style tool definitions.
+
+    Returns:
+        Anthropic 风格工具列表。The Anthropic-style tool list.
+    """
     return [
         {
             "name": (t.get("function") or {}).get("name") or "",
@@ -208,12 +263,26 @@ def _to_anthropic_tools(tools: list[dict] | None) -> list[dict]:
 
 
 def _build_anthropic_payload(profile: dict, messages: list, system: str, tools: list[dict] | None) -> dict:
+    """构建 Anthropic Messages API 请求体。Build an Anthropic Messages API request payload.
+
+    Args:
+        profile: LLM profile 配置。LLM profile config.
+        messages: 已拆分 system 的对话消息。Conversation messages with system already split out.
+        system: system 提示文本（可能为空）。System prompt text (may be empty).
+        tools: 可选工具定义。Optional tool definitions.
+
+    Returns:
+        POST 请求体 dict。The POST request body dict.
+    """
     payload: dict = {
         "model": profile.get("model") or "",
         "max_tokens": profile.get("max_tokens", 4096),
         "messages": _to_anthropic_messages(messages),
         "stream": True,
     }
+    t = profile.get("temperature")
+    if t is not None:
+        payload["temperature"] = t
     if system:
         payload["system"] = system
     if tools:
@@ -222,7 +291,7 @@ def _build_anthropic_payload(profile: dict, messages: list, system: str, tools: 
 
 
 def _anthropic_usage(u: dict) -> dict:
-    """Anthropic usage → 内部 OpenAI 风格 usage（供 TokenUsage 消费）。"""
+    """Anthropic usage → 内部 OpenAI 风格 usage（供 TokenUsage 消费）。Map Anthropic usage → internal OpenAI-style usage (consumed by TokenUsage)."""
     inp = u.get("input_tokens") or 0
     out = u.get("output_tokens") or 0
     return {"prompt_tokens": inp, "completion_tokens": out, "total_tokens": inp + out}
@@ -234,7 +303,17 @@ async def _stream_anthropic(
     profile: dict,
     client: httpx.AsyncClient | None,
 ) -> AsyncIterator[dict]:
-    """Anthropic Messages API SSE（text/thinking/tool_use）→ 内部事件。"""
+    """Anthropic Messages API SSE（text / thinking / tool_use）→ 内部事件。Parse the Anthropic Messages API SSE (text / thinking / tool_use) into internal events.
+
+    Args:
+        messages: 对话消息列表。Conversation messages.
+        tools: 可选工具定义。Optional tool definitions.
+        profile: LLM profile 配置。LLM profile config.
+        client: 可复用的 httpx 客户端（None 时自建并在结束时关闭）。Reusable httpx client (created and closed internally when None).
+
+    Yields:
+        协议无关的事件 dict。Protocol-agnostic event dicts.
+    """
     system, msgs = _split_system(messages)
     payload = _build_anthropic_payload(profile, msgs, system, tools)
     url = f"{profile.get('endpoint', '').rstrip('/')}{(profile.get('chat_path') or '/v1/messages')}"
@@ -334,6 +413,14 @@ async def _stream_anthropic(
 
 
 def _gemini_url(profile: dict) -> str:
+    """拼接 Gemini streamGenerateContent URL（替换 {model} 占位符）。Build the Gemini streamGenerateContent URL (substituting the {model} placeholder).
+
+    Args:
+        profile: LLM profile 配置。LLM profile config.
+
+    Returns:
+        完整的请求 URL。The full request URL.
+    """
     endpoint = (profile.get("endpoint") or "").rstrip("/")
     path = profile.get("chat_path") or "/v1beta/models/{model}:streamGenerateContent?alt=sse"
     path = path.replace("{model}", profile.get("model") or "")
@@ -341,11 +428,12 @@ def _gemini_url(profile: dict) -> str:
 
 
 def _to_gemini_contents(messages: list[dict]) -> list[dict]:
-    """OpenAI 消息 → Gemini contents（system 已拆走；连续 user 消息合并 parts）。"""
+    """OpenAI 消息 → Gemini contents（system 已拆走；连续 user 消息合并 parts）。Convert OpenAI messages → Gemini contents (system already split out; consecutive user messages merged into parts)."""
     fn_by_tool_call_id: dict[str, str] = {}
     contents: list[dict] = []
 
     def push_user(parts: list[dict]) -> None:
+        """向 contents 追加 user parts（与末尾 user 消息合并）。Append user parts to contents (merging with a trailing user message)."""
         if contents and contents[-1]["role"] == "user":
             contents[-1]["parts"].extend(parts)
         else:
@@ -382,6 +470,14 @@ def _to_gemini_contents(messages: list[dict]) -> list[dict]:
 
 
 def _to_gemini_tools(tools: list[dict] | None) -> list[dict]:
+    """OpenAI 工具定义 → Gemini functionDeclarations。Convert OpenAI tool definitions → Gemini functionDeclarations.
+
+    Args:
+        tools: 可选 OpenAI 风格工具定义。Optional OpenAI-style tool definitions.
+
+    Returns:
+        Gemini 风格 tools 列表。The Gemini-style tools list.
+    """
     decls = [
         {
             "name": (t.get("function") or {}).get("name") or "",
@@ -394,6 +490,16 @@ def _to_gemini_tools(tools: list[dict] | None) -> list[dict]:
 
 
 def _build_gemini_payload(profile: dict, messages: list, tools: list[dict] | None) -> dict:
+    """构建 Gemini generateContent 请求体（含 systemInstruction / generationConfig）。Build a Gemini generateContent request payload (incl. systemInstruction / generationConfig).
+
+    Args:
+        profile: LLM profile 配置。LLM profile config.
+        messages: 对话消息列表。Conversation messages.
+        tools: 可选工具定义。Optional tool definitions.
+
+    Returns:
+        POST 请求体 dict。The POST request body dict.
+    """
     system, msgs = _split_system(messages)
     payload: dict = {"contents": _to_gemini_contents(msgs)}
     if system:
@@ -409,6 +515,14 @@ def _build_gemini_payload(profile: dict, messages: list, tools: list[dict] | Non
 
 
 def _gemini_usage(u: dict) -> dict:
+    """Gemini usageMetadata → 内部 usage。Map Gemini usageMetadata → internal usage.
+
+    Args:
+        u: Gemini usageMetadata dict。The Gemini usageMetadata dict.
+
+    Returns:
+        内部 OpenAI 风格 usage dict。Internal OpenAI-style usage dict.
+    """
     p = u.get("promptTokenCount") or 0
     c = u.get("candidatesTokenCount") or 0
     return {"prompt_tokens": p, "completion_tokens": c, "total_tokens": p + c}
@@ -420,7 +534,17 @@ async def _stream_gemini(
     profile: dict,
     client: httpx.AsyncClient | None,
 ) -> AsyncIterator[dict]:
-    """Gemini streamGenerateContent?alt=sse → 内部事件。"""
+    """Gemini streamGenerateContent?alt=sse → 内部事件。Parse Gemini streamGenerateContent?alt=sse into internal events.
+
+    Args:
+        messages: 对话消息列表。Conversation messages.
+        tools: 可选工具定义。Optional tool definitions.
+        profile: LLM profile 配置。LLM profile config.
+        client: 可复用的 httpx 客户端（None 时自建并在结束时关闭）。Reusable httpx client (created and closed internally when None).
+
+    Yields:
+        协议无关的事件 dict。Protocol-agnostic event dicts.
+    """
     payload = _build_gemini_payload(profile, messages, tools)
     url = _gemini_url(profile)
     timeout = float(profile.get("timeout", 60) or 60)
@@ -494,7 +618,17 @@ async def stream_chat(
     profile: dict | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> AsyncIterator[dict]:
-    """流式调用 LLM，按协议分派；逐 chunk yield 事件；最后 yield done（含完整 message）。"""
+    """流式调用 LLM，按协议分派；逐 chunk yield 事件；最后 yield done（含完整 message）。Stream an LLM call, dispatching by protocol; yield events chunk by chunk; finally yield done (with the full message).
+
+    Args:
+        messages: 对话消息列表。Conversation messages.
+        tools: 可选工具定义。Optional tool definitions.
+        profile: 可选 LLM profile（默认取全局配置）。Optional LLM profile (defaults to the global config).
+        client: 可复用的 httpx 客户端。Reusable httpx client.
+
+    Yields:
+        事件 dict：content_delta / reasoning_delta / tool_call_delta / usage / done。Event dicts: content_delta / reasoning_delta / tool_call_delta / usage / done.
+    """
     if profile is None:
         _, profile = resolve_llm_profile()
     protocol = resolve_protocol(profile)

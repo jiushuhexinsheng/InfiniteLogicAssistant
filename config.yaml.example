@@ -103,10 +103,12 @@ rag:
 
 # 任务执行：ReAct 步数上限 / 复杂任务是否转多智能体协调者（可开关）
 # models_failover：LLM 主模型故障（不存在/重试耗尽）时依次尝试的备选模型（openclaw 式 failover）
+# structured_temperature：意图/任务形成/拆解/事实提取等结构化输出阶段的温度（默认 0.2，调低提稳）
 agent:
   recursion_limit: 12
   multi_agent: false
   models_failover: []          # 例: ["gpt-4o-mini", "qwen-turbo"]
+  structured_temperature: 0.2
 
 # LLM 客户端：重试 / 熔断 / 连接池
 llm_client:

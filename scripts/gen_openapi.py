@@ -3,6 +3,11 @@
 
 用法: python scripts/gen_openapi.py
 输出: web/src/api/openapi.json（前端 npm run gen:api 的中间产物，已 gitignore）
+
+Export the FastAPI openapi.json for openapi-typescript to generate TS types in the frontend.
+
+Usage: python scripts/gen_openapi.py
+Output: web/src/api/openapi.json (intermediate artifact of npm run gen:api, gitignored)
 """
 import json
 import sys

@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+"""测试技能加载器：技能加载、热重载与删除。
+Tests the skill loader: loading skills, hot reload, and removal.
+"""
 import os
 import time
 
@@ -12,6 +15,7 @@ def _write_skill(dir, name, data):
 
 
 def test_load_skills(tmp_path):
+    """测试从目录加载技能并解析其定义。Tests loading skills from a directory and parsing their definitions."""
     _write_skill(tmp_path, "整理.yaml", {
         "description": "归档下载目录",
         "requires": ["download_path"],
@@ -26,6 +30,7 @@ def test_load_skills(tmp_path):
 
 
 def test_hot_reload(tmp_path):
+    """测试技能文件变更后热重载生效。Tests hot reload picking up changes to a skill file."""
     _write_skill(tmp_path, "整理.yaml", {"description": "v1", "steps": [{"tool": "get_datetime"}]})
     loader = SkillLoader(tmp_path)
     loader.load_all()
@@ -37,6 +42,7 @@ def test_hot_reload(tmp_path):
 
 
 def test_remove_skill(tmp_path):
+    """测试删除技能文件后重载时技能被移除。Tests a skill being removed after its file is deleted and reloaded."""
     _write_skill(tmp_path, "整理.yaml", {"description": "x", "steps": []})
     loader = SkillLoader(tmp_path)
     loader.load_all()

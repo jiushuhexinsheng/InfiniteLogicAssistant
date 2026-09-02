@@ -3,6 +3,11 @@
 
 高风险工具（risk != read）在调用前经 confirm_if_needed 确认。
 取消（CancelledError）统一收敛为 status=stopped 返回，调用方无需捕获。
+
+Execution loop — plan → act (call tools) → observe (feed back) → reflect;
+cancellable and convergent. High-risk tools (risk != read) are confirmed via
+confirm_if_needed before being called. Cancellation (CancelledError) is uniformly
+converged into a status=stopped result, so callers do not need to catch it.
 """
 import asyncio
 import json
@@ -19,11 +24,15 @@ from core.orchestrator.session import Session
 from core.orchestrator.task import Task
 from core.tools import TOOLS
 
-from core.prompts import EXECUTOR_SYSTEM as _SYSTEM
+from core.prompts import EXECUTOR_SYSTEM as _SYSTEM, UNTRUSTED_DATA_NOTE
 
 
 def should_use_multi_agent(task: Task) -> bool:
-    """复杂任务（启用多智能体且多参数/长目标）转协调者。"""
+    """复杂任务（启用多智能体且多参数/长目标）转协调者。
+
+    Route complex tasks (multi-agent enabled and multi-param or long goal) to the
+    coordinator.
+    """
     return config.settings.agent.multi_agent and (len(task.params) >= 2 or len(task.goal) > 30)
 
 
@@ -33,13 +42,18 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
 
     events 非空时流式发射 tool_start/tool_end/usage/content_delta（SSE 实时呈现）。
     返回 {status: done|failed|stopped, summary, steps:[...]}。
+
+    Execute the task: complex tasks go to the multi-agent coordinator; simple
+    tasks run a ReAct loop. When events is not None,
+    tool_start/tool_end/usage/content_delta are streamed (real-time SSE
+    rendering). Returns {status: done|failed|stopped, summary, steps:[...]}.
     """
     if cancel.is_cancelled:
         return {"status": "stopped", "summary": "已停止", "steps": []}
 
     # 复杂任务 → 多智能体
     if should_use_multi_agent(task):
-        cr = await run_coordinator(task, session, cancel)
+        cr = await run_coordinator(task, session, cancel, events)
         steps = [
             {"step": i, "tool": f"agent:{x['agent_type']}", "status": x["status"], "result": x["output"]}
             for i, x in enumerate(cr["subtasks"])
@@ -70,7 +84,8 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
             for m in prior if isinstance(m.get("content"), str)
         )
         context_lines.append(f"以下是最近对话：\n{lines}")
-    sys_prompt = f"{_SYSTEM}\n\n" + "\n\n".join(context_lines) if context_lines else _SYSTEM
+    base = f"{_SYSTEM}\n\n{UNTRUSTED_DATA_NOTE}"
+    sys_prompt = f"{base}\n\n" + "\n\n".join(context_lines) if context_lines else base
     history = [
         {"role": "system", "content": sys_prompt},
         {"role": "user", "content": f"任务目标：{task.goal}\n参数：{json.dumps(task.params, ensure_ascii=False)}"},
@@ -98,7 +113,11 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
                 return {"status": "done", "summary": summary, "steps": steps}
 
             async def run_one_tc(tc: dict, step: int) -> tuple[dict, dict] | None:
-                """执行单个工具调用，返回 (steps条目, tool消息)；取消返回 None。"""
+                """执行单个工具调用，返回 (steps条目, tool消息)；取消返回 None。
+
+                Execute a single tool call, returning (steps entry, tool message);
+                return None when cancelled.
+                """
                 cancel.throw_if_cancelled()
                 name = tc["function"]["name"]
                 raw = tc["function"].get("arguments") or "{}"

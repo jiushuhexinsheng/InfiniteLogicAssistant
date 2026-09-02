@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
-"""任务形成 — 把意图结构化：goal / params / missing(要问操作者的问题) / risk"""
+"""任务形成 — 把意图结构化：goal / params / missing(要问操作者的问题) / risk
+
+Task formation — structures the intent into goal / params / missing (questions
+to ask the operator) / risk.
+"""
 import json
 import uuid
 from dataclasses import dataclass, field
 
+from core import config
 from core.llm.client import get_llm_client
 from core.logger import logger
 from core.orchestrator.intent import IntentResult
@@ -33,6 +38,11 @@ _FORM_TOOL = {
 
 @dataclass
 class Task:
+    """结构化任务：目标、参数、缺失信息、风险与执行状态。
+
+    Structured task: goal, params, missing information, risk, and execution state.
+    """
+
     id: str
     goal: str
     params: dict = field(default_factory=dict)
@@ -41,15 +51,28 @@ class Task:
     state: str = "queued"  # queued/planning/running/waiting_question/waiting_confirm/done/failed/stopped
 
 
-async def form_task(intent: IntentResult) -> Task:
-    """用 LLM 结构化形成任务；失败兜底为纯 goal、无缺失。"""
+async def form_task(intent: IntentResult, confirmed: dict | None = None) -> Task:
+    """用 LLM 结构化形成任务；失败兜底为纯 goal、无缺失。
+
+    confirmed 为澄清阶段已确认的参数键值，单独作为结构化信息呈现（不污染 goal）。
+
+    Form the task structurally with the LLM; on failure, fall back to a bare goal
+    with no missing items. confirmed holds the parameter key-values already
+    confirmed during clarification and is presented as separate structured info
+    (without polluting the goal).
+    """
+    user = intent.summary
+    if confirmed:
+        user += f"\n已确认信息：{json.dumps(confirmed, ensure_ascii=False)}"
     messages = [
         {"role": "system", "content": FORM_TASK_SYSTEM},
-        {"role": "user", "content": intent.summary},
+        {"role": "user", "content": user},
     ]
     fallback = Task(id=uuid.uuid4().hex[:12], goal=intent.summary, params={}, missing=[], risk="read")
     try:
-        async for evt in get_llm_client().retry_stream_chat(messages, tools=[_FORM_TOOL]):
+        async for evt in get_llm_client().retry_stream_chat(
+            messages, tools=[_FORM_TOOL], temperature=config.settings.agent.structured_temperature,
+        ):
             if evt["type"] == "done":
                 msg = evt["message"]
                 tc = (msg.get("tool_calls") or [{}])[0]

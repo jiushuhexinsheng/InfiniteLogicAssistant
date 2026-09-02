@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""日志模块 — 基于 loguru，对齐 消息提醒播报"""
+"""日志模块 — 基于 loguru，对齐消息提醒播报。
+
+Logging module — built on loguru, aligned with voice notification broadcast.
+"""
 import sys
 from pathlib import Path
 
@@ -11,10 +14,18 @@ AUDIT_FILE = LOG_DIR / "audit.log"
 
 
 def _not_audit(record) -> bool:
+    """过滤掉审计日志记录，只保留普通 agent 日志。
+
+    Filter out audit log records, keeping only normal agent logs.
+    """
     return not record["extra"].get("audit", False)
 
 
 def _is_audit(record) -> bool:
+    """只保留审计日志记录，过滤掉普通 agent 日志。
+
+    Keep only audit log records, filtering out normal agent logs.
+    """
     return record["extra"].get("audit", False)
 
 
@@ -50,7 +61,10 @@ _audit_logger = logger.bind(audit=True)
 
 
 def audit(message: str) -> None:
-    """写一条审计记录（data/audit.log）。"""
+    """写一条审计记录到 data/audit.log。
+
+    Write an audit record to data/audit.log.
+    """
     _audit_logger.info(message)
 
 

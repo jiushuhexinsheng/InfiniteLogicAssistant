@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """RAG 检索 — BM25 打分（纯 Python，无外部依赖）
+RAG retrieval — BM25 scoring (pure Python, no external dependencies).
 
 优先读取索引期预计算的 chunk_terms（只加载分词结果，不加载全文，避免每次查询
 全量重分词）；旧索引（无 chunk_terms 表）自动回退到读取全文现场分词。
+Prefers the precomputed chunk_terms from indexing time (loading only token results, not full text, to avoid full re-tokenization on every query); older indexes (without a chunk_terms table) automatically fall back to reading the full text and tokenizing on the fly.
 """
 import math
 import sqlite3
@@ -16,7 +18,7 @@ _B = 0.75
 
 
 def _bm25_score(query: list[str], doc: list[str], idf: dict[str, float], doc_len: int, avgdl: float) -> float:
-    """单文档 BM25 得分。"""
+    """单文档 BM25 得分。BM25 score for a single document."""
     tf: dict[str, int] = {}
     for t in doc:
         tf[t] = tf.get(t, 0) + 1
@@ -31,7 +33,8 @@ def _bm25_score(query: list[str], doc: list[str], idf: dict[str, float], doc_len
 
 
 def _rank(query: list[str], docs: list[list[str]]) -> list[tuple[int, float]]:
-    """对 doc token 列表做 BM25 打分，返回按得分降序的 (doc_index, score)。"""
+    """对 doc token 列表做 BM25 打分，返回按得分降序的 (doc_index, score)。
+    Ranks doc token lists with BM25 scoring and returns (doc_index, score) pairs sorted by score in descending order."""
     df: dict[str, int] = {}
     for dt in docs:
         for t in set(dt):
@@ -50,7 +53,8 @@ def _rank(query: list[str], docs: list[list[str]]) -> list[tuple[int, float]]:
 
 
 async def retrieve(query: str, top_k: int = 5) -> list[dict]:
-    """BM25 检索，返回 top-k 块（[{path, section, text, score}]）。"""
+    """BM25 检索，返回 top-k 块（[{path, section, text, score}]）。
+    BM25 retrieval, returning the top-k chunks ([{path, section, text, score}])."""
     q_tokens = tokenize(query)
     if not q_tokens:
         return []
@@ -101,7 +105,8 @@ async def retrieve(query: str, top_k: int = 5) -> list[dict]:
 
 
 async def rag_context(query: str, top_k: int = 5) -> str:
-    """检索 top-k 拼接为上下文文本（注入系统提示用）。"""
+    """检索 top-k 拼接为上下文文本（注入系统提示用）。
+    Retrieves the top-k hits and joins them into a context text (for injection into the system prompt)."""
     hits = await retrieve(query, top_k)
     if not hits:
         return ""

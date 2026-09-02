@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""编排会话运行时状态 — 会话/停止控制器注册表 + TTL 清理 + 任务落盘"""
+"""编排会话运行时状态 — 会话/停止控制器注册表 + TTL 清理 + 任务落盘
+
+Orchestration session runtime state — session/stop-controller registry + TTL
+sweeping + task persistence to disk
+"""
 import json
 import time
 from dataclasses import asdict
@@ -18,6 +22,15 @@ SESSION_TTL = 30 * 60  # 会话空闲 30 分钟回收
 
 
 def register(session: Session, controller: StopController) -> None:
+    """注册会话及其停止控制器，记录时间戳并顺带清理超时会话。
+
+    Register a session and its stop controller, record the timestamp and sweep
+    expired sessions as a side effect.
+
+    Args:
+        session: 编排会话。The orchestration session.
+        controller: 该会话的停止控制器。The session's stop controller.
+    """
     sessions[session.id] = session
     controllers[session.id] = controller
     session_ts[session.id] = time.time()
@@ -25,29 +38,58 @@ def register(session: Session, controller: StopController) -> None:
 
 
 def get_session(session_id: str) -> Session | None:
+    """按 id 取会话；不存在时返回 None。
+
+    Get a session by id, or None if it does not exist.
+
+    Args:
+        session_id: 会话 id。The session id.
+
+    Returns:
+        会话对象或 None。The session object, or None.
+    """
     return sessions.get(session_id)
 
 
 def get_controller(session_id: str) -> StopController | None:
+    """按 id 取停止控制器；不存在时返回 None。
+
+    Get the stop controller by id, or None if it does not exist.
+
+    Args:
+        session_id: 会话 id。The session id.
+
+    Returns:
+        停止控制器或 None。The stop controller, or None.
+    """
     return controllers.get(session_id)
 
 
 def sweep() -> None:
-    """回收超时会话（防止长时间运行内存泄漏）。"""
+    """回收超时会话（防止长时间运行内存泄漏）。
+
+    Reclaim expired sessions (prevent memory leaks on long-running processes).
+    """
     now = time.time()
     for sid in [sid for sid, ts in session_ts.items() if now - ts > SESSION_TTL]:
         cleanup(sid)
 
 
 def cleanup(session_id: str) -> None:
-    """流结束时移除注册表条目。"""
+    """流结束时移除注册表条目。
+
+    Remove registry entries when a stream ends.
+    """
     sessions.pop(session_id, None)
     controllers.pop(session_id, None)
     session_ts.pop(session_id, None)
 
 
 def _conv_summary(messages: list[dict], task: dict | None) -> str:
-    """历史列表摘要：优先任务目标，其次最近一条助手回复。"""
+    """历史列表摘要：优先任务目标，其次最近一条助手回复。
+
+    Conversation summary: prefer the task goal, else the most recent assistant reply.
+    """
     if task and task.get("goal"):
         return str(task["goal"])[:80]
     for m in reversed(messages):
@@ -57,7 +99,11 @@ def _conv_summary(messages: list[dict], task: dict | None) -> str:
 
 
 async def persist(session: Session, created: float | None = None) -> None:
-    """把完成的会话/任务落盘到 data/tasks/<id>.json，并保存完整会话历史。best-effort。"""
+    """把完成的会话/任务落盘到 data/tasks/<id>.json，并保存完整会话历史。best-effort。
+
+    Persist the finished session/task to data/tasks/<id>.json and save the full
+    conversation history. Best-effort.
+    """
     try:
         tasks_dir = config.ROOT_DIR / "data" / "tasks"
         tasks_dir.mkdir(parents=True, exist_ok=True)

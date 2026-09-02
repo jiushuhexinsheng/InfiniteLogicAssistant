@@ -4,6 +4,12 @@
 用法:
     python main.py serve     启动 Web 服务（默认命令）
     python main.py check     聚合检测（环境 / 配置 / LLM·ASR·TTS 连通性）
+
+Unlimited Logic voice assistant — main entry point (CLI dispatch; commands implemented in the cli/ package)
+
+Usage:
+    python main.py serve     Start the web server (default command)
+    python main.py check     Aggregated checks (environment / config / LLM·ASR·TTS connectivity)
 """
 import sys
 from pathlib import Path
@@ -14,6 +20,10 @@ from core.config import ensure_dirs
 
 
 def main():
+    """程序入口：确保目录结构存在，解析 CLI 参数并执行对应命令（默认 serve）。
+
+    Program entry: ensure the directory structure exists, parse CLI arguments, and run the dispatched command (default: serve).
+    """
     from cli import build_parser
     ensure_dirs()
     args = build_parser().parse_args()

@@ -6,6 +6,19 @@
 - endpoint 为基座 URL（不含 /v1，与 chat_path 配对），避免拼出 /v1/v1/ 错误地址。
 - provider 是协议（openai / anthropic / gemini）；vendor 是目录 ID（UI 元数据）。
 - 协议分派只发生在 LLM 层（resolve_protocol）；TTS/ASR 全走 openai，维持既有 chat_path 推断。
+
+Vendor catalogue — built-in LLM/ASR/TTS presets + config.yaml vendor_presets
+extension.
+
+Design notes:
+- Presets are just "pre-filled defaults": once selected they become ordinary
+  profiles, still fully editable; manual fill path remains available.
+- ``endpoint`` is the base URL (without /v1, paired with ``chat_path``),
+  avoiding accidental /v1/v1/ duplication.
+- ``provider`` is the protocol (openai / anthropic / gemini); ``vendor`` is the
+  catalogue ID (UI metadata).
+- Protocol dispatch happens only at the LLM layer (``resolve_protocol``);
+  TTS/ASR always use openai, relying on the existing ``chat_path`` inference.
 """
 from typing import Any
 
@@ -29,6 +42,11 @@ def _preset(
     compat: dict | None = None,
     defaults: dict | None = None,
 ) -> tuple[str, VendorPreset]:
+    """构造一个预设条目：返回 (preset_id, VendorPreset) 元组，用于构建字典。
+
+    Build a preset entry: return a ``(preset_id, VendorPreset)`` tuple for dict
+    construction.
+    """
     return (
         preset_id,
         VendorPreset(
@@ -142,7 +160,11 @@ _KNOWN_PROTOCOLS = ("openai", "anthropic", "gemini")
 
 
 def get_vendor_catalog() -> dict[str, VendorPreset]:
-    """代码内置目录 + config.yaml vendor_presets 扩展（同 ID 覆盖，可追加新 ID）。"""
+    """代码内置目录 + config.yaml vendor_presets 扩展（同 ID 覆盖，可追加新 ID）。
+
+    Built-in catalogue merged with ``config.yaml`` vendor_presets extensions
+    (same ID overwrites, new IDs appended).
+    """
     from core import config  # 延迟导入避免任何初始化顺序问题
     merged: dict[str, VendorPreset] = {}
     merged.update(BUILTIN_LLM)
@@ -157,15 +179,28 @@ def get_vendor_catalog() -> dict[str, VendorPreset]:
 
 
 def get_preset(preset_id: str) -> VendorPreset | None:
+    """按 preset_id 查询单个预设，未找到返回 None。
+
+    Look up a single preset by its ID; return ``None`` if not found.
+    """
     return get_vendor_catalog().get(preset_id)
 
 
 def get_presets_by_kind(kind: str) -> list[tuple[str, VendorPreset]]:
+    """按 kind（llm/asr/tts）筛选全部预设，返回 (id, preset) 列表。
+
+    Filter all presets by *kind* (llm/asr/tts); return a list of
+    ``(preset_id, VendorPreset)`` tuples.
+    """
     return [(k, p) for k, p in get_vendor_catalog().items() if p.kind == kind]
 
 
 def preset_to_profile(preset_id: str, p: VendorPreset) -> dict[str, Any]:
-    """把目录预设转成可写入 profiles 的预填 dict（结构性字段优先，defaults 只填空）。"""
+    """把目录预设转成可写入 profiles 的预填 dict（结构性字段优先，defaults 只填空）。
+
+    Convert a catalogue preset into a pre-filled dict writable to profiles
+    (structural fields prioritised; ``defaults`` fill empty slots only).
+    """
     prof: dict[str, Any] = {
         "provider": p.provider or "openai",
         "vendor": preset_id,
@@ -192,6 +227,12 @@ def resolve_protocol(profile: dict) -> str:
     """LLM 协议分派：provider 命中 → vendor 反查目录 → chat_path 推断 → 默认 openai。
 
     仅 LLM 层调用；TTS/ASR 不依赖此函数（维持各自 chat_path 推断）。
+
+    LLM protocol dispatch: ``provider`` match → vendor catalogue lookup →
+    ``chat_path`` inference → default ``openai``.
+
+    Called only by the LLM layer; TTS/ASR do not depend on this function
+    (they rely on their own ``chat_path`` inference).
     """
     p = (profile.get("provider") or "").strip()
     if p in _KNOWN_PROTOCOLS:
@@ -209,7 +250,11 @@ def resolve_protocol(profile: dict) -> str:
 
 
 def models_path_for(profile: dict) -> str:
-    """获取模型列表路径：显式 models_path 优先，否则从 chat_path 推导。"""
+    """获取模型列表路径：显式 models_path 优先，否则从 chat_path 推导。
+
+    Resolve the models-list endpoint: explicit ``models_path`` takes priority,
+    otherwise inferred from ``chat_path``.
+    """
     mp = (profile.get("models_path") or "").strip()
     if mp:
         return mp
@@ -229,7 +274,11 @@ _SECRET_KEYS = ("api_key", "api_token")
 
 
 def to_public_dict(d: dict) -> dict:
-    """递归剥除 api_key / api_token，用于目录等对外输出。"""
+    """递归剥除 api_key / api_token，用于目录等对外输出。
+
+    Recursively strip ``api_key`` / ``api_token`` from a dict, for safe external
+    output (e.g. catalogue endpoints).
+    """
     out: dict = {}
     for k, v in d.items():
         if k in _SECRET_KEYS:
@@ -244,6 +293,10 @@ def to_public_dict(d: dict) -> dict:
 
 
 def _to_public_item(item: Any) -> Any:
+    """递归处理列表中的元素（剥除敏感字段）。
+
+    Process list items recursively (strip sensitive fields).
+    """
     if isinstance(item, dict):
         return to_public_dict(item)
     if isinstance(item, list):
