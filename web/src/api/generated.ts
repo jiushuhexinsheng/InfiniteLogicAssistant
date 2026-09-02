@@ -11,7 +11,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Ping */
+        /**
+         * Ping
+         * @description 心跳：返回当前服务器时间。
+         *
+         *     Heartbeat: return the current server time.
+         *
+         *     Returns:
+         *         {"ok": True, "time": ISO 时间戳}。{"ok": True, "time": ISO timestamp}.
+         */
         get: operations["ping_api_ping_get"];
         put?: never;
         post?: never;
@@ -28,7 +36,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Config Endpoint */
+        /**
+         * Config Endpoint
+         * @description 返回前端启动所需的语音/模型配置快照（可用性 + 当前 profile + 语音参数）。
+         *
+         *     Return the voice/model config snapshot needed by the frontend on startup
+         *     (availability + current profile + voice parameters).
+         *
+         *     Returns:
+         *         配置字典。The config dict.
+         */
         get: operations["config_endpoint_api_config_get"];
         put?: never;
         post?: never;
@@ -38,6 +55,9 @@ export interface paths {
         /**
          * Patch Config
          * @description 持久化非敏感配置并热重载；server 绑定类 / MCP 变更返回 restart_required=true。
+         *
+         *     Persist non-sensitive config and hot-reload; returns restart_required=true when
+         *     server-bound settings or the MCP config changed.
          */
         patch: operations["patch_config_api_config_patch"];
         trace?: never;
@@ -56,6 +76,10 @@ export interface paths {
          * @description 文本转语音：调后端配置的 OpenAI 兼容 TTS 端点，返回音频字节。
          *
          *     请求体：{"text": "...", "voice": "可选，缺省用配置里的 voice"}
+         *
+         *     Text-to-speech: call the backend-configured OpenAI-compatible TTS endpoint and
+         *     return the audio bytes. Request body: {"text": "...", "voice": "optional,
+         *     defaults to the voice from config"}
          */
         post: operations["tts_synthesize_api_tts_post"];
         delete?: never;
@@ -73,7 +97,19 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Voice Transcribe */
+        /**
+         * Voice Transcribe
+         * @description 语音转写：接收 base64 音频 → 返回识别文本。
+         *
+         *     ASR transcription: accept base64 audio and return the recognized text.
+         *
+         *     Args:
+         *         request: FastAPI 请求，JSON 体含 audio_base64。The FastAPI request with
+         *             audio_base64 in the JSON body.
+         *
+         *     Returns:
+         *         {"ok": True, "text": ...}，或错误响应。{"ok": True, "text": ...}, or an error response.
+         */
         post: operations["voice_transcribe_api_voice_transcribe_post"];
         delete?: never;
         options?: never;
@@ -97,6 +133,12 @@ export interface paths {
          *     事件：task_state / content_delta / question / error / done。
          *     question 事件后需操作者回答：POST /api/voice/answer {session_id, text}。
          *     请求体可带 session_id：续接已有会话（加载其历史作为多轮种子）。
+         *
+         *     Orchestration entry: text (post-ASR or typed input) → SSE event stream. Events:
+         *     task_state / content_delta / question / error / done. After a question event the
+         *     operator must answer via POST /api/voice/answer {session_id, text}. The request
+         *     body may carry session_id to resume an existing session (loading its history as
+         *     the multi-turn seed).
          */
         post: operations["voice_utter_api_voice_utter_post"];
         delete?: never;
@@ -117,6 +159,9 @@ export interface paths {
         /**
          * Voice Answer
          * @description 投递操作者对澄清/确认问题的回答，解除 pipeline 的 ask() 阻塞。
+         *
+         *     Deliver the operator's answer to a clarification/confirmation question,
+         *     unblocking the pipeline's ask().
          */
         post: operations["voice_answer_api_voice_answer_post"];
         delete?: never;
@@ -137,6 +182,8 @@ export interface paths {
         /**
          * Task Stop
          * @description 停止该会话的整个任务（CancellationToken → executor/子进程中止）。
+         *
+         *     Stop the whole task of the session (CancellationToken → executor/subprocess abort).
          */
         post: operations["task_stop_api_task__session_id__stop_post"];
         delete?: never;
@@ -155,6 +202,8 @@ export interface paths {
         /**
          * Tools List
          * @description 工具清单：后端 @tool 注册中心的 OpenAI schema 数组（供控制台展示）。
+         *
+         *     Tool listing: OpenAI schemas from the backend @tool registry (for console display).
          */
         get: operations["tools_list_api_tools_get"];
         put?: never;
@@ -174,7 +223,21 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Tools Call */
+        /**
+         * Tools Call
+         * @description 执行单个工具：校验 name/args、非 read 工具需显式确认、返回执行输出。
+         *
+         *     Invoke a single tool: validate name/args, require explicit confirmation for
+         *     non-read tools, and return the execution output.
+         *
+         *     Args:
+         *         request: FastAPI 请求，JSON 体为 {name, args, confirm?}。The FastAPI request
+         *             with a JSON body of {name, args, confirm?}.
+         *
+         *     Returns:
+         *         执行结果 {ok, status, output}，或错误 JSONResponse。The execution result
+         *         {ok, status, output}, or an error JSONResponse.
+         */
         post: operations["tools_call_api_tools_call_post"];
         delete?: never;
         options?: never;
@@ -189,7 +252,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Env */
+        /**
+         * Env
+         * @description 读取当前环境快照（environment.md 的内容）。
+         *
+         *     Read the current environment snapshot (the content of environment.md).
+         */
         get: operations["env_api_env_get"];
         put?: never;
         post?: never;
@@ -206,7 +274,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Memory List */
+        /**
+         * Memory List
+         * @description 列出全部长期记忆事实（facts）。
+         *
+         *     List all long-term memory facts.
+         */
         get: operations["memory_list_api_memory_get"];
         put?: never;
         post?: never;
@@ -226,7 +299,12 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Memory Delete */
+        /**
+         * Memory Delete
+         * @description 按主题删除一条长期记忆。
+         *
+         *     Delete a long-term memory entry by topic.
+         */
         delete: operations["memory_delete_api_memory__topic__delete"];
         options?: never;
         head?: never;
@@ -240,10 +318,20 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Schedules List */
+        /**
+         * Schedules List
+         * @description 列出全部已注册的定时任务。
+         *
+         *     List all registered scheduled jobs.
+         */
         get: operations["schedules_list_api_schedules_get"];
         put?: never;
-        /** Schedules Add */
+        /**
+         * Schedules Add
+         * @description 注册一个定时任务：body {cron, prompt}，cron 与 prompt 必填。
+         *
+         *     Register a scheduled job: body {cron, prompt}; cron and prompt are required.
+         */
         post: operations["schedules_add_api_schedules_post"];
         delete?: never;
         options?: never;
@@ -261,7 +349,12 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Schedules Delete */
+        /**
+         * Schedules Delete
+         * @description 按 ID 取消一个定时任务。
+         *
+         *     Cancel a scheduled job by its ID.
+         */
         delete: operations["schedules_delete_api_schedules__sid__delete"];
         options?: never;
         head?: never;
@@ -275,7 +368,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** History List */
+        /**
+         * History List
+         * @description 列出最近的会话历史（最多 limit 条）。
+         *
+         *     List recent conversation history (up to ``limit`` entries).
+         */
         get: operations["history_list_api_history_get"];
         put?: never;
         post?: never;
@@ -292,11 +390,21 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** History Get */
+        /**
+         * History Get
+         * @description 获取单个会话详情；不存在时返回 404。
+         *
+         *     Get the detail of a single conversation; returns 404 when it does not exist.
+         */
         get: operations["history_get_api_history__conv_id__get"];
         put?: never;
         post?: never;
-        /** History Delete */
+        /**
+         * History Delete
+         * @description 删除指定会话历史。
+         *
+         *     Delete the specified conversation history.
+         */
         delete: operations["history_delete_api_history__conv_id__delete"];
         options?: never;
         head?: never;
@@ -313,12 +421,16 @@ export interface paths {
         /**
          * Sessions List
          * @description 会话列表；?archived=true 只归档 / false(默认) 排除归档。
+         *
+         *     List sessions; ?archived=true returns only archived ones, false (default) excludes archived.
          */
         get: operations["sessions_list_api_sessions_get"];
         put?: never;
         /**
          * Sessions Create
          * @description 新建会话（可选 body {"name"}；缺省名「新会话」），返回 {id, name, ...}。
+         *
+         *     Create a new session (optional body {"name"}; defaults to "新会话"), returns {id, name, ...}.
          */
         post: operations["sessions_create_api_sessions_post"];
         delete?: never;
@@ -337,13 +449,20 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Sessions Delete */
+        /**
+         * Sessions Delete
+         * @description 删除指定会话（含其全部消息）。
+         *
+         *     Delete the specified session (including all of its messages).
+         */
         delete: operations["sessions_delete_api_sessions__sid__delete"];
         options?: never;
         head?: never;
         /**
          * Sessions Patch
          * @description 更新会话：body {name} 重命名 或 {archived: bool} 归档/取消归档（可同时）。
+         *
+         *     Update a session: body {name} renames or {archived: bool} archives/unarchives (both allowed at once).
          */
         patch: operations["sessions_patch_api_sessions__sid__patch"];
         trace?: never;
@@ -360,6 +479,8 @@ export interface paths {
         /**
          * Sessions Clear
          * @description 清除上下文：清空该会话消息（会话记录与 name 保留）。
+         *
+         *     Clear the context: wipe the session's messages (the session record and its name are kept).
          */
         post: operations["sessions_clear_api_sessions__sid__clear_post"];
         delete?: never;
@@ -378,6 +499,8 @@ export interface paths {
         /**
          * Config Full
          * @description 设置页可编辑快照（密钥不回显）。
+         *
+         *     Editable snapshot for the settings page (secrets are not echoed back).
          */
         get: operations["config_full_api_config_full_get"];
         put?: never;
@@ -401,6 +524,10 @@ export interface paths {
          * @description 设置/清除密钥（value 为空字符串=清除）。path 形如 llm.api_key / llm.profiles.deepseek / server.api_token。
          *
          *     只写 config.secrets.yaml，永不把密钥值放进响应。
+         *
+         *     Set/clear a secret (empty value string = clear). path looks like llm.api_key /
+         *     llm.profiles.deepseek / server.api_token. Only writes config.secrets.yaml and never
+         *     puts secret values into the response.
          */
         put: operations["put_secrets_api_config_secrets_put"];
         post?: never;
@@ -420,6 +547,9 @@ export interface paths {
         /**
          * Detection
          * @description 聚合检测：环境快照 + 配置健康 + 三项连通性（设置页「检测全部」按钮）。
+         *
+         *     Aggregated detection: environment snapshot + config health + three connectivity
+         *     checks (the "check all" button on the settings page).
          */
         get: operations["detection_api_detection_get"];
         put?: never;
@@ -437,7 +567,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Providers */
+        /**
+         * List Providers
+         * @description 返回合并后的厂商目录，按 kind（llm/asr/tts）分组，不含密钥。
+         *
+         *     Return the merged vendor catalog grouped by kind (llm/asr/tts), without secrets.
+         */
         get: operations["list_providers_api_providers_get"];
         put?: never;
         post?: never;
@@ -462,6 +597,12 @@ export interface paths {
          *
          *     请求体：{"section": "llm|asr|tts", "profile": {完整 profile dict，含 name/endpoint/chat_path/api_key_env}}
          *     profile 传完整 dict，未保存的新 profile 也能测（密钥由服务端按优先级解析，不回显）。
+         *
+         *     Fetch the available model list for a profile (dispatched by protocol: openai / anthropic / gemini).
+         *
+         *     Request body: {"section": "llm|asr|tts", "profile": {full profile dict incl. name/endpoint/chat_path/api_key_env}}
+         *     The full profile dict is passed in, so an unsaved new profile can also be tested
+         *     (the key is resolved server-side by priority and never echoed).
          */
         post: operations["fetch_models_api_providers_fetch_models_post"];
         delete?: never;
@@ -477,7 +618,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Spa Handler */
+        /**
+         * Spa Handler
+         * @description SPA 兜底路由：托管静态文件，未知 /api 路径返回 404，非 api 导航回退 index.html。
+         *
+         *     SPA fallback route: serve static files, return 404 for unknown /api paths, and fall back to index.html for non-API navigation.
+         */
         get: operations["spa_handler__full_path__get"];
         put?: never;
         post?: never;
@@ -491,7 +637,12 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** AckResponse */
+        /**
+         * AckResponse
+         * @description 操作确认响应。
+         *
+         *     Operation acknowledgement response.
+         */
         AckResponse: {
             /**
              * Ok
@@ -506,7 +657,12 @@ export interface components {
              */
             ack: string;
         };
-        /** AgentConfigOut */
+        /**
+         * AgentConfigOut
+         * @description Agent 配置输出（递归限制、多代理、故障转移模型列表）。
+         *
+         *     Agent config output (recursion limit, multi-agent, failover model list).
+         */
         AgentConfigOut: {
             /**
              * Recursion Limit
@@ -524,7 +680,12 @@ export interface components {
              */
             models_failover: string[];
         };
-        /** ApiResponse */
+        /**
+         * ApiResponse
+         * @description 所有 API 响应的基类，含通用 ok/error 字段。
+         *
+         *     Base class for all API responses, with common ``ok`` / ``error`` fields.
+         */
         ApiResponse: {
             /**
              * Ok
@@ -534,7 +695,12 @@ export interface components {
             /** Error */
             error?: string | null;
         };
-        /** CatalogResponse */
+        /**
+         * CatalogResponse
+         * @description 厂商目录端点响应。
+         *
+         *     ``/api/providers/catalog`` response.
+         */
         CatalogResponse: {
             /**
              * Ok
@@ -551,7 +717,12 @@ export interface components {
                 [key: string]: components["schemas"]["ProviderPreset"][];
             };
         };
-        /** ConfigFullResponse */
+        /**
+         * ConfigFullResponse
+         * @description 完整配置端点响应。
+         *
+         *     ``/api/config`` full response.
+         */
         ConfigFullResponse: {
             /**
              * Ok
@@ -562,7 +733,12 @@ export interface components {
             error?: string | null;
             editable: components["schemas"]["EditableSnapshot"];
         };
-        /** ConfigHealthOut */
+        /**
+         * ConfigHealthOut
+         * @description 配置健康状态输出。
+         *
+         *     Configuration health status output.
+         */
         ConfigHealthOut: {
             /** Ok */
             ok: boolean;
@@ -572,7 +748,12 @@ export interface components {
              */
             issues: components["schemas"]["DetectionIssue"][];
         };
-        /** ConfigResponse */
+        /**
+         * ConfigResponse
+         * @description 配置状态端点响应（LLM/ASR/TTS 可用性、唤醒词、VAD）。
+         *
+         *     ``/api/config`` status response (LLM/ASR/TTS availability, wake word, VAD).
+         */
         ConfigResponse: {
             /**
              * Ok
@@ -618,7 +799,12 @@ export interface components {
             wake_word: components["schemas"]["WakeWordConfig"];
             vad: components["schemas"]["VadConfig"];
         };
-        /** ConnectivityResult */
+        /**
+         * ConnectivityResult
+         * @description 单条连通性检查结果。
+         *
+         *     A single connectivity check result.
+         */
         ConnectivityResult: {
             /** Name */
             name: string;
@@ -632,7 +818,12 @@ export interface components {
              */
             detail: string;
         };
-        /** DetectionIssue */
+        /**
+         * DetectionIssue
+         * @description 单条检测问题（级别 + 键 + 描述）。
+         *
+         *     A single detection issue (level + key + message).
+         */
         DetectionIssue: {
             /** Level */
             level: string;
@@ -641,7 +832,12 @@ export interface components {
             /** Message */
             message: string;
         };
-        /** DetectionReportOut */
+        /**
+         * DetectionReportOut
+         * @description 环境检测报告（系统信息 + 配置健康 + 连通性检查）。
+         *
+         *     Environment detection report (system info + config health + connectivity checks).
+         */
         DetectionReportOut: {
             /**
              * Environment
@@ -657,7 +853,12 @@ export interface components {
              */
             connectivity: components["schemas"]["ConnectivityResult"][];
         };
-        /** DetectionResponse */
+        /**
+         * DetectionResponse
+         * @description 环境检测端点响应。
+         *
+         *     ``/api/detection`` response.
+         */
         DetectionResponse: {
             /**
              * Ok
@@ -668,7 +869,12 @@ export interface components {
             error?: string | null;
             report: components["schemas"]["DetectionReportOut"];
         };
-        /** EditableSnapshot */
+        /**
+         * EditableSnapshot
+         * @description 配置编辑快照（前端 settings 页面的数据源）。
+         *
+         *     Configuration editable snapshot (data source for the front-end settings page).
+         */
         EditableSnapshot: {
             llm: components["schemas"]["SectionEditable"];
             asr: components["schemas"]["SectionEditable"];
@@ -682,7 +888,12 @@ export interface components {
             rag: components["schemas"]["RagConfigOut"];
             server: components["schemas"]["ServerConfigOut"];
         };
-        /** EnvResponse */
+        /**
+         * EnvResponse
+         * @description 环境信息端点响应（environment.md 内容）。
+         *
+         *     ``/api/env`` response (content of ``environment.md``).
+         */
         EnvResponse: {
             /**
              * Ok
@@ -697,7 +908,12 @@ export interface components {
              */
             content: string;
         };
-        /** FactItem */
+        /**
+         * FactItem
+         * @description 单条长期记忆事实。
+         *
+         *     A single long-term memory fact entry.
+         */
         FactItem: {
             /** Topic */
             topic: string;
@@ -714,7 +930,12 @@ export interface components {
              */
             ts: string;
         };
-        /** FetchModelsResponse */
+        /**
+         * FetchModelsResponse
+         * @description 获取模型列表端点响应。
+         *
+         *     ``/api/providers/models`` fetch response.
+         */
         FetchModelsResponse: {
             /**
              * Ok
@@ -734,7 +955,12 @@ export interface components {
              */
             count: number;
         };
-        /** FunctionParams */
+        /**
+         * FunctionParams
+         * @description 工具函数参数的 JSON Schema 描述。
+         *
+         *     JSON Schema description of tool function parameters.
+         */
         FunctionParams: {
             /**
              * Type
@@ -759,7 +985,12 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
-        /** HistoryConversation */
+        /**
+         * HistoryConversation
+         * @description 历史会话摘要（列表视图）。
+         *
+         *     Conversation summary (list view).
+         */
         HistoryConversation: {
             /** Id */
             id: string;
@@ -777,6 +1008,9 @@ export interface components {
         /**
          * HistoryConversationDetail
          * @description 会话详情：详情响应不含 message_count（仅列表接口统计）。
+         *
+         *     Conversation detail: excludes ``message_count`` (only counted in the list
+         *     endpoint).
          */
         HistoryConversationDetail: {
             /** Id */
@@ -795,7 +1029,12 @@ export interface components {
              */
             messages: components["schemas"]["HistoryMessage"][];
         };
-        /** HistoryDetailResponse */
+        /**
+         * HistoryDetailResponse
+         * @description 历史会话详情端点响应。
+         *
+         *     ``/api/history/<id>`` detail response.
+         */
         HistoryDetailResponse: {
             /**
              * Ok
@@ -806,7 +1045,12 @@ export interface components {
             error?: string | null;
             conversation?: components["schemas"]["HistoryConversationDetail"] | null;
         };
-        /** HistoryListResponse */
+        /**
+         * HistoryListResponse
+         * @description 历史会话列表端点响应。
+         *
+         *     ``/api/history`` conversation list response.
+         */
         HistoryListResponse: {
             /**
              * Ok
@@ -821,7 +1065,12 @@ export interface components {
              */
             conversations: components["schemas"]["HistoryConversation"][];
         };
-        /** HistoryMessage */
+        /**
+         * HistoryMessage
+         * @description 历史记录中的单条消息。
+         *
+         *     A single message in a conversation history.
+         */
         HistoryMessage: {
             /** Role */
             role: string;
@@ -835,7 +1084,12 @@ export interface components {
                 [key: string]: unknown;
             }[] | null;
         };
-        /** LlmClientConfigOut */
+        /**
+         * LlmClientConfigOut
+         * @description LLM 客户端配置输出（重试、熔断、超时参数）。
+         *
+         *     LLM client config output (retry, circuit breaker, timeout parameters).
+         */
         LlmClientConfigOut: {
             /**
              * Retry Max
@@ -868,7 +1122,12 @@ export interface components {
              */
             request_timeout: number;
         };
-        /** McpConfigOut */
+        /**
+         * McpConfigOut
+         * @description MCP 配置输出。
+         *
+         *     MCP config output.
+         */
         McpConfigOut: {
             /**
              * Servers
@@ -876,7 +1135,12 @@ export interface components {
              */
             servers: components["schemas"]["McpServerOut"][];
         };
-        /** McpServerOut */
+        /**
+         * McpServerOut
+         * @description 单个 MCP 服务器配置。
+         *
+         *     A single MCP server configuration.
+         */
         McpServerOut: {
             /** Name */
             name: string;
@@ -888,7 +1152,12 @@ export interface components {
              */
             args: string[];
         };
-        /** MemoryListResponse */
+        /**
+         * MemoryListResponse
+         * @description 记忆列表端点响应。
+         *
+         *     ``/api/memory`` list response.
+         */
         MemoryListResponse: {
             /**
              * Ok
@@ -903,7 +1172,12 @@ export interface components {
              */
             facts: components["schemas"]["FactItem"][];
         };
-        /** PatchConfigResponse */
+        /**
+         * PatchConfigResponse
+         * @description 配置补丁端点响应。
+         *
+         *     ``PATCH /api/config`` response.
+         */
         PatchConfigResponse: {
             /**
              * Ok
@@ -918,7 +1192,12 @@ export interface components {
              */
             restart_required: boolean;
         };
-        /** PingResponse */
+        /**
+         * PingResponse
+         * @description ping 端点响应，返回服务器时间戳。
+         *
+         *     ``/api/ping`` response carrying the server timestamp.
+         */
         PingResponse: {
             /**
              * Ok
@@ -933,6 +1212,9 @@ export interface components {
         /**
          * ProfileEditable
          * @description editable_snapshot 的 profile（去 api_key）。extra=allow 保留用户透传键。
+         *
+         *     Profile within ``editable_snapshot`` (``api_key`` stripped). ``extra=allow``
+         *     preserves user pass-through keys.
          */
         ProfileEditable: {
             /**
@@ -1027,7 +1309,12 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** ProviderPreset */
+        /**
+         * ProviderPreset
+         * @description 厂商预设的完整结构（含所有可用字段）。
+         *
+         *     Full vendor preset structure (with all available fields).
+         */
         ProviderPreset: {
             /** Id */
             id: string;
@@ -1093,7 +1380,12 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        /** PutSecretsResponse */
+        /**
+         * PutSecretsResponse
+         * @description 密钥写入端点响应。
+         *
+         *     ``PUT /api/secrets`` response.
+         */
         PutSecretsResponse: {
             /**
              * Ok
@@ -1113,7 +1405,12 @@ export interface components {
              */
             path: string;
         };
-        /** RagConfigOut */
+        /**
+         * RagConfigOut
+         * @description RAG 配置输出。
+         *
+         *     RAG config output.
+         */
         RagConfigOut: {
             /**
              * Auto Index
@@ -1121,7 +1418,12 @@ export interface components {
              */
             auto_index: boolean;
         };
-        /** ScheduleAddResponse */
+        /**
+         * ScheduleAddResponse
+         * @description 添加定时任务端点响应。
+         *
+         *     ``/api/schedules/add`` response.
+         */
         ScheduleAddResponse: {
             /**
              * Ok
@@ -1132,7 +1434,12 @@ export interface components {
             error?: string | null;
             schedule?: components["schemas"]["ScheduleItem"] | null;
         };
-        /** ScheduleItem */
+        /**
+         * ScheduleItem
+         * @description 单条定时任务。
+         *
+         *     A single scheduled task entry.
+         */
         ScheduleItem: {
             /** Id */
             id: string;
@@ -1146,7 +1453,12 @@ export interface components {
              */
             enabled: boolean;
         };
-        /** SchedulesResponse */
+        /**
+         * SchedulesResponse
+         * @description 定时任务列表端点响应。
+         *
+         *     ``/api/schedules`` list response.
+         */
         SchedulesResponse: {
             /**
              * Ok
@@ -1161,7 +1473,13 @@ export interface components {
              */
             schedules: components["schemas"]["ScheduleItem"][];
         };
-        /** SectionEditable */
+        /**
+         * SectionEditable
+         * @description 配置编辑区段（active profile + profiles 映射 + api_key_set 标记）。
+         *
+         *     Editable configuration section (active profile + profiles mapping +
+         *     ``api_key_set`` flags).
+         */
         SectionEditable: {
             /**
              * Active
@@ -1183,7 +1501,12 @@ export interface components {
                 [key: string]: boolean;
             };
         };
-        /** ServerConfigOut */
+        /**
+         * ServerConfigOut
+         * @description 服务器配置输出（主机、端口、浏览器启动、CORS、API token）。
+         *
+         *     Server config output (host, port, browser launch, CORS, API token).
+         */
         ServerConfigOut: {
             /**
              * Host
@@ -1211,7 +1534,12 @@ export interface components {
              */
             api_token_set: boolean;
         };
-        /** SessionCreateResponse */
+        /**
+         * SessionCreateResponse
+         * @description 创建会话端点响应。
+         *
+         *     ``/api/sessions`` creation response.
+         */
         SessionCreateResponse: {
             /**
              * Ok
@@ -1222,7 +1550,12 @@ export interface components {
             error?: string | null;
             session: components["schemas"]["SessionOut"];
         };
-        /** SessionListResponse */
+        /**
+         * SessionListResponse
+         * @description 会话列表端点响应。
+         *
+         *     ``/api/sessions`` list response.
+         */
         SessionListResponse: {
             /**
              * Ok
@@ -1237,7 +1570,12 @@ export interface components {
              */
             sessions: components["schemas"]["SessionOut"][];
         };
-        /** SessionOut */
+        /**
+         * SessionOut
+         * @description 会话输出模型。
+         *
+         *     Session output model.
+         */
         SessionOut: {
             /** Id */
             id: string;
@@ -1277,7 +1615,12 @@ export interface components {
              */
             archived: boolean;
         };
-        /** TextResponse */
+        /**
+         * TextResponse
+         * @description 返回纯文本内容的通用响应。
+         *
+         *     Generic response returning plain text content.
+         */
         TextResponse: {
             /**
              * Ok
@@ -1292,7 +1635,12 @@ export interface components {
              */
             text: string;
         };
-        /** ToolCallResponse */
+        /**
+         * ToolCallResponse
+         * @description 工具调用端点响应。
+         *
+         *     ``/api/tools/call`` response.
+         */
         ToolCallResponse: {
             /**
              * Ok
@@ -1308,7 +1656,12 @@ export interface components {
             /** Needs Confirm */
             needs_confirm?: boolean | null;
         };
-        /** ToolFunction */
+        /**
+         * ToolFunction
+         * @description 单个工具函数的元数据（名称 + 描述 + 参数 schema）。
+         *
+         *     Metadata for a single tool function (name + description + parameter schema).
+         */
         ToolFunction: {
             /** Name */
             name: string;
@@ -1316,7 +1669,12 @@ export interface components {
             description: string;
             parameters: components["schemas"]["FunctionParams"];
         };
-        /** ToolSchema */
+        /**
+         * ToolSchema
+         * @description 工具定义（含 function 字段，符合 OpenAI tools schema）。
+         *
+         *     Tool definition (with ``function`` field, compatible with OpenAI tools schema).
+         */
         ToolSchema: {
             /**
              * Type
@@ -1325,7 +1683,12 @@ export interface components {
             type: string;
             function: components["schemas"]["ToolFunction"];
         };
-        /** ToolsConfigOut */
+        /**
+         * ToolsConfigOut
+         * @description 工具配置输出。
+         *
+         *     Tools config output.
+         */
         ToolsConfigOut: {
             /**
              * Search Max Results
@@ -1338,7 +1701,12 @@ export interface components {
              */
             weather_timeout: number;
         };
-        /** ToolsResponse */
+        /**
+         * ToolsResponse
+         * @description 工具列表端点响应。
+         *
+         *     ``/api/tools`` list response.
+         */
         ToolsResponse: {
             /**
              * Ok
@@ -1353,7 +1721,12 @@ export interface components {
              */
             tools: components["schemas"]["ToolSchema"][];
         };
-        /** TtsSectionEditable */
+        /**
+         * TtsSectionEditable
+         * @description TTS 区段（多一个 enabled 标记）。
+         *
+         *     TTS section (extra ``enabled`` flag).
+         */
         TtsSectionEditable: {
             /**
              * Active
@@ -1380,7 +1753,12 @@ export interface components {
              */
             enabled: boolean;
         };
-        /** VadConfig */
+        /**
+         * VadConfig
+         * @description VAD（语音活动检测）配置。
+         *
+         *     VAD (Voice Activity Detection) configuration.
+         */
         VadConfig: {
             /**
              * Silence Threshold
@@ -1411,7 +1789,12 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
-        /** WakeWordConfig */
+        /**
+         * WakeWordConfig
+         * @description 唤醒词配置。
+         *
+         *     Wake-word detection configuration.
+         */
         WakeWordConfig: {
             /**
              * Enabled
