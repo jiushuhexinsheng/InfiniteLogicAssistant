@@ -1,12 +1,17 @@
 <template>
+  <!-- 完整控制台页面布局。Full console page layout. -->
   <div class="console-page">
+    <!-- 控制台顶部栏。Console top header bar. -->
     <header class="console-header">
+      <!-- 左侧区域：返回按钮、品牌图标、标题。Left area: back button, brand icon, title. -->
       <div class="ch-left">
         <UiButton variant="secondary" size="sm" @click="router.push('/')">← 开始页</UiButton>
         <span class="ch-crown"><UiIcon name="infinity" :size="13" /></span>
         <span class="ch-title">完整控制台</span>
       </div>
+      <!-- 右侧区域：状态指示器、清空按钮。Right area: status indicator, clear button. -->
       <div class="ch-right">
+        <!-- 助手状态指示。Assistant status indicator. -->
         <span class="ch-state">
           <UiStatusDot :color="asst.stateColor.value" :size="8" :glow="8" />
           {{ asst.stateLabel.value }}
@@ -15,24 +20,34 @@
       </div>
     </header>
 
+    <!-- 控制台主体：侧边栏 + 内容区。Console body: sidebar + main content area. -->
     <div class="console-body">
       <ConsoleSidebar :active="active" :wake-enabled="wakeEnabled" @select="emit('select', $event)" />
+      <!-- 主内容插槽。Main content slot. -->
       <main class="console-main"><slot /></main>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+/**
+ * 控制台页面布局组件，包含顶部栏、侧边栏和主内容区。
+ * Console page layout component, contains header bar, sidebar and main content area.
+ */
 import { useRouter } from 'vue-router'
 import { useAssistant } from '../../composables/useAssistant'
 import type { ConsoleTabKey } from '../../composables/useConsole'
 import { UiButton, UiIcon, UiStatusDot } from '../ui'
 import ConsoleSidebar from './ConsoleSidebar.vue'
 
+/** 属性：当前激活的标签页和语音唤醒开关状态。Props: currently active tab key and voice wake toggle state. */
 defineProps<{ active: ConsoleTabKey; wakeEnabled: boolean }>()
+/** 事件：切换标签页、清空记录。Events: switch tab, clear history. */
 const emit = defineEmits<{ select: [key: ConsoleTabKey]; clear: [] }>()
 
+/** 助手组合式函数实例。Assistant composable instance. */
 const asst = useAssistant()
+/** 路由实例，用于页面跳转。Router instance for page navigation. */
 const router = useRouter()
 </script>
 
@@ -40,7 +55,7 @@ const router = useRouter()
 .console-page {
   height: 100dvh; min-height: 100vh; overflow: hidden;
   display: flex; flex-direction: column;
-  padding-bottom: 120px; /* 避免右下角悬浮球遮挡 */
+  padding-bottom: 120px; /* 避免右下角悬浮球遮挡。Prevent bottom-right floating ball from overlapping. */
   background:
     radial-gradient(1000px 480px at 50% -5%, rgba(103, 232, 249, .06), transparent 60%),
     var(--bg-0);

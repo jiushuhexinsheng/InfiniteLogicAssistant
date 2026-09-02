@@ -1,5 +1,6 @@
 <template>
   <div ref="scrollEl" class="console-messages">
+    <!-- 欢迎横幅：显示助手名称、在线状态和唤醒词。Welcome banner: shows assistant name, online status and wake keyword. -->
     <div class="welcome">
       <span class="w-avatar"><UiIcon name="brain" :size="13" /></span>
       <span class="w-name">小逻</span>
@@ -8,6 +9,7 @@
     <div v-if="!messages.length" class="console-empty">
       还没有对话 —— 点右下角悬浮球，或输入文字开始。
     </div>
+    <!-- 消息列表：遍历渲染每条聊天消息，支持重试和取消工具调用。Message list: renders each chat message with retry and cancel tool-call support. -->
     <div v-else class="console-msgs">
       <MessageItem
         v-for="m in messages"
@@ -26,17 +28,22 @@ import MessageItem from '../assistant/MessageItem.vue'
 import { UiIcon } from '../ui'
 import type { ChatMessage } from '../../composables/useAssistant'
 
+/** 组件 props：消息列表和可选的唤醒关键词。Component props: message list and optional wake keyword. */
 const props = withDefaults(defineProps<{ messages: ChatMessage[]; wakeKeyword?: string }>(), { wakeKeyword: '小逻' })
+/** 组件事件：重试工具调用和取消工具调用。Component events: retry and cancel tool calls. */
 const emit = defineEmits<{ retry: [id: string]; cancel: [id: string] }>()
 
+/** 滚动容器 DOM 引用。Scroll container DOM reference. */
 const scrollEl = ref<HTMLElement | null>(null)
 
+/** 平滑滚动到底部（在 DOM 更新后执行）。Smooth scroll to bottom (executes after DOM update). */
 function scrollToBottom() {
   nextTick(() => {
     if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight
   })
 }
 
+/** 监听消息数量和最后一条消息长度变化，自动滚到底部。Watch message count and last message length changes, auto-scroll to bottom. */
 watch(
   () => [props.messages.length, props.messages[props.messages.length - 1]?.text?.length],
   scrollToBottom

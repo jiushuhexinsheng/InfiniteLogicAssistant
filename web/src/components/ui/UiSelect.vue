@@ -7,8 +7,10 @@
   </div>
 </template>
 
+<!-- 下拉选择框组件，隐藏原生样式并自定义箭头图标。Custom-styled select dropdown with native appearance hidden. -->
 <script setup lang="ts">
 import UiIcon from './UiIcon.vue'
+/** 选择框 Props：选中值(v-model)/是否禁用；Emits `update:modelValue`。Select props: selected value (v-model), disabled; emits `update:modelValue`. */
 withDefaults(defineProps<{ modelValue?: string; disabled?: boolean }>(), { modelValue: '', disabled: false })
 defineEmits<{ 'update:modelValue': [v: string] }>()
 </script>

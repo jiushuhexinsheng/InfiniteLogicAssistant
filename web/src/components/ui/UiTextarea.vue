@@ -10,7 +10,9 @@
   ></textarea>
 </template>
 
+<!-- 多行文本域组件，支持 v-model 双向绑定和可调行数。Multi-line textarea with v-model binding and configurable row count. -->
 <script setup lang="ts">
+/** 文本域 Props：绑定值/默认行数/占位文本/是否禁用；Emits `update:modelValue`。Textarea props: bound value, default rows, placeholder, disabled; emits `update:modelValue`. */
 withDefaults(defineProps<{ modelValue?: string; rows?: number; placeholder?: string; disabled?: boolean }>(), { modelValue: '', rows: 2, placeholder: '', disabled: false })
 defineEmits<{ 'update:modelValue': [v: string] }>()
 </script>

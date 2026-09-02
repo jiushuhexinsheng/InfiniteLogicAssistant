@@ -6,10 +6,12 @@
   </span>
 </template>
 
+<!-- 标签/徽章组件，可显示状态圆点和附加详情信息。Tag/badge component with optional status dot and detail text. -->
 <script setup lang="ts">
 import { computed } from 'vue'
 import UiStatusDot from './UiStatusDot.vue'
 
+/** 标签组件 Props：色调(状态)/是否显示状态圆点/附加详情文本。Chip props: tone (status), show status dot, extra detail text. */
 const props = withDefaults(defineProps<{
   tone?: 'ok' | 'warn' | 'err' | 'info' | 'neutral'
   dot?: boolean

@@ -3,6 +3,7 @@
     <div v-if="loading" class="console-empty">加载中…</div>
     <div v-else-if="error" class="console-empty">加载失败：{{ error }}</div>
     <div v-else-if="!tools.length" class="console-empty">后端没有注册工具</div>
+    <!-- 工具列表：展示每个工具的名称、描述，点击展开查看参数定义。Tool list: shows name and description of each tool, click to expand and view parameter definitions. -->
     <div v-else class="tool-cards">
       <UiCard v-for="t in tools" :key="t.function.name" class="tool-card" :padded="false">
         <div class="tool-head" @click="toggle(t.function.name)">
@@ -24,11 +25,16 @@ import { api } from '../../api'
 import type { ToolSchema } from '../../types'
 import { UiCard, UiIcon } from '../ui'
 
+/** 后端注册的工具列表。List of tools registered in backend. */
 const tools = ref<ToolSchema[]>([])
+/** 加载状态标志。Loading state flag. */
 const loading = ref(true)
+/** 加载错误信息。Load error message. */
 const error = ref('')
+/** 当前展开的工具名称（用于折叠/展开切换）。Currently expanded tool name (for collapse/expand toggle). */
 const open = ref('')
 
+/** 切换工具详情的展开/折叠。Toggle tool details expand/collapse. */
 function toggle(name: string) { open.value = open.value === name ? '' : name }
 
 onMounted(async () => {

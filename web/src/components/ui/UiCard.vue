@@ -5,7 +5,9 @@
   </section>
 </template>
 
+<!-- 卡片容器组件，支持标题、悬浮效果和内边距。Card container with optional title, hover effect, and padding. -->
 <script setup lang="ts">
+/** 卡片组件 Props：标题文本/是否启用悬浮交互/是否添加内边距。Card props: title text, hover interaction toggle, inner padding toggle. */
 withDefaults(defineProps<{ title?: string; hover?: boolean; padded?: boolean }>(), { title: '', hover: false, padded: true })
 </script>
 

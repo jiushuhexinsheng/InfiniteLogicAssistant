@@ -1,8 +1,10 @@
 <template>
+  <!-- 简约对话历史区域。Compact conversation history area. -->
   <div ref="scrollEl" class="mini-history">
-    <!-- 空态：状态相关提示 -->
+    <!-- 空态：根据当前状态显示不同提示。Empty state: show different prompts based on current state. -->
     <div v-if="!turns.length" class="mini-empty">
       <template v-if="state === 'listening'">
+        <!-- 聆听中 EQ 动画。Listening EQ animation. -->
         <span class="mini-eq"><i></i><i></i><i></i></span>
         聆听中，说"{{ wakeKeyword }}"唤醒我
       </template>
@@ -11,12 +13,14 @@
       <template v-else>说"{{ wakeKeyword }}"开始对话，或输入文字</template>
     </div>
 
-    <!-- 简约历史：用户（右对齐气泡） + AI（左对齐摘要气泡 + 工具徽章） -->
+    <!-- 简约历史：用户（右对齐气泡） + AI（左对齐摘要气泡 + 工具徽章）。
+         Compact history: user (right-aligned bubble) + AI (left-aligned summary bubble + tool badges). -->
     <template v-else>
       <div v-for="t in turns" :key="t.key" class="mini-turn">
-        <!-- 用户输入：右侧品牌渐变气泡 -->
+        <!-- 用户输入：右侧品牌渐变气泡。User input: right-aligned brand gradient bubble. -->
         <div v-if="t.input" class="mini-bubble user">{{ t.input }}</div>
-        <!-- AI 摘要：左侧暗色气泡 + 工具徽章 + 完整记录入口 -->
+        <!-- AI 摘要：左侧暗色气泡 + 工具徽章 + 完整记录入口。
+             AI summary: left-aligned dark bubble + tool badges + full history link. -->
         <div class="mini-bubble ai">
           <span class="mini-summary">{{ t.summary || (t.tools.length ? '已完成' : '…') }}</span>
           <span v-for="name in t.tools" :key="name" class="mini-tool">{{ name }}</span>
@@ -32,6 +36,13 @@ import { computed, nextTick, ref, watch } from 'vue'
 import type { AsstState, ChatMessage } from '../../composables/useAssistant'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
 
+/**
+ * 组件属性定义。Component props definition.
+ * @property messages - 聊天消息列表。Chat message list.
+ * @property state - 助手当前状态。Current assistant state.
+ * @property visual - 状态对应的视觉配置。Visual configuration for the current state.
+ * @property wakeKeyword - 语音唤醒关键词。Voice wake keyword.
+ */
 const props = defineProps<{
   messages: ChatMessage[]
   state: AsstState
@@ -39,8 +50,13 @@ const props = defineProps<{
   wakeKeyword: string
 }>()
 
+/**
+ * 组件事件定义。Component events definition.
+ * @event select - 用户点击"完整记录"时触发。Emitted when user clicks "full history" link.
+ */
 const emit = defineEmits<{ select: [] }>()
 
+/** 对话轮次数据结构。Conversation turn data structure. */
 interface Turn {
   key: string
   input: string
@@ -48,16 +64,29 @@ interface Turn {
   tools: string[]
 }
 
-/** 摘要：折叠换行后取整段、剥 markdown 记号、截断。不额外调 LLM。
- *  只取首行会导致按句换行的回复摘要只剩"好的。"两三个字。 */
+/**
+ * 摘要：折叠换行后取整段、剥 markdown 记号、截断。不额外调 LLM。
+ * 只取首行会导致按句换行的回复摘要只剩"好的。"两三个字。
+ * Summarize: collapse newlines, strip markdown tokens, truncate. No extra LLM call.
+ * Taking only the first line would leave just "好的。" for line-broken replies.
+ */
 function summarize(text: string): string {
   const flat = text.replace(/\s*\n\s*/g, ' ').trim().replace(/[*`_~#>|]/g, '')
   return flat.length > 60 ? flat.slice(0, 60) + '…' : flat
 }
 
-// 摘要缓存：按消息 id 缓存 { text, summary }，仅当文本变化（流式增长）时才重算。
-// 避免 turns computed 每次消息变动都对整段历史（最多 200 条）重跑 summarize。
+/**
+ * 摘要缓存：按消息 id 缓存 { text, summary }，仅当文本变化（流式增长）时才重算。
+ * 避免 turns computed 每次消息变动都对整段历史（最多 200 条）重跑 summarize。
+ * Summary cache: caches { text, summary } by message id, recalculates only when text changes (streaming growth).
+ * Avoids re-running summarize on the entire history (up to 200 messages) on every turn computed trigger.
+ */
 const summaryCache = new Map<string, { text: string; summary: string }>()
+
+/**
+ * 带缓存的摘要获取。Get summary with cache.
+ * @param m - 聊天消息。Chat message.
+ */
 function cachedSummary(m: ChatMessage): string {
   const hit = summaryCache.get(m.id)
   if (hit && hit.text === m.text) return hit.summary
@@ -66,7 +95,14 @@ function cachedSummary(m: ChatMessage): string {
   return summary
 }
 
-// user 暂存为 input，遇 assistant 产出 { input, summary, tools }；结尾未回复的 user 产出一条 '…'
+/**
+ * 计算对话轮次列表。
+ * user 消息暂存为 input，遇到 assistant 消息时产出 { input, summary, tools }；
+ * 结尾未回复的 user 消息产出一条 '…' 占位。
+ * Compute conversation turns.
+ * User messages are staged as input; when an assistant message appears, emit { input, summary, tools };
+ * an unreplied trailing user message produces a '…' placeholder.
+ */
 const turns = computed<Turn[]>(() => {
   const out: Turn[] = []
   let pendingInput = ''
@@ -91,14 +127,21 @@ const turns = computed<Turn[]>(() => {
   return out
 })
 
+/** 滚动容器元素引用。Scroll container element reference. */
 const scrollEl = ref<HTMLElement | null>(null)
 
-// 清空会话时同步清空摘要缓存，避免残留
+/**
+ * 清空会话时同步清空摘要缓存，避免残留。
+ * Clear summary cache when conversation is cleared to avoid stale data.
+ */
 watch(() => props.messages.length, (n) => {
   if (n === 0) summaryCache.clear()
 })
 
-// 新 turn 或最后一条文本增长（流式回复）时滚到底，保证最新内容可见
+/**
+ * 新 turn 或最后一条文本增长（流式回复）时滚到底，保证最新内容可见。
+ * Scroll to bottom when new turn arrives or last message text grows (streaming reply).
+ */
 watch(
   () => [props.messages.length, props.messages[props.messages.length - 1]?.text?.length],
   () => {
@@ -110,6 +153,7 @@ watch(
 </script>
 
 <style scoped>
+/* 简约历史滚动容器。Compact history scroll container. */
 .mini-history {
   flex: 1;
   min-height: 0;
@@ -120,6 +164,7 @@ watch(
   gap: 10px;
 }
 
+/* 空态提示。Empty state prompt. */
 .mini-empty {
   flex: 1;
   display: flex;
@@ -132,7 +177,7 @@ watch(
   padding: 16px;
 }
 
-/* 空态 EQ 动画 */
+/* 空态 EQ 音频均衡器动画。Empty state EQ audio equalizer animation. */
 .mini-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
 .mini-eq i {
   width: 3px; height: 100%; background: var(--brand-c2); border-radius: 1px;
@@ -142,13 +187,15 @@ watch(
 .mini-eq i:nth-child(3) { animation-delay: .3s; }
 @keyframes eq-bounce { 0%,100% { height: 30%; } 50% { height: 100%; } }
 
+/* 对话轮次及入场动画。Turn container and entrance animation. */
 .mini-turn { display: flex; flex-direction: column; gap: 4px; animation: mini-in .32s var(--ease-out) both; }
 @keyframes mini-in {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* 气泡：用户右对齐品牌渐变 / AI 左对齐暗色 + 品牌左边框（与完整聊天一致） */
+/* 气泡：用户右对齐品牌渐变 / AI 左对齐暗色 + 品牌左边框（与完整聊天一致）。
+   Bubbles: user right-aligned brand gradient / AI left-aligned dark + brand left border (consistent with full chat). */
 .mini-bubble {
   position: relative;
   max-width: 88%;
@@ -188,7 +235,9 @@ watch(
   gap: 6px;
 }
 
+/* AI 摘要文本。AI summary text. */
 .mini-summary { flex: 1 1 100%; min-width: 0; }
+/* 工具徽章。Tool badge. */
 .mini-tool {
   flex-shrink: 0;
   font-size: 10px;
@@ -198,6 +247,7 @@ watch(
   padding: 1px 5px;
   background: rgba(34, 211, 238, .06);
 }
+/* 完整记录入口链接。Full history entry link. */
 .mini-goto {
   flex-shrink: 0;
   font-size: 10px;

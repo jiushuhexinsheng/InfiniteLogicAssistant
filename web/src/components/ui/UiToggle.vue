@@ -12,7 +12,9 @@
   </button>
 </template>
 
+<!-- 开关切换组件，使用 role="switch" 语义化无障碍属性。Toggle switch with semantic `role="switch"` for accessibility. -->
 <script setup lang="ts">
+/** 切换开关 Props：当前开关状态(v-model)/是否禁用；Emits `update:modelValue` 切换布尔值。Toggle props: current on/off state (v-model), disabled; emits `update:modelValue` to flip boolean. */
 withDefaults(defineProps<{ modelValue: boolean; disabled?: boolean }>(), { disabled: false })
 defineEmits<{ 'update:modelValue': [v: boolean] }>()
 </script>

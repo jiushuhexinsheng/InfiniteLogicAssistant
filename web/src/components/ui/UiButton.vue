@@ -11,7 +11,9 @@
   </button>
 </template>
 
+<!-- 通用按钮组件，支持多种变体、尺寸和加载状态。General-purpose button with variant, size, and loading state support. -->
 <script setup lang="ts">
+/** 按钮组件 Props：变体/尺寸/悬浮样式/是否占满行宽/加载态/禁用态/按钮类型。Button component props: variant, size, hover style, full-width, loading, disabled, button type. */
 withDefaults(defineProps<{
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
   size?: 'sm' | 'md' | 'lg'
