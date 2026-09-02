@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+"""测试 MCP 客户端的工具列表查询与工具调用功能。
+Tests the MCP client: listing tools and calling tools.
+"""
 import sys
 from pathlib import Path
 
@@ -12,6 +15,7 @@ ECHO_SERVER = str(ROOT / "scripts" / "mcp_echo_server.py")
 
 @pytest.mark.asyncio
 async def test_mcp_list_tools():
+    """测试连接后能列出 MCP 服务器暴露的工具及 schema。Tests that connected MCP server tools and their schemas can be listed."""
     c = McpConnection(McpServerCfg(name="echo", command=sys.executable, args=[ECHO_SERVER]))
     await c.connect()
     try:
@@ -26,6 +30,7 @@ async def test_mcp_list_tools():
 
 @pytest.mark.asyncio
 async def test_mcp_call_tool():
+    """测试调用 MCP 工具并返回正确结果。Tests calling an MCP tool and getting the correct result."""
     c = McpConnection(McpServerCfg(name="echo", command=sys.executable, args=[ECHO_SERVER]))
     await c.connect()
     try:

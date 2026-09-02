@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+"""测试 MCP 工具桥接的注册、调用转发与注销功能。
+Tests the MCP tool bridge: registration, call forwarding, and unregistration.
+"""
 import sys
 from pathlib import Path
 
@@ -14,6 +17,7 @@ ECHO = str(ROOT / "scripts" / "mcp_echo_server.py")
 
 @pytest.mark.asyncio
 async def test_register_call_unregister():
+    """测试注册 MCP 工具后可以调用并注销。Tests registering MCP tools, calling them, and unregistering them."""
     c = McpConnection(McpServerCfg("echo", sys.executable, [ECHO]))
     await c.connect()
     try:

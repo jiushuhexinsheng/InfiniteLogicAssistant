@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+"""取消令牌、停止控制器与 shell 中途取消的测试。
+Tests for the cancellation token, stop controller, and mid-run shell cancellation.
+"""
 import asyncio
 
 import pytest
@@ -8,6 +11,7 @@ from core.orchestrator.control import CancellationToken, StopController
 
 
 def test_token_cancel():
+    """取消令牌置位后抛 CancelledError。The cancelled token raises CancelledError."""
     t = CancellationToken()
     assert not t.is_cancelled
     t.cancel()
@@ -17,6 +21,7 @@ def test_token_cancel():
 
 
 def test_stop_controller_flags():
+    """停止控制器会取消其令牌。The stop controller cancels its token."""
     c = StopController()
     c.stop_task()
     assert c.token.is_cancelled
@@ -24,6 +29,7 @@ def test_stop_controller_flags():
 
 @pytest.mark.asyncio
 async def test_run_shell_mid_run_cancel():
+    """shell 执行中取消会杀死子进程并抛 CancelledError。Cancelling mid-run kills the child process and raises CancelledError."""
     # 执行中 cancel → 子进程被杀，抛 CancelledError
     token = CancellationToken()
 

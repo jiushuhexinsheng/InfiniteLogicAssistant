@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""配置常量与路径（core/config/ 包内共享）。"""
+"""配置常量与路径（core/config/ 包内共享）。
+
+Configuration constants and paths (shared within the core/config/ package).
+"""
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent

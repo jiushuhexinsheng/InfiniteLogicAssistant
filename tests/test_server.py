@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""server.py — API 端点测试（TestClient + monkeypatch，杜绝真实网络）"""
+"""server.py — API 端点测试（TestClient + monkeypatch，杜绝真实网络）。
+API endpoint tests using TestClient + monkeypatch with no real network access.
+"""
 import pytest
 from fastapi.testclient import TestClient
 
@@ -12,19 +14,23 @@ from core.orchestrator.task import Task
 
 
 class _NoAsr:
-    """ASR 不可用桩，隔离真实网络。"""
+    """ASR 不可用桩，隔离真实网络。
+    A stub for an unavailable ASR, isolating real network access.
+    """
 
     def available(self):
         return False
 
 
 class _FakeLLMClient:
-    """模拟 LlmClient.retry_stream_chat，隔离真实网络。"""
+    """模拟 LlmClient.retry_stream_chat，隔离真实网络。
+    A fake LlmClient.retry_stream_chat, isolating real network access.
+    """
 
     def __init__(self, events):
         self.events = events
 
-    async def retry_stream_chat(self, messages, tools=None, *, profile=None):
+    async def retry_stream_chat(self, messages, tools=None, *, profile=None, **kwargs):
         for e in self.events:
             yield e
 
@@ -55,6 +61,7 @@ def client(monkeypatch, tmp_path):
 # ─── 安全：API token 与 host 校验 ───
 
 def test_api_token_enforced(client, monkeypatch):
+    """测试 API token 校验：未带 401、带正确 token 200、静态资源不校验。Tests API token enforcement: 401 without, 200 with, static assets unchecked."""
     monkeypatch.setattr(config_mod, "get_settings", lambda: config_mod.Settings(
         server=config_mod.ServerSection(api_token="secret-token"),
         rag=config_mod.RagSection(auto_index=False),
@@ -71,6 +78,7 @@ def test_api_token_enforced(client, monkeypatch):
 
 
 def test_validate_bind_requires_token():
+    """测试绑定非 localhost 时必须配置 token。Tests that binding non-localhost requires a token."""
     server_module._validate_bind("127.0.0.1", "")  # localhost 无需 token
     server_module._validate_bind("0.0.0.0", "abc")  # 非 localhost 但有 token
     import pytest
@@ -81,12 +89,14 @@ def test_validate_bind_requires_token():
 # ─── 基础端点 ───
 
 def test_ping(client):
+    """测试 /api/ping 健康检查端点。Tests the /api/ping health check endpoint."""
     data = client.get("/api/ping").json()
     assert data["ok"] is True
     assert "time" in data
 
 
 def test_config_shape(client):
+    """测试 /api/config 返回结构完整的配置快照。Tests /api/config returning a complete config snapshot shape."""
     data = client.get("/api/config").json()
     assert {"llm_available", "llm_profile", "asr_available", "asr_profile",
             "tts_available", "tts_profile", "wake_word", "vad"} <= set(data)
@@ -95,6 +105,7 @@ def test_config_shape(client):
 
 
 def test_tools_list(client):
+    """测试 /api/tools 列出内置工具及其参数 schema。Tests /api/tools listing built-in tools and their parameter schemas."""
     data = client.get("/api/tools").json()
     assert data["ok"] is True
     names = [t["function"]["name"] for t in data["tools"]]
@@ -107,6 +118,7 @@ def test_tools_list(client):
 # ─── 语音转写 ───
 
 def test_voice_transcribe_unconfigured(client):
+    """测试 ASR 未配置时转写返回明确错误。Tests transcription returning a clear error when ASR is unconfigured."""
     resp = client.post("/api/voice/transcribe", json={"audio_base64": "xxx"})
     assert resp.status_code == 200
     data = resp.json()
@@ -117,6 +129,7 @@ def test_voice_transcribe_unconfigured(client):
 # ─── TTS：配置错误应映射为 400（可修复），而非 500 ───
 
 def test_tts_config_error_maps_to_400(client, monkeypatch):
+    """测试 TTS 配置错误映射为 400 而非 500。Tests TTS config errors mapping to 400 instead of 500."""
     import core.voice.tts as tts_mod
     # 启用后端 TTS，但 voiceclone 缺 voice_ref → 配置错误
     monkeypatch.setattr(config_mod, "is_tts_enabled", lambda: True)  # voice.py 前置检查
@@ -135,6 +148,7 @@ def test_tts_config_error_maps_to_400(client, monkeypatch):
 # ─── 单工具执行 ───
 
 def test_tools_call_ok(client):
+    """测试单工具调用成功返回输出。Tests a successful single tool call returning output."""
     resp = client.post("/api/tools/call", json={"name": "get_datetime", "args": {}})
     assert resp.status_code == 200
     data = resp.json()
@@ -144,28 +158,33 @@ def test_tools_call_ok(client):
 
 
 def test_tools_call_calculate(client):
+    """测试 calculate 工具计算表达式。Tests the calculate tool evaluating an expression."""
     resp = client.post("/api/tools/call", json={"name": "calculate", "args": {"expression": "2+3*4"}})
     assert resp.status_code == 200
     assert resp.json()["output"] == "14"
 
 
 def test_tools_call_unknown_404(client):
+    """测试调用未知工具返回 404。Tests calling an unknown tool returning 404."""
     resp = client.post("/api/tools/call", json={"name": "no_such_tool", "args": {}})
     assert resp.status_code == 404
     assert resp.json()["ok"] is False
 
 
 def test_tools_call_invalid_args(client):
+    """测试非法参数返回 400。Tests invalid arguments returning 400."""
     resp = client.post("/api/tools/call", json={"name": "get_datetime", "args": "not-a-dict"})
     assert resp.status_code == 400
 
 
 def test_tools_call_bad_json(client):
+    """测试请求体非 JSON 时返回 400。Tests a non-JSON request body returning 400."""
     resp = client.post("/api/tools/call", content="not json")
     assert resp.status_code == 400
 
 
 def test_tools_call_high_risk_requires_confirm(client):
+    """测试高风险工具未带 confirm 时要求确认。Tests high-risk tools requiring confirmation without a confirm flag."""
     # 非 read 工具无 confirm 字段 → 返回 needs_confirm，不执行
     resp = client.post("/api/tools/call", json={"name": "write_file", "args": {"path": "C:/x.txt", "content": "hi"}})
     assert resp.status_code == 200
@@ -175,6 +194,7 @@ def test_tools_call_high_risk_requires_confirm(client):
 
 
 def test_tools_call_high_risk_with_confirm_executes(client, monkeypatch):
+    """测试高风险工具带 confirm 后执行。Tests high-risk tools executing when confirm is provided."""
     async def fake_acall(name, args):
         return "ok-stubbed"
     monkeypatch.setattr("core.api.tools.TOOLS.acall", fake_acall)
@@ -191,6 +211,7 @@ def test_tools_call_high_risk_with_confirm_executes(client, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_persist_session_writes_task_json(tmp_path, monkeypatch):
+    """测试会话持久化写入任务 JSON 与对话历史。Tests session persistence writing task JSON and conversation history."""
     import json
     import core.session.history as history_mod
     from core.orchestrator.session import Session
@@ -218,6 +239,7 @@ async def test_persist_session_writes_task_json(tmp_path, monkeypatch):
 # ─── 会话历史 ───
 
 def test_history_endpoints(client, monkeypatch, tmp_path):
+    """测试会话历史的列表、详情与删除端点。Tests the history list, detail and delete endpoints."""
     import asyncio
     import core.session.history as history_mod
     store = history_mod.HistoryStore(tmp_path / "h.db")
@@ -237,12 +259,14 @@ def test_history_endpoints(client, monkeypatch, tmp_path):
 # ─── 静态托管 / SPA 兜底 / 路径穿越 ───
 
 def test_static_index(client):
+    """测试静态首页托管。Tests static index page hosting."""
     resp = client.get("/")
     assert resp.status_code == 200
     assert resp.text == "<html>spa</html>"
 
 
 def test_static_file_and_spa_fallback(client):
+    """测试静态文件托管与 SPA 兜底。Tests static file hosting and the SPA fallback."""
     dist = server_module.WEB_DIST_DIR
     (dist / "assets").mkdir()
     (dist / "assets" / "app.js").write_text("JS", encoding="utf-8")
@@ -255,12 +279,14 @@ def test_static_file_and_spa_fallback(client):
 
 
 def test_unknown_api_404(client):
+    """测试未知 API 路径返回 404。Tests unknown API paths returning 404."""
     resp = client.get("/api/nope")
     assert resp.status_code == 404
     assert resp.json()["ok"] is False
 
 
 def test_resolve_dist_rejects_traversal(client):
+    """测试 _resolve_dist 拒绝路径穿越。Tests _resolve_dist rejecting path traversal."""
     # 直接测 _resolve_dist：httpx/TestClient 会归一化 URL 里的 ../，HTTP 层测不到原始路径
     assert server_module._resolve_dist("../config.yaml") is None
     assert server_module._resolve_dist("..\\config.yaml") is None
@@ -274,6 +300,7 @@ def test_resolve_dist_rejects_traversal(client):
 # ─── 编排管线端点 ───
 
 def test_voice_utter_session_cleaned_up(client, monkeypatch):
+    """测试语音对话结束后会话与控制器被清理。Tests sessions and controllers being cleaned up after voice utterances end."""
     async def fake_judge(text):
         return IntentResult(type="chit_chat", summary="打招呼")
 
@@ -292,6 +319,7 @@ def test_voice_utter_session_cleaned_up(client, monkeypatch):
 
 
 def test_voice_utter_chit_chat(client, monkeypatch):
+    """测试闲聊意图的流式响应。Tests the streaming response for chit-chat intents."""
     async def fake_judge(text):
         return IntentResult(type="chit_chat", summary="打招呼")
 
@@ -308,6 +336,7 @@ def test_voice_utter_chit_chat(client, monkeypatch):
 
 
 def test_voice_utter_forwards_messages(client, monkeypatch):
+    """测试 voice/utter 透传历史消息。Tests voice/utter forwarding the messages history."""
     captured = {}
 
     async def fake_run(text, session, events, controller, channel=None, messages=None):
@@ -324,6 +353,7 @@ def test_voice_utter_forwards_messages(client, monkeypatch):
 
 
 def test_voice_utter_task_done(client, monkeypatch):
+    """测试任务意图执行后发送 task_state 事件。Tests task intents emitting task_state events after execution."""
     async def fake_judge(text):
         return IntentResult(type="task", summary="算 1+1")
 
@@ -347,12 +377,14 @@ def test_voice_utter_task_done(client, monkeypatch):
 
 
 def test_env_endpoint(client):
+    """测试 /api/env 返回环境感知快照。Tests /api/env returning the environment awareness snapshot."""
     resp = client.get("/api/env")
     assert resp.status_code == 200
     assert "环境感知快照" in resp.json()["content"]
 
 
 def test_detection_endpoint(client):
+    """测试未配置服务时聚合检测全部跳过。Tests aggregated detection skipping everything when no services are configured."""
     # 未配置任何服务 → 聚合检测全部 skip，不发真实网络
     resp = client.get("/api/detection")
     assert resp.status_code == 200
@@ -368,7 +400,9 @@ def test_detection_endpoint(client):
 
 @pytest.fixture
 def isolated_settings(monkeypatch, tmp_path):
-    """把 config.yaml / secrets 重定向到临时文件并重置单例，避免碰真实配置。"""
+    """把 config.yaml / secrets 重定向到临时文件并重置单例，避免碰真实配置。
+    Redirects config.yaml / secrets to temp files and resets the singleton to avoid touching real config.
+    """
     import core.config as config_mod
     cfg_file = tmp_path / "config.yaml"
     cfg_file.write_text(
@@ -384,6 +418,7 @@ def isolated_settings(monkeypatch, tmp_path):
 
 
 def test_patch_config_persists_and_reloads(isolated_settings):
+    """测试 PATCH /api/config 持久化并热重载。Tests PATCH /api/config persisting changes and hot-reloading."""
     from fastapi.testclient import TestClient
     import server as server_module
 
@@ -400,6 +435,7 @@ def test_patch_config_persists_and_reloads(isolated_settings):
 
 
 def test_patch_config_restart_required_for_server(isolated_settings):
+    """测试修改 server 配置标记需要重启。Tests server config changes being flagged as restart-required."""
     from fastapi.testclient import TestClient
     import server as server_module
 
@@ -409,6 +445,7 @@ def test_patch_config_restart_required_for_server(isolated_settings):
 
 
 def test_patch_config_rejects_api_key(isolated_settings):
+    """测试 PATCH 配置时剥离 api_key 密钥。Tests api_key secrets being stripped from PATCH config."""
     # 密钥不能通过 PATCH 写入 config.yaml（会被剥离）
     from fastapi.testclient import TestClient
     import server as server_module
@@ -420,6 +457,7 @@ def test_patch_config_rejects_api_key(isolated_settings):
 
 
 def test_patch_config_invalid_value_400(isolated_settings):
+    """测试非法配置值返回 400。Tests invalid config values returning 400."""
     from fastapi.testclient import TestClient
     import server as server_module
 
@@ -430,6 +468,7 @@ def test_patch_config_invalid_value_400(isolated_settings):
 
 
 def test_put_secrets_writes_file_no_echo(isolated_settings):
+    """测试 PUT secrets 写入文件且不回显密钥。Tests PUT secrets writing to file without echoing the key."""
     import yaml
     from fastapi.testclient import TestClient
     import server as server_module
@@ -446,6 +485,7 @@ def test_put_secrets_writes_file_no_echo(isolated_settings):
 
 
 def test_put_secrets_per_profile(isolated_settings):
+    """测试按 profile 写入与清除密钥。Tests writing and clearing secrets per profile."""
     import yaml
     from fastapi.testclient import TestClient
     import server as server_module
@@ -464,12 +504,14 @@ def test_put_secrets_per_profile(isolated_settings):
 
 
 def test_memory_endpoint(client):
+    """测试 /api/memory 返回记忆事实。Tests /api/memory returning memory facts."""
     resp = client.get("/api/memory")
     assert resp.status_code == 200
     assert "facts" in resp.json()
 
 
 def test_schedules_endpoints(client, tmp_path, monkeypatch):
+    """测试定时任务的增删查端点。Tests the scheduled task create, list and delete endpoints."""
     import core.scheduler.scheduler as sched_mod
     from core.scheduler.scheduler import Scheduler
     monkeypatch.setattr(sched_mod, "get_scheduler", lambda: Scheduler(path=tmp_path / "sched.json"))
@@ -485,6 +527,7 @@ def test_schedules_endpoints(client, tmp_path, monkeypatch):
 # ─── PATCH /config：voice 归一化 / 删 profile / 保留 vendor_presets ───
 
 def test_patch_config_normalizes_asr_tts_under_voice(isolated_settings):
+    """测试顶层 asr/tts 配置归一化到 voice 段。Tests top-level asr/tts config being normalized into the voice section."""
     # 前端快照把 asr/tts 放顶层，PATCH 应归一化到 voice 段（Settings extra=forbid 拒绝顶层）
     import yaml
     from fastapi.testclient import TestClient
@@ -500,6 +543,7 @@ def test_patch_config_normalizes_asr_tts_under_voice(isolated_settings):
 
 
 def test_patch_config_deletes_profile(isolated_settings):
+    """测试 PATCH 配置时删除缺失的 profile。Tests PATCH config deleting profiles that are no longer present."""
     import yaml
     from fastapi.testclient import TestClient
     import server as server_module
@@ -521,6 +565,7 @@ def test_patch_config_deletes_profile(isolated_settings):
 
 
 def test_patch_config_preserves_vendor_presets(isolated_settings):
+    """测试 PATCH 配置保留 vendor_presets。Tests PATCH config preserving vendor presets."""
     import yaml
     from fastapi.testclient import TestClient
     import server as server_module
@@ -538,6 +583,7 @@ def test_patch_config_preserves_vendor_presets(isolated_settings):
 # ─── /api/providers ───
 
 def test_providers_catalog_no_secrets(client):
+    """测试提供商目录不含密钥信息。Tests the providers catalog containing no secret fields."""
     data = client.get("/api/providers").json()
     assert data["ok"] is True
     assert set(data["catalog"]) == {"llm", "asr", "tts"}
@@ -549,6 +595,7 @@ def test_providers_catalog_no_secrets(client):
 
 
 def test_fetch_models_accepts_anthropic(client, monkeypatch):
+    """测试 fetch-models 接受 anthropic 原生协议。Tests fetch-models accepting the anthropic native protocol."""
     import core.api.providers as providers_mod
     captured = {}
 
@@ -569,6 +616,7 @@ def test_fetch_models_accepts_anthropic(client, monkeypatch):
 
 
 def test_fetch_models_no_key(client, monkeypatch, tmp_path):
+    """测试缺少 API Key 时 fetch-models 返回 400。Tests fetch-models returning 400 when no API key is available."""
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     monkeypatch.delenv("ASR_API_KEY", raising=False)
     monkeypatch.delenv("TTS_API_KEY", raising=False)
@@ -585,6 +633,7 @@ def test_fetch_models_no_key(client, monkeypatch, tmp_path):
 
 
 def test_fetch_models_success(client, monkeypatch):
+    """测试 fetch-models 成功拉取模型且不回显密钥。Tests fetch-models fetching models successfully without echoing the key."""
     import core.api.providers as providers_mod
     seen = {}
 
@@ -608,6 +657,7 @@ def test_fetch_models_success(client, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_fetch_models_dispatch_protocols():
+    """测试各厂商协议（anthropic/gemini/openai）的模型解析。Tests model parsing for anthropic, gemini and openai protocols."""
     import httpx
     import core.api.providers as providers_mod
 
@@ -649,6 +699,7 @@ async def test_fetch_models_dispatch_protocols():
 
 
 def test_mcp_integration_tools(monkeypatch):
+    """测试 MCP 服务器启动后注册工具。Tests MCP servers registering tools after startup."""
     import sys
     from pathlib import Path
     from core import config as config_mod

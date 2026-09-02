@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+"""测试基础工具：风险标记、注册、schema、文件读写、shell 执行、取消与系统探测。
+Tests basic tools: risk markers, registration, schemas, file read/write, shell execution, cancellation, and system probing.
+"""
 import asyncio
 
 import pytest
@@ -7,6 +10,7 @@ from core.tools import TOOLS
 
 
 def test_risk_in_meta():
+    """测试工具元数据包含正确的风险标记。Tests tool metadata containing the correct risk markers."""
     meta = {m["name"]: m for m in TOOLS.meta()}
     assert meta["write_file"]["risk"] == "write"
     assert meta["run_shell_tool"]["risk"] == "exec"
@@ -15,12 +19,14 @@ def test_risk_in_meta():
 
 
 def test_basic_tools_registered():
+    """测试基础工具均已注册到 schema。Tests all basic tools being registered in the schema."""
     names = {s["function"]["name"] for s in TOOLS.schemas()}
     assert {"grep_file", "find_files", "read_file", "write_file", "parse_doc",
             "list_dir", "run_shell_tool", "run_python_tool", "system_probe"} <= names
 
 
 def test_schemas_do_not_contain_risk():
+    """测试 LLM schema 中不含风险字段。Tests the LLM schema not containing the risk field."""
     # risk 不进 LLM schema（避免 provider 拒绝未知字段）
     for s in TOOLS.schemas():
         assert "risk" not in s
@@ -28,6 +34,7 @@ def test_schemas_do_not_contain_risk():
 
 @pytest.mark.asyncio
 async def test_read_write_file_tools(tmp_path):
+    """测试文件读写工具往返一致。Tests the file read/write tools round-tripping consistently."""
     f = tmp_path / "x.txt"
     await TOOLS.acall("write_file", {"path": str(f), "content": "hi"})
     out = await TOOLS.acall("read_file", {"path": str(f)})
@@ -36,11 +43,13 @@ async def test_read_write_file_tools(tmp_path):
 
 @pytest.mark.asyncio
 async def test_run_shell_tool():
+    """测试 shell 工具执行命令并返回输出。Tests the shell tool executing a command and returning its output."""
     out = await TOOLS.acall("run_shell_tool", {"command": "echo hi"})
     assert "hi" in out and "exit=0" in out
 
 
 def test_schema_excludes_service_param_cancel():
+    """测试 cancel 作为服务注入参数不出现在 LLM schema 中。Tests cancel, a service-injected parameter, not appearing in the LLM schema."""
     # cancel 是服务注入的取消令牌，不进 LLM schema
     by_name = {s["function"]["name"]: s for s in TOOLS.schemas()}
     params = by_name["run_shell_tool"]["function"]["parameters"]
@@ -50,6 +59,7 @@ def test_schema_excludes_service_param_cancel():
 
 @pytest.mark.asyncio
 async def test_run_shell_tool_cancel_mid_run():
+    """测试执行中的长命令被取消令牌终止并抛出 CancelledError。Tests a long-running command being killed by the cancel token, raising CancelledError."""
     # cancel token 贯穿到工具层：执行中的长命令被 kill，抛 CancelledError
     from core.orchestrator.control import CancellationToken
 
@@ -68,5 +78,6 @@ async def test_run_shell_tool_cancel_mid_run():
 
 @pytest.mark.asyncio
 async def test_system_probe_reads_md():
+    """测试系统探测工具返回环境感知快照。Tests the system probe tool returning the environment awareness snapshot."""
     out = await TOOLS.acall("system_probe", {})
     assert "环境感知快照" in out

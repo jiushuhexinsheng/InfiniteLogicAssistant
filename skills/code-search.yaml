@@ -1,5 +1,7 @@
+# 技能定义：代码搜索 — 在指定目录按关键词搜索代码，返回 文件:行号: 匹配行。
+# Skill definition: Code Search — search code by keyword in a given directory and return file:line: matched lines.
 name: 代码搜索
-description: "在指定目录按关键词搜索代码，返回 文件:行号: 匹配行"
+description: "在指定目录按关键词搜索代码，返回 文件:行号: 匹配行。Search code by keyword in a given directory, returning file:line: matched lines."
 requires:
   - keyword
   - dir
@@ -9,10 +11,10 @@ steps:
       pattern: "{{keyword}}"
       path: "{{dir}}"
       ext: ""
-    note: 按内容搜索关键词
+    note: 按内容搜索关键词。Search the keyword by content.
   - tool: find_files
     args_template:
       name_pattern: "{{keyword}}"
       dir: "{{dir}}"
-    note: 按文件名搜索包含关键词的文件
+    note: 按文件名搜索包含关键词的文件。Search files whose names contain the keyword.
 dangerous: false

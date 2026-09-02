@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""core/llm/client.py — 熔断器状态机 + 重试分类 + 重试流逻辑"""
+"""core/llm/client.py — 熔断器状态机 + 重试分类 + 重试流逻辑
+core/llm/client.py - circuit breaker state machine + retry classification + retry stream logic
+"""
 import json
 import time
 
@@ -26,6 +28,7 @@ def _sse(chunks) -> bytes:
 
 @pytest.mark.asyncio
 async def test_breaker_closed_to_open_after_threshold():
+    """测试熔断器在失败次数达到阈值后从关闭转为开启。Tests that the breaker transitions from closed to open after failures hit the threshold."""
     cb = CircuitBreaker(failure_threshold=3, cooldown_seconds=30)
     assert await cb.is_open() is False
     for _ in range(3):
@@ -35,6 +38,7 @@ async def test_breaker_closed_to_open_after_threshold():
 
 @pytest.mark.asyncio
 async def test_breaker_half_open_after_cooldown_then_closes():
+    """测试冷却期过后进入半开状态并在连续成功后关闭熔断器。Tests that the breaker enters half-open after cooldown and closes after consecutive successes."""
     cb = CircuitBreaker(failure_threshold=2, cooldown_seconds=30)
     await cb.record_failure()
     await cb.record_failure()
@@ -52,6 +56,7 @@ async def test_breaker_half_open_after_cooldown_then_closes():
 
 @pytest.mark.asyncio
 async def test_breaker_half_open_failure_reopens():
+    """测试半开状态下的探测失败会使熔断器重新开启。Tests that a probe failure in half-open state reopens the breaker."""
     cb = CircuitBreaker(failure_threshold=2, cooldown_seconds=30)
     await cb.record_failure()
     await cb.record_failure()
@@ -64,6 +69,7 @@ async def test_breaker_half_open_failure_reopens():
 # ─── 重试分类 ───
 
 def test_is_retryable_classifies_status():
+    """测试各类状态码与异常是否被归类为可重试。Tests how various status codes and exceptions are classified as retryable."""
     def status_error(code: int) -> httpx.HTTPStatusError:
         return httpx.HTTPStatusError(
             "boom", request=httpx.Request("POST", "http://t"), response=httpx.Response(code)
@@ -82,6 +88,7 @@ def test_is_retryable_classifies_status():
 
 
 def test_backoff_increases_and_capped():
+    """测试退避时间递增且受上限约束。Tests that backoff increases and is capped."""
     a, b = _backoff(1), _backoff(2)
     assert 0 <= a < b
     assert _backoff(20) <= 10.0 * 1.25  # 受 cap=10 + 25% jitter 约束
@@ -91,6 +98,7 @@ def test_backoff_increases_and_capped():
 
 @pytest.mark.asyncio
 async def test_retry_stream_chat_retries_then_succeeds(monkeypatch):
+    """测试流式聊天先遇到临时错误重试后成功返回事件流。Tests that stream chat retries after a transient error and then succeeds."""
     monkeypatch.setattr("core.llm.client._backoff", lambda attempt: 0)
     calls = {"n": 0}
 
@@ -113,6 +121,7 @@ async def test_retry_stream_chat_retries_then_succeeds(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_retry_stream_chat_no_retry_after_partial_output(monkeypatch):
+    """测试已产生部分输出后发生错误不再重试而是直接抛出异常。Tests that an error after partial output is not retried but raises directly."""
     calls = {"n": 0}
 
     async def fake_stream_chat(messages, tools=None, client=None, profile=None):
@@ -138,6 +147,7 @@ async def test_retry_stream_chat_no_retry_after_partial_output(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_retry_stream_chat_permanent_error_no_retry(monkeypatch):
+    """测试永久性错误不进行重试直接抛出。Tests that a permanent error is not retried and raises immediately."""
     monkeypatch.setattr("core.llm.client._backoff", lambda attempt: 0)
     calls = {"n": 0}
 
@@ -158,6 +168,7 @@ async def test_retry_stream_chat_permanent_error_no_retry(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_retry_stream_chat_breaker_open_raises():
+    """测试熔断器开启时流式聊天直接抛出熔断错误。Tests that stream chat raises a breaker error when the breaker is open."""
     client = LlmClient()
     client._http = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200)))
     try:
@@ -173,7 +184,9 @@ async def test_retry_stream_chat_breaker_open_raises():
 # ─── 模型 failover（openclaw 式）───
 
 async def _stream_models(models: list[str], monkeypatch, profile: dict, client: LlmClient):
-    """驱动 retry_stream_chat 并断言调用序列。"""
+    """驱动 retry_stream_chat 并断言调用序列。
+    Drives retry_stream_chat and asserts the call sequence.
+    """
     called = []
     captured = {}
 
@@ -203,6 +216,7 @@ async def _stream_models(models: list[str], monkeypatch, profile: dict, client: 
 
 @pytest.mark.asyncio
 async def test_failover_switches_on_model_missing(monkeypatch):
+    """测试模型缺失时自动切换到下一个备用模型。Tests that failover switches to the next backup model when the model is missing."""
     monkeypatch.setattr("core.llm.client.config.settings.agent.models_failover", ["model-b"], raising=False)
     profile = {"model": "model-a", "provider": "openai", "endpoint": "https://x", "api_key": "k"}
     client = LlmClient()
@@ -219,6 +233,7 @@ async def test_failover_switches_on_model_missing(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_failover_switches_after_retries_exhausted(monkeypatch):
+    """测试临时错误重试耗尽后切换到下一个备用模型。Tests that failover switches to the next backup model after retries are exhausted."""
     monkeypatch.setattr("core.llm.client.config.settings.agent.models_failover", ["model-b"], raising=False)
     profile = {"model": "model-a", "provider": "openai", "endpoint": "https://x", "api_key": "k"}
     client = LlmClient()
@@ -235,6 +250,7 @@ async def test_failover_switches_after_retries_exhausted(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_failover_all_models_fail_raises(monkeypatch):
+    """测试所有模型均失败时抛出重试耗尽异常。Tests that RetryExhaustedError is raised when all models fail."""
     monkeypatch.setattr("core.llm.client.config.settings.agent.models_failover", ["model-b"], raising=False)
     profile = {"model": "model-a", "provider": "openai", "endpoint": "https://x", "api_key": "k"}
     client = LlmClient()
@@ -259,7 +275,29 @@ async def test_failover_all_models_fail_raises(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_retry_stream_chat_temperature_override(monkeypatch):
+    """测试显式传入的 temperature 会覆盖 profile 中的设置。Tests that an explicit temperature overrides the profile setting."""
+    captured = {}
+
+    async def fake_stream_chat(messages, tools=None, client=None, profile=None):
+        captured["profile"] = profile
+        yield {"type": "done", "message": {"role": "assistant", "content": "ok"}}
+
+    monkeypatch.setattr("core.llm.client.stream_chat", fake_stream_chat)
+    profile = {"model": "m", "provider": "openai", "endpoint": "https://x", "api_key": "k", "temperature": 0.7}
+    client = LlmClient()
+    client._http = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    try:
+        events = [e async for e in client.retry_stream_chat([], profile=profile, temperature=0.2)]
+        assert events[-1]["type"] == "done"
+        assert captured["profile"]["temperature"] == 0.2  # 覆盖 profile 温度
+    finally:
+        await client._http.aclose()
+
+
+@pytest.mark.asyncio
 async def test_failover_does_not_switch_after_partial_output(monkeypatch):
+    """测试已产生部分输出后失败不会切换模型。Tests that failover does not switch models after partial output."""
     monkeypatch.setattr("core.llm.client.config.settings.agent.models_failover", ["model-b"], raising=False)
     profile = {"model": "model-a", "provider": "openai", "endpoint": "https://x", "api_key": "k"}
     client = LlmClient()

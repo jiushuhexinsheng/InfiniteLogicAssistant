@@ -260,7 +260,7 @@ const sectionDefs = [
 
 const advancedDefs = [
   { key: 'agent', title: 'Agent 任务执行',
-    fields: [['recursion_limit', 'number'], ['multi_agent', 'bool'] as const] },
+    fields: [['recursion_limit', 'number'], ['multi_agent', 'bool'], ['structured_temperature', 'number'] as const] },
   { key: 'llm_client', title: 'LLM 客户端（重试 / 熔断）',
     fields: [['retry_max', 'number'], ['retry_backoff_base', 'number'], ['retry_backoff_max', 'number'],
       ['circuit_breaker_threshold', 'number'], ['circuit_breaker_cooldown', 'number'], ['request_timeout', 'number']] },
@@ -272,16 +272,17 @@ const advancedDefs = [
 ]
 
 const NUMERIC = new Set(['max_tokens', 'temperature', 'timeout', 'sensitivity', 'silence_threshold',
-  'silence_duration_ms', 'max_duration_ms', 'recursion_limit', 'retry_max', 'retry_backoff_base',
-  'retry_backoff_max', 'circuit_breaker_threshold', 'circuit_breaker_cooldown', 'request_timeout',
-  'search_max_results', 'weather_timeout', 'port'])
+  'silence_duration_ms', 'max_duration_ms', 'recursion_limit', 'structured_temperature', 'retry_max',
+  'retry_backoff_base', 'retry_backoff_max', 'circuit_breaker_threshold', 'circuit_breaker_cooldown',
+  'request_timeout', 'search_max_results', 'weather_timeout', 'port'])
 
 const LABELS: Record<string, string> = {
   provider: '协议', endpoint: 'Endpoint', model: '模型', vision_model: '视觉模型',
   chat_path: 'Chat Path', max_tokens: 'Max Tokens', temperature: 'Temperature', timeout: '超时(s)',
   language: '语言', voice: '音色', format: '格式', recursion_limit: 'ReAct 步数上限',
-  multi_agent: '多智能体', retry_max: '重试次数', retry_backoff_base: '退避基数(s)',
-  retry_backoff_max: '退避上限(s)', circuit_breaker_threshold: '熔断阈值', circuit_breaker_cooldown: '熔断冷却(s)',
+  multi_agent: '多智能体', structured_temperature: '结构化输出温度', retry_max: '重试次数',
+  retry_backoff_base: '退避基数(s)', retry_backoff_max: '退避上限(s)', circuit_breaker_threshold: '熔断阈值',
+  circuit_breaker_cooldown: '熔断冷却(s)',
   request_timeout: '请求超时(s)', search_max_results: '搜索结果数', weather_timeout: '天气超时(s)',
   auto_index: '自动建索引', host: 'Host', port: 'Port', open_browser: '启动打开浏览器',
 }

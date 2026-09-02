@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
 """配置 schema — pydantic 强类型模型（纯定义，无 IO / 无全局状态）
 
+Configuration schema — pydantic strongly-typed models (pure definitions, no IO / no global state).
+
 加载时经 pydantic 模型校验（类型 / 范围 / 枚举，写错配置启动即报错）。
 结构对应 config.yaml：llm / voice / server / mcp / rag / agent / llm_client / tools + vendor_presets。
+
+Validated by pydantic models on load (types / ranges / enums; a bad config fails fast at startup).
+Structure mirrors config.yaml: llm / voice / server / mcp / rag / agent / llm_client / tools + vendor_presets.
 """
 from typing import Any, Literal
 
@@ -10,7 +15,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class CompatConfig(BaseModel):
-    """厂商兼容开关（影响请求体组装；默认与既有行为一致，纯增量）。"""
+    """厂商兼容开关（影响请求体组装；默认与既有行为一致，纯增量）。
+
+    Vendor compatibility toggles (affect request-body assembly; defaults preserve existing
+    behavior, purely additive).
+    """
 
     model_config = ConfigDict(extra="allow")
 
@@ -19,7 +28,11 @@ class CompatConfig(BaseModel):
 
 
 class VendorPreset(BaseModel):
-    """厂商目录预设（代码内置 + config.yaml vendor_presets 扩展）；extra=forbid 防拼错键。"""
+    """厂商目录预设（代码内置 + config.yaml vendor_presets 扩展）；extra=forbid 防拼错键。
+
+    Vendor catalog preset (built into the code + config.yaml vendor_presets extension);
+    extra=forbid prevents typos in keys.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -38,7 +51,11 @@ class VendorPreset(BaseModel):
 
 
 class ProfileBase(BaseModel):
-    """各 profile 公共字段；extra=allow 保留用户透传键（如 TTS 的 format/voice_ref）。"""
+    """各 profile 公共字段；extra=allow 保留用户透传键（如 TTS 的 format/voice_ref）。
+
+    Common fields shared by all profiles; extra=allow keeps user pass-through keys
+    (e.g. TTS format/voice_ref).
+    """
 
     model_config = ConfigDict(extra="allow")
 
@@ -55,6 +72,11 @@ class ProfileBase(BaseModel):
 
 
 class LlmProfile(ProfileBase):
+    """LLM profile：模型名、视觉模型与生成参数（max_tokens / temperature）。
+
+    LLM profile: model name, vision model, and generation parameters (max_tokens / temperature).
+    """
+
     model: str = ""
     vision_model: str = ""
     max_tokens: int = Field(4096, gt=0)
@@ -62,11 +84,21 @@ class LlmProfile(ProfileBase):
 
 
 class AsrProfile(ProfileBase):
+    """ASR profile：语音识别模型与识别语言。
+
+    ASR profile: speech-recognition model and recognition language.
+    """
+
     model: str = ""
     language: str = "zh"
 
 
 class TtsProfile(ProfileBase):
+    """TTS profile：语音合成模型、音色与输出格式。
+
+    TTS profile: speech-synthesis model, voice, and output format.
+    """
+
     model: str = "tts-1"
     voice: str = "alloy"
     format: Literal["wav", "mp3", "pcm16"] = "wav"
@@ -75,6 +107,11 @@ class TtsProfile(ProfileBase):
 
 
 class LlmSection(BaseModel):
+    """LLM 段配置：当前激活 profile 及全部命名 profile。
+
+    LLM section config: the active profile and all named profiles.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     active: str = "deepseek"
@@ -82,6 +119,11 @@ class LlmSection(BaseModel):
 
 
 class AsrSection(BaseModel):
+    """ASR 段配置：当前激活 profile 及全部命名 profile。
+
+    ASR section config: the active profile and all named profiles.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     active: str = "openai"
@@ -89,6 +131,11 @@ class AsrSection(BaseModel):
 
 
 class TtsSection(BaseModel):
+    """TTS 段配置：启用开关、当前激活 profile 及全部命名 profile。
+
+    TTS section config: enabled toggle, the active profile, and all named profiles.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
@@ -97,6 +144,11 @@ class TtsSection(BaseModel):
 
 
 class WakeWordConfig(BaseModel):
+    """唤醒词配置：开关、关键词、灵敏度与模型路径。
+
+    Wake-word config: enabled toggle, keyword, sensitivity, and model path.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
@@ -106,6 +158,11 @@ class WakeWordConfig(BaseModel):
 
 
 class VadConfig(BaseModel):
+    """语音活动检测（VAD）配置：静音阈值与时长上限。
+
+    Voice activity detection (VAD) config: silence threshold and duration limits.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     silence_threshold: float = Field(0.02, ge=0.0)
@@ -114,6 +171,11 @@ class VadConfig(BaseModel):
 
 
 class VoiceSection(BaseModel):
+    """语音段配置：唤醒词、VAD、ASR 与 TTS 子配置。
+
+    Voice section config: wake-word, VAD, ASR, and TTS sub-configs.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     wake_word: WakeWordConfig = Field(default_factory=lambda: WakeWordConfig())
@@ -123,14 +185,26 @@ class VoiceSection(BaseModel):
 
 
 class AgentSection(BaseModel):
+    """Agent 段配置：递归上限、多智能体开关与结构化输出温度。
+
+    Agent section config: recursion limit, multi-agent toggle, and structured-output temperature.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     recursion_limit: int = Field(12, gt=0)
     multi_agent: bool = False
     models_failover: list[str] = Field(default_factory=list)  # 主模型故障时的备选模型
+    # 结构化输出阶段（意图/任务形成/拆解/事实提取）的温度，单独调低以稳定 JSON 输出
+    structured_temperature: float = Field(0.2, ge=0.0, le=2.0)
 
 
 class LlmClientSection(BaseModel):
+    """LLM 客户端段配置：重试、熔断与请求超时参数。
+
+    LLM client section config: retry, circuit-breaker, and request-timeout parameters.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     retry_max: int = Field(3, ge=0)
@@ -142,6 +216,11 @@ class LlmClientSection(BaseModel):
 
 
 class ToolsSection(BaseModel):
+    """工具段配置：搜索与天气等外部工具参数。
+
+    Tools section config: parameters for external tools such as search and weather.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     search_max_results: int = Field(5, gt=0)
@@ -149,6 +228,11 @@ class ToolsSection(BaseModel):
 
 
 class McpServer(BaseModel):
+    """MCP 服务器条目：名称、启动命令与参数。
+
+    MCP server entry: name, launch command, and arguments.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     name: str
@@ -157,18 +241,33 @@ class McpServer(BaseModel):
 
 
 class McpSection(BaseModel):
+    """MCP 段配置：服务器列表。
+
+    MCP section config: the server list.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     servers: list[McpServer] = Field(default_factory=list)
 
 
 class RagSection(BaseModel):
+    """RAG 段配置：自动索引开关。
+
+    RAG section config: auto-index toggle.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     auto_index: bool = True
 
 
 class ServerSection(BaseModel):
+    """服务器段配置：监听地址、端口、自动开浏览器与 API Token。
+
+    Server section config: listen host, port, auto-open browser, and API token.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     host: str = "127.0.0.1"
@@ -179,6 +278,12 @@ class ServerSection(BaseModel):
 
 
 class Settings(BaseModel):
+    """顶层配置模型：汇总 llm / voice / server / mcp / rag / agent / llm_client / tools / vendor_presets。
+
+    Top-level configuration model: aggregates llm / voice / server / mcp / rag / agent /
+    llm_client / tools / vendor_presets.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     llm: LlmSection = Field(default_factory=lambda: LlmSection())

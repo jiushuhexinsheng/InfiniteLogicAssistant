@@ -1,14 +1,27 @@
 # -*- coding: utf-8 -*-
 """core.config — 全局配置包（兼容层，对外 API 与旧 core/config.py 单文件完全一致）
 
+core.config — the global configuration package (compatibility layer whose public API is fully
+consistent with the legacy single-file core/config.py).
+
 拆分：
 - constants.py   路径与常量
 - schema.py      pydantic 模型定义
 - loader.py      YAML 读取 + 密钥注入 + 构建（纯函数）
 - runtime.py     全局单例 + 热重载 + profile 解析 + 设置快照
 
+Split:
+- constants.py   paths and constants
+- schema.py      pydantic model definitions
+- loader.py      YAML reading + secret injection + building (pure functions)
+- runtime.py     global singleton + hot reload + profile resolution + settings snapshot
+
 保持两种引用方式可用，且无需改动调用方：
     from core import config            # config.settings 仍指向当前单例（reload 后自动拿新值）
+    from core.config import ROOT_DIR / Settings / resolve_llm_profile / ensure_dirs / ...
+
+Both import styles keep working with no caller changes:
+    from core import config            # config.settings still points to the current singleton (fresh values after reload)
     from core.config import ROOT_DIR / Settings / resolve_llm_profile / ensure_dirs / ...
 """
 from core.config.constants import (
@@ -53,6 +66,11 @@ __all__ = [
 
 
 def __getattr__(name: str):
+    """模块级属性动态解析：仅支持 settings，返回当前配置单例。
+
+    Dynamically resolve module-level attributes: only "settings" is supported, returning
+    the current configuration singleton.
+    """
     # config.settings 始终指向当前单例（reload 后自动拿到新值）
     if name == "settings":
         return get_settings()

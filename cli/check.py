@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""check 命令 — 聚合检测：环境 + 配置校验 + LLM/ASR/TTS 连通性（core.detection.run_all）"""
+"""check 命令 — 聚合检测：环境 + 配置校验 + LLM/ASR/TTS 连通性（core.detection.run_all）
+
+The check command — aggregated checks: environment + config validation + LLM/ASR/TTS connectivity (core.detection.run_all)."""
 import argparse
 import asyncio
 import sys
@@ -13,13 +15,20 @@ _ENV_KEYS = ("os", "hostname", "arch", "cpu", "memory_gb", "python", "net_ok")
 
 
 def _print_env(env: dict) -> None:
+    """按固定顺序打印环境信息键值对。
+
+    Print environment info key-value pairs in a fixed order.
+    """
     for k in _ENV_KEYS:
         if k in env:
             print(f"  {k:10} {env[k]}")
 
 
 async def _run_check() -> bool:
-    """跑聚合检测，打印结果，返回是否有失败。"""
+    """跑聚合检测，打印结果，返回是否有失败。
+
+    Run the aggregated checks, print the results, and return whether any check failed.
+    """
     report = await run_all()
     env = report.get("environment") or {}
     cfg = report.get("config") or {}
@@ -61,7 +70,10 @@ async def _run_check() -> bool:
 
 
 def cmd_check(args: argparse.Namespace) -> None:
-    """聚合检测命令；存在失败项时以退出码 1 结束（供脚本 / start.bat 判断）。"""
+    """聚合检测命令；存在失败项时以退出码 1 结束（供脚本 / start.bat 判断）。
+
+    The aggregated-check command; exits with code 1 when any check failed (for scripts / start.bat).
+    """
     failed = asyncio.run(_run_check())
     if failed:
         sys.exit(1)

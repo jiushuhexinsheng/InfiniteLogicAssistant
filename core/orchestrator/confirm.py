@@ -3,6 +3,12 @@
 
 确认决策基于「工具实际风险」（TOOLS.risk），而非 LLM 声明的任务风险，
 避免任务被误标为 read 时高风险工具无确认执行。
+
+High-impact operation confirmation — there is no sandbox, so write/exec
+operations restate the plan and ask the operator to confirm first. The decision
+is based on the tools' actual risk (TOOLS.risk), not the risk declared by the
+LLM, so a high-risk tool is never executed without confirmation just because the
+task was mistakenly labeled as read.
 """
 import json
 
@@ -22,6 +28,11 @@ def _classify_answer(ans: str) -> bool | None:
 
     否定感知：确认词被紧邻否定字抵消时判为拒绝，避免子串匹配把
     「不是 / 不执行 / 不可以 / 不同意」误判成同意。
+
+    Classifies the operator's answer → True=approved / False=rejected /
+    None=ambiguous. Negation-aware: a confirmation word immediately preceded by a
+    negation is treated as rejection, so substring matching does not misread
+    "不是 / 不执行 / 不可以 / 不同意" as approval.
     """
     ans = ans.strip()
     if not ans:
@@ -43,7 +54,11 @@ def _classify_answer(ans: str) -> bool | None:
 
 
 async def _ask_operator(session: Session, plan: str, risk: str, kind: str) -> bool:
-    """向操作者提问并解析回答；无确认通道/模糊回答一律拒绝。"""
+    """向操作者提问并解析回答；无确认通道/模糊回答一律拒绝。
+
+    Asks the operator and parses the answer; rejects by default when there is no
+    confirmation channel or the answer is ambiguous.
+    """
     if session.channel is None:
         audit(f"confirm {kind} risk={risk} plan={plan} decision=rejected reason=no_operator")
         return False  # 无人确认（如定时无人值守）→ 默认不执行高风险
@@ -61,14 +76,22 @@ async def _ask_operator(session: Session, plan: str, risk: str, kind: str) -> bo
 
 
 async def confirm_if_needed(task: Task, plan: str, session: Session) -> bool:
-    """任务级确认：risk=read 自动放行；write/exec 需操作者明确确认。"""
+    """任务级确认：risk=read 自动放行；write/exec 需操作者明确确认。
+
+    Task-level confirmation: risk=read passes automatically; write/exec requires
+    explicit operator confirmation.
+    """
     if task.risk == "read":
         return True
     return await _ask_operator(session, plan, task.risk, "task")
 
 
 async def confirm_tool(session: Session, name: str, args: dict) -> bool:
-    """工具级确认：基于工具实际风险（TOOLS.risk）；read 放行，write/exec 需操作者确认。"""
+    """工具级确认：基于工具实际风险（TOOLS.risk）；read 放行，write/exec 需操作者确认。
+
+    Tool-level confirmation based on the tool's actual risk (TOOLS.risk); read
+    passes through, write/exec requires operator confirmation.
+    """
     risk = TOOLS.risk(name)
     if risk == "read":
         return True

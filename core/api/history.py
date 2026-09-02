@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""history 域 API — 会话历史列表 / 详情 / 删除（控制台「历史」tab）"""
+"""history 域 API — 会话历史列表 / 详情 / 删除（控制台「历史」tab）。
+
+History domain API — conversation history list / detail / delete (console "History" tab).
+"""
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
@@ -10,12 +13,20 @@ router = APIRouter()
 
 @router.get("/history", response_model=HistoryListResponse)
 async def history_list(limit: int = 30):
+    """列出最近的会话历史（最多 limit 条）。
+
+    List recent conversation history (up to ``limit`` entries).
+    """
     from core.session.history import get_history_store
     return {"ok": True, "conversations": await get_history_store().list_conversations(limit)}
 
 
 @router.get("/history/{conv_id}", response_model=HistoryDetailResponse)
 async def history_get(conv_id: str):
+    """获取单个会话详情；不存在时返回 404。
+
+    Get the detail of a single conversation; returns 404 when it does not exist.
+    """
     from core.session.history import get_history_store
     conv = await get_history_store().get_conversation(conv_id)
     if not conv:
@@ -25,6 +36,10 @@ async def history_get(conv_id: str):
 
 @router.delete("/history/{conv_id}", response_model=ApiResponse)
 async def history_delete(conv_id: str):
+    """删除指定会话历史。
+
+    Delete the specified conversation history.
+    """
     from core.session.history import get_history_store
     await get_history_store().delete(conv_id)
     return {"ok": True}

@@ -2,6 +2,10 @@
 """P1 记忆验证：跑一个「记住偏好」任务 → 检查长期记忆是否写入
 
 用法（服务需已启动）：py -3.14 scripts/verify_memory.py
+
+P1 memory verification: run a "remember preference" task, then check whether the long-term memory was written.
+
+Usage (the server must be running): py -3.14 scripts/verify_memory.py
 """
 import json
 import sys
@@ -16,6 +20,10 @@ BASE = "http://127.0.0.1:8520"
 
 
 def main() -> None:
+    """向语音接口发送「记住偏好」任务，流式跟踪执行状态并核验长期记忆。
+
+    Send a "remember preference" task to the voice API, stream the execution status, and verify the long-term memory.
+    """
     text = "记住，我平时用中文交流"
     print(f"任务: {text}")
     with httpx.Client(timeout=120) as c:

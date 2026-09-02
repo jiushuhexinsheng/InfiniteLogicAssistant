@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""core/tts.py — 配置错误应抛 TtsConfigError（API 层映射 400）且提示可操作"""
+"""core/tts.py — 配置错误应抛 TtsConfigError（API 层映射 400）且提示可操作。
+core/tts.py — configuration errors raise TtsConfigError (mapped to 400 at the API layer) with actionable messages.
+"""
 import pytest
 
 from core.voice.tts import TtsConfigError, _synthesize_chat, synthesize
@@ -7,14 +9,14 @@ from core.voice.tts import TtsConfigError, _synthesize_chat, synthesize
 
 @pytest.mark.asyncio
 async def test_synthesize_chat_voiceclone_missing_voice_ref_raises_config_error():
-    """voiceclone 模型缺 voice_ref 是配置错误（不是网络错误），抛 TtsConfigError"""
+    """voiceclone 模型缺 voice_ref 是配置错误（不是网络错误），抛 TtsConfigError。Missing voice_ref in voiceclone models is a configuration error (not a network error) raising TtsConfigError."""
     with pytest.raises(TtsConfigError, match="voice_ref"):
         await _synthesize_chat("你好", {"chat_path": "/v1/chat/completions", "model": "mimo-v2.5-tts-voiceclone"})
 
 
 @pytest.mark.asyncio
 async def test_synthesize_chat_preset_uses_passed_voice(monkeypatch):
-    """前端传入的 voice 应覆盖配置音色（UI 切换生效）"""
+    """前端传入的 voice 应覆盖配置音色（UI 切换生效）。The voice passed from the frontend overrides the configured voice (UI switching takes effect)."""
     captured = {}
 
     class _Resp:
@@ -32,7 +34,7 @@ async def test_synthesize_chat_preset_uses_passed_voice(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_synthesize_chat_preset_uses_default_voice(monkeypatch):
-    """标准/预置音色模型无需 voice_ref：voice 缺省用配置音色，空则兜底 mimo_default"""
+    """标准/预置音色模型无需 voice_ref：voice 缺省用配置音色，空则兜底 mimo_default。Preset-voice models need no voice_ref: voice defaults to the configured voice, falling back to mimo_default when empty."""
     captured = {}
 
     class _Resp:
@@ -51,7 +53,7 @@ async def test_synthesize_chat_preset_uses_default_voice(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_synthesize_disabled_raises_config_error(monkeypatch):
-    """未启用 TTS 属配置错误"""
+    """未启用 TTS 属配置错误。TTS being disabled is a configuration error."""
     monkeypatch.setattr("core.voice.tts.is_tts_enabled", lambda: False)
     with pytest.raises(TtsConfigError):
         await synthesize("你好")

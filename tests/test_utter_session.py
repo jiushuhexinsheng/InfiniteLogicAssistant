@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""编排入口续接测试 — /voice/utter 支持 session_id：续接历史会话"""
+"""编排入口续接测试 — /voice/utter 支持 session_id：续接历史会话。
+Orchestration entry resumption tests — /voice/utter supports session_id: resuming a history conversation.
+"""
 import pytest
 from fastapi.testclient import TestClient
 
@@ -35,6 +37,7 @@ def _drain(resp):
 
 @pytest.mark.asyncio
 async def test_utter_with_session_id_resumes_history(monkeypatch, store):
+    """测试携带 session_id 时续接历史会话并注入多轮种子。Tests resuming a history conversation with a session_id and injecting multi-turn seed messages."""
     sid = await store.create_conversation("续接会话")
     await store.save_conversation(sid, [{"role": "user", "content": "上一轮问题"}], status="done", summary="s")
 
@@ -53,6 +56,7 @@ async def test_utter_with_session_id_resumes_history(monkeypatch, store):
 
 @pytest.mark.asyncio
 async def test_utter_without_session_id_creates_new(monkeypatch, store):
+    """测试无 session_id 时创建新会话且无历史种子。Tests creating a new conversation without a session_id and with no history seed."""
     captured = {}
     client = _client(monkeypatch, store, captured)
     with client.stream("POST", "/api/voice/utter", json={"text": "你好"}) as r:

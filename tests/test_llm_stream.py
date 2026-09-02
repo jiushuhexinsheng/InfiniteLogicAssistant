@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""core/llm/stream.py — SSE 解析与 payload/工具调用累积"""
+"""core/llm/stream.py — SSE 解析与 payload/工具调用累积
+core/llm/stream.py - SSE parsing and payload/tool-call accumulation
+"""
 import json
 
 import httpx
@@ -15,7 +17,9 @@ from core.llm.stream import (
 
 
 def _sse(chunks) -> bytes:
-    """chunk dict 列表 → OpenAI SSE 字节流（含 [DONE]）。"""
+    """chunk dict 列表 → OpenAI SSE 字节流（含 [DONE]）。
+    Converts a list of chunk dicts into an OpenAI SSE byte stream (including [DONE]).
+    """
     lines = [f"data: {json.dumps(c, ensure_ascii=False)}" for c in chunks]
     lines.append("data: [DONE]")
     return ("\n\n".join(lines) + "\n\n").encode("utf-8")
@@ -29,6 +33,7 @@ def _client_for(payload_bytes: bytes, status: int = 200) -> httpx.AsyncClient:
 
 
 def test_build_payload_includes_tools():
+    """测试 payload 在传入工具时包含 tools 与 tool_choice。Tests that the payload includes tools and tool_choice when tools are passed."""
     tools = [{"type": "function", "function": {"name": "x"}}]
     payload = _build_payload({"model": "m", "temperature": 0.5, "max_tokens": 100}, [], tools)
     assert payload["model"] == "m"
@@ -38,12 +43,14 @@ def test_build_payload_includes_tools():
 
 
 def test_build_payload_no_tools():
+    """测试未传工具时 payload 不包含 tools 与 tool_choice。Tests that the payload omits tools and tool_choice when no tools are passed."""
     payload = _build_payload({"model": "m"}, [])
     assert "tools" not in payload
     assert "tool_choice" not in payload
 
 
 def test_accumulate_tool_calls_merges_deltas():
+    """测试工具调用增量按索引合并名称与参数。Tests that tool-call deltas are merged by index for name and arguments."""
     buf = {}
     _accumulate_tool_calls(buf, {"index": 0, "id": "call_1", "function": {"name": "get_", "arguments": '{"city"'}})
     _accumulate_tool_calls(buf, {"index": 0, "function": {"name": "datetime", "arguments": ':"北京"}'}})
@@ -55,6 +62,7 @@ def test_accumulate_tool_calls_merges_deltas():
 
 @pytest.mark.asyncio
 async def test_stream_chat_parses_content_and_reasoning():
+    """测试流式聊天能解析正文与推理内容增量并汇总到完成消息。Tests that stream chat parses content and reasoning deltas and aggregates them into the done message."""
     client = _client_for(_sse([
         {"choices": [{"delta": {"reasoning_content": "思考中"}}]},
         {"choices": [{"delta": {"content": "你好"}}]},
@@ -73,6 +81,7 @@ async def test_stream_chat_parses_content_and_reasoning():
 
 @pytest.mark.asyncio
 async def test_stream_chat_accumulates_tool_calls():
+    """测试流式聊天累积工具调用增量并合并参数。Tests that stream chat accumulates tool-call deltas and merges arguments."""
     client = _client_for(_sse([
         {"choices": [{"delta": {"tool_calls": [
             {"index": 0, "id": "c1", "function": {"name": "calculate", "arguments": '{"expression"'}}]}}]},
@@ -87,6 +96,7 @@ async def test_stream_chat_accumulates_tool_calls():
 
 @pytest.mark.asyncio
 async def test_stream_chat_http_error_raises():
+    """测试 HTTP 错误状态码会抛出异常。Tests that an HTTP error status raises an exception."""
     client = _client_for(b"", status=500)
     with pytest.raises(httpx.HTTPStatusError):
         async for _ in stream_chat([], client=client):
@@ -95,6 +105,7 @@ async def test_stream_chat_http_error_raises():
 
 @pytest.mark.asyncio
 async def test_stream_chat_emits_usage():
+    """测试末尾的 usage-only chunk 会发出用量事件。Tests that a trailing usage-only chunk emits a usage event."""
     # usage 在末尾的 usage-only chunk（无 choices），不应被跳过
     client = _client_for(_sse([
         {"choices": [{"delta": {"content": "你好"}}]},
@@ -108,18 +119,21 @@ async def test_stream_chat_emits_usage():
 # ─── compat 开关：stream_options / max_tokens_field ───
 
 def test_build_payload_compat_stream_options_off():
+    """测试关闭 stream_options 兼容开关时 payload 不包含该字段。Tests that the payload omits stream_options when the compat switch is off."""
     payload = _build_payload({"model": "m", "compat": {"stream_options": False}}, [])
     assert payload["stream"] is True
     assert "stream_options" not in payload
 
 
 def test_build_payload_compat_max_tokens_field():
+    """测试 max_tokens_field 兼容开关会把 max_tokens 改写为指定字段名。Tests that the max_tokens_field compat switch renames max_tokens to the given field."""
     payload = _build_payload({"model": "m", "max_tokens": 100, "compat": {"max_tokens_field": "max_completion_tokens"}}, [])
     assert "max_tokens" not in payload
     assert payload["max_completion_tokens"] == 100
 
 
 def test_build_payload_default_compat_preserves_behavior():
+    """测试默认兼容配置保持既有行为。Tests that the default compat configuration preserves existing behavior."""
     # 默认 compat 与既有行为一致：max_tokens + stream_options.include_usage
     payload = _build_payload({"model": "m", "max_tokens": 100}, [])
     assert payload["max_tokens"] == 100
@@ -143,6 +157,7 @@ _ANTHROPIC_PROFILE = {
 
 
 def test_to_anthropic_messages_merges_consecutive_tools():
+    """测试相邻工具调用与工具结果在 Anthropic 消息中合并。Tests that consecutive tool calls and tool results are merged in Anthropic messages."""
     out = _to_anthropic_messages([
         {"role": "user", "content": "算一下"},
         {"role": "assistant", "content": "", "tool_calls": [
@@ -163,6 +178,7 @@ def test_to_anthropic_messages_merges_consecutive_tools():
 
 @pytest.mark.asyncio
 async def test_stream_anthropic_text_thinking_tool_usage():
+    """测试 Anthropic SSE 流解析文本、思考与工具调用并映射用量。Tests that Anthropic SSE streams parse text, thinking, tool calls, and map usage."""
     client = _client_for(_anthropic_sse([
         ("message_start", {"type": "message_start", "message": {"content": [], "usage": {"input_tokens": 10}} }),
         ("content_block_start", {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}),
@@ -209,6 +225,7 @@ _GEMINI_PROFILE = {
 
 
 def test_to_gemini_contents_function_response_names():
+    """测试 Gemini 消息转换中 functionCall 与 functionResponse 的名称一致。Tests that functionCall and functionResponse names match in Gemini message conversion."""
     out = _to_gemini_contents([
         {"role": "user", "content": "天气"},
         {"role": "assistant", "content": "", "tool_calls": [
@@ -226,6 +243,7 @@ def test_to_gemini_contents_function_response_names():
 
 @pytest.mark.asyncio
 async def test_stream_gemini_text_thought_tool_usage():
+    """测试 Gemini SSE 流解析文本、思考与工具调用并映射用量。Tests that Gemini SSE streams parse text, thinking, tool calls, and map usage."""
     client = _client_for(_gemini_sse([
         {"candidates": [{"content": {"role": "model", "parts": [{"text": "你好"}]}}], "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 5, "totalTokenCount": 15}},
         {"candidates": [{"content": {"role": "model", "parts": [{"thought": True, "text": "思考中"}]}}]},

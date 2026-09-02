@@ -1,10 +1,12 @@
+# 技能定义：整理下载目录 — 列出下载目录的文件（示例技能，演示 skills 格式）。
+# Skill definition: Organize Download Folder — list files in the download folder (an example skill demonstrating the skills format).
 name: 整理下载目录
-description: 列出下载目录的文件（示例技能，演示 skills 格式）
+description: 列出下载目录的文件（示例技能，演示 skills 格式）。List files in the download folder (an example skill demonstrating the skills format).
 requires:
   - download_path
 steps:
   - tool: run_shell_tool
     args_template:
       command: "dir {{download_path}}"
-    note: 列出下载目录内容
+    note: 列出下载目录内容。List the contents of the download folder.
 dangerous: false

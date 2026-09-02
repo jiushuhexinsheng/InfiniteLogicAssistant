@@ -3,6 +3,14 @@
 
 前端 `npm run gen:api` 据此生成 TS 类型；改响应结构 → 重跑生成 → 前端类型同步。
 不走 response_model 的端点：POST /api/tts（音频 bytes）、POST /api/voice/utter（SSE 事件流）。
+
+API response models — Pydantic ``response_model`` for every JSON endpoint
+(also the OpenAPI schema source).
+
+Front-end ``npm run gen:api`` derives TS types from these models; after changing
+response structures, re-run the generator to keep TS types in sync.
+Endpoints excluded from ``response_model``: ``POST /api/tts`` (audio bytes),
+``POST /api/voice/utter`` (SSE event stream).
 """
 from typing import Any, Literal
 
@@ -10,6 +18,10 @@ from pydantic import BaseModel, ConfigDict
 
 
 class ApiResponse(BaseModel):
+    """所有 API 响应的基类，含通用 ok/error 字段。
+
+    Base class for all API responses, with common ``ok`` / ``error`` fields.
+    """
     ok: bool = True
     error: str | None = None
 
@@ -18,10 +30,18 @@ class ApiResponse(BaseModel):
 
 
 class PingResponse(ApiResponse):
+    """ping 端点响应，返回服务器时间戳。
+
+    ``/api/ping`` response carrying the server timestamp.
+    """
     time: str
 
 
 class WakeWordConfig(BaseModel):
+    """唤醒词配置。
+
+    Wake-word detection configuration.
+    """
     enabled: bool = True
     keyword: str = ""
     sensitivity: float = 0.5
@@ -29,12 +49,20 @@ class WakeWordConfig(BaseModel):
 
 
 class VadConfig(BaseModel):
+    """VAD（语音活动检测）配置。
+
+    VAD (Voice Activity Detection) configuration.
+    """
     silence_threshold: float = 0.02
     silence_duration_ms: int = 1500
     max_duration_ms: int = 10000
 
 
 class ConfigResponse(ApiResponse):
+    """配置状态端点响应（LLM/ASR/TTS 可用性、唤醒词、VAD）。
+
+    ``/api/config`` status response (LLM/ASR/TTS availability, wake word, VAD).
+    """
     llm_available: bool = False
     llm_profile: str = ""
     asr_available: bool = False
@@ -48,10 +76,18 @@ class ConfigResponse(ApiResponse):
 
 
 class TextResponse(ApiResponse):
+    """返回纯文本内容的通用响应。
+
+    Generic response returning plain text content.
+    """
     text: str = ""
 
 
 class AckResponse(ApiResponse):
+    """操作确认响应。
+
+    Operation acknowledgement response.
+    """
     ack: str = ""
 
 
@@ -59,27 +95,47 @@ class AckResponse(ApiResponse):
 
 
 class FunctionParams(BaseModel):
+    """工具函数参数的 JSON Schema 描述。
+
+    JSON Schema description of tool function parameters.
+    """
     type: str = "object"
     properties: dict[str, Any] = {}
     required: list[str] = []
 
 
 class ToolFunction(BaseModel):
+    """单个工具函数的元数据（名称 + 描述 + 参数 schema）。
+
+    Metadata for a single tool function (name + description + parameter schema).
+    """
     name: str
     description: str
     parameters: FunctionParams
 
 
 class ToolSchema(BaseModel):
+    """工具定义（含 function 字段，符合 OpenAI tools schema）。
+
+    Tool definition (with ``function`` field, compatible with OpenAI tools schema).
+    """
     type: str = "function"
     function: ToolFunction
 
 
 class ToolsResponse(ApiResponse):
+    """工具列表端点响应。
+
+    ``/api/tools`` list response.
+    """
     tools: list[ToolSchema] = []
 
 
 class ToolCallResponse(ApiResponse):
+    """工具调用端点响应。
+
+    ``/api/tools/call`` response.
+    """
     status: str | None = None
     output: str | None = None
     needs_confirm: bool | None = None
@@ -89,10 +145,18 @@ class ToolCallResponse(ApiResponse):
 
 
 class EnvResponse(ApiResponse):
+    """环境信息端点响应（environment.md 内容）。
+
+    ``/api/env`` response (content of ``environment.md``).
+    """
     content: str = ""
 
 
 class FactItem(BaseModel):
+    """单条长期记忆事实。
+
+    A single long-term memory fact entry.
+    """
     topic: str
     content: str
     source: str = ""
@@ -100,6 +164,10 @@ class FactItem(BaseModel):
 
 
 class MemoryListResponse(ApiResponse):
+    """记忆列表端点响应。
+
+    ``/api/memory`` list response.
+    """
     facts: list[FactItem] = []
 
 
@@ -107,6 +175,10 @@ class MemoryListResponse(ApiResponse):
 
 
 class ScheduleItem(BaseModel):
+    """单条定时任务。
+
+    A single scheduled task entry.
+    """
     id: str
     cron: str
     prompt: str
@@ -114,10 +186,18 @@ class ScheduleItem(BaseModel):
 
 
 class SchedulesResponse(ApiResponse):
+    """定时任务列表端点响应。
+
+    ``/api/schedules`` list response.
+    """
     schedules: list[ScheduleItem] = []
 
 
 class ScheduleAddResponse(ApiResponse):
+    """添加定时任务端点响应。
+
+    ``/api/schedules/add`` response.
+    """
     schedule: ScheduleItem | None = None
 
 
@@ -125,12 +205,20 @@ class ScheduleAddResponse(ApiResponse):
 
 
 class HistoryMessage(BaseModel):
+    """历史记录中的单条消息。
+
+    A single message in a conversation history.
+    """
     role: str
     content: str = ""
     tool_calls: list[dict[str, Any]] | None = None
 
 
 class HistoryConversation(BaseModel):
+    """历史会话摘要（列表视图）。
+
+    Conversation summary (list view).
+    """
     id: str
     created: str
     updated: str
@@ -140,11 +228,19 @@ class HistoryConversation(BaseModel):
 
 
 class HistoryListResponse(ApiResponse):
+    """历史会话列表端点响应。
+
+    ``/api/history`` conversation list response.
+    """
     conversations: list[HistoryConversation] = []
 
 
 class HistoryConversationDetail(BaseModel):
-    """会话详情：详情响应不含 message_count（仅列表接口统计）。"""
+    """会话详情：详情响应不含 message_count（仅列表接口统计）。
+
+    Conversation detail: excludes ``message_count`` (only counted in the list
+    endpoint).
+    """
 
     id: str
     created: str
@@ -155,6 +251,10 @@ class HistoryConversationDetail(BaseModel):
 
 
 class HistoryDetailResponse(ApiResponse):
+    """历史会话详情端点响应。
+
+    ``/api/history/<id>`` detail response.
+    """
     conversation: HistoryConversationDetail | None = None
 
 
@@ -162,6 +262,10 @@ class HistoryDetailResponse(ApiResponse):
 
 
 class SessionOut(BaseModel):
+    """会话输出模型。
+
+    Session output model.
+    """
     id: str
     name: str = ""
     created: str = ""
@@ -173,10 +277,18 @@ class SessionOut(BaseModel):
 
 
 class SessionListResponse(ApiResponse):
+    """会话列表端点响应。
+
+    ``/api/sessions`` list response.
+    """
     sessions: list[SessionOut] = []
 
 
 class SessionCreateResponse(ApiResponse):
+    """创建会话端点响应。
+
+    ``/api/sessions`` creation response.
+    """
     session: SessionOut
 
 
@@ -184,6 +296,10 @@ class SessionCreateResponse(ApiResponse):
 
 
 class ProviderPreset(BaseModel):
+    """厂商预设的完整结构（含所有可用字段）。
+
+    Full vendor preset structure (with all available fields).
+    """
     id: str
     kind: Literal["llm", "asr", "tts"]
     label: str = ""
@@ -200,10 +316,18 @@ class ProviderPreset(BaseModel):
 
 
 class CatalogResponse(ApiResponse):
+    """厂商目录端点响应。
+
+    ``/api/providers/catalog`` response.
+    """
     catalog: dict[str, list[ProviderPreset]] = {}
 
 
 class FetchModelsResponse(ApiResponse):
+    """获取模型列表端点响应。
+
+    ``/api/providers/models`` fetch response.
+    """
     models: list[str] = []
     count: int = 0
 
@@ -212,7 +336,11 @@ class FetchModelsResponse(ApiResponse):
 
 
 class ProfileEditable(BaseModel):
-    """editable_snapshot 的 profile（去 api_key）。extra=allow 保留用户透传键。"""
+    """editable_snapshot 的 profile（去 api_key）。extra=allow 保留用户透传键。
+
+    Profile within ``editable_snapshot`` (``api_key`` stripped). ``extra=allow``
+    preserves user pass-through keys.
+    """
 
     model_config = ConfigDict(extra="allow")
 
@@ -237,22 +365,39 @@ class ProfileEditable(BaseModel):
 
 
 class SectionEditable(BaseModel):
+    """配置编辑区段（active profile + profiles 映射 + api_key_set 标记）。
+
+    Editable configuration section (active profile + profiles mapping +
+    ``api_key_set`` flags).
+    """
     active: str = ""
     profiles: dict[str, ProfileEditable] = {}
     api_key_set: dict[str, bool] = {}
 
 
 class TtsSectionEditable(SectionEditable):
+    """TTS 区段（多一个 enabled 标记）。
+
+    TTS section (extra ``enabled`` flag).
+    """
     enabled: bool = False
 
 
 class AgentConfigOut(BaseModel):
+    """Agent 配置输出（递归限制、多代理、故障转移模型列表）。
+
+    Agent config output (recursion limit, multi-agent, failover model list).
+    """
     recursion_limit: int = 12
     multi_agent: bool = False
     models_failover: list[str] = []
 
 
 class LlmClientConfigOut(BaseModel):
+    """LLM 客户端配置输出（重试、熔断、超时参数）。
+
+    LLM client config output (retry, circuit breaker, timeout parameters).
+    """
     retry_max: int = 3
     retry_backoff_base: float = 0.5
     retry_backoff_max: float = 10.0
@@ -262,25 +407,45 @@ class LlmClientConfigOut(BaseModel):
 
 
 class ToolsConfigOut(BaseModel):
+    """工具配置输出。
+
+    Tools config output.
+    """
     search_max_results: int = 5
     weather_timeout: int = 10
 
 
 class McpServerOut(BaseModel):
+    """单个 MCP 服务器配置。
+
+    A single MCP server configuration.
+    """
     name: str
     command: str
     args: list[str] = []
 
 
 class McpConfigOut(BaseModel):
+    """MCP 配置输出。
+
+    MCP config output.
+    """
     servers: list[McpServerOut] = []
 
 
 class RagConfigOut(BaseModel):
+    """RAG 配置输出。
+
+    RAG config output.
+    """
     auto_index: bool = True
 
 
 class ServerConfigOut(BaseModel):
+    """服务器配置输出（主机、端口、浏览器启动、CORS、API token）。
+
+    Server config output (host, port, browser launch, CORS, API token).
+    """
     host: str = "127.0.0.1"
     port: int = 8520
     open_browser: bool = True
@@ -289,6 +454,10 @@ class ServerConfigOut(BaseModel):
 
 
 class EditableSnapshot(BaseModel):
+    """配置编辑快照（前端 settings 页面的数据源）。
+
+    Configuration editable snapshot (data source for the front-end settings page).
+    """
     llm: SectionEditable
     asr: SectionEditable
     tts: TtsSectionEditable
@@ -303,14 +472,26 @@ class EditableSnapshot(BaseModel):
 
 
 class ConfigFullResponse(ApiResponse):
+    """完整配置端点响应。
+
+    ``/api/config`` full response.
+    """
     editable: EditableSnapshot
 
 
 class PatchConfigResponse(ApiResponse):
+    """配置补丁端点响应。
+
+    ``PATCH /api/config`` response.
+    """
     restart_required: bool = False
 
 
 class PutSecretsResponse(ApiResponse):
+    """密钥写入端点响应。
+
+    ``PUT /api/secrets`` response.
+    """
     set: bool = False
     path: str = ""
 
@@ -319,17 +500,29 @@ class PutSecretsResponse(ApiResponse):
 
 
 class DetectionIssue(BaseModel):
+    """单条检测问题（级别 + 键 + 描述）。
+
+    A single detection issue (level + key + message).
+    """
     level: str
     key: str
     message: str
 
 
 class ConfigHealthOut(BaseModel):
+    """配置健康状态输出。
+
+    Configuration health status output.
+    """
     ok: bool
     issues: list[DetectionIssue] = []
 
 
 class ConnectivityResult(BaseModel):
+    """单条连通性检查结果。
+
+    A single connectivity check result.
+    """
     name: str
     status: str
     latency_ms: int | None = None
@@ -337,10 +530,18 @@ class ConnectivityResult(BaseModel):
 
 
 class DetectionReportOut(BaseModel):
+    """环境检测报告（系统信息 + 配置健康 + 连通性检查）。
+
+    Environment detection report (system info + config health + connectivity checks).
+    """
     environment: dict[str, Any] = {}
     config: ConfigHealthOut
     connectivity: list[ConnectivityResult] = []
 
 
 class DetectionResponse(ApiResponse):
+    """环境检测端点响应。
+
+    ``/api/detection`` response.
+    """
     report: DetectionReportOut
