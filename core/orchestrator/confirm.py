@@ -184,6 +184,10 @@ async def _ask_operator(session: Session, plan: str, risk: str, kind: str, sourc
     if session.channel is None:
         audit(f"confirm {kind} risk={risk} plan={plan} decision=rejected reason=no_operator source={source}")
         return False  # 无人确认（如定时无人值守）→ 默认不执行高风险
+    # auto_approve：操作者已在配置中预授权 write/exec，跳过提问直接放行
+    if config.settings.agent.auto_approve:
+        audit(f"confirm {kind} risk={risk} plan={plan} decision=approved reason=auto_approve")
+        return True
     await session.notify(f"需要确认：{plan}")
     answer = await session.ask(f"确认执行吗？{plan}", kind="choice", options=CONFIRM_OPTIONS)
     verdict = _resolve_confirm(answer)

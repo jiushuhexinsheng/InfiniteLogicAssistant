@@ -252,6 +252,8 @@ class AgentSection(BaseModel):
     models_failover: list[str] = Field(default_factory=list)  # 主模型故障时的备选模型
     # 结构化输出阶段（意图/任务形成/拆解/事实提取）的温度，单独调低以稳定 JSON 输出
     structured_temperature: float = Field(0.2, ge=0.0, le=2.0)
+    # True=write/exec 高风险工具/任务不再询问操作者，自动放行（含子代理与技能；无人值守通道仍默认拒绝）
+    auto_approve: bool = False  # True=auto-approve write/exec tools/tasks without asking the operator (incl. sub-agents & skills; channel-less runs still reject)
 
 
 class LlmClientSection(BaseModel):

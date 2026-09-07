@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from core import config
 from core.orchestrator import confirm as confirm_mod
 from core.orchestrator.confirm import _resolve_confirm, confirm_if_needed, confirm_tool
 from core.orchestrator.session import Answer, Session
@@ -472,3 +473,55 @@ async def test_task_allowed_without_channel_does_not_crash():
     s = Session()
     s.channel = None
     assert await confirm_if_needed(Task("t", "读文件", risk="read"), "读 x", s) is True
+
+
+# ─── auto_approve：配置开启后 write/exec 跳过提问自动放行 ───
+#
+# 这三个用例必须带 asking：2026-09-13 起 permissions 默认三档全放行，不钉住策略的话
+# confirm_tool / confirm_if_needed 会在 `decision.action == "allow"` 那一层就返回，根本
+# 走不到 auto_approve 的短路 —— 用例要么空转，要么因断言恰好成立而假通过。
+# These three must carry `asking`: since 2026-09-13 the permissions default allows every tier,
+# so without pinning the policy confirm_tool / confirm_if_needed would return at the
+# `decision.action == "allow"` branch and never reach the auto_approve short-circuit — leaving
+# the test hollow, or passing for the wrong reason.
+
+
+@pytest.mark.asyncio
+async def test_confirm_tool_auto_approve_skips_ask(asking, monkeypatch):
+    """auto_approve 开启：策略判「询问」的 write 工具不再提问，直接放行。
+
+    With auto_approve enabled, a write tool the policy would "ask" about is approved
+    without asking.
+    """
+    monkeypatch.setattr(config.settings.agent, "auto_approve", True)
+    s = Session()
+    s.channel = _Channel([])  # 空答案队列：若仍提问会触发 IndexError
+    assert await confirm_tool(s, "write_file", {"path": "x", "content": "y"}) is True
+    assert s.channel.notified == []
+
+
+@pytest.mark.asyncio
+async def test_confirm_if_needed_auto_approve(asking, monkeypatch):
+    """auto_approve 开启：任务级 exec 同样跳过提问直接放行。
+
+    With auto_approve enabled, task-level exec also passes without asking.
+    """
+    monkeypatch.setattr(config.settings.agent, "auto_approve", True)
+    s = Session()
+    s.channel = _Channel([])
+    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s) is True
+    assert s.channel.notified == []
+
+
+@pytest.mark.asyncio
+async def test_confirm_auto_approve_no_channel_still_rejects(asking, monkeypatch):
+    """即使 auto_approve 开启，无操作者通道仍默认拒绝（无人值守兜底不变）。
+
+    Even with auto_approve enabled, a channel-less run still defaults to rejection,
+    preserving the unattended safety fallback.
+    """
+    monkeypatch.setattr(config.settings.agent, "auto_approve", True)
+    s = Session()
+    s.channel = None
+    assert await confirm_tool(s, "write_file", {"path": "x", "content": "y"}) is False
+    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s) is False

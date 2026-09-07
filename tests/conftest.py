@@ -1,7 +1,26 @@
 # -*- coding: utf-8 -*-
 """跨文件共享的测试夹具。Shared test fixtures.
+
+确认语义不依赖开发者本地 config.yaml（例如本地开了 auto_approve），所以整个套件默认跑在
+安全默认值下，除非某个用例显式设置 auto_approve=True 来验证开启行为。
+
+Confirmation semantics must not depend on the developer's local config.yaml (e.g. a
+locally-enabled auto_approve), so the whole suite runs under the safe default unless an
+individual test explicitly opts in by setting auto_approve to True.
 """
 import pytest
+
+from core import config
+
+
+@pytest.fixture(autouse=True)
+def _auto_approve_off(monkeypatch):
+    """每个测试前把 agent.auto_approve 钉为 False；需要验证开启行为的用例可自行置 True。
+
+    Pins agent.auto_approve to False before every test; tests that verify the
+    enabled behavior may set it to True themselves.
+    """
+    monkeypatch.setattr(config.settings.agent, "auto_approve", False)
 
 
 @pytest.fixture
