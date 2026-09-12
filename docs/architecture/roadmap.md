@@ -40,5 +40,5 @@
 | 记忆/RAG | 长期事实记忆（facts.sqlite）+ 任务后 LLM 提取 + 关键词 RAG 上下文注入 |
 | 能力扩展 | MCP 客户端与桥、Skills 热加载、cron 定时（无人值守）、多智能体协调者 |
 | 控制 | CancellationToken 贯穿全链路：stop_task / stop_step / pause + taskkill /T 兜底 |
-| 测试 | 36 个 pytest 文件覆盖各层（`python -m pytest tests/ -q`） |
+| 测试 | 40 个 pytest 文件覆盖各层（`python -m pytest tests/ -q`） |
 | 定时被拒提醒 | 定时任务无人应答的高风险操作自动拒绝后，记 warning + 落盘会话历史（控制台可见） |
