@@ -36,16 +36,18 @@
           </UiChip>
         </div>
 
-        <!-- 服务模块：LLM / ASR / TTS（仅在 activeMenu 匹配时显示）。Service modules: LLM / ASR / TTS (shown when activeMenu matches). -->
+        <!-- 服务模块：LLM / ASR / TTS（仅在 activeMenu 匹配时显示）。Service modules: LLM / ASR / TTS (shown when activeMenu matches).
+             必须同时等 editable 加载完成：activeMenu 初值即 'llm'，首屏若先渲染卡片会在 sec(key).profiles 上取到 undefined。
+             Must also wait for editable to load: activeMenu starts as 'llm', so rendering the card first would read .profiles off undefined. -->
         <template v-for="def in sectionDefs" :key="def.key">
-          <ServiceCard v-if="s.activeMenu.value === def.key" :section="def" />
+          <ServiceCard v-if="s.editable.value && s.activeMenu.value === def.key" :section="def" />
         </template>
 
         <!-- 语音模块：唤醒词 + VAD + 本地播报配置。Voice module: wake word + VAD + local speech settings. -->
-        <VoiceCard v-if="s.activeMenu.value === 'voice'" />
+        <VoiceCard v-if="s.editable.value && s.activeMenu.value === 'voice'" />
 
         <!-- 高级模块：Agent / LLM 客户端 / 工具 / 服务器 参数配置。Advanced module: Agent / LLM client / Tools / Server settings. -->
-        <AdvancedCard v-if="s.activeMenu.value === 'advanced'" />
+        <AdvancedCard v-if="s.editable.value && s.activeMenu.value === 'advanced'" />
 
         <!-- 配置校验问题：检测到的错误和警告列表。Config validation issues: detected errors and warnings. -->
         <div v-if="s.issues.value.length" class="cs-issues">

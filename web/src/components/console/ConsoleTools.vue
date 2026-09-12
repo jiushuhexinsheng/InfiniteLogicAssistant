@@ -1,11 +1,13 @@
 <template>
   <div class="console-tools">
-    <div v-if="loading" class="console-empty">加载中…</div>
-    <div v-else-if="error" class="console-empty">加载失败：{{ error }}</div>
-    <div v-else-if="!tools.length" class="console-empty">后端没有注册工具</div>
+    <!-- 首次加载尚未完成（tools 仍为 null 且无错误）时统一显示加载中，避免闪现空状态。
+         Show the loading state until the first load completes (tools still null with no error), avoiding a flash of the empty state. -->
+    <div v-if="loading || (tools === null && !error)" class="console-empty">加载中…</div>
+    <UiErrorNote v-else-if="error" :error="error" />
+    <div v-else-if="!(tools ?? []).length" class="console-empty">后端没有注册工具</div>
     <!-- 工具列表：展示每个工具的名称、描述，点击展开查看参数定义。Tool list: shows name and description of each tool, click to expand and view parameter definitions. -->
     <div v-else class="tool-cards">
-      <UiCard v-for="t in tools" :key="t.function.name" class="tool-card" :padded="false">
+      <UiCard v-for="t in (tools ?? [])" :key="t.function.name" class="tool-card" :padded="false">
         <div class="tool-head" @click="toggle(t.function.name)">
           <code class="tool-name">{{ t.function.name }}</code>
           <span class="tool-desc">{{ t.function.description }}</span>
@@ -22,32 +24,30 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '../../api'
-import type { ToolSchema } from '../../types'
-import { UiCard, UiIcon } from '../ui'
+import { useAsync } from '../../composables/useAsync'
+import { UiCard, UiErrorNote, UiIcon } from '../ui'
 
-/** 后端注册的工具列表。List of tools registered in backend. */
-const tools = ref<ToolSchema[]>([])
-/** 加载状态标志。Loading state flag. */
-const loading = ref(true)
-/** 加载错误信息。Load error message. */
-const error = ref('')
 /** 当前展开的工具名称（用于折叠/展开切换）。Currently expanded tool name (for collapse/expand toggle). */
 const open = ref('')
 
-/** 切换工具详情的展开/折叠。Toggle tool details expand/collapse. */
+/** 工具清单加载：统一错误捕获与文案（替代本地 error/loading ref 与 try/catch）。
+ *  Tool list loading with unified error capture (replaces the local error/loading refs and try/catch).
+ *  后端返回 ok=false 时抛出业务错误，交由 useAsync 统一格式化。 */
+const { data: tools, error, loading, run: loadTools } = useAsync(async () => {
+  const r = await api.getTools()
+  if (!r.ok) throw new Error(r.error || '未知错误')
+  return r.tools
+})
+
+/**
+ * 切换工具详情的展开/折叠。
+ * Toggle tool details expand/collapse.
+ *
+ * @param name 工具名。Tool name.
+ */
 function toggle(name: string) { open.value = open.value === name ? '' : name }
 
-onMounted(async () => {
-  try {
-    const r = await api.getTools()
-    if (r.ok) tools.value = r.tools
-    else error.value = r.error || '未知错误'
-  } catch (e: any) {
-    error.value = e?.message || String(e)
-  } finally {
-    loading.value = false
-  }
-})
+onMounted(() => { loadTools() })
 </script>
 
 <style scoped>

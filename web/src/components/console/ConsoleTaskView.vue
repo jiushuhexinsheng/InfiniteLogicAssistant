@@ -29,6 +29,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { api, streamUtter } from '../../api'
+import { formatError } from '../../errors'
 import { UiButton, UiInput, UiTextarea } from '../ui'
 
 /** 用户指令输入。User command input. */
@@ -83,8 +84,8 @@ async function sendAnswer() {
     await api.answer(sessionId.value, a)
     pendingQuestion.value = ''
     answer.value = ''
-  } catch (e: any) {
-    push('error', '❌ 回答投递失败: ' + (e?.message || ''))
+  } catch (e) {
+    push('error', '❌ 回答投递失败：' + formatError(e))
   }
 }
 
@@ -93,8 +94,8 @@ async function stop() {
   try {
     await api.stopTask(sessionId.value)
     push('state', '🛑 已发送停止指令')
-  } catch (e: any) {
-    push('error', '❌ 停止失败: ' + (e?.message || ''))
+  } catch (e) {
+    push('error', '❌ 停止失败：' + formatError(e))
   }
 }
 </script>

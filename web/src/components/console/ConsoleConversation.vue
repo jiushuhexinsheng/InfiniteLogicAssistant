@@ -15,6 +15,8 @@
 import { api } from '../../api'
 import { useAssistant } from '../../composables/useAssistant'
 import { createNewSession } from '../../composables/assistant/store'
+import { notify } from '../../composables/useToast'
+import { formatError } from '../../errors'
 import ConsoleMessageList from './ConsoleMessageList.vue'
 import ChatInput from '../assistant/ChatInput.vue'
 import { UiButton } from '../ui'
@@ -32,7 +34,10 @@ async function newSession() {
   try {
     const r = await api.createSession()
     createNewSession(r.session.id)
-  } catch { /* ignore */ }
+    notify.ok('已新建会话')
+  } catch (e) {
+    notify.err('新建会话失败：' + formatError(e))
+  }
 }
 </script>
 
