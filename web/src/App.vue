@@ -7,6 +7,9 @@
   <!-- 悬浮球全局常驻（跨路由），Teleport 到 body -->
   <!-- Floating assistant globally persistent (cross-route), Teleported to body -->
   <FloatingAssistant :asst="asst" />
+  <!-- 全局通知浮层（错误 / 成功提示） -->
+  <!-- Global notification overlay (error / success notices) -->
+  <UiToaster />
 </template>
 
 <!-- 应用根组件脚本 -->
@@ -14,6 +17,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue'
 import FloatingAssistant from './components/FloatingAssistant.vue'
+import { UiToaster } from './components/ui'
 import { useConfig } from './composables/useApi'
 import { useAssistant } from './composables/useAssistant'
 
