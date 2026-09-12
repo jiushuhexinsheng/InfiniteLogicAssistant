@@ -718,3 +718,41 @@ def test_mcp_integration_tools(monkeypatch):
         names = {t["function"]["name"] for t in data["tools"]}
         assert "mcp_echo_echo" in names
         assert "mcp_echo_add" in names
+
+
+# ─── /api/voice/answer：结构化确认 choice 透传 ───
+
+
+def test_voice_answer_passes_structured_choice(client):
+    """按钮回传的 choice 原样透传到会话通道；非 yes/no 视为未选择（交由确认层 fail closed）。
+    The choice returned by buttons is passed through to the session channel unchanged;
+    anything other than yes/no counts as no selection (the confirmation layer fails closed).
+    """
+    import asyncio
+
+    from core.api import state
+    from core.orchestrator.control import StopController
+    from core.orchestrator.pipeline import EventQueueChannel
+    from core.orchestrator.session import Answer, Session
+
+    session = Session(session_id="ans-choice")
+    channel = EventQueueChannel(asyncio.Queue(), "ans-choice")
+    session.channel = channel
+    state.register(session, StopController())
+    try:
+        r = client.post("/api/voice/answer", json={"session_id": "ans-choice", "text": "", "choice": "yes"})
+        assert r.status_code == 200
+        assert channel.answers.get_nowait() == Answer(text="", choice="yes")
+
+        # 非法 choice 不得透传（否则确认层会把任意字符串当成结构化选择）
+        r2 = client.post("/api/voice/answer", json={"session_id": "ans-choice", "text": "随便吧", "choice": "maybe"})
+        assert r2.status_code == 200
+        assert channel.answers.get_nowait() == Answer(text="随便吧", choice=None)
+    finally:
+        state.cleanup("ans-choice")
+
+
+def test_voice_answer_unknown_session_404(client):
+    """未知会话返回 404。An unknown session returns 404."""
+    r = client.post("/api/voice/answer", json={"session_id": "nope", "text": "确认"})
+    assert r.status_code == 404

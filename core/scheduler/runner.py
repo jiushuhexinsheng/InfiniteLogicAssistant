@@ -13,7 +13,7 @@ from core.api import state
 from core.logger import logger
 from core.orchestrator.control import StopController
 from core.orchestrator.pipeline import run_pipeline
-from core.orchestrator.session import Session
+from core.orchestrator.session import Answer, Session
 
 
 class _SilentChannel:
@@ -28,11 +28,11 @@ class _SilentChannel:
         """初始化被拒绝问题列表。Initializes the list of rejected questions."""
         self.rejected: list[str] = []
 
-    async def ask(self, question: str) -> str:
-        """向操作者提问：无人值守时记录问题并返回空串（相当于拒绝）。
-        Asks the operator a question: when unattended, records the question and returns an empty string (equivalent to a rejection)."""
+    async def ask(self, question: str, *, kind: str = "clarify") -> Answer:
+        """向操作者提问：无人值守时记录问题并返回空回答（无 choice → 确认被拒）。
+        Asks the operator a question: when unattended, records the question and returns an empty answer (no choice → confirmation rejected)."""
         self.rejected.append(question)
-        return ""
+        return Answer()
 
     async def notify(self, text: str) -> None:
         """通知操作者：无人值守时仅记日志。

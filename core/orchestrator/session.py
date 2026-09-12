@@ -10,7 +10,26 @@ idle; any state may transition to stopped.
 """
 import enum
 import uuid
+from dataclasses import dataclass
 from typing import Any, Protocol
+
+
+@dataclass(frozen=True)
+class Answer:
+    """操作者对提问的回答。
+
+    结构化确认的判定只看 choice（由前端按钮回传），text 仅承载自由文本；
+    choice 为 None 表示操作者没有做出结构化选择。
+
+    An operator's answer to a question.
+
+    Structured confirmation only looks at choice (returned by frontend buttons);
+    text carries free-form input only. A None choice means the operator made no
+    structured selection.
+    """
+
+    text: str = ""
+    choice: str | None = None  # "yes" | "no" | None（自由文本）
 
 
 class SessionState(str, enum.Enum):
@@ -38,7 +57,7 @@ class OperatorChannel(Protocol):
     and announcing messages.
     """
 
-    async def ask(self, question: str) -> str: ...
+    async def ask(self, question: str, *, kind: str = "clarify") -> Answer: ...
 
     async def notify(self, text: str) -> None: ...
 
@@ -107,12 +126,15 @@ class Session:
         if self.channel is not None:
             await self.channel.notify(text)
 
-    async def ask(self, question: str) -> str:
+    async def ask(self, question: str, *, kind: str = "clarify") -> Answer:
         """向操作者提问并等待回答；无通道时抛 RuntimeError。
 
+        kind 区分提问类型：clarify（澄清，自由文本作答）或 confirm（确认，结构化选择）。
+
         Ask the operator a question and wait for the answer; raise RuntimeError
-        when there is no channel.
+        when there is no channel. kind distinguishes the question type: clarify
+        (free-form answer) or confirm (structured choice).
         """
         if self.channel is None:
             raise RuntimeError("会话无 OperatorChannel，无法向操作者提问")
-        return await self.channel.ask(question)
+        return await self.channel.ask(question, kind=kind)

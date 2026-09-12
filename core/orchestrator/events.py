@@ -94,6 +94,12 @@ class QuestionEvent(_BaseEvent):
     type: Literal["question"] = "question"
     question: str
     session_id: str = ""
+    # 提问类型：clarify（澄清，自由文本作答）/ confirm（确认，结构化选择）。
+    # 前端据 kind="confirm" 渲染「确认 / 取消」按钮，避免解析自由文本判定批准。
+    # Question kind: clarify (free-form answer) / confirm (structured choice).
+    # The frontend renders confirm/cancel buttons for kind="confirm", avoiding
+    # free-text parsing to decide approval.
+    kind: Literal["clarify", "confirm"] = "clarify"
 
 
 class ErrorEvent(_BaseEvent):

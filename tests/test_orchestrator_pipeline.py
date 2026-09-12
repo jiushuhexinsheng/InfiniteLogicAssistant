@@ -7,6 +7,7 @@ import asyncio
 import pytest
 
 from core.orchestrator.pipeline import EventQueueChannel
+from core.orchestrator.session import Answer
 
 
 class _FakeLLMClient:
@@ -37,12 +38,32 @@ async def test_channel_ask_blocks_until_answer():
 
     t = asyncio.ensure_future(do_ask())
     await asyncio.sleep(0.05)
-    # question 事件已入队（含 session_id，供前端回答）
+    # question 事件已入队（含 session_id 与 kind，供前端回答）
     evt = await events.get()
-    assert evt == {"type": "question", "question": "问题?", "session_id": "s1"}
+    assert evt == {"type": "question", "question": "问题?", "session_id": "s1", "kind": "clarify"}
     # 投递回答 → ask 返回
     ch.answer("回答")
-    assert await t == "回答"
+    assert await t == Answer(text="回答")
+
+
+@pytest.mark.asyncio
+async def test_channel_ask_confirm_carries_kind_and_choice():
+    """确认提问带 kind=confirm，且结构化 choice 随回答回传。
+    Confirmation questions carry kind=confirm, and the structured choice travels back with the answer."""
+    events: asyncio.Queue = asyncio.Queue()
+    ch = EventQueueChannel(events, session_id="s1")
+
+    async def do_ask():
+        return await ch.ask("确认执行吗？", kind="confirm")
+
+    t = asyncio.ensure_future(do_ask())
+    await asyncio.sleep(0.05)
+    evt = await events.get()
+    # 前端据 kind=confirm 渲染「确认 / 取消」按钮
+    assert evt["kind"] == "confirm"
+    # 按钮回传结构化选择
+    ch.answer("", choice="yes")
+    assert await t == Answer(text="", choice="yes")
 
 
 @pytest.mark.asyncio

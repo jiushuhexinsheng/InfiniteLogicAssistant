@@ -5,7 +5,7 @@ Tests the skill executor: template filling, skill running, dangerous-skill confi
 import yaml
 import pytest
 
-from core.orchestrator.session import Session
+from core.orchestrator.session import Answer, Session
 from core.skills.executor import fill_template, run_skill
 from core.skills.loader import Skill, SkillLoader, SkillStep
 from core.tools import TOOLS
@@ -56,8 +56,9 @@ async def test_run_skill_dangerous_rejected():
         def __init__(self):
             self.answers = ["取消"]
 
-        async def ask(self, q):
-            return self.answers.pop(0)
+        async def ask(self, q, *, kind="clarify"):
+            a = self.answers.pop(0)
+            return a if isinstance(a, Answer) else Answer(text=a)
 
         async def notify(self, text):
             pass
@@ -99,8 +100,9 @@ class _ConfirmChannel:
         self.answers = list(answers)
         self.notified: list[str] = []
 
-    async def ask(self, q):
-        return self.answers.pop(0)
+    async def ask(self, q, *, kind="clarify"):
+        a = self.answers.pop(0)
+        return a if isinstance(a, Answer) else Answer(text=a)
 
     async def notify(self, text):
         self.notified.append(text)

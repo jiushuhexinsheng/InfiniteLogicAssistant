@@ -22,7 +22,7 @@ from core.orchestrator.events import (
 )
 from core.orchestrator.executor import execute_task
 from core.orchestrator.intent import judge_intent
-from core.orchestrator.session import OperatorChannel, Session, SessionState
+from core.orchestrator.session import Answer, OperatorChannel, Session, SessionState
 from core.orchestrator.task import Task, form_task
 from core.prompts import CHIT_CHAT_SYSTEM
 
@@ -77,24 +77,33 @@ class EventQueueChannel(OperatorChannel):
         """向事件队列写入 notify 状态事件。Write a notify state event into the event queue."""
         await self.events.put(TaskStateEvent(state="notify", text=text, session_id=self.session_id).emit())
 
-    async def ask(self, question: str) -> str:
+    async def ask(self, question: str, *, kind: str = "clarify") -> Answer:
         """写入 question 事件并阻塞等待操作者回答（串行化，同会话同时最多一个待答问题）。
 
+        kind 随事件下发：前端据 kind="confirm" 渲染确认按钮而非文本输入。
+
         Write a question event and block until the operator answers (serialized:
-        at most one pending question per session).
+        at most one pending question per session). kind travels with the event so
+        the frontend renders confirm buttons instead of a text input for
+        kind="confirm".
         """
         # 串行化提问：同会话同时最多一个待答问题，避免并发子代理答非所问
         async with self._ask_lock:
-            await self.events.put(QuestionEvent(question=question, session_id=self.session_id).emit())
+            await self.events.put(
+                QuestionEvent(question=question, session_id=self.session_id, kind=kind).emit()
+            )
             return await self.answers.get()
 
-    def answer(self, text: str) -> None:
+    def answer(self, text: str, choice: str | None = None) -> None:
         """投递操作者回答到回答队列（由 /api/voice/answer 调用）。
 
+        choice 为结构化选择（"yes" / "no"），由前端确认按钮回传。
+
         Deliver the operator's answer into the answer queue (called by
-        /api/voice/answer).
+        /api/voice/answer). choice is the structured selection ("yes" / "no")
+        returned by the frontend's confirmation buttons.
         """
-        self.answers.put_nowait(text)
+        self.answers.put_nowait(Answer(text=text, choice=choice))
 
 
 async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str) -> None:

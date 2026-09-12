@@ -8,7 +8,7 @@ import pytest
 
 from core.orchestrator.control import CancellationToken
 from core.orchestrator.executor import execute_task
-from core.orchestrator.session import Session
+from core.orchestrator.session import Answer, Session
 from core.orchestrator.task import Task
 
 
@@ -38,8 +38,9 @@ class _Channel:
     def __init__(self, answers):
         self.answers = list(answers)
 
-    async def ask(self, q):
-        return self.answers.pop(0)
+    async def ask(self, q, *, kind="clarify"):
+        a = self.answers.pop(0)
+        return a if isinstance(a, Answer) else Answer(text=a)
 
     async def notify(self, text):
         pass
