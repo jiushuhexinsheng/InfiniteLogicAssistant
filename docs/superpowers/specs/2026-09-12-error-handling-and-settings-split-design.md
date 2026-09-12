@@ -53,8 +53,8 @@
 
 测试（新增）
   web/src/errors.spec.ts
-  web/src/composables/__tests__/useAsync.spec.ts
-  web/src/composables/__tests__/useToast.spec.ts
+  web/src/composables/useAsync.spec.ts
+  web/src/composables/useToast.spec.ts
 ```
 
 ## 详细设计
