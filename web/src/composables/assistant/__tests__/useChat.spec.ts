@@ -44,4 +44,19 @@ describe('useChat sendAnswer 错误处理', () => {
     await sendAnswer('是的')
     expect(messages.value).toHaveLength(0)
   })
+
+  /** 结构化确认：空文本 + choice 也应投递（按钮回答不带文本）。 */
+  it('结构化确认允许空文本并透传 choice', async () => {
+    currentSessionId.value = 's1'
+    vi.mocked(api.answer).mockResolvedValue({ ok: true })
+    await sendAnswer('', 'yes')
+    expect(api.answer).toHaveBeenCalledWith('s1', '', 'yes')
+  })
+
+  /** 既无文本也无 choice 时不投递（避免空回答解除后端阻塞）。 */
+  it('既无文本也无 choice 时不投递', async () => {
+    currentSessionId.value = 's1'
+    await sendAnswer('   ')
+    expect(api.answer).not.toHaveBeenCalled()
+  })
 })

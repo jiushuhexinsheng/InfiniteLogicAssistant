@@ -74,8 +74,17 @@ export const statusLine = ref('')
 /** Token 使用量统计。Token usage statistics. */
 export const tokenUsage = ref<TokenUsage>({})
 
+/** 待回答的提问（含提问类型，决定前端渲染按钮还是文本输入）。
+ *  Pending question (with its kind, which decides buttons vs. a text input). */
+export interface PendingQuestion {
+  /** 问题内容。Question content. */
+  text: string
+  /** 提问类型。Question kind. */
+  kind: 'clarify' | 'confirm'
+}
+
 /** 编排问答：待回答的澄清/确认问题。Orchestration Q&A: pending clarification/confirmation question. */
-export const pendingQuestion = ref('')
+export const pendingQuestion = ref<PendingQuestion | null>(null)
 /** 当前会话 ID。Current session ID. */
 export const currentSessionId = ref('')
 
@@ -199,6 +208,6 @@ export function switchSession(sessionId: string, msgs: { role: string; content: 
     .filter(m => m.role === 'user' || m.role === 'assistant')
     .map(m => ({ id: genId(), role: m.role as 'user' | 'assistant', text: m.content, timestamp: Date.now() }))
   tokenUsage.value = {}
-  pendingQuestion.value = ''
+  pendingQuestion.value = null
   currentSessionId.value = sessionId
 }

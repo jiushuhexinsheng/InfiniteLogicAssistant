@@ -127,7 +127,8 @@ export const api = {
   // ── 编排管线（P0）──
   // ── Orchestration Pipeline (P0) ──
   /** 发送回答。Send answer. */
-  answer: (sessionId: string, text: string) => post<ApiResponse>('/voice/answer', { session_id: sessionId, text }),
+  answer: (sessionId: string, text: string, choice?: 'yes' | 'no') =>
+    post<ApiResponse>('/voice/answer', choice ? { session_id: sessionId, text, choice } : { session_id: sessionId, text }),
   /** 停止任务。Stop task. */
   stopTask: (sessionId: string) => post<ApiResponse>(`/task/${sessionId}/stop`),
   /** 获取环境变量。Get environment variables. */
@@ -208,7 +209,7 @@ export interface UtterHandlers {
   /** Token 使用量回调。Token usage callback. */
   onUsage?: (usage: TokenUsage) => void
   /** 问题事件回调（澄清/确认）。Question event callback (clarification/confirmation). */
-  onQuestion?: (q: { question: string; session_id: string }) => void
+  onQuestion?: (q: { question: string; session_id: string; kind: 'clarify' | 'confirm' }) => void
   /** 错误回调。Error callback. */
   onError?: (msg: string) => void
   /** 完成回调。Done callback. */
@@ -313,7 +314,7 @@ export async function streamUtter(
             // 问题事件（澄清/确认）/ Question event (clarification/confirmation)
             case 'question':
               if (evt.session_id) sessionId = evt.session_id
-              h.onQuestion?.({ question: evt.question, session_id: evt.session_id })
+              h.onQuestion?.({ question: evt.question, session_id: evt.session_id, kind: evt.kind })
               break
             // 错误事件，终止处理 / Error event, terminate processing
             case 'error': h.onError?.(evt.message); return 'done'
