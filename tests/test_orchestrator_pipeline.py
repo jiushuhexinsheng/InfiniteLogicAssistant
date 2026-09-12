@@ -105,3 +105,53 @@ async def test_run_pipeline_seeds_messages(monkeypatch):
     assert (await events.get())["type"] == "task_state"
     assert (await events.get())["type"] == "content_delta"
     assert (await events.get())["type"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_background_extract_task_is_referenced(monkeypatch):
+    """后台记忆提取任务被持引用，且完成后自动移除（防 GC 导致静默丢失）。
+    The background fact-extraction task is kept referenced and auto-discarded on
+    completion (prevents silently losing it to GC).
+    """
+    from core.orchestrator import pipeline as pl
+    from core.orchestrator.control import StopController
+    from core.orchestrator.intent import IntentResult
+    from core.orchestrator.session import Session
+    from core.orchestrator.task import Task
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def fake_extract(task, result, store):
+        started.set()
+        await release.wait()
+
+    async def fake_judge(text):
+        return IntentResult(type="task", summary="测试任务")
+
+    async def fake_form_task(intent):
+        return Task(id="t1", goal="测试", params={}, missing=[], risk="read")
+
+    async def fake_execute(task, session, token, events):
+        return {"status": "done", "summary": "完成", "steps": []}
+
+    monkeypatch.setattr(pl, "judge_intent", fake_judge)
+    monkeypatch.setattr(pl, "form_task", fake_form_task)
+    monkeypatch.setattr(pl, "execute_task", fake_execute)
+    monkeypatch.setattr(pl, "extract_and_store", fake_extract)
+    monkeypatch.setattr(pl, "get_facts_store", lambda: object())
+
+    pl._bg_tasks.clear()
+    session = Session()
+    events: asyncio.Queue = asyncio.Queue()
+    await pl.run_pipeline("做事", session, events, StopController())
+    await asyncio.wait_for(started.wait(), timeout=1)
+
+    # 任务在飞行中被引用持有（旧实现无此集合 → AttributeError）
+    assert len(pl._bg_tasks) == 1, "后台提取任务未被持引用，可能被 GC 回收"
+
+    release.set()
+    await asyncio.gather(*pl._bg_tasks)
+    await asyncio.sleep(0)
+    # 完成后 done_callback 已将其丢弃
+    assert len(pl._bg_tasks) == 0, "已完成的后台任务未被清理，引用集会持续增长"

@@ -26,6 +26,34 @@ from core.orchestrator.session import OperatorChannel, Session, SessionState
 from core.orchestrator.task import Task, form_task
 from core.prompts import CHIT_CHAT_SYSTEM
 
+# 后台任务引用集：CPython 的事件循环对 Task 仅持弱引用，不保留句柄的任务
+# 可能在执行完成前被垃圾回收 —— 而 extract_and_store 内部吞掉所有异常
+# （core/memory/extract.py），后果是长期记忆提取静默不发生、无任何报错痕迹。
+#
+# Background-task reference set: CPython's event loop only holds weak references
+# to Tasks, so a task without a retained handle may be garbage-collected before it
+# finishes — and extract_and_store swallows all exceptions internally
+# (core/memory/extract.py), making the consequence a silent loss of long-term
+# fact extraction with no error trace.
+_bg_tasks: set[asyncio.Task] = set()
+
+
+def _spawn_bg(coro) -> asyncio.Task:
+    """启动后台任务并持有引用，完成后自动丢弃。
+
+    Start a background task while holding a reference, discarding it on completion.
+
+    Args:
+        coro: 要调度的协程。The coroutine to schedule.
+
+    Returns:
+        已调度的 Task。The scheduled Task.
+    """
+    t = asyncio.ensure_future(coro)
+    _bg_tasks.add(t)
+    t.add_done_callback(_bg_tasks.discard)
+    return t
+
 
 class EventQueueChannel(OperatorChannel):
     """notify/question 写事件队列；ask 等待操作者回答（/api/voice/answer 投递）。
@@ -145,7 +173,7 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
     result = await execute_task(task, session, controller.token, events)
     # 任务后异步提取事实写长期记忆（不阻塞回复，失败静默）
     if result.get("status") in ("done", "failed"):
-        asyncio.ensure_future(extract_and_store(task, result, get_facts_store()))
+        _spawn_bg(extract_and_store(task, result, get_facts_store()))
     session.set_state(SessionState.REPORTING)
     await events.put(TaskStateEvent(
         state="done", status=result["status"], summary=result["summary"], steps=result["steps"],
