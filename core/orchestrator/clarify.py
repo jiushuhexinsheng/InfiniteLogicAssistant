@@ -35,7 +35,7 @@ async def run_clarify(session: Session, task: Task) -> dict:
             logger.warning("澄清重复问题，停止追问: {}", q)
             break
         asked.add(q)
-        ans = (await session.ask(q)).strip()
+        ans = (await session.ask(q)).text.strip()
         if not ans:
             break
         answered[q] = ans

@@ -8,7 +8,7 @@ import pytest
 
 from core.orchestrator.clarify import run_clarify
 from core.orchestrator.intent import IntentResult
-from core.orchestrator.session import Session
+from core.orchestrator.session import Answer, Session
 from core.orchestrator.task import Task, form_task
 
 
@@ -61,9 +61,10 @@ async def test_run_clarify_asks_operator(monkeypatch):
             self.answers = list(answers)
             self.asked: list[str] = []
 
-        async def ask(self, q):
+        async def ask(self, q, *, kind="clarify"):
             self.asked.append(q)
-            return self.answers.pop(0)
+            a = self.answers.pop(0)
+            return a if isinstance(a, Answer) else Answer(text=a)
 
         async def notify(self, text):
             pass
