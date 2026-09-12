@@ -17,7 +17,7 @@ OpenAI 兼容接口，支持离线/在线任意部署。
 | AI 对话 | LLM（OpenAI 兼容：DeepSeek / OpenAI / 通义…）多 profile 切换，ReAct 工具调用 |
 | 任务编排 | 意图判断（闲聊/任务）→ 任务形成 → 澄清缺失信息 → 高风险操作确认 → 执行 → 汇报（SSE 实时） |
 | 多智能体 | 复杂任务自动拆解：规划 / 执行 / 检索 / 批评 子代理并发协作（可开关） |
-| 工具执行 | 26 个内置工具：搜索/天气/计算/文件/Shell/Python/GUI/记忆/定时/技能，@tool 自动注册 |
+| 工具执行 | 27 个内置工具：搜索/天气/计算/文件/Shell/Python/GUI/记忆/定时/技能，@tool 自动注册 |
 | 长期记忆 | 事实记忆（SQLite FTS5 全文检索）+ 任务后 LLM 自动提取 + RAG（BM25）检索注入上下文 |
 | MCP 桥接 | 启动时连接外部 MCP server，工具动态注册进注册中心（mcp_<server>_<tool>） |
 | Skills 技能包 | skills/*.yaml 热加载，{{param}} 填参逐步骤执行，危险技能需确认 |
