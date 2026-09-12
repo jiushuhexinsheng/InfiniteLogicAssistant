@@ -207,6 +207,12 @@ export interface QuestionEvent {
   question: string
   /** 会话 ID。Session ID. */
   session_id: string
+  /** 提问类型：clarify（澄清，自由文本作答）/ confirm（确认，结构化选择）。
+   *  前端据 confirm 渲染「确认 / 取消」按钮，避免解析自由文本判定是否批准。
+   *  Question kind: clarify (free-form answer) / confirm (structured choice).
+   *  The frontend renders confirm/cancel buttons for confirm, so deciding whether
+   *  the operator approved never depends on parsing free text. */
+  kind: 'clarify' | 'confirm'
 }
 
 /**

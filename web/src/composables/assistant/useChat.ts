@@ -107,15 +107,18 @@ export async function runTurn() {
       tokenUsage.value.completion_tokens = (tokenUsage.value.completion_tokens || 0) + (u.completion_tokens || 0)
       tokenUsage.value.total_tokens = (tokenUsage.value.total_tokens || 0) + (u.total_tokens || 0)
     },
-    onQuestion: ({ question, session_id }) => {
+    onQuestion: ({ question, session_id, kind }) => {
       currentSessionId.value = session_id
-      pendingQuestion.value = question
+      // kind 决定前端渲染按钮还是文本输入；缺省按澄清处理（旧后端无该字段时向后兼容）。
+      // kind decides buttons vs. text input; default to clarify (backward compatible
+      // with an older backend that omits the field).
+      pendingQuestion.value = { text: question, kind: kind === 'confirm' ? 'confirm' : 'clarify' }
       speakAuto(question)  // 澄清/确认问题也语音播报。Clarification/confirmation questions also voice broadcast.
       state.value = 'thinking'
     },
     onDone: (sessionId) => {
       if (sessionId) currentSessionId.value = sessionId
-      pendingQuestion.value = ''
+      pendingQuestion.value = null
       flushText()
       partialText.value = ''
       if (acc.trim()) speakAuto(acc)
@@ -128,14 +131,14 @@ export async function runTurn() {
       // User actively cancels (triggered by cancelTool), not an error.
       if (textFlushTimer) { clearTimeout(textFlushTimer); textFlushTimer = null }
       partialText.value = ''
-      pendingQuestion.value = ''
+      pendingQuestion.value = null
       state.value = 'done'
     },
     onError: (msg) => {
       if (textFlushTimer) { clearTimeout(textFlushTimer); textFlushTimer = null }
       console.error('[Asst] LLM error:', msg)
       addMessage('system', '出错了: ' + msg)
-      pendingQuestion.value = ''
+      pendingQuestion.value = null
       speakAuto('出错了：' + msg)
       state.value = 'error'
     },
@@ -144,13 +147,18 @@ export async function runTurn() {
 
 /** 回答澄清/确认问题（解除后端 ask() 阻塞）。
  *  Answer clarification/confirmation question (unblock backend ask() call).
- *  @param text - 用户回答文本。User answer text. */
-export async function sendAnswer(text: string) {
+ *  @param text - 用户回答文本（确认类提问为空）。User answer text (empty for confirmation questions).
+ *  @param choice - 结构化确认选择（"yes"/"no"），由确认按钮回传。Structured confirmation choice ("yes"/"no"), returned by the confirm buttons. */
+export async function sendAnswer(text: string, choice?: 'yes' | 'no') {
   const t = text.trim()
-  if (!t || !currentSessionId.value) return
+  // 结构化确认可以不带文本；两者皆空则不投递（避免空回答解除后端阻塞）。
+  // A structured confirmation may carry no text; when both are empty, don't deliver
+  // (avoiding an empty answer that would unblock the backend).
+  if (!t && !choice) return
+  if (!currentSessionId.value) return
   try {
-    await api.answer(currentSessionId.value, t)
-    pendingQuestion.value = ''
+    await api.answer(currentSessionId.value, t, choice)
+    pendingQuestion.value = null
   } catch (e) {
     addMessage('system', '回答投递失败：' + formatError(e))
   }
