@@ -9,9 +9,10 @@
       </div>
     </UiCard>
 
+    <UiErrorNote v-if="error" :error="error" />
     <!-- 定时任务列表：展示每条任务的 cron 表达式和执行内容，支持删除。Schedule list: shows cron expression and prompt for each task, with delete support. -->
-    <div v-if="!list.length && !loading" class="console-empty">暂无定时任务</div>
-    <UiCard v-for="s in list" :key="s.id" class="sched-item">
+    <div v-else-if="!(list ?? []).length && !loading" class="console-empty">暂无定时任务</div>
+    <UiCard v-for="s in (list ?? [])" :key="s.id" class="sched-item">
       <div class="sched-line">
         <code>{{ s.cron }}</code>
         <span class="sched-prompt">{{ s.prompt }}</span>
@@ -23,55 +24,58 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { api, type ScheduleItem } from '../../api'
-import { UiButton, UiCard, UiInput } from '../ui'
+import { api } from '../../api'
+import { useAsync } from '../../composables/useAsync'
+import { notify } from '../../composables/useToast'
+import { formatError } from '../../errors'
+import { UiButton, UiCard, UiErrorNote, UiInput } from '../ui'
 
 /** cron 表达式输入。Cron expression input. */
 const cron = ref('')
 /** 定时执行的 prompt 内容。Scheduled prompt content. */
 const prompt = ref('')
-/** 定时任务列表。Schedule items list. */
-const list = ref<ScheduleItem[]>([])
-/** 加载状态标志。Loading state flag. */
-const loading = ref(false)
 
-/** 从后端拉取定时任务列表。Fetch schedule list from backend. */
-async function load() {
-  loading.value = true
-  try {
-    const r = await api.getSchedules()
-    list.value = r.schedules || []
-  } catch (e: any) {
-    console.error('getSchedules', e)
-  } finally {
-    loading.value = false
-  }
-}
+/** 定时任务列表加载：统一错误捕获（替代原先只写 console.error、界面上完全看不到失败的写法）。
+ *  Schedule list loading with unified error capture (replaces the previous version that only logged to console.error, leaving the failure invisible in the UI). */
+const { data: list, error, loading, run: loadSchedules } = useAsync(async () => {
+  const r = await api.getSchedules()
+  return r.schedules || []
+})
 
-/** 注册新的定时任务并刷新列表。Register a new scheduled task and refresh the list. */
+/**
+ * 注册新的定时任务并刷新列表。
+ * Register a new scheduled task and refresh the list.
+ */
 async function add() {
   if (!cron.value.trim() || !prompt.value.trim()) return
   try {
     await api.addSchedule(cron.value.trim(), prompt.value.trim())
     cron.value = ''
     prompt.value = ''
-    await load()
-  } catch (e: any) {
-    console.error('addSchedule', e)
+    notify.ok('已注册定时任务')
+    await loadSchedules()
+  } catch (e) {
+    notify.err('注册定时任务失败：' + formatError(e))
   }
 }
 
-/** 删除定时任务并刷新列表。Delete a scheduled task and refresh the list. */
+/**
+ * 删除定时任务并刷新列表。
+ * Delete a scheduled task and refresh the list.
+ *
+ * @param sid 定时任务 id。Schedule id.
+ */
 async function remove(sid: string) {
   try {
     await api.deleteSchedule(sid)
-    await load()
-  } catch (e: any) {
-    console.error('deleteSchedule', e)
+    notify.ok('已取消定时任务')
+    await loadSchedules()
+  } catch (e) {
+    notify.err('取消定时任务失败：' + formatError(e))
   }
 }
 
-onMounted(load)
+onMounted(() => { loadSchedules() })
 </script>
 
 <style scoped>

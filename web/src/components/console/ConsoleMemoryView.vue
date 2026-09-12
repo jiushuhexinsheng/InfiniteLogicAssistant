@@ -2,12 +2,13 @@
   <div class="console-memory">
     <!-- 记忆头部：刷新按钮和加载状态。Memory header: refresh button and loading state. -->
     <div class="mem-head">
-      <UiButton variant="ghost" size="sm" @click="load">刷新</UiButton>
+      <UiButton variant="ghost" size="sm" @click="loadMemory">刷新</UiButton>
       <span v-if="loading" class="mem-loading">加载中…</span>
     </div>
-    <div v-if="!facts.length && !loading" class="console-empty">暂无记忆（任务完成后会自动提取）</div>
+    <UiErrorNote v-if="error" :error="error" />
+    <div v-else-if="!(facts ?? []).length && !loading" class="console-empty">暂无记忆（任务完成后会自动提取）</div>
     <!-- 记忆列表：展示每条记忆的主题、时间、来源和内容，支持删除。Memory list: shows topic, time, source and content of each memory fact, with delete support. -->
-    <UiCard v-for="f in facts" :key="f.topic" class="mem-item">
+    <UiCard v-for="f in (facts ?? [])" :key="f.topic" class="mem-item">
       <div class="mem-topic">
         {{ f.topic }}
         <span class="mem-ts">{{ f.ts }} · {{ f.source }}</span>
@@ -19,40 +20,37 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { api, type MemoryFact } from '../../api'
-import { UiButton, UiCard } from '../ui'
+import { onMounted } from 'vue'
+import { api } from '../../api'
+import { useAsync } from '../../composables/useAsync'
+import { notify } from '../../composables/useToast'
+import { formatError } from '../../errors'
+import { UiButton, UiCard, UiErrorNote } from '../ui'
 
-/** 记忆事实列表。Memory facts list. */
-const facts = ref<MemoryFact[]>([])
-/** 加载状态标志。Loading state flag. */
-const loading = ref(false)
+/** 记忆事实列表加载：统一错误捕获（替代原先只写 console.error、界面上完全看不到失败的写法）。
+ *  Memory facts loading with unified error capture (replaces the previous version that only logged to console.error, leaving the failure invisible in the UI). */
+const { data: facts, error, loading, run: loadMemory } = useAsync(async () => {
+  const r = await api.getMemory()
+  return r.facts || []
+})
 
-/** 从后端拉取记忆事实列表。Fetch memory facts list from backend. */
-async function load() {
-  loading.value = true
-  try {
-    const r = await api.getMemory()
-    facts.value = r.facts || []
-  } catch (e: any) {
-    facts.value = []
-    console.error('getMemory', e)
-  } finally {
-    loading.value = false
-  }
-}
-
-/** 按主题删除一条记忆事实并刷新列表。Delete a memory fact by topic and refresh the list. */
+/**
+ * 按主题删除一条记忆事实并刷新列表。
+ * Delete a memory fact by topic and refresh the list.
+ *
+ * @param topic 记忆主题。Memory topic.
+ */
 async function remove(topic: string) {
   try {
     await api.deleteMemory(topic)
-    await load()
-  } catch (e: any) {
-    console.error('deleteMemory', e)
+    notify.ok(`已删除记忆「${topic}」`)
+    await loadMemory()
+  } catch (e) {
+    notify.err('删除记忆失败：' + formatError(e))
   }
 }
 
-onMounted(load)
+onMounted(() => { loadMemory() })
 </script>
 
 <style scoped>
