@@ -34,3 +34,32 @@ describe('useWakeWord 唤醒模型加载', () => {
     expect(arg.model).toBeUndefined() // 绝不传字节（vosk worker 不支持 ArrayBuffer）。Never pass bytes (vosk worker doesn't support ArrayBuffer).
   })
 })
+
+/** 麦克风错误文案：统一走 formatError，但必须保留 e.name 兜底链（否则未知错误名会丢信息）。
+ *  Microphone error text: unified through formatError, but the e.name fallback chain must be
+ *  preserved (otherwise an unrecognized error name loses information). */
+describe('describeMicError 麦克风错误文案', () => {
+  /** 已知错误名走专用提示（不受本次统一化影响）。Known error names keep their dedicated hints. */
+  it('已知错误名走专用提示', async () => {
+    const { describeMicError } = await import('../useWakeWord')
+    expect(describeMicError({ name: 'NotAllowedError' })).toContain('权限被拒绝')
+  })
+
+  /** 未知错误名但有 message：用 message，标点为全角。 */
+  it('有 message 时使用 message 且标点为全角', async () => {
+    const { describeMicError } = await import('../useWakeWord')
+    expect(describeMicError(new Error('设备忙'))).toBe('麦克风访问失败：设备忙')
+  })
+
+  /** 无 message 但有 name：回退到 name —— 这是 formatError 不覆盖的兜底链。 */
+  it('无 message 时回退到错误名，不丢 e.name', async () => {
+    const { describeMicError } = await import('../useWakeWord')
+    expect(describeMicError({ name: 'WeirdError' })).toBe('麦克风访问失败：WeirdError')
+  })
+
+  /** 既无 message 也无 name：给出「未知错误」。 */
+  it('既无 message 也无 name 时给出未知错误', async () => {
+    const { describeMicError } = await import('../useWakeWord')
+    expect(describeMicError({})).toBe('麦克风访问失败：未知错误')
+  })
+})

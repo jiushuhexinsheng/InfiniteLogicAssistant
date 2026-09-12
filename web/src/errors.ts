@@ -8,11 +8,12 @@
  * Convert any thrown value into a displayable error message.
  *
  * @param e 捕获到的异常。The caught exception.
- * @returns 错误文案；空值回退为「未知错误」。The message, falling back to a generic one for empty values.
+ * @param fallback 异常无可用信息时的兜底文案（缺省「未知错误」）。Fallback text when the exception carries no usable information (defaults to a generic message).
+ * @returns 错误文案。The error message.
  */
-export function formatError(e: unknown): string {
-  if (e instanceof Error) return e.message || '未知错误'
-  if (typeof e === 'string') return e.trim() || '未知错误'
-  if (e === null || e === undefined) return '未知错误'
+export function formatError(e: unknown, fallback = '未知错误'): string {
+  if (e instanceof Error) return e.message || fallback
+  if (typeof e === 'string') return e.trim() || fallback
+  if (e === null || e === undefined) return fallback
   return String(e)
 }

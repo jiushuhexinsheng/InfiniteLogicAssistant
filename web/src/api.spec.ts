@@ -100,3 +100,64 @@ describe('streamUtter SSE', () => {
     vi.unstubAllGlobals()
   })
 })
+
+/**
+ * 创建「先吐一个事件再抛错」的流，用于测试「流已开始后中断」分支。
+ * Create a stream that emits one event then errors, for testing the
+ * "interrupted after stream started" branch.
+ *
+ * 必须用 pull 分两次交付：default stream 上 controller.error() 会丢弃已入队的
+ * chunk，若在 start 里 enqueue + error，首读就直接 reject，事件永远读不到。
+ *
+ * Must deliver across two pulls: on a default stream, controller.error() discards
+ * queued chunks, so enqueue + error inside start makes the very first read reject
+ * and the event is never observed.
+ *
+ * @param reason - 抛出的中断原因 / The error reason to reject with
+ * @returns ReadableStream<Uint8Array> - 模拟流 / Mock stream
+ */
+function sseStreamThenFail(reason: unknown): ReadableStream<Uint8Array> {
+  let sent = false
+  return new ReadableStream({
+    pull(controller) {
+      if (!sent) {
+        sent = true
+        controller.enqueue(new TextEncoder().encode('data: {"type":"content_delta","text":"hi"}\n\n'))
+        return
+      }
+      controller.error(reason)
+    },
+  })
+}
+
+describe('streamUtter 流中断错误文案', () => {
+  // 已收到事件后中断：文案走统一格式化，且不重试
+  // Interrupted after events received: message uses the unified formatter, no retry
+  it('流已开始后中断时 onError 收到统一格式的文案', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, body: sseStreamThenFail(new Error('流读取失败')) })
+    vi.stubGlobal('fetch', mockFetch)
+    const onError = vi.fn()
+    // 执行 streamUtter / Execute streamUtter
+    await streamUtter('hi', { onError, onDone: vi.fn() })
+    // 已开始后中断不重试 / No retry after the stream has started
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    // 全角冒号 + formatError 文案 / Full-width colon + formatError message
+    expect(onError).toHaveBeenCalledWith('连接中断：流读取失败')
+    // 清理全局模拟 / Cleanup global mocks
+    vi.unstubAllGlobals()
+  })
+
+  // 非 Error 的中断原因（如无参 reject）不应渲染成 "null" 字面量
+  // A non-Error reason (e.g. reject() with no argument) must not render as the literal "null"
+  it('非 Error 中断原因回退为「未知错误」而非 null 字面量', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, body: sseStreamThenFail(null) })
+    vi.stubGlobal('fetch', mockFetch)
+    const onError = vi.fn()
+    // 执行 streamUtter / Execute streamUtter
+    await streamUtter('hi', { onError, onDone: vi.fn() })
+    // 验证文案 / Verify the message
+    expect(onError).toHaveBeenCalledWith('连接中断：未知错误')
+    // 清理全局模拟 / Cleanup global mocks
+    vi.unstubAllGlobals()
+  })
+})
