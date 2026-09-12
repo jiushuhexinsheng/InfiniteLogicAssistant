@@ -1,4 +1,5 @@
 import { api } from '../../api'
+import { formatError } from '../../errors'
 import { state, partialText, statusLine, expanded, wakeEnabled, wakeConfig, vadConfig, addMessage, failWake, modelLoading, modelProgress } from './store'
 import { runTurn } from './useChat'
 
@@ -78,9 +79,19 @@ function clearTimers() {
 
 /** 麦克风错误 → 用户可理解的中文提示（getUserMedia 常见异常映射）。
  *  Microphone error → user-friendly Chinese message (common getUserMedia exception mapping).
+ *
+ *  说明：此处不走 formatError —— 它只覆盖 message，而本函数需要
+ *  「message → 错误名 → 未知错误」三段兜底（getUserMedia 抛出的 DOMException
+ *  可能 message 为空但 name 有值，丢 name 会损失诊断信息）。
+ *
+ *  Note: this does not go through formatError, which only covers the message.
+ *  This function needs a three-step fallback (message → error name → generic):
+ *  DOMExceptions from getUserMedia may have an empty message but a meaningful
+ *  name, and dropping the name would lose diagnostic information.
+ *
  *  @param e - 错误对象。Error object.
  *  @returns 用户友好的错误消息。User-friendly error message. */
-function describeMicError(e: any): string {
+export function describeMicError(e: any): string {
   const name = e?.name || ''
   switch (name) {
     case 'NotFoundError':
@@ -95,8 +106,10 @@ function describeMicError(e: any): string {
     case 'TrackStartError':
     case 'AbortError':
       return '麦克风被其他程序占用或不可读，请关闭占用程序后重试'
-    default:
-      return '麦克风访问失败: ' + (e?.message || name || '未知错误')
+    default: {
+      const msg = typeof e?.message === 'string' ? e.message.trim() : ''
+      return '麦克风访问失败：' + (msg || name || '未知错误')
+    }
   }
 }
 
@@ -234,12 +247,12 @@ async function handleTranscript(blob: Blob) {
       addMessage('user', text)
       await runTurn()
     } else {
-      addMessage('system', '转写失败: ' + (r.error || '无结果'))
+      addMessage('system', '转写失败：' + (r.error || '无结果'))
       state.value = 'listening'
     }
-  } catch (e: any) {
+  } catch (e) {
     console.error('[Asst] transcribe error:', e)
-    addMessage('system', '转写异常: ' + (e.message || ''))
+    addMessage('system', '转写异常：' + formatError(e))
     state.value = 'error'
   }
 }
@@ -269,9 +282,9 @@ export async function toggleWake() {
           failWake('语音模型加载失败，请刷新页面重试')
           return
         }
-      } catch (e: any) {
+      } catch (e) {
         console.error('[Asst] model init exception:', e)
-        failWake('语音模型加载异常: ' + (e.message || e))
+        failWake('语音模型加载异常：' + formatError(e))
         return
       }
     }

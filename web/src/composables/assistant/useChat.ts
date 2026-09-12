@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
 import { api, streamUtter } from '../../api'
+import { formatError } from '../../errors'
 import { state, messages, tokenUsage, partialText, genId, addMessage, buildHistory, MAX_MESSAGES, pendingQuestion, currentSessionId } from './store'
 import { speakAuto } from './useTts'
 import type { ChatMessage, ToolCall } from './store'
@@ -150,8 +151,8 @@ export async function sendAnswer(text: string) {
   try {
     await api.answer(currentSessionId.value, t)
     pendingQuestion.value = ''
-  } catch (e: any) {
-    addMessage('system', '回答投递失败: ' + (e?.message || ''))
+  } catch (e) {
+    addMessage('system', '回答投递失败：' + formatError(e))
   }
 }
 
@@ -186,9 +187,11 @@ export async function retryTool(id: string) {
       tc.status = 'failed'
       tc.result = r.error || '执行失败'
     }
-  } catch (e: any) {
+  } catch (e) {
     tc.status = 'failed'
-    tc.result = e?.message || '执行失败'
+    // 兜底用领域化的「执行失败」，比通用的「未知错误」更能说明发生了什么
+    // Fall back to the domain-specific "执行失败", which conveys more than a generic message.
+    tc.result = formatError(e, '执行失败')
   }
   tc.durationMs = Date.now() - startTs
   // 不再自动续轮：编排管线按新话语驱动，用户可发「继续」等新话语，历史随 messages 种子带入。

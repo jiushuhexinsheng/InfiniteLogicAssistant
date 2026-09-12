@@ -5,6 +5,7 @@
 import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, PingResponse, ProviderPreset, SessionItem, SseEvent, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState } from './types'
 import type { components } from './api/generated'
 import { blobToWavBase64 } from './audio'
+import { formatError } from './errors'
 
 // ─── HTTP 封装 / HTTP Wrappers ───
 
@@ -333,7 +334,7 @@ export async function streamUtter(
       if (received) {
         // 流已开始后中断：提示但不重试（避免重复执行任务）
         // Interrupted after stream started: notify but don't retry (avoid duplicate task execution)
-        h.onError?.('连接中断：' + (e?.message || String(e)))
+        h.onError?.('连接中断：' + formatError(e))
         return 'done'
       }
       // 网络错误且未收到事件，可重试 / Network error without events received, retryable
