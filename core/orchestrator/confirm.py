@@ -4,10 +4,10 @@
 确认决策基于「工具实际风险」（TOOLS.risk），而非 LLM 声明的任务风险，
 避免任务被误标为 read 时高风险工具无确认执行。
 
-判定以**结构化选择**为准：前端对 kind="confirm" 的提问渲染「确认 / 取消」按钮，
-回传 choice="yes"/"no"。自由文本只接受与同义词表的**精确相等**，绝不做子串匹配
-—— 子串匹配会把「不执行」「不太确定」这类否定/犹豫表达误判为批准，而这道确认
-是任意命令执行前的唯一闸门，必须 fail closed。
+判定以**结构化选择**为准：前端对 kind="choice" 的提问按 options 渲染按钮（确认提问
+即 value 为 yes/no 的两项，见 CONFIRM_OPTIONS），回传 choice。自由文本只接受与
+同义词表的**精确相等**，绝不做子串匹配 —— 子串匹配会把「不执行」「不太确定」这类
+否定/犹豫表达误判为批准，而这道确认是任意命令执行前的唯一闸门，必须 fail closed。
 
 High-impact operation confirmation — there is no sandbox, so write/exec
 operations restate the plan and ask the operator to confirm first. The decision
@@ -15,12 +15,13 @@ is based on the tools' actual risk (TOOLS.risk), not the risk declared by the
 LLM, so a high-risk tool is never executed without confirmation just because the
 task was mistakenly labeled as read.
 
-The decision rests on a **structured choice**: for kind="confirm" questions the
-frontend renders confirm/cancel buttons and returns choice="yes"/"no". Free text
-is accepted only on **exact equality** with a synonym list, never by substring
-matching — substring matching misreads negations and hedges such as "不执行" or
-"不太确定" as approval, and this confirmation is the only gate before arbitrary
-command execution, so it must fail closed.
+The decision rests on a **structured choice**: for kind="choice" questions the
+frontend renders buttons from options (a confirmation is the two-option case with
+values yes/no, see CONFIRM_OPTIONS) and returns choice. Free text is accepted only
+on **exact equality** with a synonym list, never by substring matching — substring
+matching misreads negations and hedges such as "不执行" or "不太确定" as approval,
+and this confirmation is the only gate before arbitrary command execution, so it
+must fail closed.
 """
 import json
 
