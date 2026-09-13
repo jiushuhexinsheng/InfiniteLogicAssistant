@@ -263,3 +263,46 @@ def test_wake_unknown_field_still_rejected():
     from pydantic import ValidationError
     with pytest.raises(ValidationError):
         c.Settings(voice={"wake_word": {"keywrod": "衍衡"}})
+
+
+# ─── 唤醒上传的成本控制字段（子项目 1）───
+
+
+def test_vad_wake_cost_control_defaults():
+    """VAD 段新增两个成本控制字段：最短语音时长与上传节流。
+
+    放在 vad 段而非新建段：这两个都是「收听时序」参数，与既有字段同族，该段已有
+    「同族参数放一起」的先例（见 answer_timeout_ms 的注释）。
+
+    Two cost-control fields join the VAD section: a minimum speech duration and an upload throttle.
+    They live here rather than in a new section because they are listening-timing parameters like
+    their neighbours — the section already set that precedent (see the answer_timeout_ms comment).
+    """
+    v = c.VadConfig()
+    assert v.min_speech_ms == 300
+    assert v.upload_throttle_ms == 500
+
+
+def test_vad_wake_cost_control_bounds():
+    """负值被 pydantic 拒绝 —— 配置写错启动即报错，而不是静默降级。
+    Negative values are rejected by pydantic: a bad config fails at startup instead of degrading."""
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        c.VadConfig(min_speech_ms=-1)
+    with pytest.raises(ValidationError):
+        c.VadConfig(upload_throttle_ms=-1)
+
+
+def test_vad_duplicate_in_api_schemas_stays_in_sync():
+    """**手工副本陷阱**：`core/api/schemas.py` 里有 VadConfig 的副本，不同步的话
+    FastAPI 的 response_model 会静默丢掉新字段，前端 `/api/config` 收不到。
+
+    这条用例直接对比两份模型的字段集合，任何一边漏改都会红。
+
+    **The duplicate-model trap**: `core/api/schemas.py` carries a copy of VadConfig. If they drift,
+    FastAPI's response_model silently drops the new field and the frontend never sees it in
+    /api/config. This case compares the two field sets directly, so either side drifting fails.
+    """
+    from core.api import schemas as api_schemas
+    from core.config import schema as cfg_schema
+    assert set(cfg_schema.VadConfig.model_fields) == set(api_schemas.VadConfig.model_fields)
