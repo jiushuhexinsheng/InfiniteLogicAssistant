@@ -142,7 +142,7 @@ SSE 事件类型（`/api/voice/utter`）：
 | 事件 | 含义 |
 |------|------|
 | `task_state` | 编排状态流转（understanding / notify / done，done 含 status/summary/steps） |
-| `question` | 需要操作者回答（澄清/确认），回答走 /api/voice/answer |
+| `question` | 需要操作者回答，回答走 /api/voice/answer。`kind` 决定作答方式：`text` 自由文本 / `choice` 从 `options` 选 / `composite` 两者并存（任选其一） |
 | `content_delta` / `reasoning_delta` | 文本 / 思考增量 |
 | `tool_start` / `tool_end` | 工具开始 / 结束（tool_end 含 output 与 status） |
 | `done` | 本轮完成 |
