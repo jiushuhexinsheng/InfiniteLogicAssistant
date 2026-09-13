@@ -6,10 +6,13 @@ vi.mock('../../../api', () => ({
   api: { answer: vi.fn(), callTool: vi.fn() },
   streamUtter: vi.fn(),
 }))
+// runTurn 会调用 speakAuto（TTS）；此处桩掉以免依赖浏览器语音 API。
+// runTurn calls speakAuto (TTS); stub it out so no browser speech API is needed.
+vi.mock('../useTts', () => ({ speakAuto: vi.fn() }))
 
-import { api } from '../../../api'
-import { currentSessionId, messages } from '../store'
-import { sendAnswer } from '../useChat'
+import { api, streamUtter } from '../../../api'
+import { currentSessionId, messages, pendingQuestion } from '../store'
+import { runTurn, sendAnswer } from '../useChat'
 
 /** useChat 回答投递的错误文案。Error text for useChat's answer delivery. */
 describe('useChat sendAnswer 错误处理', () => {
@@ -37,12 +40,13 @@ describe('useChat sendAnswer 错误处理', () => {
     expect(messages.value[messages.value.length - 1]?.text).toBe('回答投递失败：未知错误')
   })
 
-  /** 成功时不写入任何错误消息。 */
+  /** 成功时不写入错误消息（正常会写入回答记录，但那不是错误消息）。
+   *  No error message on success — the answer record itself is written, but that is not an error. */
   it('投递成功时不写入错误消息', async () => {
     currentSessionId.value = 's1'
     vi.mocked(api.answer).mockResolvedValue({ ok: true })
     await sendAnswer('是的')
-    expect(messages.value).toHaveLength(0)
+    expect(messages.value.some((m) => m.role === 'system' || m.text.includes('失败'))).toBe(false)
   })
 
   /** 结构化确认：空文本 + choice 也应投递（按钮回答不带文本）。 */
@@ -66,5 +70,62 @@ describe('useChat sendAnswer 错误处理', () => {
     vi.mocked(api.answer).mockResolvedValue({ ok: true })
     await sendAnswer('', 'always')
     expect(api.answer).toHaveBeenCalledWith('s1', '', 'always')
+  })
+})
+
+/** 问答进入聊天记录（需求 6）。Questions and answers enter the chat record. */
+describe('useChat 问答入聊天记录', () => {
+  beforeEach(() => {
+    messages.value = []
+    currentSessionId.value = ''
+    pendingQuestion.value = null
+    vi.mocked(api.answer).mockReset()
+    vi.mocked(api.answer).mockResolvedValue({ ok: true })
+    vi.mocked(streamUtter).mockReset()
+  })
+
+  /** 提问以 assistant 角色 + ❓ 前缀入记录（经 runTurn 真实入口）。 */
+  it('提问以 assistant 角色入聊天记录', async () => {
+    vi.mocked(streamUtter).mockImplementation(async (_t: string, h: any) => {
+      h.onQuestion?.({ question: '确认执行吗？', session_id: 's1', kind: 'choice',
+                       options: [{ value: 'yes', label: '确认' }] })
+      return 's1'
+    })
+    messages.value = [{ id: 'm1', role: 'user', text: '做事', timestamp: Date.now() }]
+    await runTurn()
+    const q = messages.value.find((m) => m.role === 'assistant')
+    expect(q?.text).toBe('❓ 确认执行吗？')
+  })
+
+  /** 选择类回答：以被选 option 的 label 入记录（不写机器值）。 */
+  it('选择类回答以 label 入聊天记录', async () => {
+    currentSessionId.value = 's1'
+    pendingQuestion.value = {
+      text: '确认执行吗？', kind: 'choice',
+      options: [{ value: 'yes', label: '确认' }, { value: 'no', label: '取消' }],
+    }
+    await sendAnswer('', 'yes')
+    const last = messages.value[messages.value.length - 1]
+    expect(last?.role).toBe('user')
+    expect(last?.text).toBe('确认')
+  })
+
+  /** 文本类回答：以输入文本入记录。 */
+  it('文本类回答以输入文本入聊天记录', async () => {
+    currentSessionId.value = 's1'
+    pendingQuestion.value = { text: '目标位置？', kind: 'text', options: [] }
+    await sendAnswer('桌面')
+    const last = messages.value[messages.value.length - 1]
+    expect(last?.role).toBe('user')
+    expect(last?.text).toBe('桌面')
+  })
+
+  /** 投递失败时不写回答记录（避免记录与后端状态不一致）。 */
+  it('投递失败时不写回答记录', async () => {
+    currentSessionId.value = 's1'
+    pendingQuestion.value = { text: '目标位置？', kind: 'text', options: [] }
+    vi.mocked(api.answer).mockRejectedValue(new Error('会话已失效'))
+    await sendAnswer('桌面')
+    expect(messages.value.some((m) => m.text === '桌面')).toBe(false)
   })
 })

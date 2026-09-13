@@ -116,6 +116,9 @@ export async function runTurn() {
         kind: kind === 'choice' || kind === 'composite' ? kind : 'text',
         options: options ?? [],
       }
+      // 提问也进聊天记录（需求：回答和询问也在聊天记录里）。
+      // Questions enter the chat record too — both questions and answers belong there.
+      addMessage('assistant', '❓ ' + question)
       speakAuto(question)  // 澄清/确认问题也语音播报。Clarification/confirmation questions also voice broadcast.
       state.value = 'thinking'
     },
@@ -150,17 +153,25 @@ export async function runTurn() {
 
 /** 回答澄清/确认问题（解除后端 ask() 阻塞）。
  *  Answer clarification/confirmation question (unblock backend ask() call).
- *  @param text - 用户回答文本（确认类提问为空）。User answer text (empty for confirmation questions).
- *  @param choice - 结构化确认选择（"yes"/"no"），由确认按钮回传。Structured confirmation choice ("yes"/"no"), returned by the confirm buttons. */
+ *  @param text - 用户回答文本（选择类提问为空）。User answer text (empty for choice questions).
+ *  @param choice - 结构化选择的取值（由选项按钮回传）。The structured selection returned by the option buttons. */
 export async function sendAnswer(text: string, choice?: string) {
   const t = text.trim()
-  // 结构化确认可以不带文本；两者皆空则不投递（避免空回答解除后端阻塞）。
-  // A structured confirmation may carry no text; when both are empty, don't deliver
+  // 结构化选择可以不带文本；两者皆空则不投递（避免空回答解除后端阻塞）。
+  // A structured choice may carry no text; when both are empty, don't deliver
   // (avoiding an empty answer that would unblock the backend).
   if (!t && !choice) return
   if (!currentSessionId.value) return
+  // 记录用文本：选择类取被选选项的 label（人类可读），文本类取输入文本。
+  // Record text: a choice takes the selected option's label (human-readable), a text answer its own text.
+  const label = choice
+    ? (pendingQuestion.value?.options.find((o) => o.value === choice)?.label || choice)
+    : t
   try {
     await api.answer(currentSessionId.value, t, choice)
+    // 仅在投递成功后写记录，避免记录与后端状态不一致。
+    // Record only after a successful delivery, so the record cannot disagree with the backend.
+    addMessage('user', label)
     pendingQuestion.value = null
   } catch (e) {
     addMessage('system', '回答投递失败：' + formatError(e))
