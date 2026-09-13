@@ -183,8 +183,14 @@ def test_tools_call_bad_json(client):
     assert resp.status_code == 400
 
 
-def test_tools_call_high_risk_requires_confirm(client):
-    """测试高风险工具未带 confirm 时要求确认。Tests high-risk tools requiring confirmation without a confirm flag."""
+def test_tools_call_high_risk_requires_confirm(client, asking_policy):
+    """测试高风险工具未带 confirm 时要求确认。Tests high-risk tools requiring confirmation without a confirm flag.
+
+    必须钉住策略为 ask：默认已改为全放行，不钉的话这个请求会直接执行，
+    用例断言的「需要确认」就测不到了。
+    The policy must be pinned to ask: the default is now allow-everything, so without pinning the
+    request would simply execute and the asserted "needs confirmation" would go untested.
+    """
     # 非 read 工具无 confirm 字段 → 返回 needs_confirm，不执行
     resp = client.post("/api/tools/call", json={"name": "write_file", "args": {"path": "C:/x.txt", "content": "hi"}})
     assert resp.status_code == 200
@@ -193,8 +199,13 @@ def test_tools_call_high_risk_requires_confirm(client):
     assert data["needs_confirm"] is True
 
 
-def test_tools_call_high_risk_with_confirm_executes(client, monkeypatch):
-    """测试高风险工具带 confirm 后执行。Tests high-risk tools executing when confirm is provided."""
+def test_tools_call_high_risk_with_confirm_executes(client, monkeypatch, asking_policy):
+    """测试高风险工具带 confirm 后执行。Tests high-risk tools executing when confirm is provided.
+
+    同样钉住 ask —— 否则「带不带 confirm 都能跑」，用例不再能证明 confirm 起了作用。
+    Also pinned to ask; otherwise it would pass with or without the confirm flag and no longer
+    demonstrate that the flag is what let it through.
+    """
     async def fake_acall(name, args):
         return "ok-stubbed"
     monkeypatch.setattr("core.api.tools.TOOLS.acall", fake_acall)

@@ -246,29 +246,42 @@ class PermissionRule(BaseModel):
 
 
 class PermissionTiers(BaseModel):
-    """按工具风险层级设的默认动作。Per-tier default action, keyed by tool risk."""
+    """按工具风险层级设的默认动作。Per-tier default action, keyed by tool risk.
+
+    ⚠️ 三档默认**全放行**（2026-09-13 按用户要求改）。本项目无沙箱，这道确认是任意命令
+    执行前的唯一闸门 —— 全放行意味着**该闸门默认不生效**（`run_shell_tool` 可执行任意
+    命令而不询问）。想收紧时改这里、或用 `permissions.rules` 里的 deny/ask 规则（规则按
+    工具名 glob 匹配），也可在控制台「设置 → 权限」里改。
+
+    ⚠️ All three tiers default to **allow** (changed 2026-09-13 at the user's request). There is
+    no sandbox here and this confirmation is the only gate before arbitrary command execution, so
+    allow-by-default means **the gate is off by default** (`run_shell_tool` runs any command
+    without asking). To tighten it, edit these values, add deny/ask entries to
+    `permissions.rules` (which glob against tool names), or use the console's Settings → Permissions.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     read: Literal["allow", "ask", "deny"] = "allow"
-    write: Literal["allow", "ask", "deny"] = "ask"
-    exec: Literal["allow", "ask", "deny"] = "ask"
+    write: Literal["allow", "ask", "deny"] = "allow"
+    exec: Literal["allow", "ask", "deny"] = "allow"
 
 
 class PermissionsSection(BaseModel):
     """工具权限策略：层级默认 + 规则覆盖。
 
-    默认值等价于改造前的行为（read 免询问、write/exec 询问），故既有配置文件
-    无 permissions 段时行为不变。
+    默认值**三档全放行、兜底也放行**（2026-09-13 按用户要求从「read 免询问、write/exec
+    询问」改为全放行）。想收紧就用 `rules`（按工具名 glob，deny 单调短路）或改 `tiers`。
 
-    Tool permission policy: per-tier defaults plus rule overrides. The defaults match
-    the pre-change behaviour (read auto-allowed, write/exec asked), so an existing
-    config without a permissions section behaves unchanged.
+    Tool permission policy: per-tier defaults plus rule overrides. Every tier — and the
+    fallback — defaults to **allow** (changed 2026-09-13 at the user's request, from
+    "read auto-allowed, write/exec asked"). To tighten it, use `rules` (globbed against tool
+    names, with monotonic deny short-circuiting) or override `tiers`.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    default_action: Literal["allow", "ask", "deny"] = "ask"
+    default_action: Literal["allow", "ask", "deny"] = "allow"
     tiers: PermissionTiers = Field(default_factory=lambda: PermissionTiers())
     rules: list[PermissionRule] = Field(default_factory=list)
 

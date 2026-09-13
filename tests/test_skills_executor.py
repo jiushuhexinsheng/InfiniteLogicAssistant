@@ -50,7 +50,7 @@ async def test_run_skill_with_params():
 
 
 @pytest.mark.asyncio
-async def test_run_skill_dangerous_rejected():
+async def test_run_skill_dangerous_rejected(asking_policy):
     """测试危险技能在无 session 时被拒绝执行。Tests a dangerous skill being rejected without a session."""
     class _Channel:
         def __init__(self):
@@ -109,7 +109,7 @@ class _ConfirmChannel:
 
 
 @pytest.mark.asyncio
-async def test_run_skill_tool_dangerous_with_session(tmp_path, monkeypatch):
+async def test_run_skill_tool_dangerous_with_session(tmp_path, monkeypatch, asking_policy):
     """测试携带 session 的危险技能经确认后可以执行。Tests a dangerous skill with a session being executable after confirmation."""
     # 危险技能携带 session 后：确认通道可用 → 可执行（此前传 None 恒被拒）
     import core.tools.skill_tools as st

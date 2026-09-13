@@ -139,16 +139,38 @@ def test_editable_snapshot_keeps_new_fields_strips_key(monkeypatch):
 # ─── permissions 段：工具权限策略 ───
 
 
-def test_permissions_section_defaults_match_prior_behaviour():
-    """权限段缺省时等价于改造前的行为：read 免询问、write/exec 询问、兜底询问。
-    The permissions section defaults to the pre-change behaviour: read auto-allowed,
-    write/exec asked, fallback asks."""
+def test_permissions_section_defaults_allow_everything():
+    """权限段缺省时**三档全放行、兜底也放行**（2026-09-13 按用户要求改）。
+
+    改前的默认是「read 免询问、write/exec 询问」，那时本用例断言的是旧行为。
+    现在全放行意味着无沙箱下的确认闸门默认不生效 —— 收紧靠 `rules`（deny 单调短路）
+    或直接改 `tiers`。
+
+    The permissions section defaults to **allow on every tier, fallback included** (changed
+    2026-09-13 at the user's request; this case previously asserted read-allowed/write+exec-asked).
+    Allow-by-default means the confirmation gate is off by default where there is no sandbox —
+    tighten it with `rules` (monotonic deny) or by overriding `tiers`.
+    """
     s = c.Settings()
-    assert s.permissions.default_action == "ask"
+    assert s.permissions.default_action == "allow"
     assert s.permissions.tiers.read == "allow"
-    assert s.permissions.tiers.write == "ask"
-    assert s.permissions.tiers.exec == "ask"
+    assert s.permissions.tiers.write == "allow"
+    assert s.permissions.tiers.exec == "allow"
     assert s.permissions.rules == []
+
+
+def test_permissions_rules_can_tighten_the_default():
+    """默认全放行之后，收紧手段仍然有效：一条 deny 规则能重新拦住任意命令执行。
+    With allow-by-default, tightening still works: one deny rule blocks arbitrary execution again."""
+    from core.config.schema import PermissionsSection
+    from types import SimpleNamespace
+    from core.tools.policy import decide, decide_tier
+
+    p = PermissionsSection(rules=[{"match": "run_*", "action": "deny"}])
+    assert decide("run_shell_tool", p).action == "deny"
+    assert decide("write_file", p).action == "allow"
+    tiers = SimpleNamespace(read="allow", write="allow", **{"exec": "ask"})
+    assert decide_tier("exec", SimpleNamespace(tiers=tiers, default_action="allow", rules=[])).action == "ask"
 
 
 def test_permissions_section_rejects_invalid_action():
@@ -175,7 +197,7 @@ def test_permissions_snapshot_exposed(monkeypatch):
     monkeypatch.setattr(c, "get_settings", lambda: settings)
     snap = c.editable_snapshot()
     assert snap["permissions"]["tiers"]["read"] == "allow"
-    assert snap["permissions"]["default_action"] == "ask"
+    assert snap["permissions"]["default_action"] == "allow"
     assert snap["permissions"]["rules"] == [{"match": "run_*", "action": "deny"}]
 
 

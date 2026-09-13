@@ -89,7 +89,7 @@ def _spy_acall(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_subagent_high_risk_tool_rejected_without_confirm(monkeypatch):
+async def test_subagent_high_risk_tool_rejected_without_confirm(monkeypatch, asking_policy):
     """验证无确认通道时高风险工具未经确认不会执行。Verifies a high-risk tool is not executed without confirmation when no confirm channel is provided."""
     fake = _FakeLLM([
         [_done(tool="write_file", args=json.dumps({"path": "C:/x.txt", "content": "hi"}))],
@@ -103,7 +103,7 @@ async def test_subagent_high_risk_tool_rejected_without_confirm(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_subagent_high_risk_tool_confirm_rejected(monkeypatch):
+async def test_subagent_high_risk_tool_confirm_rejected(monkeypatch, asking_policy):
     """验证操作者拒绝确认时高风险工具不会执行。Verifies a high-risk tool is not executed when the operator rejects confirmation."""
     fake = _FakeLLM([
         [_done(tool="write_file", args=json.dumps({"path": "C:/x.txt", "content": "hi"}))],

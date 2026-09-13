@@ -215,7 +215,7 @@ async def test_execute_read_tools_run_concurrently(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_execute_high_risk_confirm_rejected(monkeypatch):
+async def test_execute_high_risk_confirm_rejected(monkeypatch, asking_policy):
     """高风险工具经操作者取消后记为错误。A high-risk tool cancelled by the operator is recorded as an error."""
     fake = _FakeLLM([
         [_done(tool="write_file", args=json.dumps({"path": "C:/x.txt", "content": "hi"}))],
@@ -230,7 +230,7 @@ async def test_execute_high_risk_confirm_rejected(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_execute_high_risk_tool_confirm_ignores_task_risk_read(monkeypatch):
+async def test_execute_high_risk_tool_confirm_ignores_task_risk_read(monkeypatch, asking_policy):
     """任务误标 read 时仍按工具实际风险确认。Tool risk still gates confirmation even when the task is mislabeled as read."""
     # 堵洞：任务被 LLM 误标为 read，但调用了 write_file → 仍必须经操作者确认（答「取消」被拒）
     fake = _FakeLLM([
