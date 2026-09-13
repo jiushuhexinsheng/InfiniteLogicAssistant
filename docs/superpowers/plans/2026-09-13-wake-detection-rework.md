@@ -1421,6 +1421,10 @@ sleep 8 && (grep -qa "10048" /tmp/srv.log && echo "❌ 跑的是旧进程" || ec
 
 - [ ] **Step 5: 人工验收 —— ⛔ 由用户执行，实现者不得代劳**
 
+> 可逐条填写、单独追踪的验收记录见 **[2026-09-13-wake-detection-rework-verification.md](2026-09-13-wake-detection-rework-verification.md)**
+> （含前置、6 项做法与预期、harness 用法、成本实测口径、结果记录表）。下面这份表保留为计划内摘要。
+
+
 > **这一步不能由自动化替代**：spec 里所有实测用的都是 **SAPI 合成音**，云端对合成音识别好
 > **不代表对真人好**。必须真人有声环境下逐条验证。
 
