@@ -2076,7 +2076,10 @@ export interface components {
             enabled: boolean;
             /**
              * Keywords
-             * @default []
+             * @default [
+             *       "衍衡",
+             *       "洛吉斯"
+             *     ]
              */
             keywords: string[];
             /**

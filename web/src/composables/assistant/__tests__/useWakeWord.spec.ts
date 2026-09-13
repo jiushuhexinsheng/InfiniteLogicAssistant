@@ -134,6 +134,136 @@ describe('useWakeWord 成本控制', () => {
   })
 })
 
+/**
+ * 熔断的**出口**：熔断只有在「有人成功」时才解除，而一旦熔断就再没有任何上传 —— 成功永远不可能。
+ * 计数器因此锁死，界面停在「聆听中」，唯一出路是刷新页面。
+ *
+ * 提示文案写明了出路，出路就必须真的存在：这里钉住「关闭再开启唤醒」真的清零计数、上传恢复，
+ * 且**不需要刷新页面**。修好之前这条会红（关掉再打开后 wakeDetect 仍是 3 次调用，第 4 次被
+ * 熔断挡掉）——「提示给的出路是假的」正是本重构要消灭的那类假保障。
+ *
+ * The breaker's **way out**. It only lifted on success, but once tripped nothing ever uploaded, so
+ * success was impossible: the counter latched, the UI stayed on "listening", and a page reload was
+ * the only escape. The warning names a way out, so that way out must exist: this pins that
+ * "switch wake off and on" really clears the counter and restores uploads, **without a page
+ * reload**. It fails before the fix (after the toggle, wakeDetect is still at 3 calls — the 4th is
+ * blocked by the breaker), and a warning whose promised route does nothing is exactly the class of
+ * false assurance this rework removes.
+ */
+describe('useWakeWord 熔断恢复', () => {
+  beforeEach(() => { vi.resetModules(); localStorage.clear() })
+
+  /** 熔断后关闭再开启 → 计数清零、上传恢复。Recovery via off/on clears the counter and resumes uploads. */
+  it('熔断后关闭再开启 → 计数清零且上传恢复（无需刷新页面）', async () => {
+    const { ww, store } = await setupWake()
+    const { api } = await import('../../../api')
+    store.vadConfig.upload_throttle_ms = 0   // 关掉节流，单独验熔断。Throttle off so only the breaker is under test.
+
+    await ww.toggleWake()                    // 开启监听。Enable listening.
+    for (let i = 0; i < 3; i++) await ww.handleSegment(new Blob(['x']))
+
+    expect(vi.mocked(api.wakeDetect)).toHaveBeenCalledTimes(3)
+    expect(store.statusLine.value).toContain('云端唤醒不可用')
+    // 提示写明的出路必须与实现一致：文案说「关闭再开启唤醒可重试」。
+    // The route named in the warning must match the implementation: it says off/on retries.
+    expect(store.statusLine.value).toContain('关闭再开启')
+
+    await ww.toggleWake()                    // 用户关闭。Switch off.
+    await ww.toggleWake()                    // 再开启 —— 恢复动作。Switch on again: the recovery.
+    await ww.handleSegment(new Blob(['x']))
+
+    expect(vi.mocked(api.wakeDetect)).toHaveBeenCalledTimes(4)   // 真的又上传了。Genuinely uploading again.
+  })
+})
+
+/**
+ * 状态反馈：`/voice/wake` 与 `/voice/transcribe` 都是**云端往返，要数秒**。这两个状态
+ * （`transcribing` / `recording`）在本次重构后一度无人赋值 —— 旧实现由 Vosk 回调驱动，spec 说
+ * 状态机不变、只换触发源，故按「谁在等云端」补回。没有它们，界面在整段往返里停在「聆听中」，
+ * 用户以为没听见、重说一遍，反而多一次付费上传。
+ *
+ * State feedback: both endpoints are **cloud round-trips that take seconds**. `transcribing` and
+ * `recording` briefly had no assignments after the rework (the old code drove them from the Vosk
+ * callbacks); the spec says the state machine is unchanged with only the trigger swapped, so they
+ * are restored around "whoever is waiting on the cloud". Without them the UI sits on "listening"
+ * through the whole round-trip, the user thinks they were not heard, repeats themselves, and buys
+ * another paid upload.
+ */
+describe('useWakeWord 状态反馈', () => {
+  beforeEach(() => { vi.resetModules(); localStorage.clear() })
+
+  /** 装好桩与真实 store；`wakeDetect` 由调用方注入以便控制解析时机。
+   *  Wire the stubs and the real store; the caller injects `wakeDetect` to control when it resolves. */
+  async function setup(wakeDetect: any) {
+    vi.doMock('../../../api', () => ({
+      api: { wakeDetect, transcribe: vi.fn(async () => ({ ok: true, text: '你好' })) },
+    }))
+    vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
+    const store = await import('../store')
+    const mod = await import('../useWakeWord')
+    store.vadConfig.upload_throttle_ms = 0
+    return { store, mod }
+  }
+
+  /** 判定在途 → transcribing；返回未命中 → 回落到原状态（不能卡在识别中）。 */
+  it('云端判定期间进入 transcribing，返回后回落到原状态', async () => {
+    let release!: (v: any) => void
+    const wakeDetect = vi.fn(() => new Promise<any>((res) => { release = res }))
+    const { store, mod } = await setup(wakeDetect)
+    store.state.value = 'listening'
+
+    const p = mod.handleSegment(new Blob(['x']))
+    await Promise.resolve()
+    expect(store.state.value).toBe('transcribing')   // 数秒的往返里界面不能一动不动。Not silent for seconds.
+
+    release({ ok: true, matched: false, command: '', text: '今天天气怎么样。' })
+    await p
+    expect(store.state.value).toBe('listening')      // 未命中 → 回聆听。No match → back to listening.
+  })
+
+  /** plan:195 指定的那条：matched 且 command 空 → recording；窗口过期回聆听。 */
+  it('只命中唤醒词 → 进入 recording 等指令；窗口过期回聆听', async () => {
+    vi.useFakeTimers()
+    try {
+      const { store, mod } = await setup(
+        vi.fn(async () => ({ ok: true, matched: true, command: '', text: '衍衡。' })),
+      )
+      store.wakeEnabled.value = true              // 前提：聆听只在唤醒开着时才存在。Precondition: listening only exists while wake is on.
+      store.state.value = 'listening'
+
+      await mod.handleSegment(new Blob(['x']))
+      expect(store.state.value).toBe('recording')
+
+      await vi.advanceTimersByTimeAsync(8000)        // 命令窗口过期。The command window expires.
+      expect(store.state.value).toBe('listening')    // 不能永久停在录音中。Never park on "recording".
+    } finally { vi.useRealTimers() }
+  })
+
+  /** 说出指令后 → 转写期间 transcribing，指令发出后交回 useChat（thinking）。 */
+  it('等指令期间说指令 → 转写中 → 交回一轮', async () => {
+    let release!: (v: any) => void
+    const transcribe = vi.fn(() => new Promise<any>((res) => { release = res }))
+    const { store, mod } = await setup(
+      vi.fn(async () => ({ ok: true, matched: true, command: '', text: '衍衡。' })),
+    )
+    const { api } = await import('../../../api')
+    vi.mocked(api.transcribe).mockImplementation(transcribe as any)
+    const { sendText } = await import('../useChat')
+    store.state.value = 'listening'
+    await mod.handleSegment(new Blob(['x']))         // 裸唤醒词 → recording。Bare wake word → recording.
+    expect(store.state.value).toBe('recording')
+
+    const p = mod.handleSegment(new Blob(['x']))     // 第二段 = 指令。Second segment is the command.
+    await Promise.resolve()
+    expect(store.state.value).toBe('transcribing')
+
+    release({ ok: true, text: '帮我查天气' })
+    await p
+    expect(sendText).toHaveBeenCalledWith('帮我查天气')
+  })
+})
+
 /** 麦克风错误文案：统一走 formatError，但必须保留 e.name 兜底链（否则未知错误名会丢信息）。
  *  Microphone error text: unified through formatError, but the e.name fallback chain must be
  *  preserved (otherwise an unrecognized error name loses information). */

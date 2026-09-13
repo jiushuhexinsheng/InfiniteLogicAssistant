@@ -14,7 +14,7 @@ Endpoints excluded from ``response_model``: ``POST /api/tts`` (audio bytes),
 """
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ApiResponse(BaseModel):
@@ -59,7 +59,24 @@ class WakeWordConfig(BaseModel):
     `core/config/schema.py`.
     """
     enabled: bool = True
-    keywords: list[str] = []
+    # 默认值必须与 `core/config/schema.py` 一致：本模型在 `EditableSnapshot` 里，设置页会把整个
+    # 对象原样 PATCH 回来 —— 默认值漂移不只是「前端读不到」，而是**下一次保存设置时把漂移值
+    # 写回 config.yaml**。用例 `test_wake_and_vad_duplicates_in_api_schemas_stay_in_sync` 钉住这点。
+    #
+    # ⚠️ 这里写 list 字面量而不是 `default_factory`：pydantic 不会把工厂的返回值放进 JSON schema
+    # 的 `default`，于是 openapi-typescript 会把这个字段生成为**可选**（`keywords?`），
+    # 白白改掉响应契约。pydantic v2 对可变默认值逐实例深拷贝，字面量是安全的。
+    #
+    # The default must match `core/config/schema.py`: this model sits inside `EditableSnapshot`,
+    # which the settings page round-trips wholesale, so a drift is not merely "the frontend cannot
+    # read it" — it gets written back into config.yaml on the next settings save. The
+    # duplicate-model guard pins this down.
+    #
+    # NOTE: a list literal rather than `default_factory`: pydantic does not put a factory's return
+    # value into the JSON schema's `default`, so openapi-typescript would emit the field as
+    # **optional** (`keywords?`) and quietly change the response contract. pydantic v2 deep-copies
+    # mutable defaults per instance, so the literal is safe.
+    keywords: list[str] = Field(default=["衍衡", "洛吉斯"])
     sensitivity: float = 0.5
     model_path: str = ""
 

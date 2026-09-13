@@ -66,6 +66,14 @@ voice:
     silence_threshold: 0.02
     silence_duration_ms: 1500
     max_duration_ms: 10000
+    # 短于此长度的片段直接丢弃、不上传（滤掉咳嗽/关门等爆音）：省调用量的第一道闸。
+    # Clips shorter than this are dropped, never uploaded (filters coughs, door slams and
+    # other transients): the first cost gate.
+    min_speech_ms: 300
+    # 两次「唤醒判定」上传之间的最小间隔（毫秒）：只节流唤醒判定路径，作答/指令通道不受影响。
+    # Minimum gap (ms) between two wake-detection uploads; only that path is throttled, the
+    # answer/command channels are not.
+    upload_throttle_ms: 500
     # 等待操作者语音回答的静音超时（毫秒）：超时无语音则进入待机（引擎仍听唤醒词）。
     # Silence timeout (ms) while waiting for a spoken answer; on timeout the assistant
     # enters standby (the engine still listens for the wake word).
