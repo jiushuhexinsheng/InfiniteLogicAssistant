@@ -165,6 +165,10 @@ async def voice_utter(request: Request):
     messages = params.get("messages")
     if not isinstance(messages, list):
         messages = None
+    # 模式：task = 完成后询问并存档；其余（含缺失/非法）一律 chat（向后兼容老前端）。
+    # Mode: "task" asks and archives on completion; anything else (missing or invalid) is
+    # "chat" for backward compatibility.
+    mode = "task" if params.get("mode") == "task" else "chat"
 
     session = Session()
     session_id = params.get("session_id")
@@ -200,7 +204,8 @@ async def voice_utter(request: Request):
     controller = StopController()
     state.register(session, controller)
     events: asyncio.Queue = asyncio.Queue()
-    runner = asyncio.ensure_future(run_pipeline(text, session, events, controller, messages=messages))
+    runner = asyncio.ensure_future(
+        run_pipeline(text, session, events, controller, messages=messages, mode=mode))
 
     async def event_stream():
         """SSE 事件流生成器：转发队列事件，处理 runner 异常兜底并做收尾清理。

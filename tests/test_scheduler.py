@@ -86,7 +86,7 @@ async def test_run_scheduled_uses_silent_channel(monkeypatch):
     from core.scheduler.runner import run_scheduled
     captured = {}
 
-    async def fake_pipeline(text, session, events, controller, channel=None):
+    async def fake_pipeline(text, session, events, controller, channel=None, mode="chat"):
         captured["channel"] = channel
 
     monkeypatch.setattr("core.scheduler.runner.run_pipeline", fake_pipeline)

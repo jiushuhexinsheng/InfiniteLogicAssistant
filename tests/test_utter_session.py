@@ -17,7 +17,7 @@ def store(tmp_path):
 def _client(monkeypatch, store, captured):
     monkeypatch.setattr("core.session.history.get_history_store", lambda: store)
 
-    async def fake_pipeline(text, session, events, controller, channel=None, messages=None):
+    async def fake_pipeline(text, session, events, controller, channel=None, messages=None, mode="chat"):
         captured["session_id"] = session.id
         captured["seed"] = messages
         await events.put({"type": "done"})
