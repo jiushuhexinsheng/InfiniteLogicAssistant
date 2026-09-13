@@ -26,5 +26,8 @@ describe('api.wakeDetect', () => {
     expect(JSON.parse(String(calls[0].body)).audio_base64).toBeTruthy()
     expect(r.matched).toBe(true)
     expect(r.command).toBe('查天气')
+    // 复用断言：blobToWavBase64 必须真的被调用，且收到的是同一个 Blob（而不是测试里另起一条转换路径）。
+    // Reuse assertion: blobToWavBase64 must actually be called with this very Blob (not a second path).
+    expect((await import('../../../audio')).blobToWavBase64).toHaveBeenCalledWith(expect.any(Blob))
   })
 })
