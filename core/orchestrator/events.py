@@ -84,22 +84,35 @@ class ToolEndEvent(_BaseEvent):
     output: str
 
 
-class QuestionEvent(_BaseEvent):
-    """澄清/确认问题：前端回答走 POST /api/voice/answer。
+class QuestionOption(BaseModel):
+    """询问选项：value 为机器可读取值，label 为展示文案。
 
-    Clarification/confirmation question: the frontend answers via POST
-    /api/voice/answer.
+    A question option: value is the machine-readable value, label is the display text.
+    """
+
+    value: str
+    label: str
+
+
+class QuestionEvent(_BaseEvent):
+    """询问：前端回答走 POST /api/voice/answer。
+
+    kind 决定前端渲染方式：
+    - text      自由文本输入
+    - choice    按 options 渲染按钮（原先的 confirm 即 choice + 确认/取消两项）
+    - composite 按钮 + 输入框，任选其一即可提交
+
+    A question: the frontend answers via POST /api/voice/answer. kind decides how the
+    frontend renders it: text (free-form input), choice (buttons from options; the
+    former confirm is just choice with confirm/cancel), or composite (buttons plus an
+    input, either one suffices to submit).
     """
 
     type: Literal["question"] = "question"
     question: str
     session_id: str = ""
-    # 提问类型：clarify（澄清，自由文本作答）/ confirm（确认，结构化选择）。
-    # 前端据 kind="confirm" 渲染「确认 / 取消」按钮，避免解析自由文本判定批准。
-    # Question kind: clarify (free-form answer) / confirm (structured choice).
-    # The frontend renders confirm/cancel buttons for kind="confirm", avoiding
-    # free-text parsing to decide approval.
-    kind: Literal["clarify", "confirm"] = "clarify"
+    kind: Literal["choice", "text", "composite"] = "text"
+    options: list[QuestionOption] = []
 
 
 class ErrorEvent(_BaseEvent):
