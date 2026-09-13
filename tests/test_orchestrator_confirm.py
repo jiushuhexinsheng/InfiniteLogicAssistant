@@ -34,6 +34,16 @@ class _FakeLLM:
             {"function": {"arguments": json.dumps({"decision": self.decision})}}]}}
 
 
+@pytest.fixture
+def asking(asking_policy):
+    """本文件内「钉住为询问」的别名 —— 实现在 `tests/conftest.py::asking_policy`。
+
+    Alias for "pin the policy to ask" scoped to this file; the implementation lives in
+    `tests/conftest.py::asking_policy`.
+    """
+    return asking_policy
+
+
 class _Channel:
     """模拟会话通道：返回预设答案（Answer 或字符串）并记录通知、提问类型与选项。
     Simulates a session channel: returns preset answers (Answer or str), recording notifications, question kinds and options.
@@ -64,7 +74,7 @@ async def test_confirm_read_auto():
 
 
 @pytest.mark.asyncio
-async def test_confirm_exec_yes():
+async def test_confirm_exec_yes(asking):
     """高风险操作点击「确认」后放行。Clicking "confirm" approves a high-risk operation."""
     s = Session()
     s.channel = _Channel([Answer(choice="yes")])
@@ -73,7 +83,7 @@ async def test_confirm_exec_yes():
 
 
 @pytest.mark.asyncio
-async def test_confirm_write_no():
+async def test_confirm_write_no(asking):
     """高风险操作点击「取消」后被拒绝。Clicking "cancel" rejects a high-risk operation."""
     s = Session()
     s.channel = _Channel([Answer(choice="no")])
@@ -81,7 +91,7 @@ async def test_confirm_write_no():
 
 
 @pytest.mark.asyncio
-async def test_confirm_no_channel_rejects():
+async def test_confirm_no_channel_rejects(asking):
     """无会话通道时默认拒绝。Defaults to rejection when no channel is present."""
     s = Session()
     s.channel = None
@@ -89,7 +99,7 @@ async def test_confirm_no_channel_rejects():
 
 
 @pytest.mark.asyncio
-async def test_confirm_asks_as_choice_with_two_options():
+async def test_confirm_asks_as_choice_with_two_options(asking):
     """确认提问必须是 kind="choice" 且恰带「允许本次 / 拒绝」两个选项。
     A confirmation question must be kind="choice" with exactly the allow-once / deny options."""
     s = Session()
@@ -103,7 +113,7 @@ async def test_confirm_asks_as_choice_with_two_options():
 
 
 @pytest.mark.asyncio
-async def test_confirm_tool_asks_as_choice():
+async def test_confirm_tool_asks_as_choice(asking):
     """工具级确认同样是选择类。Tool-level confirmation is a choice question too."""
     s = Session()
     s.channel = _Channel([Answer(choice="no")])
@@ -175,7 +185,7 @@ def test_resolve_non_exact_defers_to_llm(text):
 
 
 @pytest.mark.asyncio
-async def test_confirm_negated_answer_rejected(monkeypatch):
+async def test_confirm_negated_answer_rejected(monkeypatch, asking):
     """否定回答不误判为同意（经 LLM 层，判定为 reject）。A negated answer is not misread as approval (via the LLM layer)."""
     monkeypatch.setattr(confirm_mod, "get_llm_client", lambda: _FakeLLM(decision="reject"))
     s = Session()
@@ -184,7 +194,7 @@ async def test_confirm_negated_answer_rejected(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_confirm_hesitant_answer_rejected(monkeypatch):
+async def test_confirm_hesitant_answer_rejected(monkeypatch, asking):
     """犹豫回答不误判为同意（旧关键词子串匹配会放行）。A hesitant answer is not misread as approval (the old substring matcher approved these)."""
     monkeypatch.setattr(confirm_mod, "get_llm_client", lambda: _FakeLLM(decision="reject"))
     for hesitant in ("不太确定", "我不想执行", "这个不太好吧"):
@@ -194,7 +204,7 @@ async def test_confirm_hesitant_answer_rejected(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_confirm_negated_tool_rejected(monkeypatch):
+async def test_confirm_negated_tool_rejected(monkeypatch, asking):
     """否定回答导致工具确认被拒。A negated answer rejects the tool confirmation."""
     monkeypatch.setattr(confirm_mod, "get_llm_client", lambda: _FakeLLM(decision="reject"))
     s = Session()
@@ -217,7 +227,7 @@ async def test_confirm_natural_language_approved_by_llm(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_confirm_llm_unclear_rejects(monkeypatch):
+async def test_confirm_llm_unclear_rejects(monkeypatch, asking):
     """LLM 判 unclear 一律拒绝 —— 拿不准就不执行（fail closed）。
     An "unclear" verdict rejects: when in doubt, do not execute (fail closed)."""
     monkeypatch.setattr(confirm_mod, "get_llm_client", lambda: _FakeLLM(decision="unclear"))
@@ -227,7 +237,7 @@ async def test_confirm_llm_unclear_rejects(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_confirm_llm_exception_rejects(monkeypatch):
+async def test_confirm_llm_exception_rejects(monkeypatch, asking):
     """LLM 抛异常时拒绝，绝不因为「判不了」而放行。
     An LLM exception rejects: being unable to judge must never become approval."""
     monkeypatch.setattr(confirm_mod, "get_llm_client",
@@ -238,7 +248,7 @@ async def test_confirm_llm_exception_rejects(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_confirm_llm_no_tool_call_rejects(monkeypatch):
+async def test_confirm_llm_no_tool_call_rejects(monkeypatch, asking):
     """LLM 没返回工具调用（拿不到结构化结论）→ 拒绝。No tool call means no structured verdict → reject."""
     monkeypatch.setattr(confirm_mod, "get_llm_client", lambda: _FakeLLM(no_tool=True))
     s = Session()
@@ -247,7 +257,7 @@ async def test_confirm_llm_no_tool_call_rejects(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_confirm_llm_unknown_decision_rejects(monkeypatch):
+async def test_confirm_llm_unknown_decision_rejects(monkeypatch, asking):
     """LLM 返回闭集之外的值 → 拒绝。A verdict outside the closed set → reject."""
     monkeypatch.setattr(confirm_mod, "get_llm_client", lambda: _FakeLLM(decision="maybe"))
     s = Session()
@@ -279,7 +289,7 @@ async def test_structured_choice_does_not_call_llm(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_llm_prompt_carries_only_the_utterance(monkeypatch):
+async def test_llm_prompt_carries_only_the_utterance(monkeypatch, asking):
     """**隔离性**：交 LLM 判定的输入只能有「系统提示 + 用户这一句」，不得带对话上下文。
 
     这是本方案压住提示注入的关键：确认闸门之后是任意命令执行，而对话上下文里混有工具输出、
@@ -321,7 +331,7 @@ async def test_confirm_tool_read_auto():
 
 
 @pytest.mark.asyncio
-async def test_confirm_tool_write_yes():
+async def test_confirm_tool_write_yes(asking):
     """高风险工具点击「确认」后放行。Clicking "confirm" approves a high-risk tool."""
     s = Session()
     s.channel = _Channel([Answer(choice="yes")])
@@ -330,7 +340,7 @@ async def test_confirm_tool_write_yes():
 
 
 @pytest.mark.asyncio
-async def test_confirm_tool_write_no():
+async def test_confirm_tool_write_no(asking):
     """高风险工具点击「取消」后被拒。Clicking "cancel" rejects a high-risk tool."""
     s = Session()
     s.channel = _Channel([Answer(choice="no")])
@@ -338,7 +348,7 @@ async def test_confirm_tool_write_no():
 
 
 @pytest.mark.asyncio
-async def test_confirm_tool_no_channel_rejects():
+async def test_confirm_tool_no_channel_rejects(asking):
     """无通道时工具确认默认拒绝。Tool confirmation defaults to rejection without a channel."""
     s = Session()
     s.channel = None
@@ -381,7 +391,7 @@ async def test_confirm_denied_tool_refused_without_asking(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_confirm_ask_tool_still_asks():
+async def test_confirm_ask_tool_still_asks(asking):
     """策略 ask 的工具照旧提问（回归：默认行为不变，多数工具都是 ask）。"""
     s = Session()
     s.channel = _Channel([Answer(choice="yes")])
@@ -400,3 +410,65 @@ def test_confirm_options_labels_changed_but_values_unchanged():
         {"value": "yes", "label": "允许本次"},
         {"value": "no", "label": "拒绝"},
     ]
+
+
+# ─── 任务级确认改由权限策略决定（2026-09-13）───
+
+
+@pytest.mark.asyncio
+async def test_task_allowed_by_default_still_announces_plan(monkeypatch):
+    """默认全放行时，任务不再询问，但**仍然播报计划** —— 保留可见性。
+
+    这是本次改动的关键取舍：去掉的是「阻塞等待批准」，不是「让用户知道要做什么」。
+    若把 notify 也一并去掉，用户就完全看不见助手即将执行什么了。
+
+    With allow-by-default the task is no longer asked about, but the **plan is still announced** so
+    visibility survives. That distinction is the point: what was removed is the blocking approval,
+    not the user's ability to see what is about to run. Dropping the notify too would leave the
+    user with no idea what the assistant is doing.
+    """
+    from core.tools.policy import Decision
+
+    monkeypatch.setattr(confirm_mod, "decide_tier",
+                        lambda risk, section=None: Decision("allow", "tier:exec"))
+    asked: list = []
+
+    class _Ch(_Channel):
+        async def ask(self, q, *, kind="text", options=None):
+            asked.append(q)
+            return Answer(choice="yes")
+
+    s = Session()
+    s.channel = _Ch([])
+    assert await confirm_if_needed(Task("t", "打开网页", risk="exec"), "执行任务：打开 B 站", s) is True
+    assert asked == [], "默认放行时不应发问"
+    assert s.channel.notified == ["执行任务：打开 B 站"], "放行也必须播报计划（可见性）"
+
+
+@pytest.mark.asyncio
+async def test_task_denied_by_tier_is_refused(monkeypatch):
+    """tiers 判 deny 时任务被拒，且不发问。A deny tier refuses the task without asking."""
+    from core.tools.policy import Decision
+
+    monkeypatch.setattr(confirm_mod, "decide_tier",
+                        lambda risk, section=None: Decision("deny", "tier:exec"))
+    asked: list = []
+
+    class _Ch(_Channel):
+        async def ask(self, q, *, kind="text", options=None):
+            asked.append(q)
+            return Answer(choice="yes")
+
+    s = Session()
+    s.channel = _Ch([])
+    assert await confirm_if_needed(Task("t", "删库", risk="exec"), "删除", s) is False
+    assert asked == [], "deny 不应发问"
+
+
+@pytest.mark.asyncio
+async def test_task_allowed_without_channel_does_not_crash():
+    """无通道（定时无人值守）且判 allow 时不应崩 —— notify 没有通道可发。
+    With no channel (unattended schedule) and an allow decision, nothing may crash on the notify."""
+    s = Session()
+    s.channel = None
+    assert await confirm_if_needed(Task("t", "读文件", risk="read"), "读 x", s) is True

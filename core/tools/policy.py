@@ -101,4 +101,35 @@ def decide(name: str, section: Any | None = None) -> Decision:
 
     # 5. 兜底
     #    Fallback.
-    return Decision(getattr(sec, "default_action", "ask"), "default")
+    return Decision(getattr(sec, "default_action", "allow"), "default")
+
+
+def decide_tier(risk: str, section: Any | None = None) -> Decision:
+    """按**风险层级**判定 —— 供任务级确认使用（那里没有具体工具名，只有一个 risk）。
+
+    与 `decide` 共用同一份 `permissions` 配置，这样「默认放行」是一个开关同时管住两级确认；
+    否则把工具级放宽了、任务级照样拦，用户仍会被问。
+
+    任务级没有工具名，故不适用「未注册工具 → deny」与「规则匹配」两步 —— 规则是按工具名
+    glob 匹配的。想按任务收紧时，直接调 `permissions.tiers`。
+
+    Judge by **risk tier**, for the task-level gate (which has a risk but no tool name). It shares
+    the same `permissions` section as `decide`, so "allow by default" is one switch covering both
+    gates — otherwise the tool level could be relaxed while the task level kept blocking. With no
+    tool name, the "unregistered tool → deny" and rule-matching steps do not apply (rules glob
+    against tool names); tighten the task level via `permissions.tiers`.
+
+    Args:
+        risk: 风险层级（read / write / exec）。The risk tier.
+        section: 权限配置段；缺省取全局 settings.permissions。The permissions section; defaults
+            to global settings.permissions.
+
+    Returns:
+        判定结果。The decision.
+    """
+    sec = _get_section(section)
+    tiers = getattr(sec, "tiers", None)
+    tier_action = getattr(tiers, risk, None) if tiers is not None else None
+    if tier_action:
+        return Decision(tier_action, f"tier:{risk}")
+    return Decision(getattr(sec, "default_action", "allow"), "default")

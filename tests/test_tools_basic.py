@@ -18,6 +18,24 @@ def test_risk_in_meta():
     assert meta["system_probe"]["risk"] == "read"
 
 
+def test_screenshot_is_read_not_exec():
+    """截屏只**读屏**、不改系统状态 —— 归 read，否则每次截屏都要确认一次（纯摩擦、无安全收益）。
+
+    2026-09-13 修正：此前误标为 exec。这里钉住分级，避免日后又被改回去。
+
+    Taking a screenshot only **reads** the screen and changes no system state, so it belongs in
+    read; classifying it as exec meant a confirmation on every capture — friction with no safety
+    benefit. Fixed on 2026-09-13 (it had been mislabelled exec); this pins the classification so it
+    cannot silently drift back.
+    """
+    from core.tools.base import TOOLS
+
+    assert TOOLS.risk("gui_screenshot_tool") == "read"
+    # 真正改变系统状态的 GUI 操作仍归 exec
+    assert TOOLS.risk("gui_click_tool") == "exec"
+    assert TOOLS.risk("gui_type_tool") == "exec"
+
+
 def test_basic_tools_registered():
     """测试基础工具均已注册到 schema。Tests all basic tools being registered in the schema."""
     names = {s["function"]["name"] for s in TOOLS.schemas()}

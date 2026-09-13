@@ -59,7 +59,7 @@ async def gui_type_tool(text: str) -> str:
     return await gui_type(text)
 
 
-@tool("截取当前屏幕保存到路径", risk="exec")
+@tool("截取当前屏幕保存到路径", risk="read")  # 只读：读屏不改系统状态，归 read 免询问
 async def gui_screenshot_tool(path: str) -> str:
     """截取当前屏幕并保存到指定路径。Capture the current screen and save it to the given path.
 

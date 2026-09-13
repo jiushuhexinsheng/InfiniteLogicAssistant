@@ -47,7 +47,7 @@ from core.orchestrator.session import Answer, Session
 from core.orchestrator.task import Task
 from core.prompts import CONFIRM_RESOLVE_SYSTEM
 from core.tools.base import TOOLS  # 从 base 导入，避免 core.tools.__init__ 循环
-from core.tools.policy import decide
+from core.tools.policy import decide, decide_tier
 
 # 自由文本的同义词表：只做精确相等判定（无子串匹配）。
 # 非 UI 调用方（脚本 / API）可用这些字面量作答；前端一律走结构化 choice。
@@ -204,14 +204,31 @@ async def _ask_operator(session: Session, plan: str, risk: str, kind: str, sourc
 
 
 async def confirm_if_needed(task: Task, plan: str, session: Session) -> bool:
-    """任务级确认：risk=read 自动放行；write/exec 需操作者明确确认。
+    """任务级确认：由权限策略按任务风险层级决定放行 / 询问 / 拒绝。
 
-    Task-level confirmation: risk=read passes automatically; write/exec requires
-    explicit operator confirmation.
+    与工具级确认共用同一份 `permissions` 配置 —— 否则把工具级放宽了、任务级照样拦，
+    「默认放行」只改一半，用户仍会被问。
+
+    `allow` 时**仍然播报计划**（可见性），只是不阻塞等待：用户依旧看得到助手要做什么，
+    只是不用再点一次。想恢复「每次都问」把 `permissions.tiers` 改回 ask 即可。
+
+    Task-level confirmation: the permission policy decides allow / ask / deny by the task's risk
+    tier. It shares the `permissions` section with the tool-level gate — otherwise relaxing the
+    tool level while the task level kept blocking would leave "allow by default" half-applied and
+    the user still asked. On `allow` the **plan is still announced** for visibility, it just does
+    not block: the user still sees what the assistant is about to do without approving each time.
+    Set `permissions.tiers` back to ask to restore per-task confirmation.
     """
-    if task.risk == "read":
+    decision = decide_tier(task.risk)
+    if decision.action == "allow":
+        if session.channel is not None:
+            await session.notify(plan)
         return True
-    return await _ask_operator(session, plan, task.risk, "task")
+    if decision.action == "deny":
+        audit(f"confirm task risk={task.risk} plan={plan} decision=rejected "
+              f"reason=tier_denied source={decision.source}")
+        return False
+    return await _ask_operator(session, plan, task.risk, "task", source=decision.source)
 
 
 async def confirm_tool(session: Session, name: str, args: dict) -> bool:
