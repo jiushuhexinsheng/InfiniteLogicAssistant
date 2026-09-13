@@ -239,13 +239,15 @@ async def voice_answer(request: Request):
     channel = getattr(session, "channel", None) if session else None
     if channel is None:
         return JSONResponse({"ok": False, "error": "会话不存在或未在等待回答"}, status_code=404)
-    # choice 为结构化确认结果（前端「确认 / 取消」按钮回传）；非 yes/no 一律视为未选择，
-    # 交由确认层 fail closed。
-    # choice carries the structured confirmation result (from the frontend's
-    # confirm/cancel buttons); anything that is not yes/no counts as no selection
-    # and fails closed in the confirmation layer.
+    # choice 为结构化选择的取值（前端按钮回传）。此处只做「非空字符串」的形状校验，
+    # 取值合法性由消费方（如权限策略层）自行判断 —— 这样新增选项集（允许一次 /
+    # 永久允许 / 拒绝 …）无需改动本端点。
+    #
+    # choice carries the structured selection returned by the frontend's buttons. Only its
+    # shape (a non-empty string) is validated here; whether a value is meaningful is up to
+    # the consumer (e.g. the permission policy layer), so new option sets need no change here.
     raw_choice = params.get("choice")
-    choice = raw_choice if raw_choice in ("yes", "no") else None
+    choice = raw_choice.strip() if isinstance(raw_choice, str) and raw_choice.strip() else None
     channel.answer(str(params.get("text") or ""), choice)
     return {"ok": True}
 

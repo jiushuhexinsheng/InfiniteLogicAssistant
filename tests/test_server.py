@@ -724,9 +724,9 @@ def test_mcp_integration_tools(monkeypatch):
 
 
 def test_voice_answer_passes_structured_choice(client):
-    """按钮回传的 choice 原样透传到会话通道；非 yes/no 视为未选择（交由确认层 fail closed）。
+    """按钮回传的 choice 原样透传到会话通道；空 choice 视为未选择。
     The choice returned by buttons is passed through to the session channel unchanged;
-    anything other than yes/no counts as no selection (the confirmation layer fails closed).
+    an empty choice counts as no selection.
     """
     import asyncio
 
@@ -744,12 +744,36 @@ def test_voice_answer_passes_structured_choice(client):
         assert r.status_code == 200
         assert channel.answers.get_nowait() == Answer(text="", choice="yes")
 
-        # 非法 choice 不得透传（否则确认层会把任意字符串当成结构化选择）
-        r2 = client.post("/api/voice/answer", json={"session_id": "ans-choice", "text": "随便吧", "choice": "maybe"})
+        # 空字符串 choice 视为未选择（不去猜用户意图）
+        r2 = client.post("/api/voice/answer", json={"session_id": "ans-choice", "text": "随便吧", "choice": ""})
         assert r2.status_code == 200
         assert channel.answers.get_nowait() == Answer(text="随便吧", choice=None)
     finally:
         state.cleanup("ans-choice")
+
+
+def test_voice_answer_accepts_arbitrary_choice(client):
+    """choice 不限于 yes/no —— 权限策略的「允许一次 / 永久允许」等取值必须能透传。
+    choice is not limited to yes/no: values such as the permission policy's
+    allow-once / allow-always must pass through. 取值合法性由消费方自行校验。
+    """
+    import asyncio
+
+    from core.api import state
+    from core.orchestrator.control import StopController
+    from core.orchestrator.pipeline import EventQueueChannel
+    from core.orchestrator.session import Answer, Session
+
+    session = Session(session_id="ans-arb")
+    channel = EventQueueChannel(asyncio.Queue(), "ans-arb")
+    session.channel = channel
+    state.register(session, StopController())
+    try:
+        r = client.post("/api/voice/answer", json={"session_id": "ans-arb", "text": "", "choice": "always"})
+        assert r.status_code == 200
+        assert channel.answers.get_nowait() == Answer(text="", choice="always")
+    finally:
+        state.cleanup("ans-arb")
 
 
 def test_voice_answer_unknown_session_404(client):
