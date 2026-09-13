@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 
 /** 控制台标签页键类型。Console tab key type. */
-export type ConsoleTabKey = 'conv' | 'task' | 'status' | 'tools' | 'stats' | 'env' | 'memory' | 'settings' | 'history' | 'schedule'
+export type ConsoleTabKey = 'conv' | 'task' | 'status' | 'tools' | 'stats' | 'env' | 'memory' | 'settings' | 'history' | 'library' | 'schedule'
 
 /** 控制台标签页接口。Console tab interface. */
 export interface ConsoleTab {
@@ -25,6 +25,7 @@ export const CONSOLE_TABS: ConsoleTab[] = [
   { key: 'memory', label: '记忆', icon: 'database' },
   { key: 'settings', label: '设置', icon: 'settings' },
   { key: 'history', label: '历史', icon: 'history' },
+  { key: 'library', label: '任务库', icon: 'library' },
   { key: 'schedule', label: '定时', icon: 'calendar-clock' },
 ]
 

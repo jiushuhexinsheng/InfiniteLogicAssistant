@@ -2,7 +2,7 @@
  * API 模块 - 封装与后端的所有 HTTP 通信
  * API Module - Encapsulates all HTTP communication with the backend
  */
-import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, PingResponse, ProviderPreset, QuestionEvent, QuestionOption, SessionItem, SseEvent, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState } from './types'
+import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, LibraryTask, PingResponse, ProviderPreset, QuestionEvent, QuestionOption, SessionItem, SseEvent, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState } from './types'
 import type { components } from './api/generated'
 import { blobToWavBase64 } from './audio'
 import { formatError } from './errors'
@@ -140,6 +140,15 @@ export const api = {
   getMemory: () => get<{ ok: boolean; facts: MemoryFact[] }>('/memory'),
   /** 删除记忆。Delete memory. */
   deleteMemory: (topic: string) => del<ApiResponse>(`/memory/${encodeURIComponent(topic)}`),
+
+  // 任务库（P7）
+  // Task library (P7)
+  /** 任务库：列出存档的成功任务。Task library: list archived successful tasks. */
+  listLibrary: () => get<{ ok: boolean; tasks: LibraryTask[] }>('/library'),
+  /** 任务库：取单条详情。Task library: fetch one archived task. */
+  getLibraryTask: (id: number) => get<{ ok: boolean; task: LibraryTask }>(`/library/${id}`),
+  /** 任务库：删除一条。Task library: delete one archived task. */
+  deleteLibraryTask: (id: number) => del<ApiResponse>(`/library/${id}`),
 
   // 定时任务（P3）
   // Scheduled Tasks (P3)

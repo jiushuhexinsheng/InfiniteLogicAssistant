@@ -8,6 +8,9 @@ import type { components } from './api/generated'
 // ─── Types generated from backend response_model (regenerate with npm run gen:api) ───
 
 /** API 通用响应类型。API common response type. */
+/** 任务库条目（成功任务存档）。An archived successful task. */
+export type LibraryTask = components['schemas']['TaskLibraryItem']
+
 export type ApiResponse = components['schemas']['ApiResponse']
 /** Ping 响应类型。Ping response type. */
 export type PingResponse = components['schemas']['PingResponse']

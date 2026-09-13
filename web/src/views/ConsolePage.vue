@@ -20,6 +20,8 @@
     <ConsoleSettings v-else-if="activeTab === 'settings'" />
     <!-- 历史标签页 / History tab -->
     <ConsoleHistory v-else-if="activeTab === 'history'" />
+    <!-- 任务库标签页 / Task-library tab -->
+    <ConsoleLibrary v-else-if="activeTab === 'library'" />
     <!-- 调度标签页（默认） / Schedule tab (default) -->
     <ConsoleScheduleView v-else />
   </ConsoleLayout>
@@ -57,6 +59,8 @@ const ConsoleMemoryView = defineAsyncComponent(() => import('../components/conso
 const ConsoleSettings = defineAsyncComponent(() => import('../components/console/ConsoleSettings.vue'))
 /** 异步加载调度视图组件 / Async load schedule view component */
 const ConsoleScheduleView = defineAsyncComponent(() => import('../components/console/ConsoleScheduleView.vue'))
+/** 异步加载任务库视图组件 / Async load task-library view component */
+const ConsoleLibrary = defineAsyncComponent(() => import('../components/console/ConsoleLibrary.vue'))
 /** 异步加载历史组件 / Async load history component */
 const ConsoleHistory = defineAsyncComponent(() => import('../components/console/ConsoleHistory.vue'))
 
