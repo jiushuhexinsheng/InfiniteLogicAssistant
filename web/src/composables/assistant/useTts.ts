@@ -66,6 +66,16 @@ function load(): TtsSettings {
  *  Global singleton settings (site-wide shared; sliders/dropdowns directly modify it, effective on next broadcast). */
 export const ttsSettings = ref<TtsSettings>(load())
 
+/** 是否正在播报。门控唤醒引擎用：播报期间暂停监听，避免助手自己的声音自触发唤醒。
+ *  Whether speech is currently playing. Used to gate the wake engine: listening is paused
+ *  during playback so the assistant's own voice cannot self-trigger the wake word. */
+export const speaking = ref(false)
+
+/** 播报代际：连续播报时，旧播报迟到的 onend 不得复位新一轮的 speaking。
+ *  Playback generation: with back-to-back utterances, a late onend from an older
+ *  utterance must not clear the newer one's speaking flag. */
+let speakGen = 0
+
 /** 保存 TTS 设置到本地存储。Save TTS settings to local storage. */
 export function saveTts() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(ttsSettings.value)) } catch { /* ignore */ }
@@ -125,6 +135,18 @@ function speakBrowser(text: string) {
     u.pitch = s.pitch
     const v = resolveVoice()
     if (v) { u.voice = v; u.lang = v.lang } else { u.lang = 'zh-CN' }
+    // 代际计数：只有本轮播报的结束回调才允许复位 speaking。
+    // 上一轮被 speechSynthesis.cancel() 打断时其 onend 可能迟到，若不加代际会把
+    // 新一轮的 speaking 提前置 false，导致门控提前放行、麦克风被助手声音自触发。
+    // Generation counter: only this round's completion callback may clear speaking. When
+    // a previous utterance is cut off by speechSynthesis.cancel() its onend may arrive
+    // late; without the counter it would clear the new round's flag early, reopening the
+    // mic while the assistant is still speaking.
+    const gen = ++speakGen
+    speaking.value = true
+    const done = () => { if (gen === speakGen) speaking.value = false }
+    u.onend = done
+    u.onerror = done
     requestAnimationFrame(() => {
       try { window.speechSynthesis.speak(u) } catch { /* ignore */ }
     })
@@ -146,8 +168,15 @@ async function speakApi(text: string) {
     const url = URL.createObjectURL(blob)
     const audio = new Audio(url)
     audio.volume = ttsSettings.value.volume
-    const fail = () => { URL.revokeObjectURL(url); speakBrowser(text) }
-    audio.onended = () => URL.revokeObjectURL(url)
+    // 与 speakBrowser 同样的代际计数：回退到 speakBrowser 时后者会再 ++speakGen 并自己
+    // 置 speaking = true，故先 done() 再回退不会闪断。
+    // Same generation counter as speakBrowser: when falling back, speakBrowser bumps the
+    // generation again and sets speaking itself, so calling done() first does not flicker.
+    const gen = ++speakGen
+    speaking.value = true
+    const done = () => { if (gen === speakGen) speaking.value = false }
+    const fail = () => { done(); URL.revokeObjectURL(url); speakBrowser(text) }
+    audio.onended = () => { done(); URL.revokeObjectURL(url) }
     audio.onerror = fail
     await audio.play().catch(fail)
   } catch (e) {
@@ -182,5 +211,5 @@ export function testVoice() {
 /** TTS 管理 composable。TTS management composable.
  *  @returns 包含 TTS 设置、保存、语音列表、播报等方法的接口。Interface containing TTS settings, save, voice list, broadcast methods etc. */
 export function useTts() {
-  return { ttsSettings, saveTts, getVoices, loadVoices, speakText, testVoice, speakAuto, toggleSpeak }
+  return { ttsSettings, speaking, saveTts, getVoices, loadVoices, speakText, testVoice, speakAuto, toggleSpeak }
 }
