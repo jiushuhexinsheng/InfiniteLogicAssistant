@@ -37,3 +37,37 @@ async def test_run_all_returns_aggregate(monkeypatch):
     assert len(report["connectivity"]) == 3
     # 未配置 → 全部 skip，不发真实网络
     assert all(c["status"] == "skip" for c in report["connectivity"])
+
+
+# ─── permissions：规则 match 必须命中已注册工具 ───
+
+
+def test_validator_warns_on_unmatched_permission_rule():
+    """规则 match 匹配不到任何已注册工具 → warning。
+
+    match 拼错会被静默忽略（既不报错也不生效），用户会以为策略已生效。
+    A rule whose match hits no registered tool produces a warning: a typo is otherwise
+    silently ignored and the user believes the policy took effect.
+    """
+    from core.config import Settings
+    from core.detection.validator import validate
+    s = Settings(permissions={"rules": [{"match": "no_such_tool_*", "action": "deny"}]})
+    health = validate(s)
+    assert any(i.level == "warning" and "no_such_tool_*" in i.message for i in health.issues)
+
+
+def test_validator_silent_on_matching_permission_rule():
+    """能命中的规则不报警。A rule that matches something produces no warning."""
+    from core.config import Settings
+    from core.detection.validator import validate
+    s = Settings(permissions={"rules": [{"match": "read_*", "action": "allow"}]})
+    health = validate(s)
+    assert not any("read_*" in i.message for i in health.issues)
+
+
+def test_validator_silent_when_no_rules():
+    """空规则列表是完全合法的配置，不应报警。An empty rule list is a perfectly valid config and warns about nothing."""
+    from core.config import Settings
+    from core.detection.validator import validate
+    health = validate(Settings())
+    assert not any("permissions" in i.key for i in health.issues)

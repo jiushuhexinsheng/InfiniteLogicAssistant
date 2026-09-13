@@ -6,10 +6,12 @@ pydantic already guarantees types/ranges/enums; here we enforce cross-field rule
 非 localhost 绑定必须 token、profile 缺失 / 未配密钥等。
 non-localhost binds require a token, missing profiles / unset API keys, etc.
 """
+import fnmatch
 from dataclasses import dataclass, field
 from typing import Any
 
 from core.config import Settings
+from core.tools.base import TOOLS  # 从 base 导入，避免 core.tools.__init__ 循环
 
 _LOCALHOST = ("", "127.0.0.1", "localhost", "::1")
 
@@ -73,5 +75,18 @@ def validate(settings: Settings) -> ConfigHealth:
 
     if not settings.voice.tts.enabled:
         issues.append(Issue("info", "voice.tts.enabled", "TTS 未启用（默认浏览器本地语音播报）"))
+
+    # permissions：规则 match 必须至少命中一个已注册工具，否则是拼写错误会被静默忽略
+    # （既不报错也不生效），用户会以为策略已生效。
+    # permissions: a rule's match must hit at least one registered tool; otherwise a typo
+    # is silently ignored (neither erroring nor taking effect) and the user believes the
+    # policy is in force.
+    tool_names = [t["name"] for t in TOOLS.meta()]
+    for rule in settings.permissions.rules:
+        if not any(fnmatch.fnmatchcase(n, rule.match) for n in tool_names):
+            issues.append(Issue(
+                "warning", f"permissions.rules[{rule.match}]",
+                f"规则 match「{rule.match}」匹配不到任何已注册工具，该规则不会生效（是否拼写错误？）",
+            ))
 
     return ConfigHealth(ok=all(i.level != "error" for i in issues), issues=issues)
