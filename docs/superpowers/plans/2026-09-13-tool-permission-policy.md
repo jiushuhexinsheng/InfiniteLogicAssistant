@@ -612,7 +612,12 @@ async def confirm_tool(session: Session, name: str, args: dict) -> bool:
 - [ ] **Step 4: 运行确认通过 + 全量后端回归**
 
 Run: `python -m pytest tests/test_orchestrator_confirm.py -q && python -m pytest tests/ -q && python -m mypy core/ server.py`
-Expected: 全部通过（既有 51 个确认用例不受文案变更影响，因为 value 未变）
+Expected: 全部通过。
+
+> **实施修正（2026-09-13）**：原计划漏了一处 —— 既有用例
+> `test_confirm_asks_as_choice_with_two_options` **断言的是 `CONFIRM_OPTIONS` 的 label
+> 文案**（`{"value":"yes","label":"确认"}`），故改文案后它会失败，需一并更新为
+> 「允许本次 / 拒绝」。其余确认用例断言的是 `value` 或 `Answer`，不受影响。
 
 - [ ] **Step 5: 提交**
 

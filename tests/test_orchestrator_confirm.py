@@ -65,15 +65,15 @@ async def test_confirm_no_channel_rejects():
 
 @pytest.mark.asyncio
 async def test_confirm_asks_as_choice_with_two_options():
-    """确认提问必须是 kind="choice" 且恰带「确认 / 取消」两个选项。
-    A confirmation question must be kind="choice" with exactly the confirm/cancel options."""
+    """确认提问必须是 kind="choice" 且恰带「允许本次 / 拒绝」两个选项。
+    A confirmation question must be kind="choice" with exactly the allow-once / deny options."""
     s = Session()
     s.channel = _Channel([Answer(choice="yes")])
     await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
     assert s.channel.kinds == ["choice"]
     assert s.channel.options[0] == [
-        {"value": "yes", "label": "确认"},
-        {"value": "no", "label": "取消"},
+        {"value": "yes", "label": "允许本次"},
+        {"value": "no", "label": "拒绝"},
     ]
 
 
@@ -191,3 +191,60 @@ async def test_confirm_tool_no_channel_rejects():
     s = Session()
     s.channel = None
     assert await confirm_tool(s, "write_file", {"path": "x", "content": "y"}) is False
+
+
+# ─── 确认判定改由权限策略决定 ───
+
+
+def _allow():
+    from core.tools.policy import Decision
+    return Decision("allow", "rule:test")
+
+
+def _deny():
+    from core.tools.policy import Decision
+    return Decision("deny", "rule:test")
+
+
+@pytest.mark.asyncio
+async def test_confirm_allowed_tool_skips_asking(monkeypatch):
+    """策略 allow 的工具直接放行，完全不提问。A policy-allowed tool passes without asking at all."""
+    from core.orchestrator import confirm as confirm_mod
+    monkeypatch.setattr(confirm_mod, "decide", lambda name, section=None: _allow())
+    s = Session()
+    s.channel = _Channel([])          # 没有可用答案 → 一旦提问就会 IndexError
+    assert await confirm_tool(s, "run_shell_tool", {"command": "x"}) is True
+    assert s.channel.notified == []   # 未发起任何询问
+
+
+@pytest.mark.asyncio
+async def test_confirm_denied_tool_refused_without_asking(monkeypatch):
+    """策略 deny 的工具直接拒绝，不提问（问也没意义）。A policy-denied tool is refused without asking (asking would be pointless)."""
+    from core.orchestrator import confirm as confirm_mod
+    monkeypatch.setattr(confirm_mod, "decide", lambda name, section=None: _deny())
+    s = Session()
+    s.channel = _Channel([])
+    assert await confirm_tool(s, "run_shell_tool", {"command": "x"}) is False
+    assert s.channel.notified == []
+
+
+@pytest.mark.asyncio
+async def test_confirm_ask_tool_still_asks():
+    """策略 ask 的工具照旧提问（回归：默认行为不变，多数工具都是 ask）。"""
+    s = Session()
+    s.channel = _Channel([Answer(choice="yes")])
+    assert await confirm_tool(s, "write_file", {"path": "x", "content": "y"}) is True
+    assert "需要确认" in s.channel.notified[0]
+
+
+def test_confirm_options_labels_changed_but_values_unchanged():
+    """弹窗文案改为「允许本次 / 拒绝」，但 value 保持 yes/no。
+
+    因为不做 allow-always，文案需表达「这次而已」；value 不变使得
+    _resolve_confirm 与全部既有回归用例不受影响。
+    """
+    from core.orchestrator.confirm import CONFIRM_OPTIONS
+    assert CONFIRM_OPTIONS == [
+        {"value": "yes", "label": "允许本次"},
+        {"value": "no", "label": "拒绝"},
+    ]
