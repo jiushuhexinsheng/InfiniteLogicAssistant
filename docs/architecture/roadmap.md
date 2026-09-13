@@ -11,7 +11,7 @@
 | P3 | 多智能体 + 定时 + GUI | ✅ 已完成 | [2026-08-12-agent-p3-advanced.md](../superpowers/plans/2026-08-12-agent-p3-advanced.md) | 子代理/协调者（复杂任务转多智能体）+ cron 定时（无人值守）+ GUI 工具 + 前端定时 Tab |
 | P4 | 询问类型扩展 + 问答入聊天记录（子系统 B+D） | ✅ 已完成 | [2026-09-13-question-types-and-qa-history.md](../superpowers/plans/2026-09-13-question-types-and-qa-history.md) | 询问支持 choice / text / composite 三态（`confirm` 并入 `choice`）；`missing` 结构化为 `MissingItem`；提问与回答进入消息列表 |
 | P5 | 工具权限策略层（子系统 A） | ✅ 已完成 | [2026-09-13-tool-permission-policy.md](../superpowers/plans/2026-09-13-tool-permission-policy.md) | 设置页可配 allow / ask / deny（deny 短路 > 规则 > 层级 > 默认）；默认等价改造前行为；三个消费点全部走策略 |
-| P6 | 语音作答 + 无应答待机 + 再唤醒续答（子系统 C） | ✅ 已完成 | [2026-09-13-voice-answering.md](../superpowers/plans/2026-09-13-voice-answering.md) | 播报后自动开录、直接语音作答；无应答进待机；再唤醒续答本题；播报期间暂停监听 **（语音相关的 5 条验收项待人工验证）** |
+| P6 | 语音作答 + 无应答待机 + 再唤醒续答（子系统 C） | ✅ 已完成 | [2026-09-13-voice-answering.md](../superpowers/plans/2026-09-13-voice-answering.md) | 播报后自动开录、直接语音作答；无应答进待机；再唤醒续答本题；播报期间暂停监听 **（「播报期不自触发」已由验收台验证；其余 3 项待真人有声环境跑 `npm run verify:voice`）** |
 | P7 | 任务知识库（子系统 E） | ✅ 已完成 | [2026-09-13-task-knowledge-base.md](../superpowers/plans/2026-09-13-task-knowledge-base.md) | 完成时询问是否完成；成功任务存入独立模块；相似任务检索预填参数、减少询问（按**用户原话**匹配，非 LLM 归一化的 goal） |
 
 > P4–P7 的完整分解（接口边界、待决问题、风险、spec 大纲）见
@@ -26,7 +26,7 @@
 - **P3**：6 / 6 个 Task ✅
 - **P4**：10 / 10 个 Task ✅
 - **P5**：8 / 8 个 Task ✅
-- **P6**：9 / 9 个 Task ✅（自动化全绿；**5 条语音相关验收项因无真实麦克风/扬声器环境未验证**，见计划 Task 9）
+- **P6**：9 / 9 个 Task ✅（自动化全绿；「播报期不自触发」已由验收台验证，**其余 3 项需真人对着麦克风，见计划 Task 9 与 README「语音验收台」**）
 - **P7**：9 / 9 个 Task ✅（自动化全绿；端到端验证通过 —— 同一句话第二次跑时命中历史、预填参数、不再追问澄清）
 
 > 每完成一个 Task：在对应计划里勾选 `[x]`，并更新上方「总体进度」计数。

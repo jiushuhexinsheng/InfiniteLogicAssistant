@@ -164,6 +164,36 @@ python main.py serve        启动 Web 服务（前端 + 后端 API）
 python main.py check        聚合检测（环境 / 配置 / LLM·ASR·TTS 连通性）
 ```
 
+## 语音验收台
+
+语音链路有 4 项「必须真人对着麦克风说话、用耳朵听播报」的验收，单元测试覆盖不到
+（Vosk 是浏览器 WASM 引擎，Vitest 驱动不了真实音频）。`web/scripts/verify-voice.mjs`
+把其中**客观可判**的部分自动化：它负责搭场景、采证据、下结论，人只负责出声和听声。
+
+```bash
+cd web && npm run verify:voice          # 默认 http://127.0.0.1:8520
+npm run verify:voice -- --url http://127.0.0.1:5173   # 指向 dev server
+npm run verify:voice -- --skip 4                       # 跳过某项
+```
+
+覆盖的 4 项与判据：
+
+| # | 验收项 | 判据（自动采集） |
+|---|--------|------------------|
+| 1 | 播报结束后直接开口说答案 | 出现 `POST /api/voice/answer` |
+| 2 | 播报后沉默 → 待机 | 状态进 `standby` 且耗时贴近 `vad.answer_timeout_ms`（本项可全自动判定） |
+| 3 | 待机态唤醒 → 续答本题 | 离开 `standby` **且没有新的 `/api/voice/utter`**（有新 utter = 开成了新一轮） |
+| 4 | 播报含唤醒词 → 不自触发 | 播报期 `WakeWordEngine.isRunning()` 转 false（门控生效）且全程未进 `recording` |
+
+前置：后端已启动、本机 Chrome、麦克风与扬声器可用且未静音。结果写入
+`docs/superpowers/plans/voice-verification-report.md`。
+
+> **第 2 项要求真正的静音**：待答期间麦克风一旦采到声音，VAD 就会当成人说话录下来并提交，
+> 于是永远等不到待答超时。脚本会把这种情形单独指出来（提示换安静环境重跑），
+> 与「待答超时没生效」的缺陷区分开。
+> **第 4 项的声学部分**取决于扬声器→麦克风的实际通路；扬声器静音时后半句无判别力，
+> 但「播报期唤醒引擎已停」这一半仍然可证伪。
+
 ## 测试
 
 ```
