@@ -187,7 +187,10 @@ async def confirm_tool(session: Session, name: str, args: dict) -> bool:
 - 既有 `config.yaml` 无 `permissions` 段 → 默认值 → **行为完全不变**。
 - `TOOLS.risk()` **不改** —— 它仍被 executor 的审计与 `TOOLS.meta()` 展示使用；策略层通过 `policy.decide()` 叠加在其上。
 - `/api/tools/call` 新增 403 分支，但**响应字段未变**（仍是 `{ok, error}`），前端既有错误处理可直接复用。
-- **不新增 API 字段** → `web/src/api/generated.ts` 无需重新生成。
+- **必须重新生成 `web/src/api/generated.ts`**：`EditableSnapshot`（`core/api/schemas.py:456`）是**显式 pydantic 模型**并经 `ConfigFullResponse` 暴露到 openapi，新增 `permissions` 字段会改变 schema —— CI 的类型同步门禁（`gen:api` + `git diff --exit-code`）会校验，不同步即失败。
+  > **更正（2026-09-13）**：本 spec 初稿曾写「不新增 API 字段，无需重新生成」，**该说法是错的**。
+  > 漏看了 `EditableSnapshot` 这一个显式模型（PATCH 侧确实无需新字段，`Settings(**merged)` 的 `extra="forbid"` 会自动接受新 Section；但读取侧必须显式加字段，否则 pydantic 会在 response_model 过滤时把它丢掉，前端根本收不到）。
+  > 实施清单已加入 `cd web && npm run gen:api` 并提交 `generated.ts`。
 
 ## 测试策略
 
