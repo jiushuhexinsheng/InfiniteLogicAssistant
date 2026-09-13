@@ -335,3 +335,105 @@ describe('useWakeWord 播报门控', () => {
     expect(handles).toHaveLength(1)   // 没有新建录音器。No new recorder was built.
   })
 })
+
+/**
+ * 等待窗口与收尾 —— 三条都是「定时器随 Vosk 引擎一起被删掉」造成的功能回归。
+ *
+ * 待答窗口：提问后一直不说话 → 进待机（README 与 P6 记载的行为），待机时再开口回到本题作答。
+ * 等指令窗口：只说了唤醒词却没跟指令 → 窗口过后该段不再被当成指令执行（误触发不能变成执行）。
+ * 收尾复位：一轮结束 3 秒后回聆听，界面不会永久停在「完成」。
+ *
+ * Wait windows and finishing touches — three functional regressions caused by the timers being
+ * deleted along with the Vosk engine: the answer window (no reply → standby, as recorded in the
+ * README and P6; speaking again from standby resumes *this* question), the command window (a bare
+ * wake word must not turn a later unrelated segment into an executed command), and the post-turn
+ * reset (done/error returns to listening after 3s instead of parking the UI on "完成").
+ */
+describe('useWakeWord 等待窗口与收尾', () => {
+  beforeEach(() => { vi.resetModules(); localStorage.clear() })
+
+  /** 装好桩与真实 store；调用方负责 fake/real 计时器的开关。
+   *  Wire the stubs and the real store; the caller owns the fake/real timer switch. */
+  async function setup(opts: { wake?: any; sent?: string[] } = {}) {
+    const sent = opts.sent ?? []
+    vi.doMock('../../../api', () => ({
+      api: {
+        wakeDetect: opts.wake ?? vi.fn(async () => ({ ok: true, matched: false, command: '', text: '' })),
+        transcribe: vi.fn(async () => ({ ok: true, text: '允许本次' })),
+      },
+    }))
+    vi.doMock('../useChat', () => ({
+      sendText: (t: string) => { sent.push(t) },
+      sendAnswer: vi.fn(),
+      runTurn: vi.fn(),
+    }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
+    const store = await import('../store')
+    const chat = await import('../useChat')
+    const mod = await import('../useWakeWord')
+    store.vadConfig.upload_throttle_ms = 0   // 本组只测窗口，节流另有用例。Windows only here; throttling has its own case.
+    return { store, mod, sent, sendAnswer: chat.sendAnswer as any, sendText: chat.sendText as any }
+  }
+
+  /** 待答窗口过期 → 进待机（走 wakeFsm 的 answer_timeout 迁移）；待机时再开口 → 回到本题作答。 */
+  it('待答无应答 → 进待机；待机时再开口 → 回到本题作答', async () => {
+    vi.useFakeTimers()
+    try {
+      const { store, mod, sendAnswer } = await setup()
+      store.wakeEnabled.value = true              // 前提：语音作答只存在于监听开着的时候。Precondition: voice answering only exists while listening is on.
+      store.pendingQuestion.value = {
+        text: '确认执行吗？', kind: 'choice',
+        options: [{ value: 'yes', label: '允许本次' }],
+      }
+      store.state.value = 'awaiting_answer'
+      await nextTick()                            // 让 watch(state) 武装等待窗口。Let watch(state) arm the window.
+      await vi.advanceTimersByTimeAsync(8000)
+
+      expect(store.state.value).toBe('standby')
+
+      // 待机时用户又开口（说唤醒词回到本题）→ 状态回到待答，这一段作为回答投递。
+      // The user speaks again from standby (the wake word resumes this question): the state returns
+      // to awaiting_answer and this segment is delivered as the answer.
+      await mod.handleSegment(new Blob(['x']))
+      expect(store.state.value).toBe('awaiting_answer')
+      expect(sendAnswer).toHaveBeenCalledWith('', 'yes')
+    } finally { vi.useRealTimers() }
+  })
+
+  /** 只说了唤醒词、没说指令 → 窗口过后，无关语音**不得**被当成指令执行。 */
+  it('等指令过期 → 之后的无关语音不被当成指令执行', async () => {
+    vi.useFakeTimers()
+    try {
+      const sent: string[] = []
+      const wakeDetect = vi.fn()
+        .mockResolvedValueOnce({ ok: true, matched: true, command: '', text: '衍衡。' })
+        .mockResolvedValue({ ok: true, matched: false, command: '', text: '今天天气怎么样。' })
+      const { store, mod } = await setup({ wake: wakeDetect, sent })
+
+      await mod.handleSegment(new Blob(['x']))    // 裸唤醒词 → 进等指令窗口。Bare wake word → command window opens.
+      expect(sent).toEqual([])
+
+      await vi.advanceTimersByTimeAsync(8000)     // 窗口过期。The window expires.
+      await mod.handleSegment(new Blob(['x']))    // 之后的无关语音。A later unrelated segment.
+
+      expect(sent).toEqual([])                   // 不得被执行。Must not be executed.
+      expect(wakeDetect).toHaveBeenCalledTimes(2)  // 回到正常唤醒判定。Back to normal wake detection.
+      expect(store.statusLine.value).not.toContain('请说指令')
+    } finally { vi.useRealTimers() }
+  })
+
+  /** 一轮结束（done/error）3 秒后回聆听，界面不会永久停在「完成」。 */
+  it('一轮结束 3 秒后回到聆听', async () => {
+    vi.useFakeTimers()
+    try {
+      const { store } = await setup()
+      store.wakeEnabled.value = true
+      store.state.value = 'done'
+      await nextTick()
+      expect(store.state.value).toBe('done')      // 3 秒内不动。Unchanged within three seconds.
+
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(store.state.value).toBe('listening')
+    } finally { vi.useRealTimers() }
+  })
+})

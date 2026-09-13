@@ -54,6 +54,83 @@ let lastUploadAt = 0
  */
 let listenGen = 0
 
+/** 待答超时定时器：提问后一直没人说话 → 进待机（唤醒词仍生效，再说一次可回到本题续答）。
+ *  Answer-wait timer: nobody speaks after the question → standby (the wake word still works and
+ *  speaking it again resumes *this* question). */
+let answerTimer: ReturnType<typeof setTimeout> | null = null
+/** 等指令过期定时器：只说了唤醒词却没跟指令时，不能让之后的任何一段都被当指令执行。
+ *  Command-expiry timer: after a bare wake word, a later unrelated segment must not be executed as
+ *  the command. */
+let commandTimer: ReturnType<typeof setTimeout> | null = null
+/** 一轮结束后的回聆听定时器（不然界面永久停在「完成」）。
+ *  Post-turn reset timer (without it the UI parks on "完成" forever). */
+let resetTimer: ReturnType<typeof setTimeout> | null = null
+/** 一轮结束到回聆听的等待时长（毫秒）。原实现写死的 3 秒，保持不变。
+ *  Delay between a finished turn and the return to listening, in ms. The hard-coded 3s of the
+ *  original implementation, kept as is. */
+const DONE_RESET_MS = 3000
+
+/** 等待窗口时长（毫秒）：来自 vad.answer_timeout_ms，缺省 8s。
+ *  待答超时与等指令过期共用同一个窗口。
+ *
+ *  Wait-window duration in ms, from vad.answer_timeout_ms (default 8s). The answer wait and the
+ *  command expiry share it: both mean "the user is expected to speak within this window", and
+ *  reusing the existing field keeps this change inside the frontend (a new config would have to be
+ *  added to the backend schema and regenerated into the types). Promote it to its own field later
+ *  if real use shows the two windows want different lengths.
+ *
+ *  @returns 等待窗口毫秒数。The wait window in ms. */
+function answerTimeoutMs(): number {
+  const ms = (vadConfig as { answer_timeout_ms?: number }).answer_timeout_ms
+  return ms && ms > 0 ? ms : 8000
+}
+
+/** 清掉待答超时定时器。Clear the answer-wait timer. */
+function clearAnswerTimer() {
+  if (answerTimer) { clearTimeout(answerTimer); answerTimer = null }
+}
+
+/** 清掉等指令过期定时器。Clear the command-expiry timer. */
+function clearCommandTimer() {
+  if (commandTimer) { clearTimeout(commandTimer); commandTimer = null }
+}
+
+/** 清掉「等待类」定时器（待答超时、等指令过期）：等待随监听一起结束。
+ *  Clear the wait timers (answer wait, command expiry): both waits end when listening stops. */
+function clearWaitTimers() {
+  clearAnswerTimer()
+  clearCommandTimer()
+}
+
+/** 重新武装待答超时窗口。Rearm the answer-wait window. */
+function armAnswerTimer() {
+  clearAnswerTimer()
+  answerTimer = setTimeout(() => {
+    answerTimer = null
+    // 没在监听就谈不上「无应答」：此时进待机会让用户在关闭唤醒的状态下看到「待机中」。
+    // With listening off there is no answer to wait for: entering standby then would show the user
+    // a "待机中" state while the wake feature is disabled.
+    if (!wakeEnabled.value) return
+    // 走 state machine 的迁移表，不另写状态赋值 —— 那张表是穷尽测过的。
+    // Go through the state machine's transition table rather than assigning state by hand: that
+    // table is exhaustively tested.
+    const ns = nextState(state.value, 'answer_timeout')
+    if (ns !== state.value) state.value = ns
+  }, answerTimeoutMs())
+}
+
+/** 武装等指令过期窗口。Arm the command-expiry window. */
+function armCommandTimer() {
+  clearCommandTimer()
+  commandTimer = setTimeout(() => {
+    commandTimer = null
+    if (!awaitingCommand) return
+    awaitingCommand = false
+    statusLine.value = ''
+    console.log('[wake] 等指令超时，恢复唤醒判定')
+  }, answerTimeoutMs())
+}
+
 /** 播放提示音。Play beep sound. */
 function playBeep() {
   try {
@@ -174,6 +251,19 @@ export async function handleSegment(blob: Blob) {
   // this task warns about.
   const pq = pendingQuestion.value
   if (pq) {
+    // 待机态收到一段音频 = 用户又开口了（说唤醒词续答本题）→ 用迁移表回到待答，
+    // 不自己写状态赋值；其余态这条迁移是恒等的（返回原状态），可无条件调用。
+    //
+    // A segment arriving in standby means the user spoke again (the wake word resumes this
+    // question) → return to awaiting_answer through the transition table instead of assigning
+    // state by hand. For every other state that transition is the identity, so it is safe to call
+    // unconditionally.
+    state.value = nextState(state.value, 'wake_detected')
+    // 用户正在开口 → 重新计时：窗口量的是「多久没有分段到来」，不是「距提问多久」。
+    // The user is engaging → restart the clock: the window measures "how long since the last
+    // segment", not "how long since the question".
+    if (state.value === 'awaiting_answer') armAnswerTimer()
+
     const text = await transcribeSegment(blob)
     if (!text) return
     failures = 0
@@ -190,6 +280,8 @@ export async function handleSegment(blob: Blob) {
   // wake detection for it.
   if (awaitingCommand) {
     awaitingCommand = false
+    clearCommandTimer()
+    statusLine.value = ''
     const text = await transcribeSegment(blob)
     if (text) { failures = 0; sendText(text) }
     return
@@ -217,8 +309,13 @@ export async function handleSegment(blob: Blob) {
 
   if (!r.matched) return                          // 噪音/无关对话 → 丢弃。Noise/unrelated talk → dropped.
   if (r.command) { sendText(r.command); return }  // 唤醒词 + 指令 → 直接起一轮。Wake word plus command → a turn.
-  awaitingCommand = true                          // 仅唤醒词 → 提示音后等下一段。Bare wake word → chime, then wait.
+  // 仅唤醒词 → 提示音 + 一句话提示，然后等下一段；窗口过期就作废（见 armCommandTimer）。
+  // Bare wake word → chime plus a one-line hint, then wait for the next segment; the wait is
+  // voided when the window expires (see armCommandTimer).
+  awaitingCommand = true
+  statusLine.value = '已唤醒，请说指令…'
   playBeep()
+  armCommandTimer()
 }
 
 /**
@@ -268,6 +365,7 @@ function startSegmenter() {
 function stopListening() {
   listenGen++
   awaitingCommand = false
+  clearWaitTimers()
   if (segmenter) {
     try { segmenter.stop() } catch (e) { console.error('[Asst] segmenter stop error:', e) }
     segmenter = null
@@ -419,4 +517,37 @@ watch(speaking, (isSpeaking) => {
   // No pending question: resume listening, and only while wake is enabled, so switching wake off
   // never leaves a live mic behind.
   if (wakeEnabled.value) void ensureListening()
+})
+
+/**
+ * 待答窗口的开与关：进入待答就武装超时，离开就撤掉 —— 窗口只属于「正在等回答」这一件事。
+ *
+ * 进入待答的路径不止一条（提问播报结束、待机时被唤醒回来），挂在状态上比逐个入口手动武装可靠。
+ *
+ * The answer window follows the state: armed on entering awaiting_answer, dropped on leaving it —
+ * the window belongs to "an answer is being awaited" and nothing else. More than one path enters
+ * awaiting_answer (the question finished playing, or the user woke from standby), so hanging the
+ * timer off the state is more reliable than arming it at each entry point.
+ */
+watch(state, (s) => {
+  if (s === 'awaiting_answer') armAnswerTimer()
+  else clearAnswerTimer()
+})
+
+/**
+ * 一轮结束（done / error）3 秒后回聆听：否则悬浮球与播放器会永久停在「完成」，
+ * 用户看不出助手是否还在听。仅在有监听时复位 —— 唤醒关着时置为 listening 是假话。
+ *
+ * A finished turn (done / error) returns to listening after 3s, otherwise the ball and the player
+ * park on "完成" and the user cannot tell whether the assistant is still listening. Only while
+ * listening is on: claiming `listening` with the wake feature off would be a lie.
+ */
+watch(state, (s) => {
+  if (resetTimer) { clearTimeout(resetTimer); resetTimer = null }
+  if (s !== 'done' && s !== 'error') return
+  resetTimer = setTimeout(() => {
+    resetTimer = null
+    if (!wakeEnabled.value) return
+    if (state.value === 'done' || state.value === 'error') state.value = 'listening'
+  }, DONE_RESET_MS)
 })
