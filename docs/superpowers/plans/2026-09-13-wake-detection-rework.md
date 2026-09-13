@@ -521,12 +521,18 @@ def test_voice_wake_asr_failure_reports_error(client, monkeypatch):
 
 def test_voice_wake_writes_audit(client, monkeypatch, tmp_path):
     """每次唤醒上传都写审计 —— 这是统计调用量与成本的唯一依据。
-    Every wake upload is audited: that record is the only basis for measuring call volume and cost."""
+    Every wake upload is audited: that record is the only basis for measuring call volume and cost.
+
+    ⚠️ patch 目标是 `core.api.voice.audit`，**不是** `core.logger.audit`：voice.py 用
+    `from core.logger import audit` 顶层导入，名字绑定进了本模块命名空间，改源头那个不影响它。
+    Patch `core.api.voice.audit`, not `core.logger.audit`: voice.py imports the name at module
+    level, so it is bound into this module's namespace and patching the source has no effect.
+    """
     import core.voice as voice_pkg
-    import core.logger as logger_mod
+    import core.api.voice as voice_api
 
     lines: list[str] = []
-    monkeypatch.setattr(logger_mod, "audit", lambda msg: lines.append(msg))
+    monkeypatch.setattr(voice_api, "audit", lambda msg: lines.append(msg))
 
     class _Asr:
         def available(self): return True
@@ -610,10 +616,15 @@ async def voice_wake(request: Request):
         return JSONResponse({"ok": False, "error": str(e)})
 
     result = detect(text, config.settings.voice.wake_word.keywords)
-    # 每次上传记一笔：这是统计调用量与成本的唯一依据（spec「成本与隐私」）。
-    # One audit line per upload: the only basis for measuring call volume and cost.
+    # 每次上传记一笔，用**共用前缀**便于一条 grep 数全（spec「成本与隐私」）。
+    # ⚠️ 不能写成「唯一依据」：/voice/transcribe（作答与指令那一路，往往更频繁）同样上传云端，
+    # 它的审计在 Task 8 才补上。只看 via=wake 会**显著低估**调用量。
+    # One audit line per upload, under a **shared prefix** so a single grep counts them all.
+    # Do NOT call this "the only basis": /voice/transcribe (the answer/command path, usually more
+    # frequent) uploads to the cloud too, and only gained its audit line in Task 8. Counting only
+    # via=wake undercounts significantly.
     audit(
-        f"wake matched={result.matched} chars={len(text)} "
+        f"audio-upload via=wake matched={result.matched} chars={len(text)} "
         f"command={result.command[:40]!r} text={text[:80]!r}"
     )
     return {"ok": True, "matched": result.matched, "command": result.command, "text": result.text}
@@ -764,8 +775,15 @@ class FakeAnalyser {
   static timeline: number[] = []
   static cursor = 0
   getByteTimeDomainData(arr: Uint8Array) {
-    const rms = FakeAnalyser.timeline[Math.min(FakeAnalyser.cursor, FakeAnalyser.timeline.length - 1)] ?? 0
-    for (let i = 0; i < arr.length; i++) arr[i] = 128 + Math.round(rms * 127)
+    // **必须推进 cursor**：不推进的话每次读到的都是 timeline[0]，「先说后静音」这类
+    // 用例永远走不到静音，段永远不结束，测试会以错误的原因失败。
+    // The cursor **must** advance: otherwise every read returns timeline[0], a "speech then
+    // silence" case never reaches silence, the segment never ends, and the test fails for the
+    // wrong reason.
+    const i = Math.min(FakeAnalyser.cursor, FakeAnalyser.timeline.length - 1)
+    FakeAnalyser.cursor++
+    const rms = FakeAnalyser.timeline[i] ?? 0
+    for (let k = 0; k < arr.length; k++) arr[k] = 128 + Math.round(rms * 127)
   }
 }
 
@@ -948,8 +966,11 @@ export function createSegmentRecorder(stream: MediaStream, opts: SegmentOptions)
     }
     recorder.start()
     recording = true
-    speechSeen = false
-    speechMs = 0
+    // 注意：**不要**在这里重置 speechSeen / speechMs —— 调用方紧接着就会置 speechSeen=true
+    // 并累加 speechMs，在此清零会让首帧统计丢失（顺序敏感的陷阱）。这两个变量由 onstop 收尾时复位。
+    // Do **not** reset speechSeen / speechMs here: the caller sets speechSeen and accumulates
+    // speechMs immediately after this returns, so clearing them here would drop the first frame's
+    // tally (an order-sensitive trap). onstop resets them when the segment finishes.
     silenceCount = 0
     elapsed = 0
   }
@@ -1281,11 +1302,19 @@ git commit -m "feat(web): 唤醒判定接入状态机（VAD 驱动，去掉 Vosk
 
 - [ ] **Step 1: 确认无人再引用**
 
-Run:
+Run（**排除本任务要删的文件本身**）：
 ```bash
-grep -rn "vosk\|wake-word\|WakeWordEngine\|initWakeModel" web/src web/index.html web/public --include="*.ts" --include="*.vue" --include="*.html" --include="*.js" | grep -v node_modules
+grep -rn "vosk\|wake-word\|WakeWordEngine\|initWakeModel" web/src web/index.html \
+  --include="*.ts" --include="*.vue" --include="*.html" --include="*.js" \
+  | grep -v node_modules \
+  | grep -vE "wakeEngineRestart\.spec\.ts|wakeKeywords\.spec\.ts|types/vosk\.d\.ts|types/raw\.d\.ts"
 ```
-Expected: **无输出**。若仍有输出，先补完 Task 6 再继续 —— 这一步的前提是上层已断开。
+Expected: **无输出**（剩下 4 个命中都在本任务要删的文件里）。若仍有输出，说明上层没断开干净，先补完 Task 6 再继续。
+
+> ⚠️ 注意门禁的写法：**不能把 `web/public` 也搜进去**。`public/lib/wake-word.js`、`public/vosk-test.html` 就在那里，
+> 它们是本任务要删的对象；把它们算进「有人引用」会让这条门禁**永远不可能通过**。
+> Note the gate deliberately excludes `web/public`: the files to be deleted live there, and counting them as
+> "still referenced" would make this gate impossible to pass.
 
 - [ ] **Step 2: 删除文件**
 
@@ -1295,12 +1324,18 @@ git rm -r web/public/lib/wake-word.js web/public/lib/vosk.js web/public/models w
 
 - [ ] **Step 3: 清掉 index.html 的脚本引用**
 
-`web/index.html` 删除：
+`web/index.html` 删除**三行**（`<head>` 里 7–9 行连着三个 script）：
 
 ```html
   <script src="/lib/vosk.js"></script>
   <script>window.vosk = window.Vosk</script>
+  <script src="/lib/wake-word.js"></script>
 ```
+
+> ⚠️ 第 3 行 `<script src="/lib/wake-word.js">` 容易漏 —— 它是**引擎本身**的加载标签，
+> 删了文件却留着标签会让浏览器 404。删完确认 `<head>` 里不再有 `/lib/` 的 script。
+> The third line loads the engine itself and is easy to miss; deleting the file while leaving the tag
+> yields a 404. After deleting, confirm no `/lib/` script remains in `<head>`.
 
 - [ ] **Step 4: 全量回归（前后端）**
 
@@ -1325,12 +1360,40 @@ git commit -m "chore(唤醒): 移除 Vosk 引擎与 43MB 模型
 
 ---
 
-## Task 8: 端到端验证与文档
+## Task 8: 收尾清理 + 端到端验证与文档
 
 **Files:**
-- Modify: `README.md`、`wiki/Security.md`、`docs/architecture/roadmap.md`
+- Modify: `README.md`、`wiki/Security.md`、`wiki/Configuration.md`、`docs/architecture/roadmap.md`、`docs/architecture/01-voice-control-agent.md`
+- Modify: `web/scripts/verify-voice.mjs`、`web/scripts/screenshot.mjs`
+- Modify: `core/config/schema.py`、`core/api/schemas.py`、`config.yaml.example`（+ 本机 `config.yaml`）
+- Modify: `vite.config.ts`、`server.py`
+- Delete: `scripts/libs/vosk-0.3.45-py3-none-win_amd64.whl`
 
-- [ ] **Step 1: 全量自动化**
+> **本任务的两半性质不同**：前半（Step 1–2）是 Task 7 审查挂起的清理项，**可自动化、由实现者完成**；
+> 后半（Step 5–6）的**人工验收必须由真人对着麦克风做，不可由实现者代劳**。实现者做完前半、
+> 把后半的清单交回控制器即可，**不得**在未实际验证的情况下把人工项写成通过。
+
+- [ ] **Step 1: 清掉 Task 7 审查挂起的残留**
+
+逐项处理（每条都来自 Task 7 的审查，理由见各条）：
+
+1. **`web/scripts/verify-voice.mjs` 的检查 4 现在只能报空洞的 PASS** —— 它探的是已删除的
+   `window.WakeWordEngine.isRunning()`，恒为假，导致 FAIL 分支不可达、`runningBefore/After` 恒为 0。
+   这是**假保障**，而它正是交付给用户做人工验收的工具，必须先修。
+   新架构下「播报含唤醒词不自触发」的等价判据是：**播报期间不得产生/上传任何音频分段**
+   （助手自己的声音若被 VAD 切段并上传，就是自触发）。请把该检查重指到分段录音器/状态机上，
+   并让它在**无法取得判据时报 INCONCLUSIVE 而不是 PASS**。
+2. **`model_path` 默认值仍指向已删除的模型**：`core/config/schema.py` 与 `core/api/schemas.py`
+   的默认值改为 `""`（两处手工副本必须同步 —— 老陷阱）。
+   ⚠️ 这**会改 openapi**，故必须同 commit 重跑 `npm run gen:api` 并提交 `generated.ts`。
+3. **删除 `scripts/libs/vosk-0.3.45-py3-none-win_amd64.whl`（14MB）** —— 不在 `requirements.txt`、
+   无人 import，与刚删的 43MB 模型同属死重。
+4. `vite.config.ts` 的 `publicDir: 'public'` 现指向不存在的目录（Vite 有 `existsSync` 守卫，无功能影响）——
+   删除该行或改指向存在的目录。
+5. 陈旧注释：`web/scripts/screenshot.mjs` 里「等 Vosk 模型就绪」的措辞、`server.py` 的 `_EXTRA_TYPES`
+   （多数后缀只服务于已删的模型树）—— 一并清理；`_EXTRA_TYPES` 若仍被其它用途需要则只删模型专属项并说明。
+
+- [ ] **Step 2: 全量自动化**
 
 Run:
 ```bash
@@ -1339,7 +1402,7 @@ cd web && npm test && npm run build
 ```
 Expected: 全部通过
 
-- [ ] **Step 2: 类型同步门禁**
+- [ ] **Step 3: 类型同步门禁**
 
 Run:
 ```bash
@@ -1347,7 +1410,7 @@ cd web && npm run gen:api && git diff --exit-code src/api/generated.ts && echo "
 ```
 Expected: 无 diff 输出
 
-- [ ] **Step 3: 起服务（严格确认端口）**
+- [ ] **Step 4: 起服务（严格确认端口）**
 
 ```bash
 taskkill //F //FI "IMAGENAME eq python.exe" ; sleep 2
@@ -1356,7 +1419,7 @@ python main.py serve > /tmp/srv.log 2>&1 &
 sleep 8 && (grep -qa "10048" /tmp/srv.log && echo "❌ 跑的是旧进程" || echo "✓ 绑定成功")
 ```
 
-- [ ] **Step 4: 人工验收（必须做，不得跳过）**
+- [ ] **Step 5: 人工验收 —— ⛔ 由用户执行，实现者不得代劳**
 
 > **这一步不能由自动化替代**：spec 里所有实测用的都是 **SAPI 合成音**，云端对合成音识别好
 > **不代表对真人好**。必须真人有声环境下逐条验证。
@@ -1372,12 +1435,12 @@ sleep 8 && (grep -qa "10048" /tmp/srv.log && echo "❌ 跑的是旧进程" || ec
 
 **若某项未通过，如实标注「未通过」并停下**，不得据此宣称功能可用。
 
-- [ ] **Step 5: 记录实测调用频率（成本）**
+- [ ] **Step 6: 记录实测调用频率（成本）**
 
 人工验收期间留意 console 的 `[wake]` 日志，记录：**每 10 分钟正常对话约触发几次上传**。
 把数字写进下面的文档更新里 —— 这是成本控制的依据。
 
-- [ ] **Step 6: 同步文档**
+- [ ] **Step 7: 同步文档**
 
 `README.md`：
 - 「语音唤醒」一行改为：VAD → 唤醒判定 → ASR，唤醒词「衍衡」「洛吉斯」
@@ -1388,7 +1451,7 @@ sleep 8 && (grep -qa "10048" /tmp/srv.log && echo "❌ 跑的是旧进程" || ec
 
 `docs/architecture/roadmap.md`：新增 P8（唤醒链路重构）一行，标注**子项目 1 完成、2/3/4 待做**。
 
-- [ ] **Step 7: 提交并推送**
+- [ ] **Step 8: 提交并推送**
 
 ```bash
 git add README.md wiki/Security.md docs/architecture/roadmap.md
