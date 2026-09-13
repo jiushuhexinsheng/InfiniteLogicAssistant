@@ -106,3 +106,81 @@ it('stop 后不再产段', async () => {
   await vi.advanceTimersByTimeAsync(3000)
   expect(got.length).toBe(0)
 })
+
+/** stop() 时正在途中的那一段不上传：用户已经关掉唤醒了，不该还上传一段音频。
+ *  A segment still in flight when stop() is called is never uploaded: the user just turned wake
+ *  off, nothing should be sent. */
+it('stop 时在途的段不上传', async () => {
+  const got: Blob[] = []
+  FakeAnalyser.timeline = [0.5]              // 一直有声：stop() 时正有一段在途
+  const rec = createSegmentRecorder(stream, { ...OPTS, onSegment: (b) => got.push(b) })
+  rec.start()
+  await vi.advanceTimersByTimeAsync(500)     // 已开录且 speechMs=500（远超 minSpeechMs）
+  rec.stop()
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(got.length).toBe(0)
+})
+
+/** 构造失败后必须复位记账状态：否则 speechSeen 卡在 true，后续语音再也切不出段（永久停摆）。
+ *  A failed constructor must still reset the bookkeeping: otherwise speechSeen sticks at true and
+ *  no later speech can ever start a segment again (a permanent stall). */
+it('MediaRecorder 构造抛异常后，后续语音仍能切出段', async () => {
+  const got: Blob[] = []
+  const Real = FakeRecorder
+  let made = 0
+  // 第一台 recorder 构造即抛异常，之后恢复正常（模拟真实环境里偶发的构造失败）。
+  // The first recorder throws from its constructor, later ones work (an occasional real failure).
+  ;(globalThis as any).MediaRecorder = function (s: any, o: any) {
+    if (made++ === 0) throw new Error('constructor failed')
+    return new Real(s, o)
+  }
+  ;(globalThis as any).MediaRecorder.isTypeSupported = () => true
+
+  // 第一个 tick 有声音（恰好撞上构造失败），随后静音：这一段不该产出。
+  FakeAnalyser.timeline = [0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  const rec = createSegmentRecorder(stream, { ...OPTS, onSegment: (b) => got.push(b) })
+  rec.start()
+  await vi.advanceTimersByTimeAsync(500)     // 语音：第一次 beginSegment 构造失败
+  await vi.advanceTimersByTimeAsync(500)     // 静音：失败的段不应产出
+  expect(got.length).toBe(0)
+  FakeAnalyser.timeline = [0.5]
+  await vi.advanceTimersByTimeAsync(500)     // 语音：必须还能开新段
+  FakeAnalyser.timeline = [0]
+  await vi.advanceTimersByTimeAsync(3000)    // 静音：这一段应当产出
+  expect(got.length).toBe(1)
+  rec.stop()
+})
+
+/** endSegment() 撞上「没有 live recorder」也必须复位：这台 recorder 起手就废（start 不进入
+ *  recording、stop 也不触发 onstop），不会有 onstop 来收尾，只能就地复位。
+ *  endSegment() meeting a recorder that never went live must reset in place too: this one is dead
+ *  from the start (start() never enters recording, stop() never fires onstop), so no onstop will
+ *  ever come to settle the segment. */
+it('endSegment 撞上无 live recorder 后，后续语音仍能切出段', async () => {
+  const got: Blob[] = []
+  const Real = FakeRecorder
+  let made = 0
+  ;(globalThis as any).MediaRecorder = function (s: any, o: any) {
+    const r = new Real(s, o)
+    if (made++ === 0) {
+      // 模拟一台已自行失效的录音器：既不进入 recording，也不会回调 onstop。
+      r.start = () => { r.state = 'inactive' }
+      r.stop = () => { r.state = 'inactive' }
+    }
+    return r
+  }
+  ;(globalThis as any).MediaRecorder.isTypeSupported = () => true
+
+  FakeAnalyser.timeline = [0.5]
+  const rec = createSegmentRecorder(stream, { ...OPTS, onSegment: (b) => got.push(b) })
+  rec.start()
+  await vi.advanceTimersByTimeAsync(500)     // 语音：第一台（哑的）recorder
+  FakeAnalyser.timeline = [0]
+  await vi.advanceTimersByTimeAsync(3000)    // 静音：endSegment 撞上无 live recorder
+  FakeAnalyser.timeline = [0.5]
+  await vi.advanceTimersByTimeAsync(500)     // 语音：必须还能开新段（第二台正常）
+  FakeAnalyser.timeline = [0]
+  await vi.advanceTimersByTimeAsync(3000)    // 静音：这一段应当产出
+  expect(got.length).toBe(1)
+  rec.stop()
+})
