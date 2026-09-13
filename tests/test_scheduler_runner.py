@@ -12,7 +12,8 @@ from core.scheduler.runner import _SilentChannel
 async def test_silent_channel_ask_records_rejected():
     """测试静默通道在无人应答时记录被拒请求。Tests the silent channel recording rejected asks when no one answers."""
     ch = _SilentChannel()
-    ans = await ch.ask("确认执行吗？删除 /tmp/x", kind="confirm")
+    ans = await ch.ask("确认执行吗？删除 /tmp/x", kind="choice",
+                       options=[{"value": "yes", "label": "确认"}, {"value": "no", "label": "取消"}])
     assert ans == Answer()  # 无人应答 → 无 choice → 确认被拒
     assert ans.choice is None
     assert ch.rejected == ["确认执行吗？删除 /tmp/x"]
