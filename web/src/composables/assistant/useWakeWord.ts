@@ -54,6 +54,10 @@ let lastUploadAt = 0
  */
 let listenGen = 0
 
+/** 开启流程是否在途：取流可能耗时数秒（权限弹窗时更久），期间状态还没变成 listening。
+ *  Whether an enable is in flight: acquisition can take seconds (longer behind a permission prompt)
+ *  while the state is still not `listening`. */
+let startingWake = false
 /** 待答超时定时器：提问后一直没人说话 → 进待机（唤醒词仍生效，再说一次可回到本题续答）。
  *  Answer-wait timer: nobody speaks after the question → standby (the wake word still works and
  *  speaking it again resumes *this* question). */
@@ -376,14 +380,30 @@ function stopListening() {
   }
 }
 
+/** 取流结果。The outcome of an acquisition attempt. */
+type AcquireOutcome =
+  /** 取流成功且录音器已启动。Stream acquired and the recorder started. */
+  | 'ok'
+  /** 取流或启动失败，已收干净（流已释放、无录音器），statusLine 已给出提示。Failed and tidied up. */
+  | 'mic-error'
+  /** 等待期间被暂停/关闭，流已释放 —— 不是错误，不该报错。Superseded by a pause; not an error. */
+  | 'aborted'
+
 /**
- * 确保常驻监听在跑：没有录音器时重新取流并新建一个。
- * Ensure always-on listening is running: re-acquire the stream and build a recorder when there is none.
+ * 取流并启动常驻分段录音器 —— 开启与播报后恢复**共用这一条路径**（含代际守卫与失败收尾）。
  *
- * @returns 是否正在监听。Whether listening is running.
+ * 抽成一处而不是两条各自演化：取流 + 建录音器 + 代际校验 + 失败释放，任何一环漏做都会留下
+ * 「麦开着却没人听」或「一台谁也够不到的录音器」——正是本重构要消除的那类故障。
+ *
+ * Acquire a stream and start the always-on segment recorder — the **single** path shared by the
+ * enable flow and the post-playback resume, including the generation guard and the failed-startup
+ * tidy-up. Kept in one place because two copies would drift, and missing any one step
+ * (acquire → build → generation check → release on failure) leaves either a mic open with nobody
+ * listening or a recorder nothing can reach — the failure class this rework removes.
+ *
+ * @returns 取流结果。The outcome.
  */
-async function ensureListening(): Promise<boolean> {
-  if (!wakeEnabled.value || segmenter) return false
+async function acquireAndStart(): Promise<AcquireOutcome> {
   const gen = listenGen
   let stream: MediaStream
   try {
@@ -391,21 +411,20 @@ async function ensureListening(): Promise<boolean> {
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
     })
   } catch (e) {
-    // 这里刻意不走 failWake：它会把状态置为 error、弹开面板并写一条醒目错误，而此刻用户
-    // 很可能正等着回答提问 —— 取流失败只该在状态行提示，不该把「待答」冲掉。
-    // Deliberately not failWake: it forces state to `error`, expands the panel and posts a loud
-    // message, and the user is likely mid-answer — a failed acquisition should surface a hint on
-    // the status line, not clobber the awaiting state.
-    console.warn('[Asst] resume listening failed:', e)
+    // 这里只写 statusLine，不 failWake：调用方（开启流程）自己决定要不要把状态置为 error，
+    // 而播报后恢复的调用方不该把用户的「待答」冲掉。
+    // Only the status line is set here, never failWake: the enable caller decides whether to move
+    // to `error`, while the post-playback caller must not clobber the awaiting state.
+    console.warn('[Asst] getUserMedia failed:', e)
     statusLine.value = describeMicError(e)
-    return false
+    return 'mic-error'
   }
   if (gen !== listenGen) {
-    // 等待期间又被暂停了（播报开始 / 关掉唤醒）：这条流已经不该存在，当场释放。
-    // A pause landed while acquisition was in flight (playback started, wake switched off): this
-    // stream should not exist any more, so release it on the spot.
+    // 等待期间被暂停/关闭了（播报开始 / 关掉唤醒 / 又一次开启）：这条流已经不该存在，当场释放。
+    // Superseded while the acquisition was in flight (playback started, wake switched off, or a
+    // newer enable): this stream should not exist any more, so release it on the spot.
     try { stream.getTracks().forEach((t) => t.stop()) } catch { /* ignore */ }
-    return false
+    return 'aborted'
   }
   micStream = stream
   try {
@@ -417,10 +436,22 @@ async function ensureListening(): Promise<boolean> {
     // silent "mic held open but nobody listening" failure this rework exists to remove, so fall
     // back to not listening.
     console.error('[Asst] segmenter start failed:', e)
+    statusLine.value = '唤醒启动失败，请重试'
     stopListening()
-    return false
+    return 'mic-error'
   }
-  return true
+  return 'ok'
+}
+
+/**
+ * 确保常驻监听在跑：没有录音器时重新取流并新建一个。
+ * Ensure always-on listening is running: re-acquire the stream and build a recorder when there is none.
+ *
+ * @returns 是否正在监听。Whether listening is running.
+ */
+async function ensureListening(): Promise<boolean> {
+  if (!wakeEnabled.value || segmenter) return false
+  return (await acquireAndStart()) === 'ok'
 }
 
 /** 开启/关闭唤醒。Toggle wake word detection on/off.
@@ -431,38 +462,54 @@ export async function toggleWake() {
   statusLine.value = ''
 
   if (state.value === 'idle' || state.value === 'done' || state.value === 'error') {
-    // 开启。Enable.
-    statusLine.value = '正在启动唤醒...'
-
-    // 预检麦克风设备：无可用录音设备时提前提示，避免模糊的 NotFoundError。
-    // Pre-check microphone devices: prompt early when no recording device available, avoid ambiguous NotFoundError.
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      const mics = devices.filter((d) => d.kind === 'audioinput')
-      if (mics.length === 0) {
-        console.warn('[Asst] no audioinput device found')
-        failWake('系统未检测到麦克风设备，请连接/启用麦克风后重试')
-        return
-      }
-      console.log('[Asst] audioinput devices:', mics.map((m) => m.label || '(未授权标签)').join(', '))
-    } catch (e) {
-      console.warn('[Asst] enumerateDevices fail:', e)
-    }
-
-    try {
-      micStream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-      })
-    } catch (e: any) {
-      console.error('[Asst] getUserMedia failed:', e)
-      failWake(describeMicError(e))
+    // 重入守卫：取流期间状态仍是 idle/done/error，用户连点两次就会两次进这个分支。
+    // 没有这道闸会建出两条流 + 两台录音器，而 stopListening 只持有最新那个 —— 被孤立的那台
+    // 会一直录、一直上传直到页面结束（权限弹窗让这个窗口长达数秒）。
+    // Re-entry guard: the state is still idle/done/error while the stream is being acquired, so a
+    // double click enters this branch twice. Without the latch that builds two streams and two
+    // recorders while stopListening only holds the newest — the orphan keeps recording and
+    // uploading until the page dies (a permission prompt makes that window seconds long).
+    if (startingWake) {
+      console.log('[Asst] enable already in flight, ignoring')
       return
     }
-    startSegmenter()
-    wakeEnabled.value = true
-    state.value = 'listening'
-    statusLine.value = ''
-    console.log('[Asst] listening started!')
+    startingWake = true
+    try {
+      statusLine.value = '正在启动唤醒...'
+
+      // 预检麦克风设备：无可用录音设备时提前提示，避免模糊的 NotFoundError。
+      // Pre-check microphone devices: prompt early when no recording device available, avoid ambiguous NotFoundError.
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const mics = devices.filter((d) => d.kind === 'audioinput')
+        if (mics.length === 0) {
+          console.warn('[Asst] no audioinput device found')
+          failWake('系统未检测到麦克风设备，请连接/启用麦克风后重试')
+          return
+        }
+        console.log('[Asst] audioinput devices:', mics.map((m) => m.label || '(未授权标签)').join(', '))
+      } catch (e) {
+        console.warn('[Asst] enumerateDevices fail:', e)
+      }
+
+      const outcome = await acquireAndStart()
+      if (outcome !== 'ok') {
+        // 失败一律收在这里：acquireAndStart 已经把流释放、录音器收掉，这里只负责让对外的
+        // wakeEnabled / state 与真实情况一致（绝不出现「说已开启但麦克风是死的」）。
+        // Every failure is absorbed here: acquireAndStart has already released the stream and
+        // dropped the recorder, so this only keeps wakeEnabled / state honest (never "claims to be
+        // on while the mic is dead").
+        if (outcome === 'aborted') statusLine.value = '唤醒启动被打断，请再点一次'
+        else failWake(statusLine.value || '麦克风启动失败，请检查系统/浏览器麦克风权限')
+        return
+      }
+      wakeEnabled.value = true
+      state.value = 'listening'
+      statusLine.value = ''
+      console.log('[Asst] listening started!')
+    } finally {
+      startingWake = false
+    }
   } else {
     // 关闭。Disable.
     console.log('[Asst] stopping...')

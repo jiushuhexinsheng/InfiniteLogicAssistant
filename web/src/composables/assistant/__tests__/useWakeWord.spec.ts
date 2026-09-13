@@ -164,6 +164,88 @@ describe('describeMicError 麦克风错误文案', () => {
 })
 
 /**
+ * 播报门控与开启路径共用的桩：可断言的麦克风流、flush、以及一整套 getUserMedia/录音器/依赖模块的替身。
+ *
+ * 共用一份而不是每个 describe 各写一套 —— 同一份夹具的两份拷贝会各自漂移，
+ * 而这里要断言的恰恰是「取流与录音器的生命周期只有一处实现」。
+ *
+ * Shared fixtures for the playback gate and the enable path: an assertable mic stream, flush, and a
+ * full set of getUserMedia / recorder / dependency-module doubles.
+ *
+ * Shared rather than copied per describe: two copies of one fixture drift apart, and what is under
+ * assertion here is precisely that the stream-and-recorder lifecycle has a single implementation.
+ */
+
+/** 可断言的麦克风流。An assertable mic stream. */
+function makeStream() {
+  const track = { stop: vi.fn() }
+  return { getTracks: () => [track], track } as any
+}
+
+/** 等 watch 回调与其内部的异步分支（getUserMedia）跑完。
+ *  Wait for the watch callback and its async branch (getUserMedia) to settle. */
+async function flush() {
+  await nextTick()
+  await nextTick()
+  await new Promise((r) => setTimeout(r, 0))
+}
+
+/**
+ * 桩：录音器句柄、麦克风、依赖模块；返回真实 store 与本模块。
+ * Stubs: recorder handles, mic, dependency modules; returns the real store and this module.
+ *
+ * @param opts.throwOnStart 建录音器时抛错（验开启路径的失败收尾）。Make recorder construction
+ *   throw, to exercise the enable path's failed-startup tidy-up.
+ */
+async function setupWake(opts: { throwOnStart?: boolean } = {}) {
+  const handles: any[] = []
+  vi.doMock('../useSegmentRecorder', () => ({
+    createSegmentRecorder: (stream: any, o: any) => {
+      if (opts.throwOnStart) throw new Error('AudioContext unavailable')
+      const h = { start: vi.fn(), stop: vi.fn(), isRecording: () => false, stream, opts: o }
+      handles.push(h)
+      return h
+    },
+  }))
+  const streams: any[] = []
+  /** 下一次 getUserMedia 是否挂起（用手动放行模拟真实取流耗时，权限弹窗时可达数秒）。
+   *  Whether the next getUserMedia hangs (a manual release stands in for real acquisition latency,
+   *  which can be seconds while a permission prompt is up). */
+  let deferNext = false
+  const pending: Array<(s: any) => void> = []
+  const getUserMedia = vi.fn(async () => {
+    if (deferNext) {
+      deferNext = false
+      return new Promise<any>((res) => pending.push(res))
+    }
+    const s = makeStream()
+    streams.push(s)
+    return s
+  })
+  vi.stubGlobal('navigator', {
+    mediaDevices: {
+      enumerateDevices: vi.fn(async () => [{ kind: 'audioinput', label: 'mic' }]),
+      getUserMedia,
+    },
+  })
+  vi.doMock('../../../api', () => ({ api: { wakeDetect: vi.fn(), transcribe: vi.fn() } }))
+  vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
+  vi.doMock('../useTts', async () => {
+    const { ref } = await import('vue')
+    return { speaking: ref(false), speakAuto: vi.fn() }
+  })
+  const store = await import('../store')
+  const tts = await import('../useTts')
+  const ww = await import('../useWakeWord')
+  return {
+    store, ww, handles, streams, getUserMedia,
+    speaking: tts.speaking as any,
+    defer: () => { deferNext = true },
+    release: (s: any) => { pending.shift()?.(s) },
+  }
+}
+
+/**
  * 播报期间暂停监听、播完恢复 —— 消除助手自己的声音自触发唤醒。
  *
  * 实现已从「停/起 Vosk 引擎」改为「停/起分段录音器」：暂停时**释放麦克风轨道**，
@@ -180,73 +262,11 @@ describe('describeMicError 麦克风错误文案', () => {
  * instance's `suppressed` flag still holds, so it cannot emit either).
  */
 describe('useWakeWord 播报门控', () => {
-  /** 可断言的麦克风流。An assertable mic stream. */
-  function makeStream() {
-    const track = { stop: vi.fn() }
-    return { getTracks: () => [track], track } as any
-  }
-
-  /** 等 watch 回调与其内部的异步分支（getUserMedia）跑完。
-   *  Wait for the watch callback and its async branch (getUserMedia) to settle. */
-  async function flush() {
-    await nextTick()
-    await nextTick()
-    await new Promise((r) => setTimeout(r, 0))
-  }
-
-  /** 桩：录音器句柄、麦克风、依赖模块；返回真实 store 与本模块。
-   *  Stubs: recorder handles, mic, dependency modules; returns the real store and this module. */
-  async function setup() {
-    const handles: any[] = []
-    vi.doMock('../useSegmentRecorder', () => ({
-      createSegmentRecorder: (stream: any, opts: any) => {
-        const h = { start: vi.fn(), stop: vi.fn(), isRecording: () => false, stream, opts }
-        handles.push(h)
-        return h
-      },
-    }))
-    const streams: any[] = []
-    /** 下一次 getUserMedia 是否挂起（用手动放行模拟真实取流耗时）。
-     *  Whether the next getUserMedia hangs (a manual release stands in for real acquisition latency). */
-    let deferNext = false
-    const pending: Array<(s: any) => void> = []
-    const getUserMedia = vi.fn(async () => {
-      if (deferNext) {
-        deferNext = false
-        return new Promise<any>((res) => pending.push(res))
-      }
-      const s = makeStream()
-      streams.push(s)
-      return s
-    })
-    vi.stubGlobal('navigator', {
-      mediaDevices: {
-        enumerateDevices: vi.fn(async () => [{ kind: 'audioinput', label: 'mic' }]),
-        getUserMedia,
-      },
-    })
-    vi.doMock('../../../api', () => ({ api: { wakeDetect: vi.fn(), transcribe: vi.fn() } }))
-    vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
-    vi.doMock('../useTts', async () => {
-      const { ref } = await import('vue')
-      return { speaking: ref(false), speakAuto: vi.fn() }
-    })
-    const store = await import('../store')
-    const tts = await import('../useTts')
-    const ww = await import('../useWakeWord')
-    return {
-      store, ww, handles, streams, getUserMedia,
-      speaking: tts.speaking as any,
-      defer: () => { deferNext = true },
-      release: (s: any) => { pending.shift()?.(s) },
-    }
-  }
-
   beforeEach(() => { vi.resetModules(); localStorage.clear() })
 
   /** 播报开始 → 停掉分段录音器并释放麦克风轨道。Playback starting stops the recorder and releases the mic. */
   it('播报开始 → 停止分段录音并释放麦克风', async () => {
-    const { ww, handles, streams, speaking } = await setup()
+    const { ww, handles, streams, speaking } = await setupWake()
     await ww.toggleWake()
     expect(handles).toHaveLength(1)
     expect(handles[0].start).toHaveBeenCalledTimes(1)
@@ -261,7 +281,7 @@ describe('useWakeWord 播报门控', () => {
   /** 播报结束且无待答提问 → 重新取流并新建录音器，恢复聆听。
    *  Playback ending with no pending question re-acquires the stream, builds a new recorder and listens again. */
   it('播报结束且无待答提问 → 重新取流恢复监听', async () => {
-    const { store, ww, handles, getUserMedia, speaking } = await setup()
+    const { store, ww, handles, getUserMedia, speaking } = await setupWake()
     await ww.toggleWake()
     store.pendingQuestion.value = null
 
@@ -279,7 +299,7 @@ describe('useWakeWord 播报门控', () => {
   /** 播报结束且**有待答提问** → 回到待答并恢复监听（既有语义，不得丢）。
    *  Playback ending with a pending question returns to awaiting_answer and resumes listening. */
   it('播报结束且有待答提问 → 回到待答并恢复监听', async () => {
-    const { store, ww, handles, getUserMedia, speaking } = await setup()
+    const { store, ww, handles, getUserMedia, speaking } = await setupWake()
     await ww.toggleWake()
     store.pendingQuestion.value = {
       text: '确认执行吗？', kind: 'choice',
@@ -299,7 +319,7 @@ describe('useWakeWord 播报门控', () => {
 
   /** 唤醒开关关闭时播完不重启（避免「关了唤醒却被动开麦」）。 */
   it('唤醒开关关闭时播完不重新取流', async () => {
-    const { store, getUserMedia, speaking } = await setup()
+    const { store, getUserMedia, speaking } = await setupWake()
     store.wakeEnabled.value = false
     store.pendingQuestion.value = null
 
@@ -316,7 +336,7 @@ describe('useWakeWord 播报门控', () => {
    *  A pause landing while getUserMedia is in flight must release the late stream and must not build a
    *  recorder — otherwise the mic revives mid-playback and the assistant's own voice can wake it. */
   it('取流途中又被暂停 → 释放迟到的流且不新建录音器', async () => {
-    const { ww, handles, speaking, defer, release } = await setup()
+    const { ww, handles, speaking, defer, release } = await setupWake()
     await ww.toggleWake()          // 第 1 次取流成功。First acquisition succeeds.
 
     defer()                        // 第 2 次取流挂起。Second acquisition hangs.
@@ -354,7 +374,7 @@ describe('useWakeWord 等待窗口与收尾', () => {
 
   /** 装好桩与真实 store；调用方负责 fake/real 计时器的开关。
    *  Wire the stubs and the real store; the caller owns the fake/real timer switch. */
-  async function setup(opts: { wake?: any; sent?: string[] } = {}) {
+  async function setupWait(opts: { wake?: any; sent?: string[] } = {}) {
     const sent = opts.sent ?? []
     vi.doMock('../../../api', () => ({
       api: {
@@ -379,7 +399,7 @@ describe('useWakeWord 等待窗口与收尾', () => {
   it('待答无应答 → 进待机；待机时再开口 → 回到本题作答', async () => {
     vi.useFakeTimers()
     try {
-      const { store, mod, sendAnswer } = await setup()
+      const { store, mod, sendAnswer } = await setupWait()
       store.wakeEnabled.value = true              // 前提：语音作答只存在于监听开着的时候。Precondition: voice answering only exists while listening is on.
       store.pendingQuestion.value = {
         text: '确认执行吗？', kind: 'choice',
@@ -408,7 +428,7 @@ describe('useWakeWord 等待窗口与收尾', () => {
       const wakeDetect = vi.fn()
         .mockResolvedValueOnce({ ok: true, matched: true, command: '', text: '衍衡。' })
         .mockResolvedValue({ ok: true, matched: false, command: '', text: '今天天气怎么样。' })
-      const { store, mod } = await setup({ wake: wakeDetect, sent })
+      const { store, mod } = await setupWait({ wake: wakeDetect, sent })
 
       await mod.handleSegment(new Blob(['x']))    // 裸唤醒词 → 进等指令窗口。Bare wake word → command window opens.
       expect(sent).toEqual([])
@@ -426,7 +446,7 @@ describe('useWakeWord 等待窗口与收尾', () => {
   it('一轮结束 3 秒后回到聆听', async () => {
     vi.useFakeTimers()
     try {
-      const { store } = await setup()
+      const { store } = await setupWait()
       store.wakeEnabled.value = true
       store.state.value = 'done'
       await nextTick()
@@ -435,5 +455,64 @@ describe('useWakeWord 等待窗口与收尾', () => {
       await vi.advanceTimersByTimeAsync(3000)
       expect(store.state.value).toBe('listening')
     } finally { vi.useRealTimers() }
+  })
+})
+
+/**
+ * 开启路径的重入与失败收尾。
+ *
+ * 取流期间（权限弹窗时长达数秒）状态仍是 idle/done/error，所以连点两次会**两次进入开启分支**：
+ * 两条流、两台录音器，而 stopListening 只持有最新那个 —— 被孤立的那台会一直录、一直上传，
+ * 直到页面结束。这正是本重构要消除的「麦开着却没人听」。
+ *
+ * Re-entry and failed-startup tidy-up on the enable path. While the stream is being acquired (seconds
+ * long behind a permission prompt) the state is still idle/done/error, so a double click enters the
+ * enable branch **twice**: two streams, two recorders, while stopListening only holds the newest —
+ * the orphan keeps recording and uploading until the page dies, exactly the "mic open with nobody
+ * listening" failure this rework removes.
+ */
+describe('useWakeWord 开启路径', () => {
+  beforeEach(() => { vi.resetModules(); localStorage.clear() })
+
+  /** 并发重入：只采集一次；关闭时所有流与录音器都被收掉。 */
+  it('并发重入开启 → 只采集一次，关闭时收掉全部流与录音器', async () => {
+    const { ww, handles, streams, getUserMedia, defer, release } = await setupWake()
+
+    defer()                                  // 第一次取流挂起。First acquisition hangs.
+    const p1 = ww.toggleWake()
+    const p2 = ww.toggleWake()               // 用户等权限弹窗时又点了一次。The user clicks again.
+    await flush()
+
+    // 不变量：重入不得再起第二条采集。
+    // Invariant: a re-entry must not start a second acquisition.
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
+
+    const s1 = makeStream()
+    release(s1)                              // 放行第一条流。Release the first stream.
+    await p1
+    await p2
+
+    expect(handles).toHaveLength(1)
+    expect(handles[0].start).toHaveBeenCalledTimes(1)
+
+    await ww.toggleWake()                    // 关掉唤醒。Switch wake off.
+
+    // 收干净：采集到的每一条流都被关掉，没有一台录音器还在跑（否则它还在上传）。
+    // Everything collected is released: every stream closed and no recorder left running (a running
+    // recorder is still uploading).
+    expect([...streams, s1].every((s) => s.track.stop.mock.calls.length === 1)).toBe(true)
+    expect(handles.every((h) => h.stop.mock.calls.length === 1)).toBe(true)
+  })
+
+  /** 启动抛错：不得留下活着的麦克风流，也不得让 wakeEnabled 与真实状态不一致。 */
+  it('启动抛错 → 释放麦克风且不谎报已开启', async () => {
+    const { store, ww, handles, streams } = await setupWake({ throwOnStart: true })
+
+    await ww.toggleWake()                    // 不得抛出：异常必须被收在开启路径里。Must not reject.
+
+    expect(handles).toHaveLength(0)
+    expect(streams.every((s) => s.track.stop.mock.calls.length === 1)).toBe(true)   // 流已释放。Stream released.
+    expect(store.wakeEnabled.value).toBe(false)
+    expect(store.state.value).toBe('error')  // failWake：明确提示，不静默。Loud, never silent.
   })
 })
