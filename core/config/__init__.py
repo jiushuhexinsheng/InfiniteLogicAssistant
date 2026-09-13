@@ -38,7 +38,8 @@ from core.config.runtime import (
 )
 from core.config.schema import (
     AgentSection, AsrProfile, AsrSection, CompatConfig, LlmClientSection, LlmProfile,
-    LlmSection, McpSection, McpServer, ProfileBase, RagSection, ServerSection, Settings,
+    LlmSection, McpSection, McpServer, PermissionRule, PermissionsSection, PermissionTiers,
+    ProfileBase, RagSection, ServerSection, Settings,
     ToolsSection, TtsProfile, TtsSection, VadConfig, VendorPreset, VoiceSection,
     WakeWordConfig,
 )
@@ -52,6 +53,7 @@ __all__ = [
     "LlmSection", "AsrSection", "TtsSection",
     "WakeWordConfig", "VadConfig", "VoiceSection",
     "AgentSection", "LlmClientSection", "ToolsSection",
+    "PermissionRule", "PermissionsSection", "PermissionTiers",
     "McpServer", "McpSection", "RagSection", "ServerSection",
     # loader
     "_read_yaml", "_resolve_env", "_load_secrets", "_profile_api_key", "_inject_secrets",

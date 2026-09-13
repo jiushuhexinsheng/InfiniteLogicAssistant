@@ -230,6 +230,7 @@ def editable_snapshot() -> dict:
         "agent": s.agent.model_dump(),
         "llm_client": s.llm_client.model_dump(),
         "tools": s.tools.model_dump(),
+        "permissions": s.permissions.model_dump(),
         "mcp": {"servers": [m.model_dump() for m in s.mcp.servers]},
         "rag": s.rag.model_dump(),
         "server": {
