@@ -44,6 +44,7 @@ export const menuDefs: MenuDef[] = [
   { id: 'asr', label: '语音识别', icon: 'mic' },
   { id: 'tts', label: '语音合成', icon: 'volume' },
   { id: 'voice', label: '语音唤醒', icon: 'ear' },
+  { id: 'permissions', label: '权限', icon: 'shield' },
   { id: 'advanced', label: '高级设置', icon: 'zap' },
 ]
 

@@ -86,6 +86,11 @@ export function moduleBody(id: string): Record<string, any> {
     }
   }
   if (id === 'tts') return { tts: { enabled: e.tts.enabled, active: e.tts.active, profiles: e.tts.profiles } }
+  // 权限段不是 profile 形状，必须单独分支 —— 否则会落到下面的兜底分支，
+  // PATCH 出 {active: undefined, profiles: undefined} 这样的垃圾数据。
+  // The permissions section is not profile-shaped, so it needs its own branch; the
+  // fall-through below would PATCH garbage like {active: undefined, profiles: undefined}.
+  if (id === 'permissions') return { permissions: e.permissions }
   return { [id]: { active: e[id].active, profiles: e[id].profiles } }
 }
 
