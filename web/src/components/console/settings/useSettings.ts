@@ -36,7 +36,6 @@ import * as apiKeys from './apiKeys'
 export function useSettings() {
   return {
     // ── 核心状态与配置读写 / Core state and config load-save ──
-    app: state.app,
     editable: state.editable,
     saving: state.saving,
     activeMenu: state.activeMenu,
