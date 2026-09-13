@@ -134,3 +134,54 @@ async def test_subagent_high_risk_tool_confirm_approved(monkeypatch):
     r = await run_subagent("你是助手", "写文件", confirm=confirm)
     assert r.status == "done"
     assert calls == ["write_file"]  # 确认后执行
+
+
+# ─── 子代理的工具调用也走权限策略（第 4 个消费点）───
+
+
+def _policy_returning(action, source="rule:test"):
+    from core.tools.policy import Decision
+    return lambda name, section=None: Decision(action, source)
+
+
+@pytest.mark.asyncio
+async def test_subagent_policy_allowed_tool_skips_confirm(monkeypatch):
+    """策略 allow 的工具在子代理内免确认执行（不再依赖 risk==read）。
+
+    否则用户在设置页配置的策略会被子代理路径绕过。
+    A policy-allowed tool runs inside a subagent without confirmation (no longer keyed on
+    risk==read); otherwise the policy configured in the settings page would be bypassed by
+    the subagent path.
+    """
+    import core.agent.base as base
+    monkeypatch.setattr(base, "decide", _policy_returning("allow", "rule:run_*"))
+    fake = _FakeLLM([
+        [_done(tool="run_shell_tool", args=json.dumps({"command": "echo hi"}))],
+        [_done(content="完成")],
+    ])
+    monkeypatch.setattr("core.agent.base.get_llm_client", lambda: fake)
+    # 不传 confirm → 若走了确认分支会被拒；能 done 说明确实免确认执行了
+    r = await run_subagent("doer", "跑个命令", context="", cancel=CancellationToken())
+    assert r.status == "done", r.summary
+
+
+@pytest.mark.asyncio
+async def test_subagent_policy_denied_tool_refused(monkeypatch):
+    """策略 deny 的工具在子代理内直接拒绝，即使有 confirm 通道也不问。
+    A policy-denied tool is refused inside a subagent even when a confirm channel exists."""
+    import core.agent.base as base
+    monkeypatch.setattr(base, "decide", _policy_returning("deny", "rule:run_*"))
+    called = []
+
+    async def confirm(name, args):
+        called.append(name)
+        return True
+
+    fake = _FakeLLM([
+        [_done(tool="run_shell_tool", args=json.dumps({"command": "echo hi"}))],
+        [_done(content="完成")],
+    ])
+    monkeypatch.setattr("core.agent.base.get_llm_client", lambda: fake)
+    r = await run_subagent("doer", "跑个命令", context="", cancel=CancellationToken(), confirm=confirm)
+    assert r.status == "done"
+    assert called == [], "策略 deny 时不应再向操作者提问"

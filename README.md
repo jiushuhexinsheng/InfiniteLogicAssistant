@@ -208,7 +208,12 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 - **CORS**：`server.cors_origins` 默认空 = 禁止跨域；本地同源/开发代理（vite 代理 /api）无需配置。
 - **密钥零落库**：`config.yaml` 不含密钥，密钥在 `config.secrets.yaml` / 环境变量；API 永不回显密钥值，
   设置页只报「已设置 / 未设置」。
-- **无沙箱 + 人类在环**：高风险工具（`write`/`exec`）执行前经操作者明确确认，无人值守（定时任务）自动拒绝。
+- **无沙箱 + 人类在环（策略可配）**：工具是否需要操作者确认由 `permissions` 策略决定（设置页「权限」可改），
+  默认 **只读工具免询问、写入/执行工具需明确确认**；无人值守（定时任务）一律拒绝。
+  **放宽策略即降低安全边界** —— 把 `exec` 层级设为 `allow` 等于让任意命令免确认执行，请确认你接受该风险。
+  策略求值顺序：未注册工具 → 拒绝；任一 `deny` 规则短路（不可被后续规则翻案）；首条匹配规则；层级默认；`default_action`。
+  注意边界：策略管的是**单个工具调用**；任务开始时仍有一次**计划级确认**（按 LLM 判定的任务风险），
+  它不受 `permissions` 影响 —— 把 `exec` 设为 `allow` 只会免除逐工具的询问，不会免掉这次计划确认。
 - **审计**：工具执行与高风险确认决策写入 `data/audit.log`（独立于 agent.log）。
 - **凭据/环境**：`config.secrets.yaml`、`environment.md`（含本机信息）不入仓库；`package_deploy.bat` 打包时只带
   `config.yaml.example` / `config.secrets.yaml.example` 模板，不含任何密钥。

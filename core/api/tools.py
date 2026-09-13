@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from core.api.schemas import ToolCallResponse, ToolsResponse
-from core.logger import logger
+from core.logger import audit, logger
 from core.tools import TOOLS
 from core.tools.policy import decide
 
@@ -59,6 +59,12 @@ async def tools_call(request: Request):
     # requires the confirm flag; allow runs directly.
     decision = decide(name)
     if decision.action == "deny":
+        # 策略拒绝必须落审计：被拦下的调用永远到不了 TOOLS.acall（那里才记日志），
+        # 若不在此记录，拒绝事件将完全静默。
+        # A policy denial must be audited: the blocked call never reaches TOOLS.acall
+        # (which is where logging normally happens), so without this the denial would be
+        # entirely silent.
+        audit(f"tools policy denied name={name} source={decision.source} via=/api/tools/call")
         return JSONResponse(
             {"ok": False, "error": f"操作者策略禁止调用 {name}（{decision.source}）"},
             status_code=403,
