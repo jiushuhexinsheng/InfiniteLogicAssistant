@@ -843,3 +843,49 @@ def test_tool_call_denied_by_policy_is_audited(client, monkeypatch):
     assert r.status_code == 403
     assert len(recorded) == 1
     assert "denied" in recorded[0] and "run_shell_tool" in recorded[0] and "rule:run_*" in recorded[0]
+
+
+def test_voice_utter_rejected_while_session_awaiting_answer(client):
+    """会话正阻塞在 ask() 时，新的 utter 必须被拒 —— 否则会新建 Session 覆盖注册表，
+    把旧的 ask() 变成永久挂死的孤儿。
+    A new utter must be rejected while the session is blocked in ask(); otherwise it would
+    create a fresh Session, overwrite the registry, and orphan the old ask() forever."""
+    import asyncio
+    from core.api import state
+    from core.orchestrator.control import StopController
+    from core.orchestrator.pipeline import EventQueueChannel
+    from core.orchestrator.session import Session
+
+    session = Session(session_id="busy")
+    ch = EventQueueChannel(asyncio.Queue(), "busy")
+    ch.awaiting_answer = True
+    session.channel = ch
+    state.register(session, StopController())
+    try:
+        r = client.post("/api/voice/utter", json={"text": "新的指令", "session_id": "busy"})
+        assert r.status_code == 409
+        assert "等待回答" in r.json()["error"]
+    finally:
+        state.cleanup("busy")
+
+
+def test_voice_utter_allowed_when_session_not_awaiting(client):
+    """会话未在等回答时正常放行（回归：守卫不能误伤正常续接）。
+    A session that is not awaiting an answer proceeds normally (the guard must not block
+    ordinary resumption)."""
+    import asyncio
+    from core.api import state
+    from core.orchestrator.control import StopController
+    from core.orchestrator.pipeline import EventQueueChannel
+    from core.orchestrator.session import Session
+
+    session = Session(session_id="idle-sess")
+    ch = EventQueueChannel(asyncio.Queue(), "idle-sess")
+    ch.awaiting_answer = False
+    session.channel = ch
+    state.register(session, StopController())
+    try:
+        r = client.post("/api/voice/utter", json={"text": "新的指令", "session_id": "idle-sess"})
+        assert r.status_code == 200   # 返回 SSE 流
+    finally:
+        state.cleanup("idle-sess")
