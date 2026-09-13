@@ -1,7 +1,7 @@
 import { reactive } from 'vue'
 import { api, streamUtter } from '../../api'
 import { formatError } from '../../errors'
-import { state, messages, tokenUsage, partialText, genId, addMessage, buildHistory, MAX_MESSAGES, pendingQuestion, currentSessionId } from './store'
+import { state, messages, tokenUsage, partialText, genId, addMessage, buildHistory, MAX_MESSAGES, pendingQuestion, currentSessionId , assistantMode } from './store'
 import { speakAuto } from './useTts'
 import type { ChatMessage, ToolCall } from './store'
 
@@ -148,7 +148,8 @@ export async function runTurn() {
       speakAuto('出错了：' + msg)
       state.value = 'error'
     },
-  }, { messages: history, sessionId: currentSessionId.value || undefined, signal: abortController.signal })
+  }, { messages: history, sessionId: currentSessionId.value || undefined,
+       signal: abortController.signal, mode: assistantMode.value })
 }
 
 /** 回答澄清/确认问题（解除后端 ask() 阻塞）。
