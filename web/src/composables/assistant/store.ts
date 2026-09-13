@@ -6,6 +6,14 @@ import type { QuestionOption, TokenUsage, WakeWordConfig, VadConfig } from '../.
 export type AsstState =
   | 'idle'
   | 'listening'
+  /** 等待操作者回答某个提问：转写将走答案通道，而不是开新一轮。
+   *  Waiting for the operator to answer a question: the transcript goes to the answer
+   *  channel rather than starting a new turn. */
+  | 'awaiting_answer'
+  /** 等待回答超时后的待机：引擎仍在听唤醒词，唤醒后回到**本题**续答。
+   *  Standby after the answer timeout: the engine still listens for the wake word, and
+   *  waking resumes *this* question. */
+  | 'standby'
   | 'recording'
   | 'transcribing'
   | 'thinking'

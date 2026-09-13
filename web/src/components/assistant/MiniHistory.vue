@@ -8,6 +8,8 @@
         <span class="mini-eq"><i></i><i></i><i></i></span>
         聆听中，说"{{ wakeKeyword }}"唤醒我
       </template>
+      <template v-else-if="state === 'awaiting_answer'">🎤 请直接说出你的回答…</template>
+      <template v-else-if="state === 'standby'">💤 待机中，说"{{ wakeKeyword }}"继续回答</template>
       <template v-else-if="state === 'recording'">🎙️ 录音中…</template>
       <template v-else-if="state === 'transcribing'">✨ 识别中…</template>
       <template v-else>说"{{ wakeKeyword }}"开始对话，或输入文字</template>

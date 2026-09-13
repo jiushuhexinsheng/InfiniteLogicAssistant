@@ -62,7 +62,7 @@ const props = defineProps<{
 const emit = defineEmits<{ open: []; dismiss: [] }>()
 
 /** 处于活跃状态的助手状态列表。List of active assistant states. */
-const ACTIVE_STATES: AsstState[] = ['listening', 'recording', 'transcribing', 'thinking', 'tool_calling', 'responding']
+const ACTIVE_STATES: AsstState[] = ['listening', 'recording', 'awaiting_answer', 'transcribing', 'thinking', 'tool_calling', 'responding']
 
 /**
  * 计算当前是否为活跃状态（控制 EQ 动画）。
@@ -79,7 +79,7 @@ const lastMsg = computed<ChatMessage | null>(() => props.messages[props.messages
  */
 const miniText = computed(() => {
   const p = props.partialText
-  if (p && ['recording', 'listening'].includes(props.state)) return p
+  if (p && ['recording', 'listening', 'awaiting_answer'].includes(props.state)) return p
   if (lastMsg.value) return lastMsg.value.text
   return props.statusLine || ''
 })
