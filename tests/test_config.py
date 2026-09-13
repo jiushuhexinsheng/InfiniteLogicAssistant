@@ -3,6 +3,7 @@
 Tests core/config.py — API key priority, new fields, and the settings snapshot.
 """
 import pytest
+from pydantic_core import PydanticUndefined
 
 import core.config as c
 
@@ -293,21 +294,67 @@ def test_vad_wake_cost_control_bounds():
         c.VadConfig(upload_throttle_ms=-1)
 
 
-def test_vad_duplicate_in_api_schemas_stays_in_sync():
-    """**手工副本陷阱**：`core/api/schemas.py` 里有 VadConfig 的副本，不同步的话
-    FastAPI 的 response_model 会静默丢掉新字段，前端 `/api/config` 收不到。
+# ─── 手工副本陷阱：两份模型必须逐字段一致（含默认值与 default_factory）───
 
-    逐字段比较「字段名 → (注解, 默认值)」：任何一边漏改（增删改名）、默认值漂移
-    （config 300 vs api 1000）、或注解变化（int → float）都会红。
+
+def _field_signature(model_cls) -> dict:
+    """字段名 → (注解, 默认值)，**default_factory 也要真的求值**。
+
+    ⚠️ 不能直接用 `field.default`：带 `default_factory` 的字段它是 `PydanticUndefined`，
+    两边于是都等于同一个哨兵值 —— `keywords: []` 与 `keywords: ["衍衡","洛吉斯"]` 会被
+    判成一致，而这正是本模型最常见的漂移形状。`get_default(call_default_factory=True)`
+    把工厂调出来，漂移才现形。
+
+    Field name → (annotation, default), with **default_factory actually evaluated**. Reading
+    `field.default` directly yields PydanticUndefined for a factory field, so both sides collapse to
+    the same sentinel and `keywords: []` vs `keywords: ["衍衡","洛吉斯"]` compares equal — exactly
+    the drift shape this model has. Calling the factory is what makes the drift visible.
+
+    Args:
+        model_cls: pydantic 模型类。The pydantic model class.
+
+    Returns:
+        字段名到 (注解, 默认值) 的映射。A mapping of field name to (annotation, default).
+    """
+    out = {}
+    for name, field in model_cls.model_fields.items():
+        try:
+            default = field.get_default(call_default_factory=True)
+        except Exception:  # 工厂抛错：用哨兵表示「无法求值」，两边都抛才算一致
+            default = PydanticUndefined
+        out[name] = (field.annotation, default)
+    return out
+
+
+def test_wake_and_vad_duplicates_in_api_schemas_stay_in_sync():
+    """**手工副本陷阱**：`core/api/schemas.py` 里有 `VadConfig` 与 `WakeWordConfig` 的副本，
+    不同步的话 FastAPI 的 response_model 会静默丢掉字段，前端 `/api/config` 收不到。
+
+    两份都必须查，理由不一样：
+
+    - `VadConfig`：漏同步 = 字段从 `/api/config` 里消失（本次踩过）。
+    - `WakeWordConfig`：它**在 `EditableSnapshot` 里**，而设置页（`settings/state.ts`）
+      会把整个对象原样 PATCH 回来 —— 漏同步就不只是「前端读不到」，而是**下一次保存设置时
+      把漂移值写回 `config.yaml`**，把用户配置擦掉。漂移在这里更贵。
+
+    比较「字段名 → (注解, 默认值**含 default_factory**）」：增删改名、默认值漂移、工厂返回值
+    漂移（`[]` vs `["衍衡","洛吉斯"]`）、注解变化（int → float）都会红。
 
     ⚠️ 不比较校验约束（ge/le）：api 副本本来就**故意不带**约束（它只负责 response_model
     的字段名/类型/默认值契约），canonical 模型才做校验。拿 model_json_schema() 比会把这种
     有意差异误报成漂移。
 
-    **The duplicate-model trap**: `core/api/schemas.py` carries a copy of VadConfig. If they drift,
-    FastAPI's response_model silently drops the new field and the frontend never sees it in
-    /api/config. This case compares each field's name → (annotation, default), so a missing/renamed
-    field, a default drift, or an annotation change on either side fails.
+    **The duplicate-model trap**: `core/api/schemas.py` carries copies of both `VadConfig` and
+    `WakeWordConfig`. If they drift, FastAPI's response_model silently drops the field and the
+    frontend never sees it in /api/config. Both are checked, for different reasons:
+    `VadConfig` loses fields from /api/config, while `WakeWordConfig` sits inside
+    `EditableSnapshot`, which the settings page round-trips wholesale — so drift there is not just
+    "the frontend cannot read it" but **the drifted value gets written back into `config.yaml` on
+    the next settings save**, erasing the user's configuration. Drift is more expensive here.
+
+    Comparing name → (annotation, default **including default_factory**) fails on a
+    missing/renamed field, a default drift, a factory-value drift (`[]` vs `["衍衡","洛吉斯"]`), or
+    an annotation change.
 
     NOTE: validation constraints (ge/le) are intentionally **not** compared — the api copy
     deliberately carries none (it only defines the response_model contract of names/types/defaults),
@@ -317,7 +364,14 @@ def test_vad_duplicate_in_api_schemas_stays_in_sync():
     from core.api import schemas as api_schemas
     from core.config import schema as cfg_schema
 
-    def signature(model_cls):
-        return {name: (field.annotation, field.default) for name, field in model_cls.model_fields.items()}
-
-    assert signature(cfg_schema.VadConfig) == signature(api_schemas.VadConfig)
+    pairs = [
+        ("VadConfig", cfg_schema.VadConfig, api_schemas.VadConfig),
+        ("WakeWordConfig", cfg_schema.WakeWordConfig, api_schemas.WakeWordConfig),
+    ]
+    for name, cfg_model, api_model in pairs:
+        assert set(_field_signature(cfg_model)) == set(_field_signature(api_model)), (
+            f"{name}: 字段集合不一致（增删改名 / missing or renamed field）"
+        )
+        assert _field_signature(cfg_model) == _field_signature(api_model), (
+            f"{name}: 注解或默认值漂移（annotation / default / default_factory drift）"
+        )

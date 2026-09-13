@@ -3,6 +3,7 @@ import { api } from '../../api'
 import { nextState } from './wakeFsm'
 import { speaking } from './useTts'
 import { state, partialText, statusLine, wakeEnabled, vadConfig, pendingQuestion, failWake } from './store'
+import type { AsstState } from './store'
 import { createSegmentRecorder, type SegmentRecorder } from './useSegmentRecorder'
 import { sendText, sendAnswer } from './useChat'
 import { matchOption } from './answerMatch'
@@ -89,6 +90,57 @@ function answerTimeoutMs(): number {
   return ms && ms > 0 ? ms : 8000
 }
 
+/** 允许被「识别中」临时覆盖的状态 —— 都在等云端，且没有更重要的东西要显示。
+ *  思考/播报/完成/出错不在其列：那些状态下界面正显示用户更需要看到的内容。
+ *
+ *  States that may be temporarily overridden by "transcribing" — all of them are waiting on the
+ *  cloud and have nothing more important to show. Thinking / responding / done / error are not:
+ *  those carry something the user needs to see more. */
+const TRANSCRIBABLE: AsstState[] = ['listening', 'standby', 'awaiting_answer', 'recording']
+
+/**
+ * 进入「识别中」并返回进入前的状态（供结束时还原）；不该覆盖时返回 null。
+ *
+ * 为什么需要它：`/voice/wake` 与 `/voice/transcribe` 都是**云端往返，要数秒**。没有这段提示，
+ * 界面在整段往返里停在「聆听中」—— 用户以为没听见，于是重说一遍，反而多一次付费上传。
+ *
+ * 这两个状态在本次重构里一度**无人赋值**（旧实现由 Vosk 回调驱动）：spec 说状态机不变、只换
+ * 触发源，故这里按「谁在等云端」把它们补回来。
+ *
+ * Enter "transcribing" and return the previous state (for restoration), or null when the current
+ * state must not be overridden.
+ *
+ * Why this exists: both /voice/wake and /voice/transcribe are **cloud round-trips that take
+ * seconds**. Without this hint the UI sits on "listening" for the whole round-trip, the user thinks
+ * they were not heard, repeats themselves, and buys a second paid upload.
+ *
+ * Both states briefly had **no assignments at all** in this rework (the old code drove them from the
+ * Vosk callbacks); the spec says the state machine is unchanged and only the trigger is swapped, so
+ * they are restored here around "whoever is waiting on the cloud".
+ *
+ * @returns 进入前的状态；未覆盖时为 null。The previous state, or null when nothing was overridden.
+ */
+function beginTranscribe(): AsstState | null {
+  if (!TRANSCRIBABLE.includes(state.value)) return null
+  const prev = state.value
+  state.value = 'transcribing'
+  return prev
+}
+
+/**
+ * 结束「识别中」：只有仍停在 transcribing 时才还原。
+ *
+ * 期间若已走到别处（思考/完成/待机/错误），说明那条路径给出了更准的状态，不能被这里倒回去。
+ *
+ * Leaving "transcribing": restore only while still there. A move elsewhere (thinking / done /
+ * standby / error) means that path has already set a truer state, which must not be overwritten.
+ *
+ * @param prev beginTranscribe 的返回值。The value returned by beginTranscribe.
+ */
+function endTranscribe(prev: AsstState | null) {
+  if (prev && state.value === 'transcribing') state.value = prev
+}
+
 /** 清掉待答超时定时器。Clear the answer-wait timer. */
 function clearAnswerTimer() {
   if (answerTimer) { clearTimeout(answerTimer); answerTimer = null }
@@ -131,6 +183,10 @@ function armCommandTimer() {
     if (!awaitingCommand) return
     awaitingCommand = false
     statusLine.value = ''
+    // 窗口过期 → 等指令的提示态一并收掉，界面回到真实状态（还在听，只是不再等这一句指令）。
+    // The window expired → drop the command-wait state too, so the UI returns to the truth (still
+    // listening, just no longer waiting for that one command).
+    if (state.value === 'recording') state.value = wakeEnabled.value ? 'listening' : 'idle'
     console.log('[wake] 等指令超时，恢复唤醒判定')
   }, answerTimeoutMs())
 }
@@ -189,15 +245,47 @@ export function describeMicError(e: any): string {
   }
 }
 
+/**
+ * 用户显式重启监听时清零失败计数。
+ *
+ * 熔断的出口必须真的存在：计数只在**成功**时才清零，而一旦熔断就再也不会有人上传，成功因此
+ * 永远不可能 —— 计数器锁死，唯一出路是刷新页面。这里的清零让「关掉再打开唤醒」成为名副其实的
+ * 恢复动作（提示文案里写的也正是它）。
+ *
+ * 清零是安全的：云端若仍然不可用，再失败 3 次即重新熔断，提示也随之回来 —— 恢复动作不会
+ * 掩盖问题，只是给了一次真实的重试。
+ *
+ * Reset the failure counter when the user explicitly restarts listening. The breaker needs a real
+ * way out: the counter used to clear on **success** only, but once tripped nothing ever uploads
+ * again, so success became impossible — the counter latched and only a page reload could clear it.
+ * Clearing it here makes "switch wake off and on again" the recovery action the message promises.
+ *
+ * Clearing is safe: if the cloud is still down, three more failures trip the breaker again and the
+ * warning comes back — the recovery never hides the problem, it just grants one honest retry.
+ */
+function resetFailures() {
+  if (failures === 0) return
+  failures = 0
+  console.log('[wake] 用户重启监听，失败计数已清零')
+}
+
 /** 上传失败累计与熔断提示。Count upload failures and surface the circuit break. */
 function onUploadFailed() {
   failures++
   if (failures >= FAILURE_LIMIT) {
     // spec「错误与降级」：云端不可用必须**明确提示**，不静默失败 ——
     // 否则用户只看到「唤醒突然不灵了」，无从判断原因。
+    //
+    // 文案必须写明**可行的**出路：提示若不给出路，用户只能猜；给了出路却不能兑现，就是假保障。
+    // 这里的出路是真的 —— resetFailures 会在用户关闭/再次开启唤醒时清零（见其说明）。
+    //
     // Spec, "errors and degradation": an unavailable cloud must be surfaced explicitly, never
     // fail silently — otherwise the user only sees "waking suddenly stopped working".
-    statusLine.value = '⚠️ 云端唤醒不可用（已连续失败 3 次）· 可双击悬浮球手动触发'
+    //
+    // The message must name a route that **works**: a warning with no way out leaves the user
+    // guessing, and one whose way out does not work is a false assurance. This one is real —
+    // resetFailures clears the counter when the user switches wake off and on (see above).
+    statusLine.value = '⚠️ 云端唤醒不可用（已连续失败 3 次）：关闭再开启唤醒可重试'
     console.warn('[wake] 连续失败达阈值，已暂停上传')
   }
 }
@@ -210,12 +298,18 @@ function onUploadFailed() {
  * @returns 去空白后的转写文本，失败/空结果为空串。The trimmed transcript, or '' on failure/empty.
  */
 async function transcribeSegment(blob: Blob): Promise<string> {
+  const prev = beginTranscribe()
   try {
     const r = await api.transcribe(blob)
     return (r?.text || '').trim()
   } catch {
     onUploadFailed()
     return ''
+  } finally {
+    // finally 而非成功路径：失败时同样要退出「识别中」，否则状态永久卡死。
+    // finally rather than the success path: a failure must leave "transcribing" too, or the state
+    // would stick forever.
+    endTranscribe(prev)
   }
 }
 
@@ -286,6 +380,12 @@ export async function handleSegment(blob: Blob) {
     awaitingCommand = false
     clearCommandTimer()
     statusLine.value = ''
+    // 等指令到此结束：这一段无论转写出什么都已不再是「正在等你说指令」，先摘掉那个状态，
+    // 免得转写为空（没听清）时它永久挂着 —— 那时没有任何定时器会再来收它（上面刚清掉）。
+    // The wait for the command ends here: whatever this segment transcribes to, "waiting for your
+    // command" is over. Drop that state first, or an empty transcript would leave it hanging forever
+    // — the timer that could clear it was just dropped above.
+    if (state.value === 'recording') state.value = 'listening'
     const text = await transcribeSegment(blob)
     if (text) { failures = 0; sendText(text) }
     return
@@ -301,11 +401,17 @@ export async function handleSegment(blob: Blob) {
   lastUploadAt = now
 
   let r: Awaited<ReturnType<typeof api.wakeDetect>> | undefined
+  const prev = beginTranscribe()
   try {
     r = await api.wakeDetect(blob)
   } catch {
     onUploadFailed()
     return
+  } finally {
+    // 判定期间显示「识别中」；先退出该提示，下面的分支再决定真正的去向。
+    // The judgement shows "transcribing"; leave that hint here and let the branches below decide
+    // where it really goes.
+    endTranscribe(prev)
   }
   if (!r?.ok) { onUploadFailed(); return }
   failures = 0
@@ -314,10 +420,22 @@ export async function handleSegment(blob: Blob) {
   if (!r.matched) return                          // 噪音/无关对话 → 丢弃。Noise/unrelated talk → dropped.
   if (r.command) { sendText(r.command); return }  // 唤醒词 + 指令 → 直接起一轮。Wake word plus command → a turn.
   // 仅唤醒词 → 提示音 + 一句话提示，然后等下一段；窗口过期就作废（见 armCommandTimer）。
+  // 状态置 recording（而非只留 statusLine）：接下来这几秒确实在等用户开口说指令，
+  // 悬浮球/状态胶囊要能看出来 —— 旧实现同样在此置 recording，重构时漏掉了。
+  //
   // Bare wake word → chime plus a one-line hint, then wait for the next segment; the wait is
-  // voided when the window expires (see armCommandTimer).
+  // voided when the window expires (see armCommandTimer). The state becomes `recording` rather
+  // than only a status line: for those seconds the assistant genuinely is waiting for the user to
+  // speak the command and the ball/pill must show it. The old implementation set `recording` here
+  // too; the rework dropped it.
   awaitingCommand = true
   statusLine.value = '已唤醒，请说指令…'
+  // 只从「没有更重要的东西要显示」的状态进入 recording：助手正在思考/播报时来了一段含唤醒词
+  // 的音频（多半是误触发），把「思考中」改写成「录音中」会读成「这轮被取消了」。
+  // Only enter `recording` from states with nothing more important on screen: a wake word arriving
+  // while the assistant is thinking or speaking is most likely a false trigger, and rewriting
+  // "thinking" as "recording" would read as "this turn was cancelled".
+  if (state.value === 'listening' || state.value === 'standby') state.value = 'recording'
   playBeep()
   armCommandTimer()
 }
@@ -370,6 +488,15 @@ function stopListening() {
   listenGen++
   awaitingCommand = false
   clearWaitTimers()
+  // 等指令的提示态（唯一写 recording 的地方就是 handleSegment）随监听一起结束：麦克风已释放，
+  // 再显示「录音中」就是假话；而且命令窗口的定时器刚被清掉，没有别的路径会来收它 —— 留着
+  // 就是「界面永久停在录音中」的静默故障。
+  //
+  // The command-wait state (handleSegment is the only writer of `recording`) ends with listening:
+  // the mic is released, so "recording" would be a plain lie, and the command timer was just
+  // dropped above, so nothing else could ever clear it — it would park the UI on "recording"
+  // forever, silently.
+  if (state.value === 'recording') state.value = wakeEnabled.value ? 'listening' : 'idle'
   if (segmenter) {
     try { segmenter.stop() } catch (e) { console.error('[Asst] segmenter stop error:', e) }
     segmenter = null
@@ -488,6 +615,14 @@ async function ensureListening(): Promise<boolean> {
 export async function toggleWake() {
   console.log('[Asst] toggleWake called, current state:', state.value)
   statusLine.value = ''
+  // 用户主动开启/关闭 → 熔断计数清零（提示文案里写的就是这条出路）。
+  // 不清零的话「关掉再打开」只是把警告抹掉、上传依旧不会恢复 —— 正是本重构要消灭的
+  // 「症状消失、故障还在」。
+  //
+  // A user-initiated on/off clears the breaker counter — this is the route the warning names.
+  // Without it, "switch it off and on" would only wipe the warning while uploads stayed dead: the
+  // symptom gone, the fault intact — precisely what this rework exists to remove.
+  resetFailures()
 
   if (state.value === 'idle' || state.value === 'done' || state.value === 'error') {
     // 重入守卫：取流期间状态仍是 idle/done/error，用户连点两次就会两次进这个分支。

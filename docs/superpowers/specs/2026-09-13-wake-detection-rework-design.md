@@ -149,6 +149,19 @@ ASR 未配置或调用失败 → `{ "ok": false, "error": "..." }`，前端按�
 
 **不变**：`AsstState` 状态机、录音时长上限、TTS 播报门控、`/voice/utter` 与 `/voice/answer` 全部照旧。
 
+> **状态赋值（复审后补齐，2026-09-14）**：交互式录音换成云端往返后，`recording` 与
+> `transcribing` 一度**无人赋值**（旧实现由 Vosk 回调驱动），界面在数秒的云端往返里停在
+> 「聆听中」。状态机本身不变，只把这两个状态的触发源接回：
+>
+> | 时机 | 状态 |
+> |---|---|
+> | 调 `/api/voice/wake` 或 `/api/voice/transcribe` 期间 | `transcribing`（返回后还原为进入前的状态） |
+> | 命中唤醒词、进入等指令窗口（`command` 为空） | `recording` |
+> | 等指令窗口过期 / 停止监听 / 该段转写结束 | 回落 `listening`（监听已关则 `idle`） |
+>
+> 只在 `listening` / `standby` / `awaiting_answer` / `recording` 之上覆盖，绝不改写
+> `thinking` / `responding` / `done` / `error` —— 那些状态下界面有用户更需要看到的内容。
+
 ---
 
 ## 成本与隐私
