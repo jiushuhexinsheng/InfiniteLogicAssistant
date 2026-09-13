@@ -339,7 +339,7 @@ def test_voice_utter_forwards_messages(client, monkeypatch):
     """测试 voice/utter 透传历史消息。Tests voice/utter forwarding the messages history."""
     captured = {}
 
-    async def fake_run(text, session, events, controller, channel=None, messages=None):
+    async def fake_run(text, session, events, controller, channel=None, messages=None, mode="chat"):
         captured["messages"] = messages
         await events.put({"type": "done"})
 
@@ -924,3 +924,32 @@ def test_library_detail_unknown_404(client, tmp_path, monkeypatch):
     import core.api.library as lib
     monkeypatch.setattr(lib, "_get_store", lambda: store_mod.TaskStore(tmp_path / "lib2.sqlite"))
     assert client.get("/api/library/999999").status_code == 404
+
+
+# ─── /voice/utter 的 mode 透传 ───
+
+def test_voice_utter_passes_mode_to_pipeline(client, monkeypatch):
+    """mode 从请求体传到 pipeline；非法/缺失一律按 chat（向后兼容）。"""
+    from core.orchestrator import pipeline as pl
+
+    captured: dict = {}
+
+    async def fake_run_pipeline(text, session, events, controller, channel=None,
+                                messages=None, mode="chat"):
+        captured["mode"] = mode
+
+    # voice.py 在函数内 `from core.orchestrator.pipeline import run_pipeline`，
+    # 即调用时才读模块属性 → patch 源模块即可生效。
+    # voice.py imports run_pipeline lazily inside the handler, so patching the source
+    # module attribute takes effect.
+    monkeypatch.setattr(pl, "run_pipeline", fake_run_pipeline)
+
+    for payload, expected in (
+        ({"text": "做事", "mode": "task"}, "task"),
+        ({"text": "做事", "mode": "胡说"}, "chat"),   # 非法值回退
+        ({"text": "做事"}, "chat"),                   # 缺省（老前端）
+    ):
+        with client.stream("POST", "/api/voice/utter", json=payload) as r:
+            assert r.status_code == 200
+            list(r.iter_lines())
+        assert captured["mode"] == expected, f"{payload} → 期望 {expected}"

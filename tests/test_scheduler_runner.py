@@ -28,7 +28,7 @@ async def test_run_scheduled_cancelled_persists_and_returns_rejected(monkeypatch
     async def fake_persist(session, created=None):
         captured["session"] = session
 
-    async def fake_pipeline(text, session, events, controller, channel=None, messages=None):
+    async def fake_pipeline(text, session, events, controller, channel=None, messages=None, mode="chat"):
         # 模拟：高风险任务，无人应答 → 确认被拒
         await channel.ask("确认执行吗？删除 /tmp/x")
         session.append("assistant", "操作者未确认，任务取消")
@@ -56,7 +56,7 @@ async def test_run_scheduled_readonly_returns_done(monkeypatch):
     async def fake_persist(session, created=None):
         captured["session"] = session
 
-    async def fake_pipeline(text, session, events, controller, channel=None, messages=None):
+    async def fake_pipeline(text, session, events, controller, channel=None, messages=None, mode="chat"):
         session.append("assistant", "查询完成")
         await events.put({"type": "task_state", "state": "done", "status": "done", "summary": "查询完成"})
         await events.put({"type": "done"})
