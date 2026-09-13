@@ -7,7 +7,8 @@
 >
 > P0–P3 已全部完成并合入主分支（见 `roadmap.md`）。**桌面语音监听已暂停开发、不再回迁**：
 > 桌面悬浮球 UI 代码迁移至 `desktop-ball` 分支（桌面常驻监听已一并移除）。
-> 当前语音交互 = **浏览器 Vosk WASM 唤醒 + 后端 OpenAI 兼容 ASR/TTS + SpeechSynthesis 播报**。
+> 当前语音交互 = **浏览器本地 VAD 分段 + 云端（`POST /api/voice/wake`）唤醒判定 + 后端 OpenAI
+> 兼容 ASR/TTS + SpeechSynthesis 播报**（2026-09-13 唤醒链路重构，Vosk 引擎与模型已删除）。
 > 下文涉及「桌面常驻语音监听」的段落均为设计意图/历史说明，与当前主分支实现存在差异。
 
 > ## 与当前实现的差异（2026-08-30 同步，以代码为准）
@@ -129,7 +130,7 @@
 ├── scripts/                    # 辅助脚本 + 离线 wheel（scripts/libs/，Python 3.14 win_amd64）
 ├── tests/                      # pytest 单元测试
 ├── web/                        # Vue3 + Vite + TS 前端（悬浮球 + 控制台 + ui/ 原语组件）
-│   └── public/lib/vosk.js + wake-word.js + models/   # Vosk WASM 离线唤醒
+│   └── src/composables/assistant/   # store / useChat / useTts / useWakeWord / useSegmentRecorder / wakeFsm
 └── deploy/                     # 打包发布副本（package_deploy.bat 生成，含 deploy.zip）
 ```
 
@@ -141,9 +142,19 @@
 
 ### 3.1 交互层：语音 + 前端
 
-**语音（当前实现：浏览器端）**——Vosk WASM 唤醒词在浏览器内运行，ASR/TTS 走后端 OpenAI 兼容接口：
-- 浏览器端 `public/lib/vosk.js` + `wake-word.js`：离线唤醒词「小逻小逻」（含同音字变体），激活录音后经 ASR 转文字。
-- ~~桌面常驻监听（本地 Vosk 后台常驻麦克风）~~：设计目标之一，**已暂停开发并移除**（代码在 `desktop-ball` 分支）；若未来恢复，可复用浏览器 WASM 方案作降级。
+**语音（当前实现：浏览器端本地 VAD + 云端判定）**——本地只做分段，判定与转写走后端 OpenAI 兼容接口：
+- 链路：单次 `getUserMedia`（不再由唤醒引擎独占）→ 常驻本地 VAD（`AnalyserNode`，纯本地、不上传）
+  判定人声起止 → 分段录音（`MediaRecorder` → WAV base64）→ `POST /api/voice/wake`
+  `{ audio_base64 }` → 后端 ASR 转写 + 唤醒词匹配 → `{ matched, command, text }`。
+- 命中且带指令（「衍衡，帮我查天气」）→ 直接起一轮，省掉提示音与二次转写；只命中唤醒词
+  → 提示音后把**下一段**当指令；不命中 → 丢弃。
+- 实现点：`web/src/composables/assistant/useWakeWord.ts`（链路）、`useSegmentRecorder.ts`（VAD + 分段）、
+  `core/voice/wake.py`（同音字容错 + 指令切分）、`core/api/voice.py` 的 `/voice/wake`。
+- ~~浏览器端 Vosk WASM 引擎（`public/lib/vosk.js` + `wake-word.js` + 模型树）~~：**已删除**
+  （2026-09-13 唤醒链路重构）。旧唤醒词「小逻小逻」一并废弃，现为「衍衡」「洛吉斯」。
+- ~~桌面常驻监听（本地 Vosk 后台常驻麦克风）~~：设计目标之一，**已暂停开发并移除**（代码在 `desktop-ball` 分支）。
+- ⚠️ **隐私边界**：每次 VAD 判到人声都会把该片段上传云端 ASR，**无论是否唤醒**；VAD 只减少
+  上传次数，不是隐私屏障。详见 `README.md`「安全」与 `wiki/Security.md`。
 - **ASR**：`core/voice/__init__.py` 的 `ASRClient`（OpenAI 兼容多提供方，async httpx，POST
   `{endpoint}{chat_path}` + `messages[0].content` input_audio；小米 MiMo 等厂商预设通过
   `profile.compat` 开关适配认证头/audio_data_url/language）。
@@ -333,9 +344,10 @@ agent 每次规划时把 `environment.md`（或其相关段）注入上下文，
 | `core/orchestrator/executor.py` ReAct 执行循环 | 简单任务走 ReAct；复杂任务转多智能体协调者 |
 | `server.py` FastAPI + SPA | 宿主服务，新增 `/api/task`、`/api/env`、`/api/memory`、`/api/schedule` 等 |
 | `web` Vue3 控制台（悬浮球 + /console） | 保留并新增任务/环境/记忆/定时视图 |
-| `scripts/libs` 离线轮子 | 新增依赖（如 `pyautogui`、`openpyxl`、`vosk` 本地版）需补 wheel |
+| `scripts/libs` 离线轮子 | 新增依赖（如 `pyautogui`、`openpyxl`）需补 wheel |
 
-新增依赖（按需）：`vosk`（本地唤醒/ASR）、`piper`/`edge-tts`（本地 TTS）、`openpyxl`（xlsx）、`pyautogui`（GUI）、`duckduckgo-search`（已有）、MCP SDK。
+新增依赖（按需）：`sherpa-onnx`（本地 KWS/ASR，见 roadmap P8 子项目 2/3）、`piper`/`edge-tts`（本地 TTS）、`openpyxl`（xlsx）、`pyautogui`（GUI）、`duckduckgo-search`（已有）、MCP SDK。
+（`vosk` 本地版已随 2026-09-13 唤醒链路重构移除，其离线 wheel 也从 `scripts/libs/` 删除。）
 
 ---
 
@@ -356,7 +368,7 @@ SSE 事件扩展：现有 `content_delta/tool_start/tool_end/usage/done/error` �
 
 | 阶段 | 状态 | 内容 | 验收 |
 |------|------|------|------|
-| **P0 地基** | ✅ 已完成 | 环境感知→environment.md；execution（shell/py/fs）；tools 基础集；orchestrator（session/intent/task/clarify/confirm/executor/control）；SSE 事件扩展（语音监听详见「实现状态」：桌面监听暂停，浏览器 WASM 唤醒为当前入口） | 语音"把桌面 xx.txt 复制到下载" 全链路 + "停止"可中断 |
+| **P0 地基** | ✅ 已完成 | 环境感知→environment.md；execution（shell/py/fs）；tools 基础集；orchestrator（session/intent/task/clarify/confirm/executor/control）；SSE 事件扩展（语音监听详见「实现状态」：桌面监听暂停，浏览器本地 VAD + 云端唤醒判定为当前入口） | 语音"把桌面 xx.txt 复制到下载" 全链路 + "停止"可中断 |
 | **P1 记忆+RAG** | ✅ 已完成 | memory 两级（短期 + 长期事实 FTS5）；RAG 索引 environment.md 与文档目录；任务后事实提取 | 跨会话记住偏好；"按上次的方式查天气" 直接可用 |
 | **P2 能力扩展** | ✅ 已完成 | MCP 客户端 + 桥；Skills 系统 | 接一个 MCP server 并语音调用其工具；语音"执行我 skill 里的 xxx" |
 | **P3 多智能体+定时+GUI** | ✅ 已完成 | coordinator + 子代理（base.py 合一）；scheduler；gui 自动化 | 复杂任务自动拆解多步执行；"每天九点查天气并播报"；语音控制打开/操作应用 |

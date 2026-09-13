@@ -149,9 +149,19 @@ class WakeWordConfig(BaseModel):
     支持多个唤醒词，命中任意一个即唤醒。默认「衍衡」与「洛吉斯」（2026-09-13 改，此前是
     单一的「小逻小逻」）。
 
+    `model_path` 是 Vosk 时代的遗留字段（浏览器端 WASM 模型 URL）。唤醒改走云端判定、Vosk
+    引擎与模型都删除后前端已无人读它，默认值与前端 store / api schema 一样留空串；字段本身
+    保留只是为了不破坏已有 `config.yaml`（本模型 `extra="forbid"`，删字段会让老配置启动即报错）。
+
     Wake-word config: enabled toggle, keywords (**plural**), sensitivity, and model path. Any one
     of the keywords wakes the engine. Defaults to 「衍衡」 and 「洛吉斯」 (changed 2026-09-13 from the
     single 「小逻小逻」).
+
+    `model_path` is a leftover from the Vosk era (a browser-side WASM model URL). Since wake
+    detection moved to the cloud and the Vosk engine and its model were deleted, nothing on the
+    frontend reads it; the default is the empty string, matching the frontend store and the api
+    schema. The field itself stays only so existing `config.yaml` files keep loading (`extra="forbid"`
+    would make dropping it fail at startup).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -159,7 +169,7 @@ class WakeWordConfig(BaseModel):
     enabled: bool = True
     keywords: list[str] = Field(default_factory=lambda: ["衍衡", "洛吉斯"])
     sensitivity: float = Field(0.5, ge=0.0, le=1.0)
-    model_path: str = "/models/vosk-model-small-cn-0.22.tar.gz"
+    model_path: str = ""
 
     @model_validator(mode="before")
     @classmethod

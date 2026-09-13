@@ -84,8 +84,19 @@ await page.goto(`${ARGS.url}${route}`, { waitUntil: 'domcontentloaded' })
 await page.waitForTimeout(3000)
 
 if (ARGS.wake) {
-  await page.locator('text=开启语音唤醒').first().click().catch(() => {})
-  await page.waitForTimeout(6000)   // 等 Vosk 模型就绪（已缓存时很快）
+  // 语音开关是悬浮球上的 mic 徽章（`.ball-mic.on` = 已开启）；它是**切换**语义，已经在开着
+  // 就别再点，否则会把唤醒关掉、截出一张「未开启」的图。
+  // The voice toggle is the mic badge on the float ball (`.ball-mic.on` = enabled); it *toggles*,
+  // so leave it alone when already on or the shot would show wake switched off.
+  try {
+    const badge = page.locator('.ball-mic').first()
+    if (await badge.count() && !(await badge.evaluate(el => el.classList.contains('on')))) {
+      await badge.click()
+    }
+  } catch { /* 徽章不可点（面板状态不同），保持现状 */ }
+  // 等取麦与状态环落定（授权弹窗已同意时很快）。
+  // Let the mic acquisition and the status ring settle (quick when permission is already granted).
+  await page.waitForTimeout(6000)
 }
 
 // 隐藏悬浮球上的拖拽残留与光标，避免截图带上焦点框。

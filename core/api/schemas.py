@@ -50,6 +50,13 @@ class WakeWordConfig(BaseModel):
     `core/config/schema.py`; the two must be kept in sync. FastAPI's response_model drops extra
     fields during serialization, so changing only the config model would silently filter the field
     out and the frontend would never see it (exactly how `VadConfig` was broken before).
+
+    `model_path` 是 Vosk 时代的遗留字段，唤醒改走云端判定后前后端都无人读它，默认空串 ——
+    与 `core/config/schema.py` 的同名字段保持一致。
+
+    `model_path` is a leftover from the Vosk era; nothing reads it now that wake detection runs in
+    the cloud, so its default is the empty string — kept identical to the same field in
+    `core/config/schema.py`.
     """
     enabled: bool = True
     keywords: list[str] = []

@@ -13,10 +13,13 @@
 | P5 | 工具权限策略层（子系统 A） | ✅ 已完成 | [2026-09-13-tool-permission-policy.md](../superpowers/plans/2026-09-13-tool-permission-policy.md) | 设置页可配 allow / ask / deny（deny 短路 > 规则 > 层级 > 默认）；默认等价改造前行为；三个消费点全部走策略 |
 | P6 | 语音作答 + 无应答待机 + 再唤醒续答（子系统 C） | ✅ 已完成 | [2026-09-13-voice-answering.md](../superpowers/plans/2026-09-13-voice-answering.md) | 播报后自动开录、直接语音作答；无应答进待机；再唤醒续答本题；播报期间暂停监听 **（「播报期不自触发」已由验收台验证；其余 3 项待真人有声环境跑 `npm run verify:voice`）** |
 | P7 | 任务知识库（子系统 E） | ✅ 已完成 | [2026-09-13-task-knowledge-base.md](../superpowers/plans/2026-09-13-task-knowledge-base.md) | 完成时询问是否完成；成功任务存入独立模块；相似任务检索预填参数、减少询问（按**用户原话**匹配，非 LLM 归一化的 goal） |
+| P8 | 唤醒链路重构（**子项目 1 / 4**：VAD → KWS(API) → ASR） | ✅ 已完成（子项目 1） | [2026-09-13-wake-detection-rework.md](../superpowers/plans/2026-09-13-wake-detection-rework.md) | 唤醒重新可用且支持一句话说完：浏览器本地 VAD 切段 → `POST /api/voice/wake` 云端转写并判定「衍衡」「洛吉斯」→ 命中即起一轮；Vosk 引擎与 43MB 模型全部删除。**子项目 2（本地 KWS sherpa-onnx）/ 3（本地 ASR）/ 4（有序回退链 + 能力探测）待做** —— 三者各走独立 spec → 计划 → 实施 |
 
 > P4–P7 的完整分解（接口边界、待决问题、风险、spec 大纲）见
 > [2026-09-13-agent-capabilities-roadmap-design.md](../superpowers/specs/2026-09-13-agent-capabilities-roadmap-design.md)。
 > 每个阶段单独走 spec → plan → 实施；P4 与 P5 可并行。
+> **P8** 是唤醒链路自身的一次重构，拆成 4 个子项目，本阶段只做子项目 1（云端判定）；
+> 子项目 2/3/4 的边界见 [2026-09-13-wake-detection-rework-design.md](../superpowers/specs/2026-09-13-wake-detection-rework-design.md) 文末「后续子项目」。
 
 ## 总体进度
 
@@ -28,6 +31,10 @@
 - **P5**：8 / 8 个 Task ✅
 - **P6**：9 / 9 个 Task ✅（自动化全绿；「播报期不自触发」已由验收台验证，**其余 3 项需真人对着麦克风，见计划 Task 9 与 README「语音验收台」**）
 - **P7**：9 / 9 个 Task ✅（自动化全绿；端到端验证通过 —— 同一句话第二次跑时命中历史、预填参数、不再追问澄清）
+- **P8（子项目 1）**：8 / 8 个 Task 已实施 —— 自动化全绿、类型同步门禁通过、服务可绑定。
+  ⚠️ **真人有声环境的人工验收 6 项「待人工验收」**，由用户对照麦克风逐条执行
+  （见计划 Task 8 与 README「语音验收台」）；**未通过人工验收前不得宣称唤醒可用**。
+  子项目 2 / 3 / 4 未开始。
 
 > 每完成一个 Task：在对应计划里勾选 `[x]`，并更新上方「总体进度」计数。
 > 每完成一个阶段：对照该计划末尾的「验收清单」与「审查清单」，通过后把状态改为 ✅，并做阶段小结提交。
@@ -39,14 +46,15 @@
 - **桌面悬浮球 UI**（PySide6 / 早期 Tauri 尝试）：已完成 WIP 快照，代码迁移至 **`desktop-ball` 分支**，主分支已移除。
 - **本地常驻语音监听**：已随桌面端一并移除，代码在 `desktop-ball` 分支。
 
-**决策**：桌面端**不再迁移回主分支**。当前语音交互由浏览器端 Vosk WASM 唤醒 + 后端 ASR 承担，
+**决策**：桌面端**不再迁移回主分支**。当前语音交互由浏览器端**本地 VAD 分段 + 云端唤醒判定** + 后端 ASR 承担，
 主分支以此为唯一语音入口；`desktop-ball` 分支保留为历史快照。
 
 ## 当前主分支功能基线
 
 | 能力 | 说明 |
 |------|------|
-| 语音交互 | 浏览器 Vosk WASM 唤醒（小逻小逻）+ 后端 OpenAI 兼容 ASR/TTS + SpeechSynthesis 播报 |
+| 语音交互 | 浏览器本地 VAD 分段 + `POST /api/voice/wake` 云端判定唤醒词（衍衡 / 洛吉斯）+ 后端 OpenAI 兼容 ASR/TTS + SpeechSynthesis 播报 |
+| 语音隐私 | ⚠️ 每次检测到人声都会把该片段上传云端 ASR（默认 `api.xiaomimimo.com`），**无论是否唤醒**；VAD 只减少上传次数，不是隐私屏障（详见 README「安全」/ wiki/Security.md） |
 | 任务编排 | 意图 → 任务 → 澄清 → 确认 → 执行 → 汇报，SSE 事件流 + 人类在环问答通道 |
 | 执行层 | Shell / Python（独立进程、可 kill 进程树）、文件系统（10+ 通用格式）、GUI 自动化、环境感知 |
 | 记忆/RAG | 长期事实记忆（facts.sqlite）+ 任务后 LLM 提取 + 关键词 RAG 上下文注入 |
