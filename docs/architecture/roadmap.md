@@ -9,6 +9,14 @@
 | P1 | 记忆三级 + RAG | ✅ 已完成 | [2026-08-12-agent-p1-memory-rag.md](../superpowers/plans/2026-08-12-agent-p1-memory-rag.md) | 长期事实记忆 + 任务后自动提取 + RAG 上下文注入 + 前端记忆浏览/删除 |
 | P2 | MCP + Skills | ✅ 已完成 | [2026-08-12-agent-p2-capabilities.md](../superpowers/plans/2026-08-12-agent-p2-capabilities.md) | MCP 客户端/桥/生命周期 + Skills 热加载/执行器；/api/tools 含 mcp_* 与 skill 工具 |
 | P3 | 多智能体 + 定时 + GUI | ✅ 已完成 | [2026-08-12-agent-p3-advanced.md](../superpowers/plans/2026-08-12-agent-p3-advanced.md) | 子代理/协调者（复杂任务转多智能体）+ cron 定时（无人值守）+ GUI 工具 + 前端定时 Tab |
+| P4 | 询问类型扩展 + 问答入聊天记录（子系统 B+D） | 📋 待启动 | [分解文档](../superpowers/specs/2026-09-13-agent-capabilities-roadmap-design.md) | 询问支持 choice / text / composite 三态；提问与回答进入消息列表与会话历史 |
+| P5 | 工具权限策略层（子系统 A） | 📋 待启动 | 同上 | 设置里可配 allow / ask / deny（规则>例外>默认）；常用工具默认免询问；修 `TOOLS.risk()` 未知工具 fail-open |
+| P6 | 语音作答 + 无应答待机 + 再唤醒续答（子系统 C） | 📋 待启动 | 同上 | 提问时进入语音监听；语音优先且可文本作答；无应答进待机；再唤醒回到未答完的提问；播报期间门控麦克风 |
+| P7 | 任务知识库（子系统 E） | 📋 待启动 | 同上 | 完成时询问是否完成；成功任务存入独立模块；相似任务检索预填参数、减少询问 |
+
+> P4–P7 的完整分解（接口边界、待决问题、风险、spec 大纲）见
+> [2026-09-13-agent-capabilities-roadmap-design.md](../superpowers/specs/2026-09-13-agent-capabilities-roadmap-design.md)。
+> 每个阶段单独走 spec → plan → 实施；P4 与 P5 可并行。
 
 ## 总体进度
 
@@ -16,6 +24,7 @@
 - **P1**：6 / 6 个 Task ✅
 - **P2**：5 / 5 个 Task ✅
 - **P3**：6 / 6 个 Task ✅
+- **P4–P7**：尚未开始（阶段划分与顺序见分解文档）
 
 > 每完成一个 Task：在对应计划里勾选 `[x]`，并更新上方「总体进度」计数。
 > 每完成一个阶段：对照该计划末尾的「验收清单」与「审查清单」，通过后把状态改为 ✅，并做阶段小结提交。
