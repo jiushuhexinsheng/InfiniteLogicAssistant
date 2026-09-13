@@ -10,17 +10,19 @@ from core.orchestrator.task import Task
 
 
 class _Channel:
-    """模拟会话通道：返回预设答案（Answer 或字符串）并记录通知与提问类型。
-    Simulates a session channel: returns preset answers (Answer or str) and records notifications and question kinds.
+    """模拟会话通道：返回预设答案（Answer 或字符串）并记录通知、提问类型与选项。
+    Simulates a session channel: returns preset answers (Answer or str), recording notifications, question kinds and options.
     """
 
     def __init__(self, answers):
         self.answers = list(answers)
         self.notified: list[str] = []
         self.kinds: list[str] = []
+        self.options: list[list] = []
 
     async def ask(self, q, *, kind="text", options=None):
         self.kinds.append(kind)
+        self.options.append(options or [])
         a = self.answers.pop(0)
         return a if isinstance(a, Answer) else Answer(text=a)
 
@@ -62,13 +64,27 @@ async def test_confirm_no_channel_rejects():
 
 
 @pytest.mark.asyncio
-async def test_confirm_asks_with_confirm_kind():
-    """确认提问必须带 kind="confirm"，前端据此渲染按钮而非文本输入。
-    Confirmation questions must carry kind="confirm" so the frontend renders buttons instead of a text input."""
+async def test_confirm_asks_as_choice_with_two_options():
+    """确认提问必须是 kind="choice" 且恰带「确认 / 取消」两个选项。
+    A confirmation question must be kind="choice" with exactly the confirm/cancel options."""
     s = Session()
     s.channel = _Channel([Answer(choice="yes")])
     await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
-    assert s.channel.kinds == ["confirm"]
+    assert s.channel.kinds == ["choice"]
+    assert s.channel.options[0] == [
+        {"value": "yes", "label": "确认"},
+        {"value": "no", "label": "取消"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_confirm_tool_asks_as_choice():
+    """工具级确认同样是选择类。Tool-level confirmation is a choice question too."""
+    s = Session()
+    s.channel = _Channel([Answer(choice="no")])
+    await confirm_tool(s, "write_file", {"path": "x", "content": "y"})
+    assert s.channel.kinds == ["choice"]
+    assert [o["value"] for o in s.channel.options[0]] == ["yes", "no"]
 
 
 # ─── _resolve_confirm：结构化选择优先，自由文本只认精确匹配 ───

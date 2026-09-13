@@ -37,6 +37,14 @@ from core.tools.base import TOOLS  # 从 base 导入，避免 core.tools.__init_
 _EXACT_YES = {"确认", "yes", "approve"}
 _EXACT_NO = {"取消", "no", "reject"}
 
+# 确认提问的两个固定选项（前端据此渲染按钮）；value 供后端判定，label 供展示与记录。
+# The two fixed options of a confirmation question (the frontend renders buttons from
+# them); value is for the backend decision, label for display and records.
+CONFIRM_OPTIONS = [
+    {"value": "yes", "label": "确认"},
+    {"value": "no", "label": "取消"},
+]
+
 
 def _resolve_confirm(answer: Answer) -> bool:
     """把操作者回答解析为「批准 / 拒绝」。
@@ -71,7 +79,7 @@ async def _ask_operator(session: Session, plan: str, risk: str, kind: str) -> bo
         audit(f"confirm {kind} risk={risk} plan={plan} decision=rejected reason=no_operator")
         return False  # 无人确认（如定时无人值守）→ 默认不执行高风险
     await session.notify(f"需要确认：{plan}")
-    answer = await session.ask(f"确认执行吗？{plan}", kind="confirm")
+    answer = await session.ask(f"确认执行吗？{plan}", kind="choice", options=CONFIRM_OPTIONS)
     approved = _resolve_confirm(answer)
     reason = "" if approved else (" choice" if answer.choice else " text")
     audit(
