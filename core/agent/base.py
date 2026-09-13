@@ -15,6 +15,7 @@ from core.orchestrator.control import CancellationToken
 from core.orchestrator.events import ToolEndEvent, ToolStartEvent
 from core.prompts import UNTRUSTED_DATA_NOTE
 from core.tools.base import TOOLS
+from core.tools.policy import decide
 
 
 @dataclass
@@ -109,10 +110,16 @@ async def run_subagent(
                 args = {}
             if events is not None:
                 await events.put(ToolStartEvent(name=name, args=args).emit())
-            # 非 read 工具需操作者确认；无确认通道时一律拒绝（与主 ReAct 路径一致）
-            risk = TOOLS.risk(name)
-            if risk == "read":
+            # 工具调用走权限策略（与主 ReAct 路径一致）：allow 直放 / deny 直接拒绝 /
+            # ask 需操作者确认，无确认通道时一律拒绝。
+            # Tool calls go through the permission policy (consistent with the main ReAct
+            # path): allow runs, deny is refused, ask needs operator confirmation and is
+            # refused when no confirmation channel exists.
+            decision = decide(name)
+            if decision.action == "allow":
                 result = await TOOLS.acall(name, args, cancel=cancel)
+            elif decision.action == "deny":
+                result = f"Error: 操作者策略禁止调用 {name}（{decision.source}）"
             elif confirm is None:
                 result = f"Error: 工具 {name} 需要操作者确认，但当前无确认通道，已拒绝"
             elif await confirm(name, args):

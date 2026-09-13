@@ -829,3 +829,17 @@ def test_tool_call_ask_with_confirm_executes(client, monkeypatch):
     r = client.post("/api/tools/call", json={"name": "get_datetime", "args": {}, "confirm": True})
     assert r.status_code == 200
     assert r.json()["ok"] is True
+
+
+def test_tool_call_denied_by_policy_is_audited(client, monkeypatch):
+    """策略拒绝必须落审计 —— 被拦下的调用到不了 TOOLS.acall（那里才记日志），
+    不记则拒绝事件完全静默。A policy denial must be audited: the blocked call never
+    reaches TOOLS.acall (where logging happens), so otherwise it would be silent."""
+    from core.api import tools as tools_api
+    recorded: list[str] = []
+    monkeypatch.setattr(tools_api, "audit", lambda msg: recorded.append(msg))
+    monkeypatch.setattr(tools_api, "decide", _policy_returning("deny", "rule:run_*"))
+    r = client.post("/api/tools/call", json={"name": "run_shell_tool", "args": {"command": "echo hi"}})
+    assert r.status_code == 403
+    assert len(recorded) == 1
+    assert "denied" in recorded[0] and "run_shell_tool" in recorded[0] and "rule:run_*" in recorded[0]
