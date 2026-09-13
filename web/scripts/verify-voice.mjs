@@ -466,7 +466,18 @@ async function main() {
   // Config: the answer timeout is check 2's baseline; the wake keyword underpins checks 3/4.
   const cfg = await page.evaluate(async () => (await fetch('/api/config')).json()).catch(() => ({}))
   const answerTimeout = cfg?.vad?.answer_timeout_ms ?? 8000
-  const keyword = cfg?.wake_word?.keyword ?? '小逻小逻'
+  // 唤醒词：/api/config 暴露的是**列表** `keywords`（单数 `keyword` 是 Vosk 时代的遗留字段，
+  // 早已不在响应里）。原先读 `.keyword` 会静默落到兜底值「小逻小逻」—— 那是个**已废弃、
+  // 根本唤不醒**的词，于是脚本会让操作者对着空气喊，检查 3/4 必然失败（而且是假失败）。
+  // 兜底值必须是**当前真的能唤醒**的词；取列表首项即可 —— 检查 4 要让助手把它一字不差念出来，
+  // 单项比多项更可靠。
+  // Wake words: /api/config exposes the **list** `keywords` (the singular `keyword` is a Vosk-era
+  // leftover long gone from the response). Reading `.keyword` silently fell back to 「小逻小逻」 —
+  // a retired word that wakes nothing, so the harness would tell the operator to say a dead phrase
+  // and checks 3/4 would fail for a bogus reason. The fallback must be a word that actually wakes.
+  // Taking the first entry is enough: check 4 asks the assistant to repeat it verbatim, and one
+  // word is more reliably repeated than several.
+  const keyword = (cfg?.wake_word?.keywords ?? [])[0] ?? '衍衡'
 
   await ensurePanel(page)
   const speakOn = await ensureSpeakOn(page)
