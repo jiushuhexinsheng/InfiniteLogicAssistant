@@ -1,60 +1,58 @@
 import { watch } from 'vue'
 import { api } from '../../api'
-import { formatError } from '../../errors'
 import { nextState } from './wakeFsm'
 import { speaking } from './useTts'
-import { state, partialText, statusLine, expanded, wakeEnabled, wakeConfig, vadConfig, addMessage, failWake, modelLoading, modelProgress, pendingQuestion } from './store'
-import { runTurn, sendAnswer } from './useChat'
+import { state, partialText, statusLine, wakeEnabled, vadConfig, pendingQuestion, failWake } from './store'
+import { createSegmentRecorder, type SegmentRecorder } from './useSegmentRecorder'
+import { sendText, sendAnswer } from './useChat'
 import { matchOption } from './answerMatch'
 
-/** 录音管线相关变量。Recording pipeline variables. */
-let wakeRecorder: MediaRecorder | null = null
-let wakeChunks: Blob[] = []
-let silenceTimer: ReturnType<typeof setInterval> | null = null
-let maxTimer: ReturnType<typeof setTimeout> | null = null
-let vadAudioCtx: AudioContext | null = null
+/**
+ * 唤醒链路（VAD 驱动，云端判定）。
+ *
+ * 本地常驻 VAD 把「疑似人声」切成分段并上传 `/api/voice/wake`，后端负责转写与唤醒词判定，
+ * 前端只按 `{matched, command}` 行事：
+ *   - 命中且带指令 → 直接起一轮（省掉「提示音 + 再录一次 + 再转写」）
+ *   - 只命中唤醒词 → 提示音后把**下一段**当指令
+ *   - 不命中 → 丢弃
+ *
+ * 待答提问优先：有待答提问时每一段都是**回答**，绝不送去判唤醒词（否则用户的回答会被
+ * 当成不含唤醒词的噪音丢掉，语音作答静默失效）。
+ *
+ * Wake pipeline (VAD-driven, judgement in the cloud).
+ *
+ * The always-on local VAD cuts speech into segments and uploads them to `/api/voice/wake`; the
+ * backend transcribes and judges the wake word, and the frontend only acts on `{matched, command}`:
+ * a hit with a command starts a turn immediately (skipping "chime, record again, transcribe
+ * again"), a bare hit chimes and treats the *next* segment as the command, and a miss is dropped.
+ *
+ * A pending question wins: while one is open, every segment is an *answer* and must never go to
+ * wake detection, or the answer would be discarded as noise that carries no wake word.
+ */
 
-/** 唤醒词引擎加载状态。Wake word engine loading state. */
-let modelLoaded = false
-
-/** 初始化唤醒模型。Initialize wake word model.
- *  注意：vosk.js 的 worker 只支持按 URL 加载模型（load() 内 modelUrl.replace），
- *  不支持传入 ArrayBuffer 字节——因此不能预下载字节，直接交给引擎按 URL 下载/解压
- *  （首次约 44MB，之后走 IndexedDB 缓存）。
- *  Note: vosk.js worker only supports URL-based model loading (modelUrl.replace in load()),
- *  does not support ArrayBuffer input — so cannot pre-download bytes, let engine download/decompress by URL
- *  (first time ~44MB, then IndexedDB cached).
- *  @returns 模型是否加载成功。Whether model loaded successfully. */
-async function initWakeModel() {
-  if (typeof WakeWordEngine === 'undefined') {
-    console.warn('[Asst] WakeWordEngine missing')
-    return false
-  }
-  if (modelLoaded) return true
-  try {
-    modelLoading.value = true
-    statusLine.value = '正在加载语音模型（首次需下载约 44MB，请稍候）...'
-    const ok = await WakeWordEngine.init({
-      modelPath: wakeConfig.model_path,
-      keywords: wakeConfig.keywords,
-      sensitivity: wakeConfig.sensitivity,
-    })
-    modelLoaded = ok
-    modelLoading.value = false
-    modelProgress.value = 100
-    statusLine.value = ok ? '' : '模型加载失败'
-    return ok
-  } catch (e) {
-    console.error('[Asst] model init fail:', e)
-    modelLoading.value = false
-    statusLine.value = '模型加载失败'
-    return false
-  }
-}
-
-/** 初始化唤醒模型（供测试与 toggleWake 复用）。
- *  Initialize wake word model (shared by tests and toggleWake). */
-export { initWakeModel }
+/** 常驻分段录音器（麦克风流由本模块持有）。The always-on segment recorder (this module owns the mic stream). */
+let segmenter: SegmentRecorder | null = null
+/** 当前麦克风流；暂停监听时会释放轨道。The current mic stream; its tracks are released while listening is paused. */
+let micStream: MediaStream | null = null
+/** 仅听到唤醒词后置位：下一段直接当指令，不再判唤醒词。
+ *  Set only after a bare wake word: the next segment is the command and skips wake detection. */
+let awaitingCommand = false
+/** 连续上传失败次数，达阈值熔断。Consecutive upload failures; the circuit breaks at the threshold. */
+let failures = 0
+/** 熔断阈值（写死为 3：先看实际表现再决定要不要做成配置）。
+ *  Circuit-break threshold (hard-coded to 3 until real-world behaviour says otherwise). */
+const FAILURE_LIMIT = 3
+/** 上一次唤醒检测上传的时间戳（节流用）。Timestamp of the last wake-detection upload (throttling). */
+let lastUploadAt = 0
+/**
+ * 监听代际：stopListening() 每次递增。取流是异步的，若在它返回前又被暂停，代际就对不上 ——
+ * 迟到的那条流必须当场释放，否则播报期间麦克风复活、助手的声音会自触发唤醒。
+ *
+ * Listening generation, bumped by every stopListening(). Acquisition is async: if a pause lands
+ * before it returns, the generation no longer matches — the late stream must be released on the
+ * spot, or the mic revives mid-playback and the assistant's own voice can wake it.
+ */
+let listenGen = 0
 
 /** 播放提示音。Play beep sound. */
 function playBeep() {
@@ -72,13 +70,6 @@ function playBeep() {
     osc.stop(ctx.currentTime + 0.2)
     setTimeout(() => ctx.close().catch(() => {}), 500)
   } catch { /* mute */ }
-}
-
-/** 清除所有定时器。Clear all timers. */
-function clearTimers() {
-  if (silenceTimer) { clearInterval(silenceTimer); silenceTimer = null }
-  if (maxTimer) { clearTimeout(maxTimer); maxTimer = null }
-  if (vadAudioCtx) { try { vadAudioCtx.close() } catch { /* ignore */ } vadAudioCtx = null }
 }
 
 /** 麦克风错误 → 用户可理解的中文提示（getUserMedia 常见异常映射）。
@@ -117,269 +108,233 @@ export function describeMicError(e: any): string {
   }
 }
 
-/** 本次录音是否因「待答超时」而停止（无音频可转写，不再走转写流程）。
- *  Whether this recording stopped because the answer wait timed out (nothing to transcribe). */
-let silentStop = false
-
-/** 停止录音。`silent` 用于待答超时：不再转写，直接返回。
- *  Stop recording. `silent` is used for the answer-wait timeout: nothing to transcribe.
- *  @param opts.silent - 是否为静默停止（待答超时）。Whether this is a silent stop.
- */
-function stopRecording(opts?: { silent?: boolean }) {
-  silentStop = opts?.silent === true
-  clearTimers()
-  if (wakeRecorder && wakeRecorder.state === 'recording') {
-    wakeRecorder.stop()
+/** 上传失败累计与熔断提示。Count upload failures and surface the circuit break. */
+function onUploadFailed() {
+  failures++
+  if (failures >= FAILURE_LIMIT) {
+    // spec「错误与降级」：云端不可用必须**明确提示**，不静默失败 ——
+    // 否则用户只看到「唤醒突然不灵了」，无从判断原因。
+    // Spec, "errors and degradation": an unavailable cloud must be surfaced explicitly, never
+    // fail silently — otherwise the user only sees "waking suddenly stopped working".
+    statusLine.value = '⚠️ 云端唤醒不可用（已连续失败 3 次）· 可双击悬浮球手动触发'
+    console.warn('[wake] 连续失败达阈值，已暂停上传')
   }
 }
 
-/** 启动 VAD（语音活动检测）。Start VAD (Voice Activity Detection).
- *  @param stream - 媒体流。Media stream. */
-function startVAD(stream: MediaStream) {
-  let analyser: AnalyserNode | null = null
-  try {
-    // 关闭上一次残留的 AudioContext。
-    // Close residual AudioContext from previous session.
-    if (vadAudioCtx) { try { vadAudioCtx.close() } catch { /* ignore */ } }
-    vadAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
-    const ctx = vadAudioCtx
-    const source = ctx.createMediaStreamSource(stream)
-    analyser = ctx.createAnalyser()
-    analyser.fftSize = 2048
-    analyser.smoothingTimeConstant = 0.3
-    source.connect(analyser)
-  } catch (e) { return }
-
-  const threshold = vadConfig.silence_threshold || 0.02
-  const silenceMs = vadConfig.silence_duration_ms || 1500
-  const checkInterval = 100
-  const maxSilence = Math.ceil(silenceMs / checkInterval)
-  let silenceCount = 0
-  let elapsed = 0
-  const minSpeakTime = 2000
-  /** 本次录音是否已检测到语音。待答态下用它区分「用户在说」与「用户在犹豫」。 */
-  /** Whether speech has been detected in this recording; lets the answer state tell
-   *  "the user is speaking" from "the user is hesitating". */
-  let speechStarted = false
-
-  silenceTimer = setInterval(() => {
-    if (!analyser || !wakeRecorder || wakeRecorder.state !== 'recording') {
-      clearTimers()
-      return
-    }
-    elapsed += checkInterval
-    const dataArray = new Uint8Array(analyser.fftSize)
-    analyser.getByteTimeDomainData(dataArray)
-    let sum = 0
-    for (let i = 0; i < dataArray.length; i++) {
-      const v = (dataArray[i] - 128) / 128
-      sum += v * v
-    }
-    const rms = Math.sqrt(sum / dataArray.length)
-
-    if (elapsed < minSpeakTime) return
-    if (rms < threshold) {
-      silenceCount++
-      if (silenceCount >= maxSilence) {
-        stopRecording()
-      }
-    } else {
-      silenceCount = 0
-      if (!speechStarted) {
-        speechStarted = true
-        const ns = nextState(state.value, 'speech_started')
-        if (ns !== state.value) state.value = ns
-      }
-    }
-  }, checkInterval)
-}
-
-/** 待答时长（毫秒）：来自 vad.answer_timeout_ms，缺省 8s。
- *  Answer-wait duration in ms, from vad.answer_timeout_ms (default 8s). */
-function answerTimeoutMs(): number {
-  const ms = (vadConfig as { answer_timeout_ms?: number }).answer_timeout_ms
-  return ms && ms > 0 ? ms : 8000
-}
-
-/** 启动最大录音时长定时器。`ms` 缺省用 VAD 的 max_duration_ms；待答态传 answer_timeout_s。
- *  Start the max recording timer; `ms` defaults to the VAD's max_duration_ms, while the
- *  answer-wait state passes answer_timeout_s.
- *  @param ms - 超时毫秒数。Timeout in milliseconds. */
-function startMaxTimer(ms?: number) {
-  maxTimer = setTimeout(() => {
-    console.log('[Asst] max duration reached')
-    // 待答态超时 = 用户全程未说话 → 进待机（不转写）。
-    // 其余态维持既有行为（正常停止并转写已录内容）。
-    // An answer-wait timeout means the user never spoke → standby (no transcription).
-    const ns = nextState(state.value, 'answer_timeout')
-    if (ns !== state.value) {
-      state.value = ns
-      stopRecording({ silent: true })
-      return
-    }
-    stopRecording()
-  }, ms ?? (vadConfig.max_duration_ms || 10000))
-}
-
-/** 开始一次录音：取引擎的麦克风流、建 MediaRecorder、接 VAD 与超时。
+/**
+ * 转写一段音频；失败计一次失败次数并给出空串。
+ * Transcribe one segment; a failure counts towards the circuit breaker and yields ''.
  *
- * 抽出供「唤醒命中」与「播报后自动开录」共用 —— 避免两份录音逻辑各自演化。
- *
- * Start a recording: take the engine's mic stream, build the MediaRecorder, attach VAD and
- * the timeout. Extracted so "wake detected" and "auto-record after the question is spoken"
- * share one implementation instead of two copies drifting apart.
- *
- * @param timeoutMs 最大录音时长；缺省用 VAD 的 max_duration_ms。Max duration; defaults to the VAD's max_duration_ms.
- * @returns 是否成功开始。Whether recording started.
+ * @param blob 一段音频。One audio segment.
+ * @returns 去空白后的转写文本，失败/空结果为空串。The trimmed transcript, or '' on failure/empty.
  */
-function startRecording(timeoutMs?: number): boolean {
-  const stream = WakeWordEngine.getStream()
-  if (!stream) return false
-
-  wakeChunks = []
-  let mimeType = 'audio/webm'
-  if (!MediaRecorder.isTypeSupported(mimeType)) {
-    mimeType = 'audio/webm;codecs=opus'
-    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = ''
-  }
-  const opts: MediaRecorderOptions = {}
-  if (mimeType) opts.mimeType = mimeType
-
+async function transcribeSegment(blob: Blob): Promise<string> {
   try {
-    wakeRecorder = new MediaRecorder(stream, opts)
+    const r = await api.transcribe(blob)
+    return (r?.text || '').trim()
+  } catch {
+    onUploadFailed()
+    return ''
+  }
+}
+
+/** 处理一段音频：先看是不是在回答问题，否则做唤醒检测。导出供测试。
+ *  Handle one audio segment: an answer first, wake detection otherwise. Exported for tests.
+ *
+ *  本函数是 async，内部异常只会变成 rejected promise，**不会同步抛回** onSegment 的调用方
+ *  （useSegmentRecorder.finishSegment），因此不可能打断 recorder 内部复位；调用处另加
+ *  catch 兜住 unhandled rejection。
+ *
+ *  This function is async, so its internal throws become a rejected promise and can never
+ *  propagate synchronously back into the caller of onSegment (useSegmentRecorder.finishSegment),
+ *  so the recorder's internal reset cannot be skipped; the call site adds a catch for unhandled
+ *  rejections anyway.
+ *
+ *  @param blob 一段音频。One audio segment.
+ */
+export async function handleSegment(blob: Blob) {
+  // 熔断：连续失败后停止上传，避免疯狂重试烧钱。
+  // Circuit break: stop uploading after consecutive failures instead of burning money on retries.
+  if (failures >= FAILURE_LIMIT) return
+
+  // ⚠️ 待答提问优先：这一段是**回答**，绝不能送去判唤醒词 ——
+  // 否则用户答「允许本次」，会被当成不含唤醒词的噪音丢掉，P6 的语音作答就此失效。
+  //
+  // A pending question wins: this segment is an *answer* and must never go to wake detection, or
+  // answering "允许本次" would be dropped as noise with no wake word in it and P6's voice
+  // answering would die.
+  //
+  // 判据是「有没有待答提问」，不是「处于哪个状态」：关闭播报（speakEnabled=false）时
+  // speaking 从不翻转为 true，状态会停在提问时的 thinking，若再按状态收窄，回答就会被丢掉 ——
+  // 而语音作答静默失效正是本任务最怕的错。
+  //
+  // The test is "is a question pending", not "which state are we in": with playback muted
+  // (speakEnabled=false) `speaking` never flips, the state stays at the `thinking` set when the
+  // question arrived, and narrowing by state would drop the answer — the exact silent failure
+  // this task warns about.
+  const pq = pendingQuestion.value
+  if (pq) {
+    const text = await transcribeSegment(blob)
+    if (!text) return
+    failures = 0
+    // 精确匹配到选项则回传该选项的 value，否则整段作为文本作答（与旧 handleTranscript 同规则）。
+    // An exact option match returns that option's value; anything else is the whole text as a free
+    // answer (the same rule the old handleTranscript used).
+    const hit = matchOption(text, pq.options)
+    await sendAnswer(hit ? '' : text, hit?.value)
+    return
+  }
+
+  // 刚听到唤醒词、正在等指令：这一段直接当指令，不再判唤醒词。
+  // A wake word was just heard and the command is awaited: this segment *is* the command, no
+  // wake detection for it.
+  if (awaitingCommand) {
+    awaitingCommand = false
+    const text = await transcribeSegment(blob)
+    if (text) { failures = 0; sendText(text) }
+    return
+  }
+
+  // 节流只加在「判唤醒词」这条路径上：它拦的是误触发时的付费上传，而答案与指令通道
+  // 是用户明确说出的内容 —— 若一起节流，刚说完唤醒词就开口的用户会被自己的节流丢掉。
+  // The throttle guards the wake-detection path only: it exists to stop a false trigger from
+  // hammering the paid endpoint, while the answer and command channels carry what the user
+  // deliberately said — throttling those would drop the speech right after a bare wake word.
+  const now = Date.now()
+  if (now - lastUploadAt < vadConfig.upload_throttle_ms) return
+  lastUploadAt = now
+
+  let r: Awaited<ReturnType<typeof api.wakeDetect>> | undefined
+  try {
+    r = await api.wakeDetect(blob)
+  } catch {
+    onUploadFailed()
+    return
+  }
+  if (!r?.ok) { onUploadFailed(); return }
+  failures = 0
+  statusLine.value = ''
+
+  if (!r.matched) return                          // 噪音/无关对话 → 丢弃。Noise/unrelated talk → dropped.
+  if (r.command) { sendText(r.command); return }  // 唤醒词 + 指令 → 直接起一轮。Wake word plus command → a turn.
+  awaitingCommand = true                          // 仅唤醒词 → 提示音后等下一段。Bare wake word → chime, then wait.
+  playBeep()
+}
+
+/**
+ * 用当前麦克风流建一个分段录音器并启动。
+ * Build a segment recorder on the current mic stream and start it.
+ *
+ * 每次恢复监听都**新建**实例而不复用旧的：旧实例 stop() 时冲出的在途段会走它的
+ * onstop（异步），复用会让那次迟到的收尾改写新实例的记账 —— 孤立一台活着的 recorder，
+ * 此后永不停止。新建实例则让迟到回调只能改到它自己（且其 suppressed 仍为 true，不会再上传）。
+ *
+ * A **fresh** instance is built on every resume, never a reused one: the in-flight segment a
+ * stop() cuts loose settles through the old instance's asynchronous onstop, and reusing it would
+ * let that late settlement rewrite the new instance's bookkeeping — orphaning a live recorder that
+ * then never stops. A fresh instance confines the late callback to the old closure (whose
+ * `suppressed` is still true, so it cannot emit either).
+ */
+function startSegmenter() {
+  if (!micStream) return
+  segmenter = createSegmentRecorder(micStream, {
+    speechThreshold: vadConfig.silence_threshold,
+    silenceMs: vadConfig.silence_duration_ms,
+    minSpeechMs: vadConfig.min_speech_ms,
+    maxMs: vadConfig.max_duration_ms,
+    onSegment: (b) => {
+      // handleSegment 的异常只会变成 rejected promise（不会同步抛回 recorder 的收尾路径），
+      // 这里再兜一层，避免它变成 unhandled rejection。
+      // handleSegment's throws only become a rejected promise (they cannot propagate back into the
+      // recorder's settling path); this catch keeps them from turning into unhandled rejections.
+      void handleSegment(b).catch((e) => console.warn('[Asst] handleSegment error:', e))
+    },
+  })
+  segmenter.start()
+}
+
+/**
+ * 停掉分段录音器并释放麦克风轨道。
+ * Stop the segment recorder and release the mic tracks.
+ *
+ * 即使当前什么都没在跑也要推进代际 —— 可能有 getUserMedia 在途（见 listenGen 的说明）。
+ * The generation advances even when nothing is running, because an acquisition may be in flight
+ * (see listenGen).
+ *
+ * 同时清掉 `awaitingCommand`：暂停/关闭之后用户并没有在说指令，不能让下一段被误当指令。
+ * It also clears `awaitingCommand`: after a pause or a shutdown the user is not mid-command, so the
+ * next segment must not be mistaken for one.
+ */
+function stopListening() {
+  listenGen++
+  awaitingCommand = false
+  if (segmenter) {
+    try { segmenter.stop() } catch (e) { console.error('[Asst] segmenter stop error:', e) }
+    segmenter = null
+  }
+  if (micStream) {
+    try { micStream.getTracks().forEach((t) => t.stop()) } catch { /* ignore */ }
+    micStream = null
+  }
+}
+
+/**
+ * 确保常驻监听在跑：没有录音器时重新取流并新建一个。
+ * Ensure always-on listening is running: re-acquire the stream and build a recorder when there is none.
+ *
+ * @returns 是否正在监听。Whether listening is running.
+ */
+async function ensureListening(): Promise<boolean> {
+  if (!wakeEnabled.value || segmenter) return false
+  const gen = listenGen
+  let stream: MediaStream
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+    })
   } catch (e) {
-    console.error('[Asst] MediaRecorder fail:', e)
+    // 这里刻意不走 failWake：它会把状态置为 error、弹开面板并写一条醒目错误，而此刻用户
+    // 很可能正等着回答提问 —— 取流失败只该在状态行提示，不该把「待答」冲掉。
+    // Deliberately not failWake: it forces state to `error`, expands the panel and posts a loud
+    // message, and the user is likely mid-answer — a failed acquisition should surface a hint on
+    // the status line, not clobber the awaiting state.
+    console.warn('[Asst] resume listening failed:', e)
+    statusLine.value = describeMicError(e)
     return false
   }
-
-  wakeRecorder.ondataavailable = (e) => {
-    if (e.data.size > 0) wakeChunks.push(e.data)
+  if (gen !== listenGen) {
+    // 等待期间又被暂停了（播报开始 / 关掉唤醒）：这条流已经不该存在，当场释放。
+    // A pause landed while acquisition was in flight (playback started, wake switched off): this
+    // stream should not exist any more, so release it on the spot.
+    try { stream.getTracks().forEach((t) => t.stop()) } catch { /* ignore */ }
+    return false
   }
-
-  wakeRecorder.onstop = async () => {
-    clearTimers()
-    // 待答超时：无音频可转写，状态已由 startMaxTimer 置为待机，直接返回。
-    // Answer-wait timeout: nothing to transcribe; standby was already set by startMaxTimer.
-    if (silentStop) { silentStop = false; return }
-    if (wakeChunks.length === 0) {
-      // 待答态没录到内容 → 待机（等用户再唤醒）；其余态回聆听。
-      // Nothing recorded while awaiting an answer → standby; otherwise back to listening.
-      const ns = nextState(state.value, 'answer_timeout')
-      state.value = ns !== state.value ? ns : 'listening'
-      return
-    }
-
-    state.value = 'transcribing'
-    const blob = new Blob(wakeChunks, { type: mimeType || 'audio/webm' })
-    wakeChunks = []
-    console.log('[Asst] recording done, size:', blob.size)
-
-    await handleTranscript(blob)
-
-    // 回到聆听状态。Return to listening state.
-    setTimeout(() => {
-      if (state.value === 'done' || state.value === 'error') {
-        state.value = 'listening'
-      }
-    }, 3000)
+  micStream = stream
+  try {
+    startSegmenter()
+  } catch (e) {
+    // 起不来就当场收干净：留着一条活的 micStream 而 VAD 没在跑，就是「麦克风被占着却谁也不听」
+    // 的静默故障（本重构要修的那一类），宁可退回未监听。
+    // If it cannot start, tidy up on the spot: a live micStream with a dead VAD is exactly the
+    // silent "mic held open but nobody listening" failure this rework exists to remove, so fall
+    // back to not listening.
+    console.error('[Asst] segmenter start failed:', e)
+    stopListening()
+    return false
   }
-
-  wakeRecorder.start(1000)
-  startVAD(stream)
-  startMaxTimer(timeoutMs)
   return true
 }
 
-/** 唤醒检测回调。Wake detection callback. */
-function onWakeDetected() {
-  console.log('[Asst] WAKE!')
-  // 待机态唤醒 → 续答本题（用待答超时而非最大录音时长）；其余态维持既有行为。
-  // Waking from standby resumes this question (using the answer timeout rather than the
-  // max recording duration); other states keep their existing behaviour.
-  const resumed = nextState(state.value, 'wake_detected') === 'awaiting_answer'
-  state.value = resumed ? 'awaiting_answer' : 'recording'
-  if (!resumed) playBeep()
-
-  if (!startRecording(resumed ? answerTimeoutMs() : undefined)) {
-    state.value = 'listening'
-  }
-}
-
-/** ASR 转写处理：提问待答时走答案通道，否则开新一轮。
- *
- * 提问待答时**绝不能**走 runTurn —— 那会开一条新的 /voice/utter 并 abort 掉当前流，
- * 使后端阻塞中的 ask() 永久挂死（这正是本设计要修的既有缺陷）。
- *
- * ASR transcription handling: a pending question routes to the answer channel, otherwise a
- * new turn starts. While a question is pending it must NEVER call runTurn — that opens a
- * new /voice/utter and aborts the current stream, leaving the backend's blocked ask()
- * hanging forever (the existing defect this design fixes).
- *
- * @param blob 录音音频。The recorded audio.
- */
-export async function handleTranscript(blob: Blob) {
-  try {
-    const r = await api.transcribe(blob)
-    if (r.ok && r.text) {
-      const text = r.text.trim()
-      if (!text) { state.value = 'listening'; return }
-      partialText.value = text
-      const pq = pendingQuestion.value
-      if (pq) {
-        // 精确匹配到选项则回传该选项的 value；否则整段作为文本作答。
-        // An exact option match returns that option's value; otherwise the whole text is
-        // submitted as free text.
-        const matched = matchOption(text, pq.options)
-        await sendAnswer(matched ? '' : text, matched?.value)
-        return
-      }
-      addMessage('user', text)
-      await runTurn()
-    } else {
-      addMessage('system', '转写失败：' + (r.error || '无结果'))
-      state.value = 'listening'
-    }
-  } catch (e) {
-    console.error('[Asst] transcribe error:', e)
-    addMessage('system', '转写异常：' + formatError(e))
-    state.value = 'error'
-  }
-}
-
 /** 开启/关闭唤醒。Toggle wake word detection on/off.
- *  副作用：修改状态、加载模型、启动/停止引擎。Side effects: modify state, load model, start/stop engine. */
+ *  副作用：修改状态、取麦克风、起停分段录音器。
+ *  Side effects: modify state, acquire the microphone, start/stop the segment recorder. */
 export async function toggleWake() {
-  console.log('[Asst] toggleWake called, current state:', state.value, 'modelLoaded:', modelLoaded)
+  console.log('[Asst] toggleWake called, current state:', state.value)
   statusLine.value = ''
 
   if (state.value === 'idle' || state.value === 'done' || state.value === 'error') {
     // 开启。Enable.
-    if (typeof WakeWordEngine === 'undefined') {
-      console.error('[Asst] WakeWordEngine not defined')
-      failWake('唤醒引擎未加载，请刷新页面重试')
-      return
-    }
-
-    if (!modelLoaded) {
-      statusLine.value = '正在加载语音模型...'
-      state.value = 'listening' // 先切到 listening 让用户看到变化。Switch to listening first for user feedback.
-      console.log('[Asst] loading model...')
-      try {
-        const ok = await initWakeModel()
-        if (!ok) {
-          console.error('[Asst] model init failed')
-          failWake('语音模型加载失败，请刷新页面重试')
-          return
-        }
-      } catch (e) {
-        console.error('[Asst] model init exception:', e)
-        failWake('语音模型加载异常：' + formatError(e))
-        return
-      }
-    }
-
     statusLine.value = '正在启动唤醒...'
-    console.log('[Asst] starting WakeWordEngine...')
 
     // 预检麦克风设备：无可用录音设备时提前提示，避免模糊的 NotFoundError。
     // Pre-check microphone devices: prompt early when no recording device available, avoid ambiguous NotFoundError.
@@ -397,28 +352,23 @@ export async function toggleWake() {
     }
 
     try {
-      // start() 内部会 catch 错误并返回 false（如麦克风被系统/浏览器拦截），需检查返回值。
-      // start() internally catches errors and returns false (e.g., mic blocked by system/browser), need to check return value.
-      const started = await WakeWordEngine.start(onWakeDetected, (info: any) => {
-        partialText.value = info.partial || ''
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
       })
-      if (!started) {
-        console.warn('[Asst] WakeWordEngine.start returned false')
-        failWake('麦克风启动失败，请检查系统/浏览器麦克风权限')
-        return
-      }
-      wakeEnabled.value = true
-      state.value = 'listening'
-      statusLine.value = ''
-      console.log('[Asst] listening started!')
     } catch (e: any) {
-      console.error('[Asst] WakeWordEngine.start failed:', e)
+      console.error('[Asst] getUserMedia failed:', e)
       failWake(describeMicError(e))
+      return
     }
+    startSegmenter()
+    wakeEnabled.value = true
+    state.value = 'listening'
+    statusLine.value = ''
+    console.log('[Asst] listening started!')
   } else {
     // 关闭。Disable.
     console.log('[Asst] stopping...')
-    try { WakeWordEngine.stop() } catch (e) { console.error('[Asst] stop error:', e) }
+    stopListening()
     wakeEnabled.value = false
     state.value = 'idle'
     partialText.value = ''
@@ -426,58 +376,47 @@ export async function toggleWake() {
   }
 }
 
-/** 页面销毁时收尾：停唤醒、清定时器、停录音。
- *  Cleanup on page destruction: stop wake, clear timers, stop recording. */
+/** 页面销毁时收尾：停监听、释放麦克风。
+ *  Cleanup on page destruction: stop listening and release the microphone. */
 export function stopWake() {
-  try { WakeWordEngine.stop() } catch { /* ignore */ }
-  clearTimers()
-  if (wakeRecorder && wakeRecorder.state !== 'inactive') {
-    try { wakeRecorder.stop() } catch { /* ignore */ }
-  }
+  stopListening()
 }
 
 /**
- * 播报期间暂停唤醒引擎；播完按上下文恢复 —— 这是每次播报的两端。
+ * 播报期间暂停监听；播完按上下文恢复 —— 这是每次播报的两端。
  *
- * 暂停：消除助手自己的声音自触发唤醒（echoCancellation 只能缓解，不能消除）。
- * 恢复：若此时有待答提问 → 自动开录等待作答（不必再说唤醒词）；否则恢复监听。
+ * 暂停：消除助手自己的声音自触发唤醒（echoCancellation 只能缓解，不能消除）；顺带把麦克风
+ * 轨道也放掉，播报期间麦克风是真的关着。
+ * 恢复：若此时有待答提问 → 自动回到待答（不必再说唤醒词）；否则恢复聆听。
+ * 两侧都不复用旧录音器：恢复一律重新取流 + 新建（理由见 startSegmenter）。
  *
- * 引擎只有 stop/start、没有 pause；stop() 释放麦克风轨道、start() 只重建流与
- * recognizer（**不重载 42MB 模型**），故成本可接受。注意开录依赖引擎的麦克风流，
- * 故必须先确认引擎在运行再开录。
- *
- * Pause the wake engine during playback and restore it afterwards — the two ends of every
+ * Pause the wake listener during playback and restore it afterwards — the two ends of every
  * utterance. Pausing stops the assistant's own voice from self-triggering the wake word
- * (echoCancellation only mitigates that). On restore, a pending question auto-starts
- * recording for the answer (no wake word needed); otherwise listening resumes. The engine
- * offers stop/start but no pause: stop() releases the mic track and start() only rebuilds
- * the stream and recognizer (**no 42MB model reload**). Recording needs the engine's mic
- * stream, so the engine must be confirmed running before recording starts.
+ * (echoCancellation only mitigates that) and releases the mic tracks, so the mic is genuinely off
+ * while the assistant speaks. On restore, a pending question returns to awaiting_answer (no wake
+ * word needed); otherwise listening resumes. Neither side reuses the old recorder: a resume always
+ * re-acquires the stream and builds a fresh one (see startSegmenter).
  */
 watch(speaking, (isSpeaking) => {
-  const eng = (globalThis as { WakeWordEngine?: any }).WakeWordEngine
-  if (!eng) return
-
   if (isSpeaking) {
-    // 播报开始：暂停监听（未运行则是无操作）。
-    if (eng.isRunning?.()) eng.stop()
+    // 播报开始：暂停监听（没在跑也要推进代际，见 stopListening）。
+    // Playback starts: pause listening (the generation advances even when nothing is running).
+    stopListening()
     return
   }
 
-  // 播报结束。
+  // 播报结束。Playback ended.
   const q = pendingQuestion.value
   if (q) {
     const ns = nextState(state.value, 'question_ready')
     if (ns !== 'awaiting_answer') return
     state.value = ns
-    const begin = () => {
-      if (!startRecording(answerTimeoutMs())) state.value = 'listening'
-    }
-    if (eng.isRunning?.()) begin()
-    else void Promise.resolve(eng.start?.()).then(begin)   // 先重启引擎拿到麦克风流
+    void ensureListening()
     return
   }
 
   // 无待答提问：恢复监听（仅在唤醒开关打开时，避免「关了唤醒却被动开麦」）。
-  if (wakeEnabled.value && eng.isModelLoaded?.() && !eng.isRunning?.()) void eng.start()
+  // No pending question: resume listening, and only while wake is enabled, so switching wake off
+  // never leaves a live mic behind.
+  if (wakeEnabled.value) void ensureListening()
 })
