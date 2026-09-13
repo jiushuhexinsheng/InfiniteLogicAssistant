@@ -23,6 +23,7 @@ from core.orchestrator.events import ContentDeltaEvent, ToolEndEvent, ToolStartE
 from core.orchestrator.session import Session
 from core.orchestrator.task import Task
 from core.tools import TOOLS
+from core.tools.policy import decide
 
 from core.prompts import EXECUTOR_SYSTEM as _SYSTEM, UNTRUSTED_DATA_NOTE
 
@@ -139,16 +140,23 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
                     {"role": "tool", "tool_call_id": tc.get("id", ""), "content": result},
                 )
 
-            # read 级工具并发执行（相互独立）；write/exec 串行（需逐个人类确认）
-            read_idx = [i for i, tc in enumerate(tool_calls) if TOOLS.risk(tc["function"]["name"]) == "read"]
-            write_idx = [i for i, tc in enumerate(tool_calls) if TOOLS.risk(tc["function"]["name"]) != "read"]
+            # 免确认的工具并发执行；需确认的逐个串行（确认本身必须串行问）。
+            # 分流依据是「是否需要确认」而非工具风险 —— 策略 allow 的写操作同样免确认。
+            # Tools needing no confirmation run concurrently; those needing it run one at a
+            # time (the confirmation itself must be asked serially). The split is by
+            # "needs confirmation", not by tool risk: a policy-allowed write is equally
+            # prompt-free.
+            auto_idx = [i for i, tc in enumerate(tool_calls)
+                        if decide(tc["function"]["name"]).action == "allow"]
+            auto_set = set(auto_idx)
+            ask_idx = [i for i in range(len(tool_calls)) if i not in auto_set]
             results: dict[int, tuple[dict, dict]] = {}
-            if read_idx:
-                outs = await asyncio.gather(*(run_one_tc(tool_calls[i], step) for i in read_idx))
-                for i, o in zip(read_idx, outs):
+            if auto_idx:
+                outs = await asyncio.gather(*(run_one_tc(tool_calls[i], step) for i in auto_idx))
+                for i, o in zip(auto_idx, outs):
                     if o is not None:
                         results[i] = o
-            for i in write_idx:
+            for i in ask_idx:
                 o = await run_one_tc(tool_calls[i], step)
                 if o is not None:
                     results[i] = o

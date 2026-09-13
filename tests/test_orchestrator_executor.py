@@ -270,3 +270,62 @@ async def test_execute_emits_streaming_events(monkeypatch):
     assert "usage" in types
     content = "".join(e.get("text", "") for e in evts if e["type"] == "content_delta")
     assert "结果是 2" in content
+
+
+@pytest.mark.asyncio
+async def test_auto_allowed_tools_run_concurrently(monkeypatch):
+    """被策略 allow 的工具（含 write 级）并发执行，不再逐个确认。
+
+    用在飞计数判定并发，而非墙钟耗时 —— 耗时阈值在负载下会 flaky。
+    Policy-allowed tools (including write-level ones) run concurrently without prompting.
+    Concurrency is detected via an in-flight counter rather than wall-clock time, since a
+    timing threshold is flaky under load.
+    """
+    import asyncio
+
+    import core.orchestrator.confirm as confirm_mod
+    import core.orchestrator.executor as ex
+    from core.tools.policy import Decision
+
+    # 必须同时 patch 两处：executor 用 decide 做并发分流，confirm_tool 用 decide
+    # 决定要不要问。只 patch 一处会让 write 级工具仍走真实策略（tier=ask）而触发询问。
+    # Both must be patched: executor uses decide for the concurrency split, while
+    # confirm_tool uses it to decide whether to ask. Patching only one leaves a
+    # write-level tool on the real policy (tier=ask) and it prompts.
+    _allow = lambda name, section=None: Decision("allow", "rule:test")  # noqa: E731
+    monkeypatch.setattr(ex, "decide", _allow)
+    monkeypatch.setattr(confirm_mod, "decide", _allow)
+
+    started: list[str] = []
+    inflight = 0
+    max_inflight = 0
+
+    async def fake_acall(name, args, cancel=None, session=None):
+        nonlocal inflight, max_inflight
+        started.append(name)
+        inflight += 1
+        max_inflight = max(max_inflight, inflight)
+        await asyncio.sleep(0.05)
+        inflight -= 1
+        return "ok"
+
+    monkeypatch.setattr(ex.TOOLS, "acall", fake_acall)
+
+    msg = {
+        "role": "assistant", "content": "",
+        "tool_calls": [
+            {"id": "c1", "type": "function",
+             "function": {"name": "write_file", "arguments": json.dumps({"path": "a", "content": "1"})}},
+            {"id": "c2", "type": "function",
+             "function": {"name": "write_file", "arguments": json.dumps({"path": "b", "content": "2"})}},
+        ],
+    }
+    fake = _FakeLLM([[{"type": "done", "message": msg}], [_done(content="完成")]])
+    monkeypatch.setattr("core.orchestrator.executor.get_llm_client", lambda: fake)
+
+    s = Session()
+    s.channel = _Channel([])  # 一旦询问就会 IndexError
+    r = await execute_task(Task("t", "写两个文件", risk="write"), s, CancellationToken())
+    assert r["status"] == "done"
+    assert len(started) == 2
+    assert max_inflight == 2, "两个工具应同时在飞（并发），而非串行"
