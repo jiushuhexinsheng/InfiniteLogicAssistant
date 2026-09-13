@@ -7,6 +7,7 @@ to ask the operator) / risk.
 import json
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from core import config
@@ -92,6 +93,9 @@ class Task:
     missing: list[MissingItem] = field(default_factory=list)
     risk: str = "read"
     state: str = "queued"  # queued/planning/running/waiting_question/waiting_confirm/done/failed/stopped
+    # 创建时间（ISO 字符串）：任务库存档用。直接构造的 Task 缺省为空串。
+    # Creation timestamp (ISO string) for the task library; empty when constructed directly.
+    created: str = ""
 
 
 _VALID_TYPES = ("text", "choice", "composite")
@@ -159,7 +163,8 @@ async def form_task(intent: IntentResult, confirmed: dict | None = None) -> Task
         {"role": "system", "content": FORM_TASK_SYSTEM},
         {"role": "user", "content": user},
     ]
-    fallback = Task(id=uuid.uuid4().hex[:12], goal=intent.summary, params={}, missing=[], risk="read")
+    fallback = Task(id=uuid.uuid4().hex[:12], goal=intent.summary, params={}, missing=[], risk="read",
+                    created=datetime.now().isoformat())
     try:
         async for evt in get_llm_client().retry_stream_chat(
             messages, tools=[_FORM_TOOL], temperature=config.settings.agent.structured_temperature,
@@ -176,6 +181,7 @@ async def form_task(intent: IntentResult, confirmed: dict | None = None) -> Task
                     params=dict(data.get("params") or {}),
                     missing=parse_missing(data.get("missing")),
                     risk=risk,
+                    created=datetime.now().isoformat(),
                 )
         return fallback
     except Exception as e:

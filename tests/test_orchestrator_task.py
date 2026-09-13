@@ -252,3 +252,20 @@ async def test_form_task_confirmed_keeps_goal_clean(monkeypatch):
     assert "已确认信息" in user                  # confirmed 单独呈现
     assert t.goal == "复制文件"
     assert t.params == {"src": "桌面readme.txt", "dest": "下载"}
+
+
+@pytest.mark.asyncio
+async def test_form_task_sets_created_timestamp(monkeypatch):
+    """form_task 给任务打上创建时间戳（任务库存档需要）。
+    form_task stamps the task with a creation timestamp (the task library needs it)."""
+    fake = _FakeLLM([[_done_with_form("复制文件", {"src": "a"}, [], "write")]])
+    monkeypatch.setattr("core.orchestrator.task.get_llm_client", lambda: fake)
+    t = await form_task(IntentResult(type="task", summary="复制"))
+    assert t.created, "created 不应为空"
+    assert t.created[:2] == "20", f"应是 ISO 形如 20xx-...，实际 {t.created!r}"
+
+
+def test_task_created_defaults_empty():
+    """直接构造的 Task 时间戳缺省为空串（不破坏既有测试的构造方式）。
+    A directly constructed Task defaults to an empty timestamp."""
+    assert Task("t", "目标", risk="read").created == ""
