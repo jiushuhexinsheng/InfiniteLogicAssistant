@@ -404,6 +404,19 @@ type AcquireOutcome =
  * @returns 取流结果。The outcome.
  */
 async function acquireAndStart(): Promise<AcquireOutcome> {
+  // 不变量：**至多一台活着的录音器与一条活着的流**，由本函数（两个槽位的唯一写入者）负责，
+  // 而不是靠每个调用方记得先检查 —— 漏一个调用方就会孤立出「谁也够不到的录音器 + 一直开着的麦」。
+  // 已经有一台在跑就直接返回 ok（对恢复路径是空操作）。这不是假想情形：useChat 每轮结束会把
+  // 状态置为 done，3 秒后才复位回 listening，那个窗口里单击一次悬浮球就会带着活着的录音器
+  // 再次走进开启分支。
+  //
+  // Invariant: **at most one live recorder and one live stream**, enforced here — in the sole
+  // writer of those two slots — rather than by every caller remembering a precondition; one caller
+  // forgetting it orphans a recorder nothing can reach plus a mic left open. A live recorder means
+  // there is nothing to acquire, so this returns ok (a no-op for the resume path). Not hypothetical:
+  // useChat parks the state at `done` after every turn until the 3s reset, and a single click inside
+  // that window walks the enable branch in again with a recorder already running.
+  if (segmenter) return 'ok'
   const gen = listenGen
   let stream: MediaStream
   try {
@@ -425,6 +438,17 @@ async function acquireAndStart(): Promise<AcquireOutcome> {
     // newer enable): this stream should not exist any more, so release it on the spot.
     try { stream.getTracks().forEach((t) => t.stop()) } catch { /* ignore */ }
     return 'aborted'
+  }
+  // 等待期间别处已经把录音器建起来了（播报结束的恢复与一次单击会撞在同一个窗口里：
+  // 暂停清空槽位后，两条路径都看到「没有录音器」）—— 先写入者赢，迟到的那条流当场释放，
+  // 绝不覆盖槽位：覆盖就孤立出前台那台录音器 + 一条一直开着的流。
+  // A recorder came up elsewhere while we were waiting (the post-playback resume and a click do
+  // collide in that window: the pause empties the slot and both paths see "no recorder"). First
+  // writer wins; the late stream is released on the spot and the slots are never written over —
+  // writing over them orphans the recorder already running plus a permanently open stream.
+  if (segmenter) {
+    try { stream.getTracks().forEach((t) => t.stop()) } catch { /* ignore */ }
+    return 'ok'
   }
   micStream = stream
   try {
@@ -450,7 +474,11 @@ async function acquireAndStart(): Promise<AcquireOutcome> {
  * @returns 是否正在监听。Whether listening is running.
  */
 async function ensureListening(): Promise<boolean> {
-  if (!wakeEnabled.value || segmenter) return false
+  // 这里只管「该不该听」；「已经有一台在跑就别再取流」的不变量归 acquireAndStart 独家负责，
+  // 免得两处各写一份、日后改一处漏一处。
+  // This only decides whether we *should* be listening; "a recorder is already running, do not
+  // acquire again" belongs to acquireAndStart alone, so the rule has one home.
+  if (!wakeEnabled.value) return false
   return (await acquireAndStart()) === 'ok'
 }
 

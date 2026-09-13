@@ -515,4 +515,82 @@ describe('useWakeWord 开启路径', () => {
     expect(store.wakeEnabled.value).toBe(false)
     expect(store.state.value).toBe('error')  // failWake：明确提示，不静默。Loud, never silent.
   })
+
+  /**
+   * 录音器**已经活着**时又进开启分支 —— 无需并发，一次单击即可：
+   * `useChat` 每轮结束把状态置为 `done`，要等 3 秒复位回 `listening`，这个窗口里点一下悬浮球，
+   * 开启分支照样被进入（state 是 done、闸是 false），于是又取一条流、又建一台录音器，
+   * 把原来那台连同它的流一起孤立 —— `stopListening()` 只持有最新那个，够不到它们。
+   *
+   * Entering the enable branch while a recorder is **already live** needs no concurrency at all:
+   * useChat parks the state at `done` after every turn until the 3s reset, and a click inside that
+   * window still enters the enable branch (state is `done`, the latch is false), acquiring a second
+   * stream and a second recorder and orphaning the first — stopListening only holds the newest.
+   */
+  it('聆听中单击开启 → 复用现有录音器，不再采集第二条流', async () => {
+    const { store, ww, handles, streams, getUserMedia } = await setupWake()
+
+    await ww.toggleWake()                    // 开启：一条流、一台录音器。Enable: one stream, one recorder.
+    expect(handles).toHaveLength(1)
+
+    store.state.value = 'done'               // 回合结束后的 3 秒窗口。The 3s window after a turn.
+    await ww.toggleWake()                    // 这个窗口里点一下悬浮球。A click inside that window.
+
+    expect(getUserMedia).toHaveBeenCalledTimes(1)   // 不得再取一条流。No second acquisition.
+    expect(handles).toHaveLength(1)                 // 不得再建一台录音器。No second recorder.
+    expect(handles[0].start).toHaveBeenCalledTimes(1)
+    expect(store.state.value).toBe('listening')     // 回到聆听，而不是空闲。Back to listening.
+
+    await ww.toggleWake()                    // 关掉唤醒。Switch wake off.
+
+    // 收干净：这一段里产生的每条流都被关掉，没有一台录音器还在跑。
+    // Everything produced here is released: every stream closed, no recorder left running.
+    expect(streams.every((s) => s.track.stop.mock.calls.length === 1)).toBe(true)
+    expect(handles.every((h) => h.stop.mock.calls.length === 1)).toBe(true)
+  })
+
+  /**
+   * 两条取流同时在途：播报结束的恢复与紧随其后的一次单击（真会撞上 —— 回合结束的 done 窗口与
+   * 播报尾音重叠时，暂停把录音器清空、两条路径都能看到「没有录音器」）。先写入者赢，后到的那条
+   * 流必须当场释放，绝不能覆盖槽位 —— 覆盖就孤立出前台那台录音器 + 一条一直开着的流。
+   *
+   * Two acquisitions in flight at once: the post-playback resume and a click right after it (they
+   * genuinely overlap — while a finished turn's `done` window meets the tail of playback, the pause
+   * empties the recorder slot and both paths see "no recorder"). First writer wins; the late stream
+   * must be released on the spot, never written over the slot, or the recorder already running plus
+   * a permanently open stream get orphaned.
+   */
+  it('取流在途时又单击开启 → 先到者胜，迟到的流被释放', async () => {
+    const { store, ww, handles, streams, getUserMedia, speaking, defer, release } = await setupWake()
+
+    await ww.toggleWake()                    // 开启：第 1 条流。Enable: stream #1.
+    speaking.value = true
+    await flush()                            // 播报开始 → 暂停（槽位清空，代际推进）。Pause.
+    store.state.value = 'done'               // 回合结束状态与播报尾音重叠。The done window.
+
+    defer()                                  // 恢复那条取流挂起。The resume's acquisition hangs.
+    speaking.value = false
+    await flush()
+    defer()                                  // 单击那条取流也挂起。The click's acquisition hangs too.
+    const click = ww.toggleWake()
+    await flush()
+
+    expect(getUserMedia).toHaveBeenCalledTimes(3)   // 初始 + 恢复 + 单击。Initial + resume + click.
+
+    const sResume = makeStream()
+    release(sResume)                         // 先放行恢复那条。Release the resume's stream first.
+    await flush()
+    const sClick = makeStream()
+    release(sClick)                          // 再放行单击那条。Then the click's.
+    await click
+    await flush()
+
+    expect(handles).toHaveLength(2)          // 初始 1 + 恢复 1；单击不得再建。No third recorder.
+    expect(sClick.track.stop).toHaveBeenCalledTimes(1)   // 迟到的那条流被释放。Late stream released.
+
+    await ww.toggleWake()                    // 关掉唤醒。Switch wake off.
+
+    expect(handles.every((h) => h.stop.mock.calls.length === 1)).toBe(true)
+    expect([...streams, sResume, sClick].every((s) => s.track.stop.mock.calls.length === 1)).toBe(true)
+  })
 })
