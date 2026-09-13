@@ -336,3 +336,120 @@ async def test_pipeline_skips_prefill_when_no_similar(monkeypatch):
     events: asyncio.Queue = asyncio.Queue()
     await pl.run_pipeline("导出报表", s, events, StopController())
     assert calls == [None], "无相似历史时不应二次调用 form_task"
+
+
+# ─── 完成确认 + 存档（mode="task"）───
+
+def _task_without_missing():
+    """构造一个无缺失信息的任务。Build a task with nothing missing."""
+    from core.orchestrator.task import Task
+    return Task(id="t1", goal="做事", params={}, missing=[], risk="read")
+
+
+async def _fake_form_plain(intent, confirmed=None):
+    """不产生缺失信息的 form_task 桩（必须 async —— 流水线会 await 它）。
+    A form_task stub that produces nothing missing (must be async; the pipeline awaits it)."""
+    return _task_without_missing()
+
+
+@pytest.mark.asyncio
+async def test_task_mode_asks_completion_and_records_on_yes(monkeypatch):
+    """任务模式下完成时发确认提问；答「完成了」才存档。
+    In task mode a completion question is asked and the task is archived only on "completed"."""
+    from core.orchestrator import pipeline as pl
+    from core.orchestrator.control import StopController
+    from core.orchestrator.session import Answer, Session
+
+    recorded: list = []
+
+    class _Ch:
+        def __init__(self):
+            self.kinds, self.options, self.notified = [], [], []
+        async def ask(self, q, *, kind="text", options=None):
+            self.kinds.append(kind)
+            self.options.append(options or [])
+            self.notified.append(q)
+            return Answer(choice="yes")
+        async def notify(self, text):
+            self.notified.append(text)
+
+    class _Store:
+        async def record(self, task, result, session_id=""):
+            recorded.append((task.goal, session_id))
+
+    monkeypatch.setattr(pl, "_get_task_store", lambda: _Store())
+    monkeypatch.setattr(pl, "judge_intent", _fake_judge)
+    monkeypatch.setattr(pl, "form_task", _fake_form_plain)
+    monkeypatch.setattr(pl, "execute_task", _fake_execute)
+    monkeypatch.setattr(pl, "extract_and_store", _noop)
+    monkeypatch.setattr(pl, "get_facts_store", lambda: object())
+
+    s = Session()
+    ch = _Ch()
+    events: asyncio.Queue = asyncio.Queue()
+    await pl.run_pipeline("做事", s, events, StopController(), channel=ch, mode="task")
+
+    assert ch.kinds == ["choice"], "完成确认必须是 choice 类"
+    assert [o["value"] for o in ch.options[0]] == ["yes", "no"]
+    assert recorded == [("做事", s.id)]
+
+
+@pytest.mark.asyncio
+async def test_task_mode_no_record_when_not_completed(monkeypatch):
+    """答「没完成」不存档。Answering "not completed" does not archive."""
+    from core.orchestrator import pipeline as pl
+    from core.orchestrator.control import StopController
+    from core.orchestrator.session import Answer, Session
+
+    recorded: list = []
+
+    class _Ch:
+        async def ask(self, q, *, kind="text", options=None):
+            return Answer(choice="no")
+        async def notify(self, text):
+            pass
+
+    class _Store:
+        async def record(self, task, result, session_id=""):
+            recorded.append(task.goal)
+
+    monkeypatch.setattr(pl, "_get_task_store", lambda: _Store())
+    monkeypatch.setattr(pl, "judge_intent", _fake_judge)
+    monkeypatch.setattr(pl, "form_task", _fake_form_plain)
+    monkeypatch.setattr(pl, "execute_task", _fake_execute)
+    monkeypatch.setattr(pl, "extract_and_store", _noop)
+    monkeypatch.setattr(pl, "get_facts_store", lambda: object())
+
+    s = Session()
+    events: asyncio.Queue = asyncio.Queue()
+    await pl.run_pipeline("做事", s, events, StopController(), channel=_Ch(), mode="task")
+    assert recorded == []
+
+
+@pytest.mark.asyncio
+async def test_chat_mode_never_asks_completion(monkeypatch):
+    """对话模式（缺省）完全不问、不存档 —— 向后兼容回归。
+    Chat mode (the default) never asks and never archives — a backward-compatibility regression."""
+    from core.orchestrator import pipeline as pl
+    from core.orchestrator.control import StopController
+    from core.orchestrator.session import Answer, Session
+
+    asked: list = []
+
+    class _Ch:
+        async def ask(self, q, *, kind="text", options=None):
+            asked.append(q)
+            return Answer(choice="yes")
+        async def notify(self, text):
+            pass
+
+    monkeypatch.setattr(pl, "judge_intent", _fake_judge)
+    monkeypatch.setattr(pl, "form_task", _fake_form_plain)
+    monkeypatch.setattr(pl, "execute_task", _fake_execute)
+    monkeypatch.setattr(pl, "extract_and_store", _noop)
+    monkeypatch.setattr(pl, "get_facts_store", lambda: object())
+
+    s = Session()
+    events: asyncio.Queue = asyncio.Queue()
+    await pl.run_pipeline("做事", s, events, StopController(), channel=_Ch())   # 缺省 mode
+    assert asked == [], "对话模式不应发完成确认"

@@ -12,6 +12,7 @@ event until /api/voice/answer delivers the answer (human in the loop).
 import asyncio
 
 from core.llm.client import get_llm_client
+from core.logger import logger
 from core.memory.context import get_facts_store
 from core.memory.extract import extract_and_store
 from core.orchestrator.clarify import run_clarify
@@ -67,6 +68,13 @@ async def find_similar(goal: str) -> dict | None:
 # (core/memory/extract.py), making the consequence a silent loss of long-term
 # fact extraction with no error trace.
 _bg_tasks: set[asyncio.Task] = set()
+
+# 完成确认的两个固定选项（任务模式用）。
+# The two fixed options of the completion confirmation (used in task mode).
+COMPLETION_OPTIONS = [
+    {"value": "yes", "label": "完成了"},
+    {"value": "no", "label": "没完成"},
+]
 
 
 def _spawn_bg(coro) -> asyncio.Task:
@@ -164,7 +172,7 @@ async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str) -
 
 async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
                        controller: StopController, channel: OperatorChannel | None = None,
-                       messages: list[dict] | None = None) -> None:
+                       messages: list[dict] | None = None, mode: str = "chat") -> None:
     """完整编排，产出事件（以 done 事件收尾）。channel 缺省用 SSE 队列通道。
 
     messages 为前端多轮历史种子（含当前用户消息）；缺省时把 text 记为当前用户消息。
@@ -233,6 +241,17 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
     # 任务后异步提取事实写长期记忆（不阻塞回复，失败静默）
     if result.get("status") in ("done", "failed"):
         _spawn_bg(extract_and_store(task, result, get_facts_store()))
+    # 任务模式：完成后询问「完成了吗」，答「完成了」才存档（需求：只记录成功的任务）。
+    # Task mode: ask whether the task is done and archive only on "completed" — the
+    # requirement is to record successful tasks only.
+    if mode == "task" and result.get("status") == "done":
+        answer = await session.ask("这个任务完成了吗？", kind="choice", options=COMPLETION_OPTIONS)
+        if answer.choice == "yes":
+            try:
+                await _get_task_store().record(task, result, session_id=session.id)
+            except Exception as e:
+                logger.warning("任务存档失败: {}", e)  # 存档失败不该影响汇报
+
     session.set_state(SessionState.REPORTING)
     await events.put(TaskStateEvent(
         state="done", status=result["status"], summary=result["summary"], steps=result["steps"],
