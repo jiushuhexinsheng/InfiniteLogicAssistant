@@ -1,5 +1,8 @@
+import { watch } from 'vue'
 import { api } from '../../api'
 import { formatError } from '../../errors'
+import { nextState } from './wakeFsm'
+import { speaking } from './useTts'
 import { state, partialText, statusLine, expanded, wakeEnabled, wakeConfig, vadConfig, addMessage, failWake, modelLoading, modelProgress, pendingQuestion } from './store'
 import { runTurn, sendAnswer } from './useChat'
 import { matchOption } from './answerMatch'
@@ -114,8 +117,16 @@ export function describeMicError(e: any): string {
   }
 }
 
-/** 停止录音。Stop recording. */
-function stopRecording() {
+/** 本次录音是否因「待答超时」而停止（无音频可转写，不再走转写流程）。
+ *  Whether this recording stopped because the answer wait timed out (nothing to transcribe). */
+let silentStop = false
+
+/** 停止录音。`silent` 用于待答超时：不再转写，直接返回。
+ *  Stop recording. `silent` is used for the answer-wait timeout: nothing to transcribe.
+ *  @param opts.silent - 是否为静默停止（待答超时）。Whether this is a silent stop.
+ */
+function stopRecording(opts?: { silent?: boolean }) {
+  silentStop = opts?.silent === true
   clearTimers()
   if (wakeRecorder && wakeRecorder.state === 'recording') {
     wakeRecorder.stop()
@@ -146,6 +157,10 @@ function startVAD(stream: MediaStream) {
   let silenceCount = 0
   let elapsed = 0
   const minSpeakTime = 2000
+  /** 本次录音是否已检测到语音。待答态下用它区分「用户在说」与「用户在犹豫」。 */
+  /** Whether speech has been detected in this recording; lets the answer state tell
+   *  "the user is speaking" from "the user is hesitating". */
+  let speechStarted = false
 
   silenceTimer = setInterval(() => {
     if (!analyser || !wakeRecorder || wakeRecorder.state !== 'recording') {
@@ -170,26 +185,56 @@ function startVAD(stream: MediaStream) {
       }
     } else {
       silenceCount = 0
+      if (!speechStarted) {
+        speechStarted = true
+        const ns = nextState(state.value, 'speech_started')
+        if (ns !== state.value) state.value = ns
+      }
     }
   }, checkInterval)
 }
 
-/** 启动最大录音时长定时器。Start max recording duration timer. */
-function startMaxTimer() {
-  maxTimer = setTimeout(() => {
-    console.log('[Asst] max duration reached')
-    stopRecording()
-  }, vadConfig.max_duration_ms || 10000)
+/** 待答时长（毫秒）：来自 voice.answer_timeout_s，缺省 8s。
+ *  Answer-wait duration in ms, from voice.answer_timeout_s (default 8s). */
+function answerTimeoutMs(): number {
+  const s = (wakeConfig as { answer_timeout_s?: number }).answer_timeout_s
+  return (s && s > 0 ? s : 8) * 1000
 }
 
-/** 唤醒检测回调。Wake detection callback. */
-function onWakeDetected() {
-  console.log('[Asst] WAKE!')
-  state.value = 'recording'
-  playBeep()
+/** 启动最大录音时长定时器。`ms` 缺省用 VAD 的 max_duration_ms；待答态传 answer_timeout_s。
+ *  Start the max recording timer; `ms` defaults to the VAD's max_duration_ms, while the
+ *  answer-wait state passes answer_timeout_s.
+ *  @param ms - 超时毫秒数。Timeout in milliseconds. */
+function startMaxTimer(ms?: number) {
+  maxTimer = setTimeout(() => {
+    console.log('[Asst] max duration reached')
+    // 待答态超时 = 用户全程未说话 → 进待机（不转写）。
+    // 其余态维持既有行为（正常停止并转写已录内容）。
+    // An answer-wait timeout means the user never spoke → standby (no transcription).
+    const ns = nextState(state.value, 'answer_timeout')
+    if (ns !== state.value) {
+      state.value = ns
+      stopRecording({ silent: true })
+      return
+    }
+    stopRecording()
+  }, ms ?? (vadConfig.max_duration_ms || 10000))
+}
 
+/** 开始一次录音：取引擎的麦克风流、建 MediaRecorder、接 VAD 与超时。
+ *
+ * 抽出供「唤醒命中」与「播报后自动开录」共用 —— 避免两份录音逻辑各自演化。
+ *
+ * Start a recording: take the engine's mic stream, build the MediaRecorder, attach VAD and
+ * the timeout. Extracted so "wake detected" and "auto-record after the question is spoken"
+ * share one implementation instead of two copies drifting apart.
+ *
+ * @param timeoutMs 最大录音时长；缺省用 VAD 的 max_duration_ms。Max duration; defaults to the VAD's max_duration_ms.
+ * @returns 是否成功开始。Whether recording started.
+ */
+function startRecording(timeoutMs?: number): boolean {
   const stream = WakeWordEngine.getStream()
-  if (!stream) { state.value = 'listening'; return }
+  if (!stream) return false
 
   wakeChunks = []
   let mimeType = 'audio/webm'
@@ -204,8 +249,7 @@ function onWakeDetected() {
     wakeRecorder = new MediaRecorder(stream, opts)
   } catch (e) {
     console.error('[Asst] MediaRecorder fail:', e)
-    state.value = 'listening'
-    return
+    return false
   }
 
   wakeRecorder.ondataavailable = (e) => {
@@ -214,7 +258,16 @@ function onWakeDetected() {
 
   wakeRecorder.onstop = async () => {
     clearTimers()
-    if (wakeChunks.length === 0) { state.value = 'listening'; return }
+    // 待答超时：无音频可转写，状态已由 startMaxTimer 置为待机，直接返回。
+    // Answer-wait timeout: nothing to transcribe; standby was already set by startMaxTimer.
+    if (silentStop) { silentStop = false; return }
+    if (wakeChunks.length === 0) {
+      // 待答态没录到内容 → 待机（等用户再唤醒）；其余态回聆听。
+      // Nothing recorded while awaiting an answer → standby; otherwise back to listening.
+      const ns = nextState(state.value, 'answer_timeout')
+      state.value = ns !== state.value ? ns : 'listening'
+      return
+    }
 
     state.value = 'transcribing'
     const blob = new Blob(wakeChunks, { type: mimeType || 'audio/webm' })
@@ -233,7 +286,23 @@ function onWakeDetected() {
 
   wakeRecorder.start(1000)
   startVAD(stream)
-  startMaxTimer()
+  startMaxTimer(timeoutMs)
+  return true
+}
+
+/** 唤醒检测回调。Wake detection callback. */
+function onWakeDetected() {
+  console.log('[Asst] WAKE!')
+  // 待机态唤醒 → 续答本题（用待答超时而非最大录音时长）；其余态维持既有行为。
+  // Waking from standby resumes this question (using the answer timeout rather than the
+  // max recording duration); other states keep their existing behaviour.
+  const resumed = nextState(state.value, 'wake_detected') === 'awaiting_answer'
+  state.value = resumed ? 'awaiting_answer' : 'recording'
+  if (!resumed) playBeep()
+
+  if (!startRecording(resumed ? answerTimeoutMs() : undefined)) {
+    state.value = 'listening'
+  }
 }
 
 /** ASR 转写处理：提问待答时走答案通道，否则开新一轮。
@@ -366,3 +435,49 @@ export function stopWake() {
     try { wakeRecorder.stop() } catch { /* ignore */ }
   }
 }
+
+/**
+ * 播报期间暂停唤醒引擎；播完按上下文恢复 —— 这是每次播报的两端。
+ *
+ * 暂停：消除助手自己的声音自触发唤醒（echoCancellation 只能缓解，不能消除）。
+ * 恢复：若此时有待答提问 → 自动开录等待作答（不必再说唤醒词）；否则恢复监听。
+ *
+ * 引擎只有 stop/start、没有 pause；stop() 释放麦克风轨道、start() 只重建流与
+ * recognizer（**不重载 42MB 模型**），故成本可接受。注意开录依赖引擎的麦克风流，
+ * 故必须先确认引擎在运行再开录。
+ *
+ * Pause the wake engine during playback and restore it afterwards — the two ends of every
+ * utterance. Pausing stops the assistant's own voice from self-triggering the wake word
+ * (echoCancellation only mitigates that). On restore, a pending question auto-starts
+ * recording for the answer (no wake word needed); otherwise listening resumes. The engine
+ * offers stop/start but no pause: stop() releases the mic track and start() only rebuilds
+ * the stream and recognizer (**no 42MB model reload**). Recording needs the engine's mic
+ * stream, so the engine must be confirmed running before recording starts.
+ */
+watch(speaking, (isSpeaking) => {
+  const eng = (globalThis as { WakeWordEngine?: any }).WakeWordEngine
+  if (!eng) return
+
+  if (isSpeaking) {
+    // 播报开始：暂停监听（未运行则是无操作）。
+    if (eng.isRunning?.()) eng.stop()
+    return
+  }
+
+  // 播报结束。
+  const q = pendingQuestion.value
+  if (q) {
+    const ns = nextState(state.value, 'question_ready')
+    if (ns !== 'awaiting_answer') return
+    state.value = ns
+    const begin = () => {
+      if (!startRecording(answerTimeoutMs())) state.value = 'listening'
+    }
+    if (eng.isRunning?.()) begin()
+    else void Promise.resolve(eng.start?.()).then(begin)   // 先重启引擎拿到麦克风流
+    return
+  }
+
+  // 无待答提问：恢复监听（仅在唤醒开关打开时，避免「关了唤醒却被动开麦」）。
+  if (wakeEnabled.value && eng.isModelLoaded?.() && !eng.isRunning?.()) void eng.start()
+})

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { nextTick } from 'vue'
 
 /** 回归测试：vosk.js 内嵌 worker 只支持 URL 加载模型（load() 里 modelUrl.replace(...)，
  *  modelUrl 必须是字符串）。若前端预下载模型字节并把 ArrayBuffer 交给
@@ -127,5 +128,85 @@ describe('useWakeWord handleTranscript 分流', () => {
     await handleTranscript(new Blob(['x']))
     expect(answerSpy).not.toHaveBeenCalled()
     expect(store.messages.value.some((m) => m.text === '你好')).toBe(true)
+  })
+})
+
+/**
+ * 播报期间暂停监听、播完恢复 —— 消除助手自己的声音自触发唤醒。
+ * Listening pauses during playback and resumes after, so the assistant's own voice cannot
+ * self-trigger the wake word.
+ *
+ * 注意：桩必须【有状态】—— isRunning 要反映 stop/start，否则「!isRunning() 才重启」
+ * 的判定恒假、start() 永不调用，断言会假失败。
+ */
+describe('useWakeWord 播报门控', () => {
+  function stubEngine() {
+    let running = true
+    const eng = {
+      init: vi.fn(async () => true),
+      start: vi.fn(async () => { running = true; return true }),
+      stop: vi.fn(() => { running = false }),
+      isRunning: vi.fn(() => running),
+      isModelLoaded: vi.fn(() => true),
+    }
+    ;(globalThis as any).WakeWordEngine = eng
+    return eng
+  }
+
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no network')))
+  })
+
+  /** 播报开始 → 暂停引擎。Playback starting pauses the engine. */
+  it('speaking 变 true 时停止引擎', async () => {
+    const eng = stubEngine()
+    const store = await import('../store')
+    store.pendingQuestion.value = null
+    const tts = await import('../useTts')
+    await import('../useWakeWord')
+    await nextTick()
+    eng.stop.mockClear()
+
+    tts.speaking.value = true
+    await nextTick()
+    expect(eng.stop).toHaveBeenCalledTimes(1)
+    expect(eng.isRunning()).toBe(false)   // 桩确实转为未运行
+  })
+
+  /** 播报结束且无待答提问 → 恢复监听。Playback ending with no pending question resumes listening. */
+  it('播报结束恢复监听', async () => {
+    const eng = stubEngine()
+    const store = await import('../store')
+    store.pendingQuestion.value = null
+    store.wakeEnabled.value = true
+    const tts = await import('../useTts')
+    await import('../useWakeWord')
+    await nextTick()
+    eng.start.mockClear()
+
+    tts.speaking.value = true
+    await nextTick()
+    tts.speaking.value = false
+    await nextTick()
+    expect(eng.start).toHaveBeenCalledTimes(1)
+  })
+
+  /** 唤醒开关关闭时播完不重启（避免「关了唤醒却被动开麦」）。 */
+  it('唤醒开关关闭时播完不重启', async () => {
+    const eng = stubEngine()
+    const store = await import('../store')
+    store.pendingQuestion.value = null
+    store.wakeEnabled.value = false
+    const tts = await import('../useTts')
+    await import('../useWakeWord')
+    await nextTick()
+    eng.start.mockClear()
+
+    tts.speaking.value = true
+    await nextTick()
+    tts.speaking.value = false
+    await nextTick()
+    expect(eng.start).not.toHaveBeenCalled()
   })
 })
