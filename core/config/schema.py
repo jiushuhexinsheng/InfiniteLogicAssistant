@@ -227,6 +227,46 @@ class ToolsSection(BaseModel):
     weather_timeout: int = Field(10, gt=0)
 
 
+class PermissionRule(BaseModel):
+    """一条权限规则：match 为工具名或 glob（fnmatch 语义，大小写敏感）。
+
+    A permission rule: match is a tool name or a glob (fnmatch semantics, case-sensitive).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    match: str
+    action: Literal["allow", "ask", "deny"]
+
+
+class PermissionTiers(BaseModel):
+    """按工具风险层级设的默认动作。Per-tier default action, keyed by tool risk."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    read: Literal["allow", "ask", "deny"] = "allow"
+    write: Literal["allow", "ask", "deny"] = "ask"
+    exec: Literal["allow", "ask", "deny"] = "ask"
+
+
+class PermissionsSection(BaseModel):
+    """工具权限策略：层级默认 + 规则覆盖。
+
+    默认值等价于改造前的行为（read 免询问、write/exec 询问），故既有配置文件
+    无 permissions 段时行为不变。
+
+    Tool permission policy: per-tier defaults plus rule overrides. The defaults match
+    the pre-change behaviour (read auto-allowed, write/exec asked), so an existing
+    config without a permissions section behaves unchanged.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    default_action: Literal["allow", "ask", "deny"] = "ask"
+    tiers: PermissionTiers = Field(default_factory=lambda: PermissionTiers())
+    rules: list[PermissionRule] = Field(default_factory=list)
+
+
 class McpServer(BaseModel):
     """MCP 服务器条目：名称、启动命令与参数。
 
@@ -294,4 +334,5 @@ class Settings(BaseModel):
     agent: AgentSection = Field(default_factory=lambda: AgentSection())
     llm_client: LlmClientSection = Field(default_factory=lambda: LlmClientSection())
     tools: ToolsSection = Field(default_factory=lambda: ToolsSection())
+    permissions: PermissionsSection = Field(default_factory=lambda: PermissionsSection())
     vendor_presets: dict[str, VendorPreset] = Field(default_factory=dict)  # 厂商目录 YAML 扩展

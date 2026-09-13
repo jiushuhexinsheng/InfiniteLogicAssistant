@@ -453,6 +453,26 @@ class ServerConfigOut(BaseModel):
     api_token_set: bool = False
 
 
+class PermissionRuleOut(BaseModel):
+    """权限规则（前端展示与编辑用）。A permission rule (for front-end display and editing)."""
+    match: str
+    action: str
+
+
+class PermissionTiersOut(BaseModel):
+    """各风险层级的默认动作。The default action per risk tier."""
+    read: str
+    write: str
+    exec: str
+
+
+class PermissionsOut(BaseModel):
+    """工具权限策略快照。Tool permission policy snapshot."""
+    default_action: str
+    tiers: PermissionTiersOut
+    rules: list[PermissionRuleOut]
+
+
 class EditableSnapshot(BaseModel):
     """配置编辑快照（前端 settings 页面的数据源）。
 
@@ -466,6 +486,7 @@ class EditableSnapshot(BaseModel):
     agent: AgentConfigOut
     llm_client: LlmClientConfigOut
     tools: ToolsConfigOut
+    permissions: PermissionsOut
     mcp: McpConfigOut
     rag: RagConfigOut
     server: ServerConfigOut

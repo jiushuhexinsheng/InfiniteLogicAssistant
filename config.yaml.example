@@ -123,6 +123,23 @@ llm_client:
 tools:
   search_max_results: 5
 
+# 工具权限策略：工具调用是否需要操作者确认（可在设置页「权限」调整）
+#   allow 直接执行 / ask 询问操作者 / deny 拒绝执行
+# 求值顺序：未注册工具→拒绝 > 任一 deny 规则短路（不可被后续规则翻案）
+#           > 首条匹配规则 > 层级默认 > default_action
+# Tool permission policy: whether a tool call needs operator confirmation
+#   (adjustable in the settings page).
+#   allow runs directly / ask prompts / deny refuses.
+# Order: unregistered→deny > any deny rule (monotonic) > first matching rule
+#        > tier default > default_action.
+permissions:
+  default_action: ask          # 未命中任何规则时的兜底
+  tiers:
+    read: allow                # 只读工具免询问（与改造前行为一致）
+    write: ask
+    exec: ask
+  rules: []                    # 形如 - {match: "web_search", action: allow}
+
 # 厂商目录扩展（可选）：追加/覆盖 core/providers.py 内置预设，设置页「新增 Profile」可见。
 # 同 ID 覆盖内置；endpoint 为基座不含 /v1，chat_path 与基座配对。
 # vendor_presets:

@@ -884,6 +884,7 @@ export interface components {
             agent: components["schemas"]["AgentConfigOut"];
             llm_client: components["schemas"]["LlmClientConfigOut"];
             tools: components["schemas"]["ToolsConfigOut"];
+            permissions: components["schemas"]["PermissionsOut"];
             mcp: components["schemas"]["McpConfigOut"];
             rag: components["schemas"]["RagConfigOut"];
             server: components["schemas"]["ServerConfigOut"];
@@ -1191,6 +1192,39 @@ export interface components {
              * @default false
              */
             restart_required: boolean;
+        };
+        /**
+         * PermissionRuleOut
+         * @description 权限规则（前端展示与编辑用）。A permission rule (for front-end display and editing).
+         */
+        PermissionRuleOut: {
+            /** Match */
+            match: string;
+            /** Action */
+            action: string;
+        };
+        /**
+         * PermissionTiersOut
+         * @description 各风险层级的默认动作。The default action per risk tier.
+         */
+        PermissionTiersOut: {
+            /** Read */
+            read: string;
+            /** Write */
+            write: string;
+            /** Exec */
+            exec: string;
+        };
+        /**
+         * PermissionsOut
+         * @description 工具权限策略快照。Tool permission policy snapshot.
+         */
+        PermissionsOut: {
+            /** Default Action */
+            default_action: string;
+            tiers: components["schemas"]["PermissionTiersOut"];
+            /** Rules */
+            rules: components["schemas"]["PermissionRuleOut"][];
         };
         /**
          * PingResponse

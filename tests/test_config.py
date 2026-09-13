@@ -134,3 +134,46 @@ def test_editable_snapshot_keeps_new_fields_strips_key(monkeypatch):
     assert prof["compat"]["stream_options"] is False  # CompatConfig 默认带 max_tokens_field
     # 密钥状态以 *_set 暴露
     assert snap["llm"]["api_key_set"]["ds"] is True
+
+
+# ─── permissions 段：工具权限策略 ───
+
+
+def test_permissions_section_defaults_match_prior_behaviour():
+    """权限段缺省时等价于改造前的行为：read 免询问、write/exec 询问、兜底询问。
+    The permissions section defaults to the pre-change behaviour: read auto-allowed,
+    write/exec asked, fallback asks."""
+    s = c.Settings()
+    assert s.permissions.default_action == "ask"
+    assert s.permissions.tiers.read == "allow"
+    assert s.permissions.tiers.write == "ask"
+    assert s.permissions.tiers.exec == "ask"
+    assert s.permissions.rules == []
+
+
+def test_permissions_section_rejects_invalid_action():
+    """非法动作被 pydantic 拒绝 —— 配置写错启动即报错，而不是静默降级。
+    An invalid action is rejected by pydantic: a bad config fails at startup instead of
+    silently degrading."""
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        c.Settings(permissions={"tiers": {"read": "maybe"}})
+
+
+def test_permissions_section_accepts_rules():
+    """规则可解析为 match + action。Rules parse into match + action."""
+    s = c.Settings(permissions={"rules": [{"match": "run_*", "action": "deny"}]})
+    assert s.permissions.rules[0].match == "run_*"
+    assert s.permissions.rules[0].action == "deny"
+
+
+def test_permissions_snapshot_exposed(monkeypatch):
+    """可编辑快照必须暴露 permissions —— 否则设置页拿不到（response_model 会把它过滤掉）。
+    The editable snapshot must expose permissions, or the settings page cannot read it
+    (the response_model would filter it out)."""
+    settings = c.Settings(permissions={"rules": [{"match": "run_*", "action": "deny"}]})
+    monkeypatch.setattr(c, "get_settings", lambda: settings)
+    snap = c.editable_snapshot()
+    assert snap["permissions"]["tiers"]["read"] == "allow"
+    assert snap["permissions"]["default_action"] == "ask"
+    assert snap["permissions"]["rules"] == [{"match": "run_*", "action": "deny"}]
