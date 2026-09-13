@@ -144,3 +144,31 @@ async def test_record_is_append_only(store):
     await store.record(_task("同一目标"), _result())
     await store.record(_task("同一目标"), _result())
     assert len(await store.list_tasks()) == 2
+
+
+@pytest.mark.asyncio
+async def test_find_similar_matches_source_text_not_goal(store):
+    """匹配认用户原话（source_text），不认 LLM 归一化的 goal。
+
+    端到端实测发现的真问题：同一句「济南现在天气怎么样」两次跑出的 goal 分别是
+    「查询济南市当前的天气情况」与「查询济南当前的实时天气情况」，trigram 相似度只有
+    0.312 < 阈值 —— 若按 goal 匹配则同一件事永远命中不了。按原话匹配则完全相同。
+
+    Matching uses the user's original utterance, not the LLM-normalised goal. Found via
+    end-to-end testing: the same sentence produced goals only 0.312 similar, so matching on
+    the goal would never hit for an identical task; the source text is identical.
+    """
+    await store.record(_task("查询济南市当前的天气情况", {"city": "济南"}), _result(),
+                       source_text="济南现在天气怎么样")
+    # 同样的原话 → 命中
+    hit = await store.find_similar("济南现在天气怎么样")
+    assert hit is not None and hit["params"] == {"city": "济南"}
+    # 换了说法（但与 goal 文字相近）→ 按原话匹配则不应命中
+    assert await store.find_similar("查询济南市当前的天气情况") is None
+
+
+@pytest.mark.asyncio
+async def test_find_similar_falls_back_to_goal_for_old_rows(store):
+    """老数据无 source_text 时回退到 goal 匹配。Rows without source_text fall back to the goal."""
+    await store.record(_task("把 readme.txt 复制到下载目录", {"dest": "下载"}), _result())  # 无 source_text
+    assert await store.find_similar("把 readme.txt 复制到下载目录") is not None

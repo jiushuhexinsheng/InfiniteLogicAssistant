@@ -219,7 +219,12 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
         # Prefill from a similar archived task first: form_task must be re-run with
         # `confirmed`, because `missing` has already been computed by the first call and
         # prefilling task.params alone would not shrink it — the crux of this feature.
-        hist = await find_similar(task.goal)
+        # 匹配用**用户原话**而非 task.goal：goal 是 LLM 归一化的产物，同一句话两次
+        # 跑出的 goal 可能只相似 ~0.31（实测），使同一件事不可匹配。
+        # Match on the user's ORIGINAL utterance, not task.goal: the goal is LLM-normalised
+        # and the same sentence can yield goals only ~0.31 similar (measured), which makes
+        # identical tasks unmatchable.
+        hist = await find_similar(text)
         if hist is not None:
             await session.notify(f"参考了历史任务，已预填 {len(hist['params'])} 个参数")
             task = await form_task(intent, confirmed=hist["params"])
@@ -248,7 +253,7 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
         answer = await session.ask("这个任务完成了吗？", kind="choice", options=COMPLETION_OPTIONS)
         if answer.choice == "yes":
             try:
-                await _get_task_store().record(task, result, session_id=session.id)
+                await _get_task_store().record(task, result, session_id=session.id, source_text=text)
             except Exception as e:
                 logger.warning("任务存档失败: {}", e)  # 存档失败不该影响汇报
 

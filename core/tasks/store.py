@@ -121,9 +121,21 @@ class TaskStore:
                 "CREATE TABLE IF NOT EXISTS tasks ("
                 "id INTEGER PRIMARY KEY AUTOINCREMENT,"
                 "goal TEXT NOT NULL, params_json TEXT NOT NULL, steps_json TEXT NOT NULL,"
-                "status TEXT NOT NULL, created TEXT NOT NULL, session_id TEXT)"
+                "status TEXT NOT NULL, created TEXT NOT NULL, session_id TEXT,"
+                # 用户原话：相似度匹配认它，不认 LLM 归一化后的 goal ——
+                # 归一化会引入噪声（同一句话两次跑出的 goal 可能只相似 0.31），
+                # 使同一件事变得不可匹配。
+                # The user's original utterance: similarity matches on this, not on the
+                # LLM-normalised goal — normalisation adds noise (the same sentence can
+                # yield goals only 0.31 similar), making identical tasks unmatchable.
+                "source_text TEXT NOT NULL DEFAULT '')"
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created DESC)")
+            # 轻量迁移：老库（无 source_text 列）补上。
+            # Lightweight migration: add source_text to older databases.
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()}
+            if "source_text" not in cols:
+                conn.execute("ALTER TABLE tasks ADD COLUMN source_text TEXT NOT NULL DEFAULT ''")
 
     def _conn(self):
         """开启一个短连接（每次操作独立，线程安全）。Open a short-lived connection (thread-safe).
@@ -133,7 +145,8 @@ class TaskStore:
         """
         return sqlite3.connect(str(self.path))
 
-    async def record(self, task: Any, result: dict, session_id: str = "") -> None:
+    async def record(self, task: Any, result: dict, session_id: str = "",
+                     source_text: str = "") -> None:
         """存档一条成功任务（只增不改）。
 
         Archive one successful task (append-only).
@@ -142,12 +155,14 @@ class TaskStore:
             task: 已完成的任务。The finished task.
             result: 执行结果（取其 steps）。The execution result (its steps are stored).
             session_id: 来源会话 id。The originating session id.
+            source_text: 用户原话（相似度匹配认它，而非 LLM 归一化的 goal）。
+                The user's original utterance, which similarity matches on.
         """
         steps = _truncate_args(list(result.get("steps") or []))
         with self._conn() as conn:
             conn.execute(
-                "INSERT INTO tasks(goal, params_json, steps_json, status, created, session_id) "
-                "VALUES(?,?,?,?,?,?)",
+                "INSERT INTO tasks(goal, params_json, steps_json, status, created, session_id, source_text) "
+                "VALUES(?,?,?,?,?,?,?)",
                 (
                     getattr(task, "goal", ""),
                     json.dumps(getattr(task, "params", {}) or {}, ensure_ascii=False, default=str),
@@ -155,6 +170,7 @@ class TaskStore:
                     str(result.get("status") or ""),
                     getattr(task, "created", "") or datetime.now().isoformat(),
                     session_id,
+                    source_text or "",
                 ),
             )
 
@@ -177,7 +193,9 @@ class TaskStore:
         best: dict | None = None
         best_score = 0.0
         for row in await self.list_tasks(limit=1000):
-            score = similarity(goal, row["goal"])
+            # 优先比对用户原话；老数据无 source_text 时回退到 goal。
+            # Compare against the user's original utterance; fall back to goal for old rows.
+            score = similarity(goal, row.get("source_text") or row["goal"])
             if score > best_score:
                 best, best_score = row, score
         if best is None or best_score < threshold:
@@ -196,7 +214,7 @@ class TaskStore:
         """
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT id, goal, params_json, steps_json, status, created, session_id "
+                "SELECT id, goal, params_json, steps_json, status, created, session_id, source_text "
                 "FROM tasks ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
         return [self._row(r) for r in rows]
@@ -212,7 +230,7 @@ class TaskStore:
         """
         with self._conn() as conn:
             row = conn.execute(
-                "SELECT id, goal, params_json, steps_json, status, created, session_id "
+                "SELECT id, goal, params_json, steps_json, status, created, session_id, source_text "
                 "FROM tasks WHERE id = ?", (task_id,)
             ).fetchone()
         return self._row(row) if row else None
@@ -240,5 +258,5 @@ class TaskStore:
             "id": row[0], "goal": row[1],
             "params": json.loads(row[2] or "{}"),
             "steps": json.loads(row[3] or "[]"),
-            "status": row[4], "created": row[5], "session_id": row[6],
+            "status": row[4], "created": row[5], "session_id": row[6], "source_text": row[7],
         }

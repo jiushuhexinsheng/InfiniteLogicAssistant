@@ -374,7 +374,7 @@ async def test_task_mode_asks_completion_and_records_on_yes(monkeypatch):
             self.notified.append(text)
 
     class _Store:
-        async def record(self, task, result, session_id=""):
+        async def record(self, task, result, session_id="", source_text=""):
             recorded.append((task.goal, session_id))
 
     monkeypatch.setattr(pl, "_get_task_store", lambda: _Store())
@@ -410,7 +410,7 @@ async def test_task_mode_no_record_when_not_completed(monkeypatch):
             pass
 
     class _Store:
-        async def record(self, task, result, session_id=""):
+        async def record(self, task, result, session_id="", source_text=""):
             recorded.append(task.goal)
 
     monkeypatch.setattr(pl, "_get_task_store", lambda: _Store())
