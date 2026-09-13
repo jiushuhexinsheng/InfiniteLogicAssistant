@@ -214,3 +214,125 @@ async def test_channel_awaiting_answer_flag_tracks_ask():
     ch.answer("回答")
     await asyncio.wait_for(t, timeout=1.0)
     assert ch.awaiting_answer is False
+
+
+# ─── 流水线测试助手 ───
+# 注意：流水线里 judge_intent / form_task / execute_task / run_clarify / extract_and_store
+# 都是被 await 的，桩必须写成 async def —— 用同步 lambda 会报
+# "object dict can't be used in 'await' expression"。
+# These are all awaited by the pipeline, so the fakes must be async functions.
+
+def _intent_task():
+    """构造一个「任务」意图。Build a task intent."""
+    from core.orchestrator.intent import IntentResult
+    return IntentResult(type="task", summary="做事")
+
+
+async def _fake_judge(text):
+    """判定为任务意图。Classify as a task intent."""
+    return _intent_task()
+
+
+def _done_result():
+    """构造一个成功结果。Build a successful result."""
+    return {"status": "done", "summary": "完成", "steps": []}
+
+
+async def _fake_execute(*a, **k):
+    """返回成功结果。Return a successful result."""
+    return _done_result()
+
+
+async def _fake_clarify(sess, task):
+    """澄清无额外产出。Clarification yields nothing."""
+    return {}
+
+
+async def _noop(*a, **k):
+    """空协程。An empty coroutine."""
+    return None
+
+
+def _drain(q: asyncio.Queue) -> list:
+    """排空队列。Drain the queue."""
+    out = []
+    while not q.empty():
+        out.append(q.get_nowait())
+    return out
+
+
+# ─── 预填钩子（减少询问）───
+
+@pytest.mark.asyncio
+async def test_pipeline_prefills_params_from_similar_task(monkeypatch):
+    """命中相似历史任务时，以历史参数作为 confirmed 重新 form_task（这样 missing 才会变小），
+    并发出 notify 让用户看到。
+
+    On a similar historical hit, form_task is re-run with the historical params as
+    `confirmed` (only then does `missing` shrink) and a notify is emitted so the user sees it.
+    """
+    from core.orchestrator import pipeline as pl
+    from core.orchestrator.control import StopController
+    from core.orchestrator.session import Session
+    from core.orchestrator.task import MissingItem, Task
+
+    calls: list = []
+
+    async def fake_form(intent, confirmed=None):
+        calls.append(confirmed)
+        if confirmed:
+            return Task(id="t2", goal="复制文件", params=dict(confirmed), missing=[], risk="read")
+        return Task(id="t1", goal="复制文件", params={},
+                    missing=[MissingItem(question="目标位置？")], risk="read")
+
+    async def fake_find(goal, **kw):
+        return {"id": 1, "goal": goal, "params": {"dest": "下载"}, "created": "2026-09-13"}
+
+    monkeypatch.setattr(pl, "form_task", fake_form)
+    monkeypatch.setattr(pl, "find_similar", fake_find)
+    monkeypatch.setattr(pl, "judge_intent", _fake_judge)
+    monkeypatch.setattr(pl, "execute_task", _fake_execute)
+    monkeypatch.setattr(pl, "extract_and_store", _noop)
+    monkeypatch.setattr(pl, "get_facts_store", lambda: object())
+
+    s = Session()
+    events: asyncio.Queue = asyncio.Queue()
+    await pl.run_pipeline("复制文件", s, events, StopController())
+
+    assert calls == [None, {"dest": "下载"}], "第二次调用必须带 confirmed（历史参数）"
+    assert s.task.params == {"dest": "下载"}
+    notes = [e.get("text", "") for e in _drain(events) if e.get("type") == "task_state"]
+    assert any("历史任务" in t for t in notes), "用户应能看到「参考了历史任务」"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_skips_prefill_when_no_similar(monkeypatch):
+    """无相似历史时不二次调用 form_task（避免无谓的 LLM 调用）。
+    With no similar history, form_task is not called a second time."""
+    from core.orchestrator import pipeline as pl
+    from core.orchestrator.control import StopController
+    from core.orchestrator.session import Session
+    from core.orchestrator.task import MissingItem, Task
+
+    calls: list = []
+
+    async def fake_form(intent, confirmed=None):
+        calls.append(confirmed)
+        return Task(id="t1", goal="导出报表", params={},
+                    missing=[MissingItem(question="哪个季度？")], risk="read")
+
+    async def fake_find(goal, **kw):
+        return None
+
+    monkeypatch.setattr(pl, "form_task", fake_form)
+    monkeypatch.setattr(pl, "find_similar", fake_find)
+    monkeypatch.setattr(pl, "judge_intent", _fake_judge)
+    monkeypatch.setattr(pl, "run_clarify", _fake_clarify)
+    monkeypatch.setattr(pl, "execute_task", _fake_execute)
+    monkeypatch.setattr(pl, "extract_and_store", _noop)
+    monkeypatch.setattr(pl, "get_facts_store", lambda: object())
+
+    s = Session()
+    events: asyncio.Queue = asyncio.Queue()
+    await pl.run_pipeline("导出报表", s, events, StopController())
+    assert calls == [None], "无相似历史时不应二次调用 form_task"

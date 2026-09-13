@@ -25,6 +25,37 @@ from core.orchestrator.intent import judge_intent
 from core.orchestrator.session import Answer, OperatorChannel, Session, SessionState
 from core.orchestrator.task import Task, form_task
 from core.prompts import CHIT_CHAT_SYSTEM
+from core.tasks.store import TaskStore
+
+# 任务库存储（懒加载单例，便于测试替换）。
+# Task-library store (lazy singleton, easy to swap in tests).
+_task_store: TaskStore | None = None
+
+
+def _get_task_store() -> TaskStore:
+    """取任务库存储。Get the task-library store.
+
+    Returns:
+        任务库存储。The task store.
+    """
+    global _task_store
+    if _task_store is None:
+        _task_store = TaskStore()
+    return _task_store
+
+
+async def find_similar(goal: str) -> dict | None:
+    """查找相似的历史成功任务（无命中返回 None）。
+
+    Find a similar archived successful task, or None.
+
+    Args:
+        goal: 目标任务。The target goal.
+
+    Returns:
+        历史任务或 None。The archived task, or None.
+    """
+    return await _get_task_store().find_similar(goal)
 
 # 后台任务引用集：CPython 的事件循环对 Task 仅持弱引用，不保留句柄的任务
 # 可能在执行完成前被垃圾回收 —— 而 extract_and_store 内部吞掉所有异常
@@ -174,6 +205,18 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
     task: Task = await form_task(intent)
     session.task = task
 
+    if task.missing:
+        # 先用历史成功任务预填：必须以 confirmed **重新** form_task，否则 missing 已由首次
+        # form_task 算好、只填 task.params 不会让它变小（本功能的关键点）。
+        # Prefill from a similar archived task first: form_task must be re-run with
+        # `confirmed`, because `missing` has already been computed by the first call and
+        # prefilling task.params alone would not shrink it — the crux of this feature.
+        hist = await find_similar(task.goal)
+        if hist is not None:
+            await session.notify(f"参考了历史任务，已预填 {len(hist['params'])} 个参数")
+            task = await form_task(intent, confirmed=hist["params"])
+            session.task = task
+            task.params = {**hist["params"], **task.params}
     if task.missing:
         session.set_state(SessionState.CLARIFYING)
         task.params = await run_clarify(session, task)
