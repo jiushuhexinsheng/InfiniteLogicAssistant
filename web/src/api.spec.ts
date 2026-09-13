@@ -99,6 +99,27 @@ describe('streamUtter SSE', () => {
     // 清理全局模拟 / Cleanup global mocks
     vi.unstubAllGlobals()
   })
+
+  // 选择类提问：kind 与 options 透传给 onQuestion
+  // A choice question passes kind and options through to onQuestion
+  it('question 事件的 kind 与 options 透传', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: sseStream([
+        'data: {"type":"question","question":"确认执行吗？","session_id":"s1","kind":"choice","options":[{"value":"yes","label":"确认"},{"value":"no","label":"取消"}]}',
+        'data: {"type":"done","session_id":"s1"}',
+      ]),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+    const onQuestion = vi.fn()
+    await streamUtter('hi', { onQuestion, onDone: vi.fn() })
+    expect(onQuestion).toHaveBeenCalledWith({
+      question: '确认执行吗？', session_id: 's1', kind: 'choice',
+      options: [{ value: 'yes', label: '确认' }, { value: 'no', label: '取消' }],
+    })
+    // 清理全局模拟 / Cleanup global mocks
+    vi.unstubAllGlobals()
+  })
 })
 
 /**

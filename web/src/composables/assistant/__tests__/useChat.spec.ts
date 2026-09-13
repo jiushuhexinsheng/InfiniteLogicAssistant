@@ -59,4 +59,12 @@ describe('useChat sendAnswer 错误处理', () => {
     await sendAnswer('   ')
     expect(api.answer).not.toHaveBeenCalled()
   })
+
+  /** 任意字符串 choice 都能透传（权限策略的 once / always 等）。 */
+  it('任意字符串 choice 均可透传', async () => {
+    currentSessionId.value = 's1'
+    vi.mocked(api.answer).mockResolvedValue({ ok: true })
+    await sendAnswer('', 'always')
+    expect(api.answer).toHaveBeenCalledWith('s1', '', 'always')
+  })
 })

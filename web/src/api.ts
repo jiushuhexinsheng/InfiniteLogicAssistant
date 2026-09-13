@@ -2,7 +2,7 @@
  * API 模块 - 封装与后端的所有 HTTP 通信
  * API Module - Encapsulates all HTTP communication with the backend
  */
-import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, PingResponse, ProviderPreset, SessionItem, SseEvent, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState } from './types'
+import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, PingResponse, ProviderPreset, QuestionEvent, QuestionOption, SessionItem, SseEvent, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState } from './types'
 import type { components } from './api/generated'
 import { blobToWavBase64 } from './audio'
 import { formatError } from './errors'
@@ -127,7 +127,7 @@ export const api = {
   // ── 编排管线（P0）──
   // ── Orchestration Pipeline (P0) ──
   /** 发送回答。Send answer. */
-  answer: (sessionId: string, text: string, choice?: 'yes' | 'no') =>
+  answer: (sessionId: string, text: string, choice?: string) =>
     post<ApiResponse>('/voice/answer', choice ? { session_id: sessionId, text, choice } : { session_id: sessionId, text }),
   /** 停止任务。Stop task. */
   stopTask: (sessionId: string) => post<ApiResponse>(`/task/${sessionId}/stop`),
@@ -209,7 +209,7 @@ export interface UtterHandlers {
   /** Token 使用量回调。Token usage callback. */
   onUsage?: (usage: TokenUsage) => void
   /** 问题事件回调（澄清/确认）。Question event callback (clarification/confirmation). */
-  onQuestion?: (q: { question: string; session_id: string; kind: 'clarify' | 'confirm' }) => void
+  onQuestion?: (q: { question: string; session_id: string; kind: QuestionEvent['kind']; options: QuestionOption[] }) => void
   /** 错误回调。Error callback. */
   onError?: (msg: string) => void
   /** 完成回调。Done callback. */
@@ -314,7 +314,7 @@ export async function streamUtter(
             // 问题事件（澄清/确认）/ Question event (clarification/confirmation)
             case 'question':
               if (evt.session_id) sessionId = evt.session_id
-              h.onQuestion?.({ question: evt.question, session_id: evt.session_id, kind: evt.kind })
+              h.onQuestion?.({ question: evt.question, session_id: evt.session_id, kind: evt.kind, options: evt.options })
               break
             // 错误事件，终止处理 / Error event, terminate processing
             case 'error': h.onError?.(evt.message); return 'done'

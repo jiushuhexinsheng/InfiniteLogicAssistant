@@ -107,12 +107,15 @@ export async function runTurn() {
       tokenUsage.value.completion_tokens = (tokenUsage.value.completion_tokens || 0) + (u.completion_tokens || 0)
       tokenUsage.value.total_tokens = (tokenUsage.value.total_tokens || 0) + (u.total_tokens || 0)
     },
-    onQuestion: ({ question, session_id, kind }) => {
+    onQuestion: ({ question, session_id, kind, options }) => {
       currentSessionId.value = session_id
-      // kind 决定前端渲染按钮还是文本输入；缺省按澄清处理（旧后端无该字段时向后兼容）。
-      // kind decides buttons vs. text input; default to clarify (backward compatible
-      // with an older backend that omits the field).
-      pendingQuestion.value = { text: question, kind: kind === 'confirm' ? 'confirm' : 'clarify' }
+      // kind 与 options 决定前端渲染按钮还是输入框；缺省按文本处理（向后兼容旧后端）。
+      // kind and options decide buttons vs. an input; default to text for an older backend.
+      pendingQuestion.value = {
+        text: question,
+        kind: kind === 'choice' || kind === 'composite' ? kind : 'text',
+        options: options ?? [],
+      }
       speakAuto(question)  // 澄清/确认问题也语音播报。Clarification/confirmation questions also voice broadcast.
       state.value = 'thinking'
     },
@@ -149,7 +152,7 @@ export async function runTurn() {
  *  Answer clarification/confirmation question (unblock backend ask() call).
  *  @param text - 用户回答文本（确认类提问为空）。User answer text (empty for confirmation questions).
  *  @param choice - 结构化确认选择（"yes"/"no"），由确认按钮回传。Structured confirmation choice ("yes"/"no"), returned by the confirm buttons. */
-export async function sendAnswer(text: string, choice?: 'yes' | 'no') {
+export async function sendAnswer(text: string, choice?: string) {
   const t = text.trim()
   // 结构化确认可以不带文本；两者皆空则不投递（避免空回答解除后端阻塞）。
   // A structured confirmation may carry no text; when both are empty, don't deliver
