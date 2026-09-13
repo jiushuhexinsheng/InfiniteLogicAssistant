@@ -46,6 +46,9 @@
         <!-- 语音模块：唤醒词 + VAD + 本地播报配置。Voice module: wake word + VAD + local speech settings. -->
         <VoiceCard v-if="s.editable.value && s.activeMenu.value === 'voice'" />
 
+        <!-- 权限模块：工具权限策略（层级默认 + 规则覆盖）。Permission module: tool permission policy. -->
+        <PermissionsCard v-if="s.editable.value && s.activeMenu.value === 'permissions'" />
+
         <!-- 高级模块：Agent / LLM 客户端 / 工具 / 服务器 参数配置。Advanced module: Agent / LLM client / Tools / Server settings. -->
         <AdvancedCard v-if="s.editable.value && s.activeMenu.value === 'advanced'" />
 
@@ -65,6 +68,7 @@
 import { onMounted } from 'vue'
 import AdvancedCard from './settings/AdvancedCard.vue'
 import ApiKeyModal from './settings/ApiKeyModal.vue'
+import PermissionsCard from './settings/PermissionsCard.vue'
 import ServiceCard from './settings/ServiceCard.vue'
 import VoiceCard from './settings/VoiceCard.vue'
 import { useSettings } from './settings/useSettings'
