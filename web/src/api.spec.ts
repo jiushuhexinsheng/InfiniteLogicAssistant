@@ -182,3 +182,30 @@ describe('streamUtter 流中断错误文案', () => {
     vi.unstubAllGlobals()
   })
 })
+
+/** 助手模式必须出现在 /voice/utter 请求体里 —— 这是前端模式开关与后端行为的接入点。
+ *  The assistant mode must appear in the /voice/utter request body: the integration point
+ *  between the frontend mode switch and the backend behaviour. */
+describe('streamUtter 透传 mode', () => {
+  it('opts.mode 进入请求体', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true, body: sseStream(['data: {"type":"done","session_id":"s1"}']),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+    await streamUtter('hi', { onDone: vi.fn() }, { mode: 'task' })
+    const sent = JSON.parse(mockFetch.mock.calls[0][1].body)
+    expect(sent.mode).toBe('task')
+    vi.unstubAllGlobals()
+  })
+
+  it('未传 mode 时请求体不带该字段（后端缺省 chat）', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true, body: sseStream(['data: {"type":"done","session_id":"s1"}']),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+    await streamUtter('hi', { onDone: vi.fn() })
+    const sent = JSON.parse(mockFetch.mock.calls[0][1].body)
+    expect(sent.mode).toBeUndefined()
+    vi.unstubAllGlobals()
+  })
+})

@@ -234,12 +234,16 @@ export interface UtterHandlers {
 export async function streamUtter(
   text: string,
   h: UtterHandlers,
-  opts?: { messages?: { role: string; content: string }[]; signal?: AbortSignal; sessionId?: string },
+  opts?: { messages?: { role: string; content: string }[]; signal?: AbortSignal; sessionId?: string; mode?: string },
 ): Promise<string> {
   let sessionId = ''
   const body: Record<string, unknown> = { text }
   if (opts?.messages?.length) body.messages = opts.messages
   if (opts?.sessionId) body.session_id = opts.sessionId
+  // 助手模式随请求下发（后端据此决定完成后是否询问并存档）。
+  // The assistant mode travels with the request (the backend uses it to decide whether to
+  // ask and archive on completion).
+  if (opts?.mode) body.mode = opts.mode
   const MAX_RETRY = 1
 
   /**

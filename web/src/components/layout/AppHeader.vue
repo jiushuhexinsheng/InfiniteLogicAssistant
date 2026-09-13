@@ -14,6 +14,12 @@
       <!-- 控制台导航项。Console navigation item. -->
       <button class="ah-nav-item" :class="{ active: route.path === '/console' }" type="button" @click="router.push('/console')">控制台</button>
     </nav>
+    <!-- 助手模式开关：对话 = 少打断；任务 = 完成后询问并存档。
+         Assistant mode switch: chat stays out of the way; task asks and archives on completion. -->
+    <div class="ah-mode">
+      <button class="ah-mode-item" :class="{ on: assistantMode === 'chat' }" type="button" @click="setAssistantMode('chat')">对话</button>
+      <button class="ah-mode-item" :class="{ on: assistantMode === 'task' }" type="button" @click="setAssistantMode('task')">任务</button>
+    </div>
   </header>
 </template>
 
@@ -24,6 +30,7 @@
  */
 import { useRoute, useRouter } from 'vue-router'
 import { UiIcon } from '../ui'
+import { assistantMode, setAssistantMode } from '../../composables/assistant/store'
 
 /** 路由实例，用于页面跳转。Router instance for page navigation. */
 const router = useRouter()
@@ -62,4 +69,7 @@ const route = useRoute()
   transition: background var(--dur-fast), color var(--dur-fast);
 }
 .ah-nav-item.active { background: var(--brand-grad); color: var(--text-on-brand); font-weight: 700; }
+.ah-mode { margin-left: auto; display: flex; gap: 2px; background: var(--surface-control); border-radius: var(--r-full); padding: 2px; }
+.ah-mode-item { font-size: var(--fs-2xs); color: var(--text-3); background: none; border: none; border-radius: var(--r-full); padding: 3px 10px; cursor: pointer; }
+.ah-mode-item.on { color: var(--brand-c2); background: rgba(11, 17, 32, .75); }
 </style>

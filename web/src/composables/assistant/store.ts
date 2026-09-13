@@ -96,6 +96,41 @@ export interface PendingQuestion {
 
 /** 编排问答：待回答的澄清/确认问题。Orchestration Q&A: pending clarification/confirmation question. */
 export const pendingQuestion = ref<PendingQuestion | null>(null)
+/** 助手模式：对话 = 少打断、完成不询问；任务 = 完成后询问并存档。
+ *  Assistant mode: chat stays out of the way and never asks on completion; task asks and
+ *  archives on completion. */
+export type AssistantMode = 'chat' | 'task'
+
+/** 模式的本地存储键。localStorage key for the mode. */
+const MODE_KEY = 'xluo.assistantMode'
+
+/**
+ * 读取持久化的模式；非法值回退 chat。
+ * Read the persisted mode, falling back to chat for an invalid value.
+ *
+ * @returns 助手模式。The assistant mode.
+ */
+export function loadStoredMode(): AssistantMode {
+  try {
+    return localStorage.getItem(MODE_KEY) === 'task' ? 'task' : 'chat'
+  } catch { return 'chat' }
+}
+
+/** 当前助手模式（模块级单例，与 assistant 其余状态同模式）。
+ *  Current assistant mode (module-level singleton, like the rest of the assistant state). */
+export const assistantMode = ref<AssistantMode>(loadStoredMode())
+
+/**
+ * 切换助手模式并持久化。
+ * Switch the assistant mode and persist it.
+ *
+ * @param m 目标模式。The target mode.
+ */
+export function setAssistantMode(m: AssistantMode) {
+  assistantMode.value = m
+  try { localStorage.setItem(MODE_KEY, m) } catch { /* 隐私模式忽略 / ignore in private mode */ }
+}
+
 /** 当前会话 ID。Current session ID. */
 export const currentSessionId = ref('')
 
