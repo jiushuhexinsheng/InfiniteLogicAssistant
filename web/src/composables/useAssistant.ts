@@ -4,7 +4,6 @@ import type { WakeWordConfig, VadConfig } from '../types'
 import {
   state, messages, expanded, wakeEnabled, wakeKeywords, wakeHint, partialText, statusLine, tokenUsage,
   wakeConfig, vadConfig, clearMessages, pendingQuestion, currentSessionId,
-  modelLoading, modelProgress,
 } from './assistant/store'
 import { sendText, retryTool, cancelTool, abortChat, sendAnswer } from './assistant/useChat'
 import { toggleWake, stopWake } from './assistant/useWakeWord'
@@ -15,19 +14,6 @@ export type { AsstState, ToolCall, ChatMessage } from './assistant/store'
 /** 模块级初始化标志，确保只初始化一次。Module-level initialization flag to ensure only one initialization. */
 let initialized = false
 
-/** config.yaml 的 model_path 可能是目录名（如 "models/vosk-model-small-cn-0.22"），
- *  而 vosk.createModel 需要指向可下载的 .tar.gz 文件 URL。归一化为服务端相对 URL。
- *  The model_path in config.yaml may be a directory name (e.g., "models/vosk-model-small-cn-0.22"),
- *  but vosk.createModel requires a downloadable .tar.gz file URL. Normalize to a server-relative URL. */
-function resolveModelPath(p?: string): string {
-  const def = '/models/vosk-model-small-cn-0.22.tar.gz'
-  if (!p) return def
-  let path = p.trim()
-  if (!path.startsWith('/')) path = '/' + path
-  if (!/\.tar\.gz$/i.test(path)) path = path + '.tar.gz'
-  return path
-}
-
 /** 初始化（幂等：根组件只调用一次，防路由重挂/热更新重复预热）。
  *  Initialization (idempotent: only called once by root component, prevents duplicate warm-up from route remount/hot update).
  *  @param config - 可选的唤醒词和 VAD 配置。Optional wake word and VAD configuration. */
@@ -36,7 +22,6 @@ function init(config?: { wake?: Partial<WakeWordConfig>; vad?: Partial<VadConfig
   initialized = true
   if (config?.wake) {
     Object.assign(wakeConfig, config.wake)
-    wakeConfig.model_path = resolveModelPath(config.wake.model_path)
     // 以 /api/config 下发的唤醒词为准；缺省（空数组）时保留内置默认，避免界面提示为空
     // Take the keywords from /api/config; keep the built-in default when the list is empty,
     // so the on-screen hint never renders blank.
@@ -44,11 +29,10 @@ function init(config?: { wake?: Partial<WakeWordConfig>; vad?: Partial<VadConfig
   }
   if (config?.vad) Object.assign(vadConfig, config.vad)
   state.value = 'idle'
-  if (typeof WakeWordEngine === 'undefined') {
-    console.warn('[Asst] WakeWordEngine not loaded, wake disabled')
-  }
-  // 不预热模型：vosk 中文模型约 40MB，留到首次开启唤醒（toggleWake）时才下载，避免首屏流量浪费
-  // Do not pre-warm model: vosk Chinese model is about 40MB, delay download until first wake toggle to avoid initial page load traffic waste.
+  // 唤醒链路已改走云端判定（VAD 分段 → POST /api/voice/wake），前端不再加载本地模型，
+  // 因此既没有引擎探测也没有模型预热。
+  // The wake pipeline now judges in the cloud (VAD segments → POST /api/voice/wake), so the
+  // frontend loads no local model: no engine probe, no model warm-up.
 }
 
 /** 销毁助手实例，中止聊天和唤醒监听。Destroy assistant instance, abort chat and wake listening. */
@@ -78,9 +62,6 @@ export function useAssistant() {
     partialText,
     statusLine,
     tokenUsage,
-    // 唤醒模型下载 / Wake model download
-    modelLoading,
-    modelProgress,
     // 编排问答 / Orchestrate Q&A
     pendingQuestion,
     currentSessionId,

@@ -71,10 +71,6 @@ export const messages = ref<ChatMessage[]>([])
 export const expanded = ref(false)
 /** 唤醒词功能是否启用。Whether wake word feature is enabled. */
 export const wakeEnabled = ref(false)
-/** 模型是否正在加载。Whether model is loading. */
-export const modelLoading = ref(false)
-/** 模型加载进度（0-100）。Model loading progress (0-100). */
-export const modelProgress = ref(0)
 /** 部分识别文本（流式输出）。Partial recognition text (streaming output). */
 export const partialText = ref('')
 /** 状态行文本。Status line text. */
@@ -135,8 +131,14 @@ export function setAssistantMode(m: AssistantMode) {
 export const currentSessionId = ref('')
 
 /** 唤醒词配置（init 时从 /api/config 用 Object.assign 原地合并，保持引用稳定）。
- *  Wake word config (merged in-place from /api/config during init using Object.assign to keep reference stable). */
-export const wakeConfig: WakeWordConfig = { enabled: true, keywords: ['衍衡', '洛吉斯'], sensitivity: 0.5, model_path: '/models/vosk-model-small-cn-0.22.tar.gz' }
+ *  Wake word config (merged in-place from /api/config during init using Object.assign to keep reference stable).
+ *
+ *  model_path 是 Vosk 时代的遗留字段（唤醒改走云端判定后前端已无人读它）：留空串只是满足生成
+ *  类型的必填字段，与后端 api schema 的同名默认值（`model_path: str = ""`）一致。
+ *  model_path is a leftover from the Vosk era (nothing on the frontend reads it since the wake
+ *  judgement moved to the cloud): the empty string only satisfies the generated type's required
+ *  field, matching the backend api schema's default (`model_path: str = ""`). */
+export const wakeConfig: WakeWordConfig = { enabled: true, keywords: ['衍衡', '洛吉斯'], sensitivity: 0.5, model_path: '' }
 /** VAD（语音活动检测）配置。VAD (Voice Activity Detection) configuration. */
 export const vadConfig: VadConfig = { silence_threshold: 0.02, silence_duration_ms: 1500, max_duration_ms: 10000, answer_timeout_ms: 8000, min_speech_ms: 300, upload_throttle_ms: 500 }
 /** 响应式唤醒词列表（**可多个**，命中任意一个即唤醒）。Reactive wake keywords (plural; any hit wakes). */
