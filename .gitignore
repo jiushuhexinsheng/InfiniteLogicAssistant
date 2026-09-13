@@ -29,3 +29,6 @@ deploy.zip
 # 系统
 .DS_Store
 Thumbs.db
+
+# Playwright MCP 抓取产物
+.playwright-mcp/
