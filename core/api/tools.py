@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from core.api.schemas import ToolCallResponse, ToolsResponse
 from core.logger import logger
 from core.tools import TOOLS
+from core.tools.policy import decide
 
 router = APIRouter()
 
@@ -52,12 +53,20 @@ async def tools_call(request: Request):
         return JSONResponse({"ok": False, "error": "args 必须为 JSON 对象"}, status_code=400)
     if not TOOLS.has(name):
         return JSONResponse({"ok": False, "error": f"未知工具: {name}"}, status_code=404)
-    # 非 read 工具需显式确认（前端弹窗后带 confirm: true 重调）
-    risk = TOOLS.risk(name)
-    if risk != "read" and not params.get("confirm"):
+    # 由权限策略决定：deny 直接 403（confirm 不能覆盖 deny）；ask 需 confirm 标记；
+    # allow 直接执行。
+    # The permission policy decides: deny returns 403 (confirm cannot override it); ask
+    # requires the confirm flag; allow runs directly.
+    decision = decide(name)
+    if decision.action == "deny":
+        return JSONResponse(
+            {"ok": False, "error": f"操作者策略禁止调用 {name}（{decision.source}）"},
+            status_code=403,
+        )
+    if decision.action == "ask" and not params.get("confirm"):
         return JSONResponse({
             "ok": False,
-            "error": f"工具 {name} 属于 {risk} 风险，需要操作者显式确认",
+            "error": f"工具 {name} 需要操作者确认（{decision.source}）",
             "needs_confirm": True,
         })
     try:
