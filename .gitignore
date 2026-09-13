@@ -32,3 +32,6 @@ Thumbs.db
 
 # Playwright MCP 抓取产物
 .playwright-mcp/
+
+# 语音验收台生成的报告（每次运行覆盖，结论请粘进对应计划）
+docs/superpowers/plans/voice-verification-report.md
