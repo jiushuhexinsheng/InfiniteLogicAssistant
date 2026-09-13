@@ -18,6 +18,8 @@ export type PingResponse = components['schemas']['PingResponse']
 export type ConfigResponse = components['schemas']['ConfigResponse']
 /** 文本响应类型。Text response type. */
 export type TextResponse = components['schemas']['TextResponse']
+/** 唤醒检测响应类型。Wake detection response type. */
+export type WakeResponse = components['schemas']['WakeResponse']
 /** 唤醒词配置类型。Wake word config type. */
 export type WakeWordConfig = components['schemas']['WakeWordConfig']
 /** VAD 配置类型。VAD config type. */

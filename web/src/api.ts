@@ -2,7 +2,7 @@
  * API 模块 - 封装与后端的所有 HTTP 通信
  * API Module - Encapsulates all HTTP communication with the backend
  */
-import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, LibraryTask, PingResponse, ProviderPreset, QuestionEvent, QuestionOption, SessionItem, SseEvent, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState } from './types'
+import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, LibraryTask, PingResponse, ProviderPreset, QuestionEvent, QuestionOption, SessionItem, SseEvent, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState, WakeResponse } from './types'
 import type { components } from './api/generated'
 import { blobToWavBase64 } from './audio'
 import { formatError } from './errors'
@@ -111,6 +111,15 @@ export const api = {
   transcribe: async (blob: Blob): Promise<TextResponse> => {
     const base64Wav = await blobToWavBase64(blob)
     return post<TextResponse>('/voice/transcribe', { audio_base64: base64Wav })
+  },
+
+  // 唤醒检测：转写 + 唤醒词判定 + 指令切分（后端完成判定，前端只需照结果行事）。
+  // Wake detection: transcribe, judge the wake word, split out the command. The backend owns the
+  // judgement; the frontend only acts on the result.
+  /** 唤醒检测。Wake detection. */
+  wakeDetect: async (blob: Blob): Promise<WakeResponse> => {
+    const base64Wav = await blobToWavBase64(blob)
+    return post<WakeResponse>('/voice/wake', { audio_base64: base64Wav })
   },
 
   // 单工具执行（前端"重试失败工具"走后端真实重跑；高风险工具需 confirm: true 显式确认）
