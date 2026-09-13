@@ -3,7 +3,7 @@
   <div
     class="float-trigger"
     :class="[visual.fx, visual.grad === 'rainbow' ? 'fx-rainbow' : '', { active: expanded }]"
-    :style="[triggerStyle, { '--fx-color': visual.color }]"
+    :style="{ '--fx-color': visual.color }"
     @pointerdown="onDragStart"
     @touchstart.prevent="onTouchStart"
     @touchmove.prevent="onTouchMove"
@@ -157,15 +157,6 @@ onUnmounted(() => {
   stopProgress()
 })
 
-/**
- * 计算悬浮球的定位样式（使用 right/bottom 定位）。
- * Compute trigger positioning style (using right/bottom).
- */
-const triggerStyle = computed(() => ({
-  right: (window.innerWidth - props.pos.x - 56) + 'px',
-  bottom: (window.innerHeight - props.pos.y - 56) + 'px',
-}))
-
 // ── 录音进度环（recording 时按 VAD 上限推进 conic 进度）──
 // Recording progress ring (advances conic gradient toward VAD max during recording).
 /** 录音最大时长（毫秒）。Maximum recording duration in milliseconds. */
@@ -215,10 +206,13 @@ const ringStyle = computed(() => {
 </script>
 
 <style scoped>
-/* 悬浮球主体样式。Main floating ball styles. */
+/* 悬浮球主体样式。球本身不再定位 —— 位置由外层漂浮容器（FloatingAssistant 的 .asst-dock）决定，
+   这样它旁边的状态胶囊与迷你条才能用 flex 排布。
+   Main floating ball styles. The ball no longer positions itself: the outer dock in
+   FloatingAssistant owns placement, which lets flex lay out the status pill and mini bar beside it. */
 .float-trigger {
-  position: fixed;
-  z-index: 9999;
+  position: relative;
+  flex: none;
   width: 56px;
   height: 56px;
   border-radius: 50%;

@@ -6,7 +6,6 @@
       v-if="showMini"
       class="mini-player"
       :class="{ active: isMiniActive }"
-      :style="miniStyle"
       @click="emit('open')"
     >
       <!-- 音频均衡器动画。Audio equalizer animation. -->
@@ -35,7 +34,6 @@ import type { StateVisual } from '../../composables/useAssistantVisuals'
 /**
  * 组件属性定义。Component props definition.
  * @property expanded - 主面板是否已展开。Whether the main panel is expanded.
- * @property pos - 悬浮球在视口中的坐标。Position of the floating ball in viewport.
  * @property state - 助手当前状态。Current assistant state.
  * @property visual - 状态对应的视觉配置。Visual configuration for the current state.
  * @property messages - 聊天消息列表。Chat message list.
@@ -45,7 +43,6 @@ import type { StateVisual } from '../../composables/useAssistantVisuals'
  */
 const props = defineProps<{
   expanded: boolean
-  pos: { x: number; y: number }
   state: AsstState
   visual: StateVisual
   messages: ChatMessage[]
@@ -106,27 +103,13 @@ const showMini = computed(() =>
   (props.messages.length > 0 || isMiniActive.value || props.state === 'error')
 )
 
-/**
- * 计算迷你播放器定位样式，根据悬浮球位置决定左右侧。
- * Compute mini player positioning style, determining left/right side based on ball position.
- */
-const miniStyle = computed(() => {
-  const w = window.innerWidth
-  const h = window.innerHeight
-  const leftSide = props.pos.x < 240
-  const right = leftSide
-    ? Math.max(0, w - props.pos.x - 56 - 10)
-    : Math.max(0, w - props.pos.x + 10)
-  const bottom = Math.max(0, h - props.pos.y - 52)
-  return { right: right + 'px', bottom: bottom + 'px' }
-})
 </script>
 
 <style scoped>
-/* 迷你播放器主体。Mini player main container. */
+/* 迷你播放器主体。定位交给外层漂浮容器的 flex，这里只负责自身外观。
+   Mini player main container. Placement comes from the dock's flex row; this only styles itself. */
 .mini-player {
-  position: fixed;
-  z-index: 9998;
+  flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
