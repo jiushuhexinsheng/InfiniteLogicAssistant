@@ -11,7 +11,7 @@
 | P3 | 多智能体 + 定时 + GUI | ✅ 已完成 | [2026-08-12-agent-p3-advanced.md](../superpowers/plans/2026-08-12-agent-p3-advanced.md) | 子代理/协调者（复杂任务转多智能体）+ cron 定时（无人值守）+ GUI 工具 + 前端定时 Tab |
 | P4 | 询问类型扩展 + 问答入聊天记录（子系统 B+D） | ✅ 已完成 | [2026-09-13-question-types-and-qa-history.md](../superpowers/plans/2026-09-13-question-types-and-qa-history.md) | 询问支持 choice / text / composite 三态（`confirm` 并入 `choice`）；`missing` 结构化为 `MissingItem`；提问与回答进入消息列表 |
 | P5 | 工具权限策略层（子系统 A） | ✅ 已完成 | [2026-09-13-tool-permission-policy.md](../superpowers/plans/2026-09-13-tool-permission-policy.md) | 设置页可配 allow / ask / deny（deny 短路 > 规则 > 层级 > 默认）；默认等价改造前行为；三个消费点全部走策略 |
-| P6 | 语音作答 + 无应答待机 + 再唤醒续答（子系统 C） | ✅ 已完成 | [2026-09-13-voice-answering.md](../superpowers/plans/2026-09-13-voice-answering.md) | 播报后自动开录、直接语音作答；无应答进待机；再唤醒续答本题；播报期间暂停监听 **（「播报期不自触发」已由验收台验证；其余 3 项待真人有声环境跑 `npm run verify:voice`）** |
+| P6 | 语音作答 + 无应答待机 + 再唤醒续答（子系统 C） | ✅ 已完成 | [2026-09-13-voice-answering.md](../superpowers/plans/2026-09-13-voice-answering.md) | 播报后自动开录、直接语音作答；无应答进待机；再唤醒续答本题；播报期间暂停监听 **（⚠️ 4 项验收均待重做：其中「播报期不自触发」曾被记为「已由验收台验证」，那是一次**真观测**（当时 `WakeWordEngine` 尚在，样本里非零的「播报前 12/22」可证），但它测的引擎与门控机制**已随唤醒链路重构整体删除并替换**，结论无法迁移到当前实现 —— 该「已验证」作废。此后引擎删除、探针目标消失，同一份检查才退化成只能报空洞 PASS 的假保障，故检查 4 已在 P8 重写。需真人有声环境跑 `npm run verify:voice` 重做，详见计划「撤回说明」）** |
 | P7 | 任务知识库（子系统 E） | ✅ 已完成 | [2026-09-13-task-knowledge-base.md](../superpowers/plans/2026-09-13-task-knowledge-base.md) | 完成时询问是否完成；成功任务存入独立模块；相似任务检索预填参数、减少询问（按**用户原话**匹配，非 LLM 归一化的 goal） |
 | P8 | 唤醒链路重构（**子项目 1 / 4**：VAD → KWS(API) → ASR） | ✅ 已完成（子项目 1） | [2026-09-13-wake-detection-rework.md](../superpowers/plans/2026-09-13-wake-detection-rework.md) | 唤醒重新可用且支持一句话说完：浏览器本地 VAD 切段 → `POST /api/voice/wake` 云端转写并判定「衍衡」「洛吉斯」→ 命中即起一轮；Vosk 引擎与 43MB 模型全部删除。**子项目 2（本地 KWS sherpa-onnx）/ 3（本地 ASR）/ 4（有序回退链 + 能力探测）待做** —— 三者各走独立 spec → 计划 → 实施 |
 
@@ -29,7 +29,7 @@
 - **P3**：6 / 6 个 Task ✅
 - **P4**：10 / 10 个 Task ✅
 - **P5**：8 / 8 个 Task ✅
-- **P6**：9 / 9 个 Task ✅（自动化全绿；「播报期不自触发」已由验收台验证，**其余 3 项需真人对着麦克风，见计划 Task 9 与 README「语音验收台」**）
+- **P6**：9 / 9 个 Task ✅（自动化全绿；**4 项验收全部待人工验收** —— 其中「播报期不自触发」曾记为「已由验收台验证」：那是一次**真观测**，但测的是**已被整体替换的旧实现**（Vosk 引擎 + 停引擎式门控），结论无法迁移到当前代码，故该「已验证」作废；引擎删除后同一份检查才退化为只能报空洞 PASS 的假保障，检查 4 已在 P8 重写。需真人有声环境跑 `npm run verify:voice` 重做；见计划「撤回说明」与 README「语音验收台」）
 - **P7**：9 / 9 个 Task ✅（自动化全绿；端到端验证通过 —— 同一句话第二次跑时命中历史、预填参数、不再追问澄清）
 - **P8（子项目 1）**：8 / 8 个 Task 已实施 —— 自动化全绿、类型同步门禁通过、服务可绑定。
   ⚠️ **真人有声环境的人工验收 6 项「待人工验收」**，由用户对照麦克风逐条执行

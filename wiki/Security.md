@@ -41,9 +41,14 @@ permissions:
   无论是否说出唤醒词。** 没说唤醒词的那段话同样出本机。
 - VAD 是**本地闸门**，只做「滤静音 + 滤过短片段」以**减少**上传次数，**不是隐私屏障** ——
   它降低的是调用量与成本，不是数据出本机的范围。
-- 等待操作者作答期间更是如此：每一段都当作答上传（`/api/voice/transcribe` → `/api/voice/answer`）。
-- 唤醒判定走 `POST /api/voice/wake`，后端每收一段记一行审计（`data/audit.log`，含转写文本前
-  80 字）—— 这是统计调用量与成本的唯一依据。
+- 等待操作者作答期间更是如此：每一段都当作答上传（`POST /api/voice/transcribe`，再由
+  `/api/voice/answer` 把**文本**投给编排层）。
+- **两条上传通道都会逐条记审计**（`data/audit.log`，含转写文本前 80 字）：
+  `POST /api/voice/wake` → `audio-upload via=wake`；`POST /api/voice/transcribe`
+  → `audio-upload via=transcribe`。两者共用前缀，故
+  `grep -c 'audio-upload via=' data/audit.log` 就是云端上传总次数 —— 这是统计调用量与成本的依据。
+  （`/api/voice/answer` 只回传文本、不出音频，因此不记上传审计；只看 `via=wake` 会**漏掉作答复用
+  这条最高频的通道**，成本会被显著低估。）
 - **助手播报期间麦克风被释放**（`stopListening` 停掉音频轨道），既避免自触发，也意味着播报时
   间段不取音；但这不是「隐私开关」，只是链路行为。
 - **关闭方式**：再次点悬浮球上的 mic 徽章（或设 `voice.wake_word.enabled: false`），
@@ -52,8 +57,11 @@ permissions:
 ## 审计日志
 
 - 工具执行（工具名、参数、风险级、结果状态）与高风险确认决策（同意/拒绝/原因）写入 `data/audit.log`。
-- **唤醒上传**同样逐条记入 `data/audit.log`（`wake matched=… chars=… command=… text=…`），
-  是统计云端 ASR 调用量与成本的唯一依据（见「语音隐私边界」）。
+- **云端 ASR 上传**同样逐条记入 `data/audit.log`，两条通道共用前缀 `audio-upload via=`：
+  `via=wake matched=… chars=… command=… text=…`（唤醒检测）、
+  `via=transcribe chars=… text=…`（作答 / 指令）。
+  `grep -c 'audio-upload via=' data/audit.log` 即云端上传总次数，是统计调用量与成本的依据
+  （见「语音隐私边界」：只数 `via=wake` 会漏掉作答通道）。
 - 与 `data/agent.log` 分离，独立文件保留 90 天。
 - 实现点：`core/tools/base.py`（TOOLS.acall/call）、`core/orchestrator/confirm.py`。
 
