@@ -29,6 +29,7 @@ from core.logger import audit
 from core.orchestrator.session import Answer, Session
 from core.orchestrator.task import Task
 from core.tools.base import TOOLS  # 从 base 导入，避免 core.tools.__init__ 循环
+from core.tools.policy import decide
 
 # 自由文本的同义词表：只做精确相等判定（无子串匹配）。
 # 非 UI 调用方（脚本 / API）可用这些字面量作答；前端一律走结构化 choice。
@@ -39,11 +40,15 @@ _EXACT_YES = {"确认", "yes", "approve"}
 _EXACT_NO = {"取消", "no", "reject"}
 
 # 确认提问的两个固定选项（前端据此渲染按钮）；value 供后端判定，label 供展示与记录。
+# label 用「允许本次 / 拒绝」而非「确认 / 取消」：本项目不做 allow-always，
+# 文案需表达「这次而已」；value 保持 yes/no，故判定逻辑与既有用例不受影响。
 # The two fixed options of a confirmation question (the frontend renders buttons from
-# them); value is for the backend decision, label for display and records.
+# them); value is for the backend decision, label for display and records. The labels
+# say "allow once / deny" rather than "confirm / cancel" because there is no
+# allow-always here; value stays yes/no so the decision logic is unaffected.
 CONFIRM_OPTIONS = [
-    {"value": "yes", "label": "确认"},
-    {"value": "no", "label": "取消"},
+    {"value": "yes", "label": "允许本次"},
+    {"value": "no", "label": "拒绝"},
 ]
 
 
@@ -70,14 +75,18 @@ def _resolve_confirm(answer: Answer) -> bool:
     return text in _EXACT_YES
 
 
-async def _ask_operator(session: Session, plan: str, risk: str, kind: str) -> bool:
+async def _ask_operator(session: Session, plan: str, risk: str, kind: str, source: str = "") -> bool:
     """向操作者提问并解析回答；无确认通道/无法识别一律拒绝。
 
+    source 说明本次判定的依据（形如 rule:run_* / tier:exec / default），仅用于审计，
+    使日志能回答「为什么这个工具被问了 / 没被问」。
+
     Asks the operator and parses the answer; rejects by default when there is no
-    confirmation channel or the answer is unrecognizable.
+    confirmation channel or the answer is unrecognizable. source records why the
+    decision was made (e.g. rule:run_* / tier:exec / default) for the audit log only.
     """
     if session.channel is None:
-        audit(f"confirm {kind} risk={risk} plan={plan} decision=rejected reason=no_operator")
+        audit(f"confirm {kind} risk={risk} plan={plan} decision=rejected reason=no_operator source={source}")
         return False  # 无人确认（如定时无人值守）→ 默认不执行高风险
     await session.notify(f"需要确认：{plan}")
     answer = await session.ask(f"确认执行吗？{plan}", kind="choice", options=CONFIRM_OPTIONS)
@@ -86,7 +95,7 @@ async def _ask_operator(session: Session, plan: str, risk: str, kind: str) -> bo
     audit(
         f"confirm {kind} risk={risk} plan={plan} "
         f"decision={'approved' if approved else 'rejected'}"
-        f" answer={answer.text!r} choice={answer.choice!r}{reason}"
+        f" answer={answer.text!r} choice={answer.choice!r}{reason} source={source}"
     )
     return approved
 
@@ -103,13 +112,19 @@ async def confirm_if_needed(task: Task, plan: str, session: Session) -> bool:
 
 
 async def confirm_tool(session: Session, name: str, args: dict) -> bool:
-    """工具级确认：基于工具实际风险（TOOLS.risk）；read 放行，write/exec 需操作者确认。
+    """工具级确认：由权限策略决定放行 / 询问 / 拒绝。
 
-    Tool-level confirmation based on the tool's actual risk (TOOLS.risk); read
-    passes through, write/exec requires operator confirmation.
+    策略默认值等价于改造前的行为（read 免询问、write/exec 询问），可在设置页调整。
+
+    Tool-level confirmation: the permission policy decides allow / ask / deny. Its
+    defaults match the pre-change behaviour (read auto-allowed, write/exec asked) and
+    are configurable in the settings page.
     """
-    risk = TOOLS.risk(name)
-    if risk == "read":
+    decision = decide(name)
+    if decision.action == "allow":
         return True
+    if decision.action == "deny":
+        audit(f"tools policy denied name={name} source={decision.source}")
+        return False
     plan = f"调用工具 {name}，参数 {json.dumps(args, ensure_ascii=False)}"
-    return await _ask_operator(session, plan, risk, "tool")
+    return await _ask_operator(session, plan, TOOLS.risk(name), "tool", source=decision.source)
