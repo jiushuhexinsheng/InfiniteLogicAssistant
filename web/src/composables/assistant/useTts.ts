@@ -205,7 +205,7 @@ export function speakAuto(text: string) {
 
 /** 试听当前设置。Preview current settings. */
 export function testVoice() {
-  speakText('你好，我是小逻。这样调整的音量和声音可以吗？')
+  speakText('你好，我是衍衡。这样调整的音量和声音可以吗？')
 }
 
 /** TTS 管理 composable。TTS management composable.

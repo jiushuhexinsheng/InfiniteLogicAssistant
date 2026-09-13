@@ -14,7 +14,7 @@
         <span v-for="n in 4" :key="n"></span>
       </div>
       <div class="mini-meta">
-        <!-- 角色名（你说/小逻/系统）。Role name (You/XiaoLuo/System). -->
+        <!-- 角色名（你说/衍衡/系统）。Role name (You/YanHeng/System). -->
         <div class="mini-role">{{ miniRole }}</div>
         <!-- 消息文本（超长时跑马灯）。Message text (marquee when too long). -->
         <div class="mini-text" :class="{ marquee: miniLong }">
@@ -90,7 +90,7 @@ const miniText = computed(() => {
 const miniRole = computed(() => {
   if (!lastMsg.value) return 'AI 助手'
   if (lastMsg.value.role === 'user') return '你说'
-  if (lastMsg.value.role === 'assistant') return '小逻'
+  if (lastMsg.value.role === 'assistant') return '衍衡'
   return '系统'
 })
 

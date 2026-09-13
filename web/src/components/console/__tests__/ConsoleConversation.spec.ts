@@ -10,7 +10,7 @@ vi.mock('../../../composables/assistant/store', () => ({
 vi.mock('../../../composables/useAssistant', () => ({
   useAssistant: () => ({
     messages: { value: [] },
-    wakeKeyword: { value: '小逻' },
+    wakeHint: { value: '「衍衡」或「洛吉斯」' },
     // ChatInput 需要 pendingQuestion 决定是否显示回答框 / ChatInput needs it to decide whether to show the answer box
     pendingQuestion: { value: '' },
     sendText: vi.fn(),

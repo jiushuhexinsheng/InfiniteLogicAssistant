@@ -5,11 +5,11 @@
     :class="visual.grad === 'rainbow' ? 'fx-rainbow' : ''"
     :style="panelStyle"
   >
-    <!-- 顶栏：小逻头像 + 名称 + 只读状态 + 清空/关闭。Top bar: avatar + name + status + clear/close buttons. -->
+    <!-- 顶栏：衍衡头像 + 名称 + 只读状态 + 清空/关闭。Top bar: avatar + name + status + clear/close buttons. -->
     <PanelHeader
       :visual="visual"
       :state="state"
-      :wake-keyword="wakeKeyword"
+      :wake-hint="wakeHint"
       @clear="emit('clear')"
       @close="emit('close')"
     />
@@ -34,13 +34,13 @@ import type { StateVisual } from '../../composables/useAssistantVisuals'
  * @property state - 助手当前状态。Current assistant state.
  * @property visual - 状态对应的视觉配置。Visual configuration for the current state.
  * @property panelStyle - 面板的动态内联样式。Dynamic inline style for the panel.
- * @property wakeKeyword - 语音唤醒关键词。Voice wake keyword.
+ * @property wakeHint - 唤醒词提示文案。Wake keyword hint.
  */
 defineProps<{
   state: AsstState
   visual: StateVisual
   panelStyle: Record<string, string>
-  wakeKeyword: string
+  wakeHint: string
 }>()
 
 /**

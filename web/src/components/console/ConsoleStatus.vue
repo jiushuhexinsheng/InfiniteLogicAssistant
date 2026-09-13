@@ -23,7 +23,7 @@
     <UiCard title="唤醒词与静音检测（VAD）">
       <div class="kv">
         <template v-if="ww">
-          <span>唤醒词</span><b>{{ ww.keyword }}</b>
+          <span>唤醒词</span><b>{{ (ww.keywords ?? []).join(' / ') }}</b>
           <span>灵敏度</span><b>{{ ww.sensitivity }}</b>
           <span>模型</span><b class="mono">{{ ww.model_path }}</b>
         </template>

@@ -20,7 +20,9 @@ var WakeWordEngine = (function () {
   var _chunkCount = 0;
   var _recognizerRate = 16000;
 
-  var _keyword = '小逻小逻';
+  // 支持**多个**唤醒词：命中任意一个即唤醒（配置见 voice.wake_word.keywords）。
+  // Multiple wake keywords: a hit on any one of them wakes the engine.
+  var _keywords = ['衍衡', '洛吉斯'];
   var _sensitivity = 0.3;       // 降低阈值以匹配更多发音变体
   var _modelPath = '/models/vosk-model-small-cn-0.22.tar.gz';
   var _modelLoaded = false;
@@ -29,9 +31,16 @@ var WakeWordEngine = (function () {
   async function init(config) {
     config = config || {};
     _modelPath = config.modelPath || _modelPath;
-    _keyword = config.keyword || _keyword;
+    // 优先取数组 `keywords`；同时兼容旧的单数 `keyword`（老配置/老调用方不静默失效）。
+    // Prefer the `keywords` array, while still honouring a legacy singular `keyword` so older
+    // configs or callers do not silently stop working.
+    if (config.keywords && config.keywords.length) {
+      _keywords = config.keywords.slice();
+    } else if (config.keyword) {
+      _keywords = [config.keyword];
+    }
     _sensitivity = (config.sensitivity != null) ? config.sensitivity : 0.3;
-    console.log('[WW] init keyword=' + _keyword);
+    console.log('[WW] init keywords=' + _keywords.join(' / '));
 
     if (typeof vosk === 'undefined') { console.warn('[WW] vosk missing'); return false; }
     if (_modelLoaded) return true;
@@ -149,7 +158,7 @@ var WakeWordEngine = (function () {
       _scriptNode.connect(_muteGain);
       _muteGain.connect(_audioCtx.destination);
       _running = true;
-      console.log('[WW] listening: ' + _keyword);
+      console.log('[WW] listening: ' + _keywords.join(' / '));
       return true;
     } catch (e) { console.error('[WW] start fail:', e); throw e; }
   }
@@ -170,12 +179,29 @@ var WakeWordEngine = (function () {
   // ── 唤醒词匹配（keyword 驱动，适配任意关键词 + 同音字变体）──
 
   // 单字同音字表：唤醒词中可变字符的常见发音变体（vosk 小模型对非高频字识别率低）
+  //
+  // 只收**声母韵母都接近**的字，且避开在无关语句里高频出现的字 —— 每多收一个同音字，
+  // 误唤醒的概率就大一分，而唤醒词最怕的就是被无关对话误触发。
+  //
+  // Only acoustically close characters are listed, avoiding ones that appear constantly in
+  // unrelated speech: every extra homophone raises the false-wake rate, which is the main hazard
+  // for a wake word.
   var _homophones = {
+    // 「衍衡」
+    '衍': ['演', '眼', '沿', '严', '延'],
+    '衡': ['横', '恒', '哼'],
+    // 「洛吉斯」
+    '洛': ['罗', '落', '络', '骆', '萝', '逻'],
+    '吉': ['及', '机', '即', '级', '急', '基'],
+    '斯': ['思', '司', '四', '丝'],
+    // 旧唤醒词的字符（仍可能被配置使用，留着无害）
     '逻': ['罗', '洛', '萝', '落', '络', '骆', '螺', '锣', '骡', '乐'],
     '邮': ['鱼', '优', '有', '游', '由', '用', '幼', '右', '油'],
   };
   // 整词误识别变体（vosk 小模型特有的整词合并/吞字，非同音字能覆盖）
   var _keywordVariants = {
+    '衍衡': ['衍横', '眼衡', '演恒'],
+    '洛吉斯': ['洛基斯', '罗吉斯', '洛吉思', '洛吉丝', '邏吉斯'],
     '小逻小逻': ['小逻辑', '小 逻 辑', '小罗小罗', '小洛小洛'],
     '小邮小邮': ['小游戏', '小用', '小熊效用', '小 熊 效 用'],
   };
@@ -188,10 +214,10 @@ var WakeWordEngine = (function () {
     return _homophones[ch] || [];
   }
 
-  // 由 keyword 构造匹配正则：每个字 = 原字 ∪ 同音字，字间允许任意空格。
-  // 例：keyword=小逻小逻 → /小[逻罗洛落络骆螺锣骡乐]\s*小[逻罗洛落络骆螺锣骡乐]/
-  function _keywordRegex() {
-    var key = _compact(_keyword);
+  // 由单个 keyword 构造匹配正则：每个字 = 原字 ∪ 同音字，字间允许任意空格。
+  // 例：keyword=衍衡 → /[衍演眼沿严延]\s*[衡横恒哼]/
+  function _keywordRegex(key) {
+    key = _compact(key);
     if (!key) return null;
     var parts = [];
     for (var i = 0; i < key.length; i++) {
@@ -206,10 +232,10 @@ var WakeWordEngine = (function () {
     return new RegExp(parts.join('\\s*'));
   }
 
-  function match(text) {
-    if (!text || !_keyword) return false;
-    var compact = _compact(text);
-    var key = _compact(_keyword);
+  // 单个唤醒词的匹配判定。A single-keyword match test.
+  function _matchOne(text, compact, keyword) {
+    var key = _compact(keyword);
+    if (!key) return false;
 
     // 1) 精确匹配（含任意空格分隔）
     if (compact.indexOf(key) !== -1) return true;
@@ -222,10 +248,20 @@ var WakeWordEngine = (function () {
     }
 
     // 3) 同音字正则（原字 ∪ 同音字，字间任意空格）
-    var re = _keywordRegex();
+    var re = _keywordRegex(key);
     if (re) {
       if (re.test(text)) return true;
       if (re.test(compact)) return true;
+    }
+    return false;
+  }
+
+  // 命中任意一个唤醒词即算唤醒。A hit on any configured keyword wakes the engine.
+  function match(text) {
+    if (!text || !_keywords.length) return false;
+    var compact = _compact(text);
+    for (var i = 0; i < _keywords.length; i++) {
+      if (_matchOne(text, compact, _keywords[i])) return true;
     }
     return false;
   }

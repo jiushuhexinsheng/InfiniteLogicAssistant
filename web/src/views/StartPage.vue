@@ -16,13 +16,13 @@
         </div>
         <div class="orb-label">
           <UiStatusDot :color="asst.stateColor.value" :size="7" :glow="8" />
-          <span class="mono">{{ asst.stateLabel.value }} · 说「{{ asst.wakeKeyword.value }}」唤醒</span>
+          <span class="mono">{{ asst.stateLabel.value }} · 说{{ asst.wakeHint.value }}唤醒</span>
         </div>
       </div>
 
       <!-- 页面标题 / Page title -->
       <h1 class="title">无限逻辑</h1>
-      <p class="subtitle">说「{{ asst.wakeKeyword.value }}」唤醒 · 或直接输入文字开聊</p>
+      <p class="subtitle">说{{ asst.wakeHint.value }}唤醒 · 或直接输入文字开聊</p>
 
       <!-- 操作按钮区域 / Action buttons area -->
       <div class="actions">

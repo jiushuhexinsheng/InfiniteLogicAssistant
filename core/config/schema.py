@@ -11,7 +11,7 @@ Structure mirrors config.yaml: llm / voice / server / mcp / rag / agent / llm_cl
 """
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class CompatConfig(BaseModel):
@@ -144,17 +144,49 @@ class TtsSection(BaseModel):
 
 
 class WakeWordConfig(BaseModel):
-    """唤醒词配置：开关、关键词、灵敏度与模型路径。
+    """唤醒词配置：开关、关键词（**可多个**）、灵敏度与模型路径。
 
-    Wake-word config: enabled toggle, keyword, sensitivity, and model path.
+    支持多个唤醒词，命中任意一个即唤醒。默认「衍衡」与「洛吉斯」（2026-09-13 改，此前是
+    单一的「小逻小逻」）。
+
+    Wake-word config: enabled toggle, keywords (**plural**), sensitivity, and model path. Any one
+    of the keywords wakes the engine. Defaults to 「衍衡」 and 「洛吉斯」 (changed 2026-09-13 from the
+    single 「小逻小逻」).
     """
 
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
-    keyword: str = "小逻小逻"
+    keywords: list[str] = Field(default_factory=lambda: ["衍衡", "洛吉斯"])
     sensitivity: float = Field(0.5, ge=0.0, le=1.0)
     model_path: str = "/models/vosk-model-small-cn-0.22.tar.gz"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _fold_legacy_keyword(cls, data):
+        """把旧的单数 `keyword` 折进 `keywords`（老配置只写了一个词）。
+
+        ⚠️ 这一步是为了**能启动**，不是洁癖：本模型是 `extra="forbid"`，直接删掉 `keyword`
+        字段会让所有已有 `config.yaml` 在启动时抛 ValidationError。同时给出新旧两种写法时以
+        `keywords` 为准，不合并。
+
+        Folds a legacy singular `keyword` into `keywords`. This is about **booting**, not tidiness:
+        the model is `extra="forbid"`, so dropping the `keyword` field outright would make every
+        existing `config.yaml` raise at startup. When both forms are present `keywords` wins.
+
+        Args:
+            data: 原始输入。The raw input.
+
+        Returns:
+            归一化后的输入。The normalized input.
+        """
+        if isinstance(data, dict) and "keyword" in data:
+            normalized = dict(data)
+            legacy = normalized.pop("keyword")
+            if legacy and not normalized.get("keywords"):
+                normalized["keywords"] = [legacy]
+            return normalized
+        return data
 
 
 class VadConfig(BaseModel):

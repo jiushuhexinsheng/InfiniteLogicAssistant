@@ -49,13 +49,13 @@ const props = defineProps<{ message: ChatMessage }>()
 const emit = defineEmits<{ retry: [id: string]; cancel: [id: string] }>()
 
 /**
- * 计算角色显示名称：user→'你', assistant→'小逻', system→'系统'。
- * Compute role display name: user→'你', assistant→'小逻', system→'系统'.
+ * 计算角色显示名称：user→'你', assistant→'衍衡', system→'系统'。
+ * Compute role display name: user→'你', assistant→'衍衡', system→'系统'.
  */
 const roleName = computed(() => {
   switch (props.message.role) {
     case 'user': return '你'
-    case 'assistant': return '小逻'
+    case 'assistant': return '衍衡'
     default: return '系统'
   }
 })

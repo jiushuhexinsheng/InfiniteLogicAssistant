@@ -6,13 +6,13 @@
       <template v-if="state === 'listening'">
         <!-- 聆听中 EQ 动画。Listening EQ animation. -->
         <span class="mini-eq"><i></i><i></i><i></i></span>
-        聆听中，说"{{ wakeKeyword }}"唤醒我
+        聆听中，说{{ wakeHint }}唤醒我
       </template>
       <template v-else-if="state === 'awaiting_answer'">🎤 请直接说出你的回答…</template>
-      <template v-else-if="state === 'standby'">💤 待机中，说"{{ wakeKeyword }}"继续回答</template>
+      <template v-else-if="state === 'standby'">💤 待机中，说{{ wakeHint }}继续回答</template>
       <template v-else-if="state === 'recording'">🎙️ 录音中…</template>
       <template v-else-if="state === 'transcribing'">✨ 识别中…</template>
-      <template v-else>说"{{ wakeKeyword }}"开始对话，或输入文字</template>
+      <template v-else>说{{ wakeHint }}开始对话，或输入文字</template>
     </div>
 
     <!-- 简约历史：用户（右对齐气泡） + AI（左对齐摘要气泡 + 工具徽章）。
@@ -43,13 +43,13 @@ import type { StateVisual } from '../../composables/useAssistantVisuals'
  * @property messages - 聊天消息列表。Chat message list.
  * @property state - 助手当前状态。Current assistant state.
  * @property visual - 状态对应的视觉配置。Visual configuration for the current state.
- * @property wakeKeyword - 语音唤醒关键词。Voice wake keyword.
+ * @property wakeHint - 唤醒词提示文案（可多个）。Wake keyword hint (may be plural).
  */
 const props = defineProps<{
   messages: ChatMessage[]
   state: AsstState
   visual: StateVisual
-  wakeKeyword: string
+  wakeHint: string
 }>()
 
 /**

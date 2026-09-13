@@ -3,7 +3,7 @@
   <div class="panel-header">
     <!-- 助手头像。Assistant avatar. -->
     <span class="ph-avatar"><Icon name="brain" :size="16" /></span>
-    <span class="ph-name">小逻</span>
+    <span class="ph-name">衍衡</span>
     <!-- 状态指示器：彩色圆点 + 状态文本。Status indicator: colored dot + status text. -->
     <span class="ph-status">
       <span class="ph-dot" :style="{ background: visual.color }"></span>
@@ -27,12 +27,12 @@ import type { StateVisual } from '../../composables/useAssistantVisuals'
  * 组件属性定义。Component props definition.
  * @property visual - 状态对应的视觉配置。Visual configuration for the current state.
  * @property state - 助手当前状态。Current assistant state.
- * @property wakeKeyword - 语音唤醒关键词。Voice wake keyword.
+ * @property wakeHint - 唤醒词提示文案。Wake keyword hint.
  */
 const props = defineProps<{
   visual: StateVisual
   state: AsstState
-  wakeKeyword: string
+  wakeHint: string
 }>()
 
 /**
@@ -46,7 +46,7 @@ const emit = defineEmits<{ clear: []; close: [] }>()
  * 计算状态显示文本，根据视觉配置和唤醒关键词解析。
  * Compute status display text, resolved from visual config and wake keyword.
  */
-const statusText = computed(() => resolveStateLabel(props.visual, props.wakeKeyword))
+const statusText = computed(() => resolveStateLabel(props.visual, props.wakeHint))
 </script>
 
 <style scoped>

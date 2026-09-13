@@ -3,8 +3,8 @@
     <!-- 欢迎横幅：显示助手名称、在线状态和唤醒词。Welcome banner: shows assistant name, online status and wake keyword. -->
     <div class="welcome">
       <span class="w-avatar"><UiIcon name="brain" :size="13" /></span>
-      <span class="w-name">小逻</span>
-      <span class="mono w-state">在线 · 说「{{ wakeKeyword }}」唤醒</span>
+      <span class="w-name">衍衡</span>
+      <span class="mono w-state">在线 · 说{{ wakeHint }}唤醒</span>
     </div>
     <div v-if="!messages.length" class="console-empty">
       还没有对话 —— 点右下角悬浮球，或输入文字开始。
@@ -29,7 +29,7 @@ import { UiIcon } from '../ui'
 import type { ChatMessage } from '../../composables/useAssistant'
 
 /** 组件 props：消息列表和可选的唤醒关键词。Component props: message list and optional wake keyword. */
-const props = withDefaults(defineProps<{ messages: ChatMessage[]; wakeKeyword?: string }>(), { wakeKeyword: '小逻' })
+const props = withDefaults(defineProps<{ messages: ChatMessage[]; wakeHint?: string }>(), { wakeHint: '「衍衡」或「洛吉斯」' })
 /** 组件事件：重试工具调用和取消工具调用。Component events: retry and cancel tool calls. */
 const emit = defineEmits<{ retry: [id: string]; cancel: [id: string] }>()
 

@@ -10,7 +10,7 @@ To change a prompt: edit here only, reviewed/committed with code.  If hot-editin
 is needed later, evolve to .md + reader.
 """
 # ── 闲聊 / Chit-chat ──
-CHIT_CHAT_SYSTEM = "你是小逻，用中文简洁友好地回复。"
+CHIT_CHAT_SYSTEM = "你是衍衡，用中文简洁友好地回复。"
 
 # ── 意图判断（judge_intent）/ Intent classification ──
 INTENT_SYSTEM = ("判断用户输入意图，用 judge 工具返回。chit_chat=闲聊/提问，无需执行动作直接回复即可；"

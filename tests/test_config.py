@@ -222,3 +222,44 @@ def test_vad_answer_timeout_reaches_frontend_payload(monkeypatch):
     monkeypatch.setattr(c, "get_settings", lambda: settings)
     snap = c.editable_snapshot()
     assert snap["vad"]["answer_timeout_ms"] == 12000
+
+
+# ─── 唤醒词：多个关键字（2026-09-13 默认改为「衍衡」+「洛吉斯」）───
+
+
+def test_wake_keywords_default_to_two():
+    """默认两个唤醒词：衍衡、洛吉斯（说哪个都能唤醒）。
+    Two wake keywords by default; either one wakes the engine."""
+    s = c.Settings()
+    assert s.voice.wake_word.keywords == ["衍衡", "洛吉斯"]
+
+
+def test_wake_legacy_singular_keyword_is_folded():
+    """旧的单数 `keyword` 配置必须仍能启动 —— 折进 keywords。
+
+    ⚠️ 这条不是洁癖：`WakeWordConfig` 是 `extra="forbid"`，直接删掉 `keyword` 字段会让
+    **所有已有 config.yaml 启动即 ValidationError**。老配置只写了一个词，取它当唯一唤醒词。
+
+    The legacy singular `keyword` must still boot — it is folded into `keywords`. This is not
+    fastidiousness: `WakeWordConfig` uses `extra="forbid"`, so simply removing the `keyword` field
+    would make **every existing config.yaml fail validation at startup**. An old config names a
+    single word, so it becomes the only wake keyword.
+    """
+    s = c.Settings(voice={"wake_word": {"keyword": "小逻小逻"}})
+    assert s.voice.wake_word.keywords == ["小逻小逻"]
+
+
+def test_wake_explicit_keywords_win_over_legacy():
+    """同时给了新旧两种写法时以 `keywords` 为准，旧字段不合并、不报错。
+    When both forms are present, `keywords` wins; the legacy field is neither merged nor an error."""
+    s = c.Settings(voice={"wake_word": {"keyword": "小逻小逻", "keywords": ["衍衡"]}})
+    assert s.voice.wake_word.keywords == ["衍衡"]
+
+
+def test_wake_unknown_field_still_rejected():
+    """extra="forbid" 仍然生效（只有 `keyword` 是特例），拼错的字段照旧启动即报错。
+    extra="forbid" still applies (only `keyword` is special-cased): a misspelled field still fails
+    at startup."""
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        c.Settings(voice={"wake_word": {"keywrod": "衍衡"}})
