@@ -411,6 +411,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Library List
+         * @description 列出已存档的成功任务（按时间倒序）。
+         *
+         *     List archived successful tasks, newest first.
+         */
+        get: operations["library_list_api_library_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Library Detail
+         * @description 取单条任务详情。
+         *
+         *     Fetch one archived task.
+         */
+        get: operations["library_detail_api_library__task_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Library Delete
+         * @description 删除一条任务存档。
+         *
+         *     Delete one archived task.
+         */
+        delete: operations["library_delete_api_library__task_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions": {
         parameters: {
             query?: never;
@@ -1086,6 +1136,42 @@ export interface components {
             }[] | null;
         };
         /**
+         * LibraryDetailResponse
+         * @description 任务库详情响应。
+         *
+         *     The task-library detail response.
+         */
+        LibraryDetailResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            task: components["schemas"]["TaskLibraryItem"];
+        };
+        /**
+         * LibraryListResponse
+         * @description 任务库列表响应。
+         *
+         *     The task-library list response.
+         */
+        LibraryListResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Tasks
+             * @default []
+             */
+            tasks: components["schemas"]["TaskLibraryItem"][];
+        };
+        /**
          * LlmClientConfigOut
          * @description LLM 客户端配置输出（重试、熔断、超时参数）。
          *
@@ -1648,6 +1734,45 @@ export interface components {
              * @default false
              */
             archived: boolean;
+        };
+        /**
+         * TaskLibraryItem
+         * @description 任务库条目（一次成功任务的存档）。
+         *
+         *     One archived successful task.
+         */
+        TaskLibraryItem: {
+            /** Id */
+            id: number;
+            /** Goal */
+            goal: string;
+            /**
+             * Params
+             * @default {}
+             */
+            params: {
+                [key: string]: unknown;
+            };
+            /**
+             * Steps
+             * @default []
+             */
+            steps: unknown[];
+            /**
+             * Status
+             * @default
+             */
+            status: string;
+            /**
+             * Created
+             * @default
+             */
+            created: string;
+            /**
+             * Session Id
+             * @default
+             */
+            session_id: string;
         };
         /**
          * TextResponse
@@ -2295,6 +2420,88 @@ export interface operations {
             header?: never;
             path: {
                 conv_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    library_list_api_library_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryListResponse"];
+                };
+            };
+        };
+    };
+    library_detail_api_library__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    library_delete_api_library__task_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: number;
             };
             cookie?: never;
         };

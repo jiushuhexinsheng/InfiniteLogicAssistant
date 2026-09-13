@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from core import config as config
-from core.api import history, memory, providers, schedule, sessions, settings, tools, voice
+from core.api import history, library, memory, providers, schedule, sessions, settings, tools, voice
 from core.logger import logger
 
 
@@ -104,6 +104,7 @@ app.include_router(tools.router, prefix="/api")
 app.include_router(memory.router, prefix="/api")
 app.include_router(schedule.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
+app.include_router(library.router, prefix="/api")
 app.include_router(sessions.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(providers.router, prefix="/api")
