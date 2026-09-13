@@ -1948,6 +1948,16 @@ export interface components {
              * @default 8000
              */
             answer_timeout_ms: number;
+            /**
+             * Min Speech Ms
+             * @default 300
+             */
+            min_speech_ms: number;
+            /**
+             * Upload Throttle Ms
+             * @default 500
+             */
+            upload_throttle_ms: number;
         };
         /** ValidationError */
         ValidationError: {
