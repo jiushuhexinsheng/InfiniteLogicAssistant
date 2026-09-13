@@ -168,6 +168,12 @@ class VadConfig(BaseModel):
     silence_threshold: float = Field(0.02, ge=0.0)
     silence_duration_ms: int = Field(1500, ge=0)
     max_duration_ms: int = Field(10000, ge=1000)
+    # 等待操作者语音回答的静音超时（毫秒）：超时无语音则进入待机（引擎仍听唤醒词）。
+    # 与 max_duration_ms 同族（都是收听时序），故放在本段而非新增分段。
+    # Silence timeout (ms) while waiting for a spoken answer; on timeout the assistant
+    # enters standby (the engine still listens for the wake word). It lives here rather
+    # than in a new section because it shares the family with max_duration_ms.
+    answer_timeout_ms: int = Field(8000, gt=0)
 
 
 class VoiceSection(BaseModel):

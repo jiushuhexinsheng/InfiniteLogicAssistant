@@ -59,6 +59,10 @@ voice:
     silence_threshold: 0.02
     silence_duration_ms: 1500
     max_duration_ms: 10000
+    # 等待操作者语音回答的静音超时（毫秒）：超时无语音则进入待机（引擎仍听唤醒词）。
+    # Silence timeout (ms) while waiting for a spoken answer; on timeout the assistant
+    # enters standby (the engine still listens for the wake word).
+    answer_timeout_ms: 8000
   # 在线 ASR 语音转文字（OpenAI 兼容；endpoint/model 需自填，密钥在 config.secrets.yaml）
   asr:
     active: openai

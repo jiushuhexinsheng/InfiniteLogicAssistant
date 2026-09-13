@@ -25,6 +25,9 @@
     <SettingsField v-if="s.editable.value" label="最长录音（ms）">
       <UiInput type="number" :model-value="s.ed().vad.max_duration_ms" @update:model-value="v => (s.ed().vad.max_duration_ms = toNum(v))" />
     </SettingsField>
+    <SettingsField v-if="s.editable.value" label="等待回答超时（ms）">
+      <UiInput type="number" min="1" :model-value="s.ed().vad.answer_timeout_ms" @update:model-value="v => (s.ed().vad.answer_timeout_ms = toNum(v))" />
+    </SettingsField>
     <div class="cs-tts"><TtsSettings /></div>
   </UiCard>
 </template>
