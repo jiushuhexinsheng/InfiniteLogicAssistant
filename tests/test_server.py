@@ -10,7 +10,7 @@ import core.config as config_mod
 from core.api import state
 from core.orchestrator import pipeline as pipeline_mod
 from core.orchestrator.intent import IntentResult
-from core.orchestrator.task import Task
+from core.orchestrator.task import MissingItem, Task
 
 
 class _NoAsr:
@@ -221,7 +221,7 @@ async def test_persist_session_writes_task_json(tmp_path, monkeypatch):
     s = Session()
     s.append("user", "你好")
     s.append("assistant", "你好呀")
-    s.task = Task("t", "算 1+1", {"a": 1}, ["x"], "read")
+    s.task = Task("t", "算 1+1", {"a": 1}, [MissingItem(question="x")], "read")
     await state.persist(s, created=1700000000.0)
     p = tmp_path / "data" / "tasks" / f"{s.id}.json"
     assert p.exists()

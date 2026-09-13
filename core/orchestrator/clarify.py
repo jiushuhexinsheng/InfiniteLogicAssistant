@@ -6,8 +6,8 @@ operator, refills the answers, and loops until enough information is gathered.
 """
 from core.logger import logger
 from core.orchestrator.intent import IntentResult
-from core.orchestrator.session import Session
-from core.orchestrator.task import Task, form_task
+from core.orchestrator.session import Answer, Session
+from core.orchestrator.task import MissingItem, Task, form_task
 
 MAX_CLARIFY_ROUNDS = 3
 
@@ -15,35 +15,61 @@ MAX_CLARIFY_ROUNDS = 3
 async def run_clarify(session: Session, task: Task) -> dict:
     """逐条把 task.missing 问给操作者，用回答重新形成任务，直到 missing 为空或轮次/重复上限。
 
-    每轮把全部已答问题并入上下文重形成任务；已确认参数保留合并、已问问题不再追问，
-    避免 LLM 重新生成时丢掉前几轮参数或重复提问。
+    每条缺失信息自带作答方式（MissingItem.type/options）：text 走自由文本，
+    choice/composite 走结构化选择。选择类回答回填 **option 的 label**（人类可读，
+    便于模型理解），value 在选项中找不到时回退为原始值。
 
-    Asks the operator each item in task.missing one by one, re-forming the task
-    with the answers until missing is empty or the round/repetition limit is hit.
-    Each round merges all answered questions into the context before re-forming
-    the task; already confirmed params are kept and merged, and already asked
-    questions are not asked again, so the LLM neither drops earlier params nor
-    repeats questions.
+    Asks the operator each item in task.missing one by one, re-forming the task with the
+    answers until missing is empty or the round/repetition limit is hit. Each missing item
+    carries how it should be answered (MissingItem.type/options): text uses free input
+    while choice/composite use a structured choice. A choice answer backfills the option's
+    **label** (human-readable, for the model to understand), falling back to the raw value
+    when it is not among the options.
     """
     asked: set[str] = set()
     answered: dict[str, str] = {}
     for _ in range(MAX_CLARIFY_ROUNDS):
         if not task.missing:
             break
-        q = task.missing[0]
-        if q in asked:
-            logger.warning("澄清重复问题，停止追问: {}", q)
+        item = task.missing[0]
+        if item.question in asked:
+            logger.warning("澄清重复问题，停止追问: {}", item.question)
             break
-        asked.add(q)
-        ans = (await session.ask(q)).text.strip()
-        if not ans:
+        asked.add(item.question)
+        answer = await session.ask(item.question, kind=item.type, options=item.options)
+        text = _answer_text(answer, item)
+        if not text:
             break
-        answered[q] = ans
+        answered[item.question] = text
         # 全部已答作为结构化 confirmed 传入重新形成任务（goal 保持干净）
         new_task = await form_task(IntentResult(type="task", summary=task.goal), confirmed=answered)
         task.goal = new_task.goal or task.goal
         # 保留先前已确认参数，新结果覆盖同名键
         task.params = {**task.params, **new_task.params}
-        # 过滤已问过的问题，避免 LLM 重问
-        task.missing = [m for m in new_task.missing if m not in asked]
+        # 过滤已问过的问题（按 question 文本），避免 LLM 重问
+        task.missing = [m for m in new_task.missing if m.question not in asked]
     return dict(task.params)
+
+
+def _answer_text(answer: Answer, item: MissingItem) -> str:
+    """把一条回答转成回填给 LLM 的文本。
+
+    选择类取被选 option 的 label；找不到时回退原始 value。文本类取 text。
+
+    Convert an answer into the text backfilled to the LLM. A choice answer takes the
+    selected option's label, falling back to the raw value when not found; a text answer
+    takes its text.
+
+    Args:
+        answer: 操作者回答。The operator's answer.
+        item: 对应的缺失信息。The corresponding missing item.
+
+    Returns:
+        供回填的文本，可能为空串。The text to backfill, possibly empty.
+    """
+    if answer.choice is not None:
+        for opt in item.options:
+            if opt.get("value") == answer.choice:
+                return str(opt.get("label") or answer.choice)
+        return answer.choice
+    return answer.text.strip()

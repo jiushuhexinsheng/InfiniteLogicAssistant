@@ -48,7 +48,7 @@ async def test_form_task(monkeypatch):
     t = await form_task(IntentResult(type="task", summary="把桌面readme.txt复制到下载"))
     assert t.goal == "复制文件"
     assert t.params == {"src": "桌面readme.txt"}
-    assert t.missing == ["复制到哪里？"]
+    assert [m.question for m in t.missing] == ["复制到哪里？"]
     assert t.risk == "write"
     assert t.id
 
@@ -56,13 +56,17 @@ async def test_form_task(monkeypatch):
 @pytest.mark.asyncio
 async def test_run_clarify_asks_operator(monkeypatch):
     """澄清流程向操作者提问并返回补齐的参数。Clarification asks the operator and returns the completed params."""
+    from core.orchestrator.task import MissingItem
+
     class _Channel:
         def __init__(self, answers):
             self.answers = list(answers)
             self.asked: list[str] = []
+            self.kinds: list[str] = []
 
         async def ask(self, q, *, kind="text", options=None):
             self.asked.append(q)
+            self.kinds.append(kind)
             a = self.answers.pop(0)
             return a if isinstance(a, Answer) else Answer(text=a)
 
@@ -70,7 +74,7 @@ async def test_run_clarify_asks_operator(monkeypatch):
             pass
 
     script = [
-        Task("t", "复制文件", {"src": "桌面readme.txt"}, ["目标位置？"], "write"),
+        Task("t", "复制文件", {"src": "桌面readme.txt"}, [MissingItem(question="目标位置？")], "write"),
         Task("t", "复制文件", {"src": "桌面readme.txt", "dest": "下载"}, [], "write"),
     ]
     calls = {"n": 0}
@@ -88,7 +92,139 @@ async def test_run_clarify_asks_operator(monkeypatch):
     task = script[0]
     params = await run_clarify(s, task)
     assert s.channel.asked == ["目标位置？"]
+    assert s.channel.kinds == ["text"]
     assert params == {"src": "桌面readme.txt", "dest": "下载"}
+
+
+@pytest.mark.asyncio
+async def test_run_clarify_choice_answer_backfills_label(monkeypatch):
+    """选择类缺失信息按 type 提问，回填 option 的 label（人类可读，供模型理解）。
+    A choice-type missing item is asked as a choice question and backfills the option's
+    label (human-readable, for the model to understand)."""
+    from core.orchestrator.task import MissingItem
+
+    class _Channel:
+        def __init__(self):
+            self.kinds: list[str] = []
+            self.options: list[list] = []
+
+        async def ask(self, q, *, kind="text", options=None):
+            self.kinds.append(kind)
+            self.options.append(options or [])
+            return Answer(choice="dest-download")
+
+        async def notify(self, text):
+            pass
+
+    script = [
+        Task("t", "复制文件", {}, [MissingItem(
+            question="复制到哪里？", type="choice",
+            options=[{"value": "dest-download", "label": "下载目录"},
+                     {"value": "dest-desktop", "label": "桌面"}],
+        )], "write"),
+        Task("t", "复制文件", {"dest": "下载目录"}, [], "write"),
+    ]
+    calls = {"n": 0}
+    captured: dict = {}
+
+    async def fake_form(intent, confirmed=None):
+        captured["confirmed"] = confirmed
+        t = script[min(calls["n"] + 1, len(script) - 1)]
+        calls["n"] += 1
+        return t
+
+    monkeypatch.setattr("core.orchestrator.clarify.form_task", fake_form)
+
+    s = Session()
+    s.channel = _Channel()
+    task = script[0]
+    await run_clarify(s, task)
+    # 以 choice 提问并带上选项
+    assert s.channel.kinds == ["choice"]
+    assert [o["value"] for o in s.channel.options[0]] == ["dest-download", "dest-desktop"]
+    # 回填的是 label 而非 value
+    assert captured["confirmed"] == {"复制到哪里？": "下载目录"}
+
+
+@pytest.mark.asyncio
+async def test_run_clarify_skips_already_asked_by_question(monkeypatch):
+    """已问过的问题（按 question 文本判定）不再追问。Already-asked questions (matched by question text) are not asked again."""
+    from core.orchestrator.task import MissingItem
+
+    class _Channel:
+        def __init__(self):
+            self.asked: list[str] = []
+
+        async def ask(self, q, *, kind="text", options=None):
+            self.asked.append(q)
+            return Answer(text="下载")
+
+        async def notify(self, text):
+            pass
+
+    same = MissingItem(question="目标位置？")
+    script = [
+        Task("t", "复制文件", {}, [same], "write"),
+        Task("t", "复制文件", {"dest": "下载"}, [same], "write"),
+    ]
+    calls = {"n": 0}
+
+    async def fake_form(intent, confirmed=None):
+        t = script[min(calls["n"] + 1, len(script) - 1)]
+        calls["n"] += 1
+        return t
+
+    monkeypatch.setattr("core.orchestrator.clarify.form_task", fake_form)
+
+    s = Session()
+    s.channel = _Channel()
+    await run_clarify(s, script[0])
+    # 第二次循环看到同一个问题 → 停止追问，不重复提问
+    assert s.channel.asked == ["目标位置？"]
+
+
+# ─── parse_missing：LLM 输出不遵守 schema 时的三条容错 ───
+
+
+def test_parse_missing_wraps_plain_strings():
+    """模型不遵守 schema 时，字符串元素兜底为 text 类。Plain string items fall back to text when the model ignores the schema."""
+    from core.orchestrator.task import parse_missing
+    items = parse_missing(["目标位置？"])
+    assert items[0].question == "目标位置？"
+    assert items[0].type == "text"
+    assert items[0].options == []
+
+
+def test_parse_missing_defaults_unknown_type_to_text():
+    """type 缺失或非法时降级为 text。A missing or invalid type degrades to text."""
+    from core.orchestrator.task import parse_missing
+    assert parse_missing([{"question": "a"}])[0].type == "text"
+    assert parse_missing([{"question": "b", "type": "nonsense"}])[0].type == "text"
+
+
+def test_parse_missing_downgrades_optionless_choice_to_text():
+    """choice/composite 但没有选项时降级为 text —— 没有选项的选择题无法作答。
+    A choice/composite without options degrades to text: an optionless multiple-choice is unanswerable."""
+    from core.orchestrator.task import parse_missing
+    for kind in ("choice", "composite"):
+        assert parse_missing([{"question": "q", "type": kind, "options": []}])[0].type == "text"
+
+
+def test_parse_missing_keeps_valid_choice():
+    """合法的 choice（带选项）原样保留，选项只取 value/label。A valid choice keeps its options, keeping only value/label."""
+    from core.orchestrator.task import parse_missing
+    item = parse_missing([{
+        "question": "选哪个？", "type": "choice",
+        "options": [{"value": "a", "label": "甲", "extra": 1}],
+    }])[0]
+    assert item.type == "choice"
+    assert item.options == [{"value": "a", "label": "甲"}]
+
+
+def test_parse_missing_skips_empty_question():
+    """空问题的条目不生成 MissingItem。Entries with an empty question produce no MissingItem."""
+    from core.orchestrator.task import parse_missing
+    assert parse_missing([{"question": "   "}, ""]) == []
 
 
 @pytest.mark.asyncio
