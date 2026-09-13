@@ -82,18 +82,20 @@ def _validate_bind(host: str, token: str) -> None:
 
 WEB_DIST_DIR = config.ROOT_DIR / "web" / "dist"
 
-# Vosk 模型等特殊扩展名的 content-type（FileResponse 的 mimetypes 不认识）
+# 特殊扩展名的 content-type 补丁（FileResponse 走 mimetypes，个别类型它不认）。
+#
+# 原先这里还挂着 .mdl / .fst / .int / .mat / .dubm / .ie / .stats / .conf / .tar.gz —— 那些
+# 只服务于已随 Vosk 引擎一起删除的模型树（web/public/models/vosk-model-small-cn-0.22/），
+# 静态托管下再没有任何文件会命中，属于死配置，故一并删除。
+# .wasm 保留：它不是模型专属类型，浏览器资源（含未来可能的 WASM 模块）用得上。
+#
+# Content-type patches for extensions `mimetypes` does not know. The .mdl / .fst / .int / .mat /
+# .dubm / .ie / .stats / .conf / .tar.gz entries used to live here too, but they only ever served
+# the model tree deleted along with the Vosk engine (web/public/models/vosk-model-small-cn-0.22/);
+# nothing reachable through the static host can match them any more, so they were dead config and
+# are gone. `.wasm` stays: it is not model-specific and still applies to browser assets.
 _EXTRA_TYPES = {
     ".wasm": "application/wasm",
-    ".mdl": "application/octet-stream",
-    ".fst": "application/octet-stream",
-    ".int": "application/octet-stream",
-    ".mat": "application/octet-stream",
-    ".dubm": "application/octet-stream",
-    ".ie": "application/octet-stream",
-    ".stats": "application/octet-stream",
-    ".conf": "text/plain; charset=utf-8",
-    ".tar.gz": "application/octet-stream",
 }
 for _ext, _ct in _EXTRA_TYPES.items():
     mimetypes.add_type(_ct, _ext)

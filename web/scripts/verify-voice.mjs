@@ -7,16 +7,23 @@
  * (voice answering / standby on silence / resume-on-wake / no self-trigger while speaking).
  *
  * 为什么需要它：这 4 项都需要真人对着麦克风说话、用耳朵听播报，无法用 Vitest 替代
- * （Vosk 是浏览器 WASM 引擎，测不到真实音频）。但「谁对谁错」的**判据**大部分是客观的
- * —— 状态机有没有进 standby、有没有发 /voice/answer、播报期间唤醒引擎有没有停 —— 这些
- * 可以自动采集。于是本脚本负责搭场景、采证据、判客观项，人只负责出声和听声。
+ * （真实的麦克风/扬声器通路驱动不了）。但「谁对谁错」的**判据**大部分是客观的
+ * —— 状态机有没有进 standby、有没有发 /voice/answer、播报期间有没有任何音频分段被上传 ——
+ * 这些可以自动采集。于是本脚本负责搭场景、采证据、判客观项，人只负责出声和听声。
+ *
+ * 判据的来源：**采不到证据就报 INCONCLUSIVE，绝不报 PASS**。这条比任何单项检查都重要 ——
+ * 一个「什么都没看见所以通过」的检查是假保障，比没有检查更糟。
  *
  * Why this exists: the 4 items need a human at the microphone and ears on the speaker and
- * cannot be replaced by Vitest (Vosk is a browser WASM engine; Vitest cannot drive real
- * audio). But most of the *verdicts* are objective — did the state machine enter standby,
- * was /voice/answer issued, was the wake engine stopped during playback — and those can be
- * captured automatically. So the harness builds the scenario, collects the evidence and
- * decides the objective parts; the human only has to make sound and listen.
+ * cannot be replaced by Vitest (a real mic/speaker path cannot be driven). But most of the
+ * *verdicts* are objective — did the state machine enter standby, was /voice/answer issued,
+ * was any audio segment uploaded during playback — and those can be captured automatically.
+ * So the harness builds the scenario, collects the evidence and decides the objective parts;
+ * the human only has to make sound and listen.
+ *
+ * Where the verdicts come from: **no evidence means INCONCLUSIVE, never PASS**. That rule
+ * outranks every individual check — a check that passes because it saw nothing is a false
+ * assurance, worse than having no check at all.
  *
  * 用法 / Usage:
  *   cd web && npm run verify:voice                  # 默认 http://127.0.0.1:8520
@@ -25,7 +32,7 @@
  *
  * 前置 / Prerequisites:
  *   - 后端已启动且前端已构建（python main.py serve），或 vite dev server 在跑
- *   - 本机有可用麦克风与扬声器，且**音量不为静音**（第 4 项要靠空气传播）
+ *   - 本机有可用麦克风与扬声器，且**音量不为静音**（第 4 项的声学部分要靠空气传播）
  *   - 系统已安装 Chrome（用 channel: chrome 直接驱动，不下载额外浏览器）
  */
 import { createInterface } from 'node:readline'
@@ -94,25 +101,89 @@ async function countdown(seconds, label) {
 // ─────────────────────────── 采样与状态读取 / Sampling ───────────────────────────
 
 /**
- * 浏览器侧的探针：每 150ms 采一次「状态机 / 唤醒引擎 / 真实播报」三元组。
+ * 安装麦克风探针：记录 `getUserMedia` 取到的音频轨道与 `track.stop()` 的释放，
+ * 由此可以读出**某一时刻还有几条活着的麦克风轨道**。
+ *
+ * 为什么需要它：新架构里「播报期不自触发」靠的是**播报期间麦克风真的被关掉**（useWakeWord
+ * 的 speaking watcher 调 stopListening → 停轨道）。只断言「播报期没有上传」是不够的 ——
+ * 上传是**结果**，麦克风是否还开着是**原因**；必须确认原因，判据才不空洞。
+ * 旧版探 `window.WakeWordEngine.isRunning()`：该全局已随 Vosk 一起删除，取值恒为假，
+ * FAIL 分支永不触发 —— 一个「什么都没看见所以通过」的假保障，正是本次要修的东西。
+ *
+ * Install the microphone probe: record the audio tracks `getUserMedia` hands out and the
+ * `track.stop()` releases, so the number of **live mic tracks** at any instant can be read.
+ *
+ * Why it is needed: in the new architecture "no self-trigger during playback" rests on the mic
+ * genuinely being released while the assistant speaks (useWakeWord's speaking watcher calls
+ * stopListening → stops the tracks). Asserting only "no upload happened" is not enough — the
+ * upload is the *effect* and the open mic is the *cause*; confirming the cause is what keeps the
+ * verdict from being vacuous. The old probe read `window.WakeWordEngine.isRunning()`, a global
+ * deleted along with Vosk, so it was permanently falsy and its FAIL branch was unreachable — a
+ * false assurance of exactly the kind this rework exists to remove.
+ *
+ * @param {import('playwright-core').Page} page 页面。The page.
+ * @returns {Promise<boolean>} 探针是否可用。Whether the probe is available.
+ */
+async function installMicProbe(page) {
+  return page.evaluate(() => {
+    if (window.__micProbe) return true
+    try {
+      const md = navigator.mediaDevices
+      if (!md || typeof md.getUserMedia !== 'function' || typeof MediaStreamTrack === 'undefined') return false
+      const log = { acquires: [], stops: [] }
+      const origGum = md.getUserMedia.bind(md)
+      // 挂在实例上遮蔽原型方法：App 读 navigator.mediaDevices.getUserMedia 就会拿到这一层。
+      // Own property shadowing the prototype method, so the app's read of
+      // navigator.mediaDevices.getUserMedia hits this wrapper.
+      md.getUserMedia = async (constraints) => {
+        const stream = await origGum(constraints)
+        log.acquires.push({ t: Date.now(), tracks: stream.getAudioTracks().length })
+        return stream
+      }
+      const origStop = MediaStreamTrack.prototype.stop
+      MediaStreamTrack.prototype.stop = function () {
+        if (this.kind === 'audio') log.stops.push(Date.now())
+        return origStop.call(this)
+      }
+      window.__micProbe = log
+      return true
+    } catch { return false }
+  })
+}
+
+/**
+ * 浏览器侧的探针：每 150ms 采一次「状态机 / 麦克风活轨道 / 真实播报」三元组。
  *
  * 三个信号来自三个互相独立的地方，这正是判据可信的原因：
  * - `state`：`.ball-status-ring` 的状态类，前端状态机的**结果**（用户看到的）
- * - `isRunning`：`window.WakeWordEngine.isRunning()`，唤醒引擎的**实际**运行状态
+ * - `micLive`：活着的音频轨道数（见 installMicProbe），麦克风的**实际**开合状态
  * - `speaking`：`speechSynthesis.speaking`，浏览器的**真实**播报标志（与 App 无关）
  *
- * Browser-side probe sampling the (state machine / wake engine / real playback) triple every
- * 150ms. The three signals come from three independent places, which is what makes the
- * verdicts trustworthy: the DOM state class is the state machine's *result*, `isRunning` is
- * the engine's *actual* state, and `speechSynthesis.speaking` is the browser's *real*
- * playback flag independent of the app.
+ * `micLive` 为 `null` 表示探针不可用 —— 判据据此报 INCONCLUSIVE，而不是把 null 当成 0
+ * （把「测不到」当成「没开着」正是假保障的成因）。
+ *
+ * Browser-side probe sampling the (state machine / live mic tracks / real playback) triple every
+ * 150ms. The three signals come from three independent places, which is what makes the verdicts
+ * trustworthy: the DOM state class is the state machine's *result*, `micLive` is the mic's
+ * *actual* open/closed state (see installMicProbe), and `speechSynthesis.speaking` is the
+ * browser's *real* playback flag independent of the app.
+ *
+ * `micLive === null` means the probe is unavailable — the verdict is then INCONCLUSIVE rather
+ * than treating null as 0 (reading "cannot measure" as "not open" is how false assurances start).
  */
 const PROBE = () => {
   const ring = document.querySelector('.ball-status-ring')
+  const mic = window.__micProbe
+  // 活轨道数按**轨道**记账（不是按取流次数）：一次取流可能带多条音频轨道，
+  // 按次数记账会把 2 轨的流算成 1，凭空多出「已释放」的假象。
+  // Live tracks are counted per *track*, not per acquisition: one acquisition can carry several
+  // audio tracks, and counting acquisitions would under-report a 2-track stream as 1 — inventing
+  // a release that never happened.
+  const acquired = mic ? mic.acquires.reduce((n, a) => n + a.tracks, 0) : 0
   return {
     t: Date.now(),
     state: ring ? (ring.classList[1] || '') : '',
-    isRunning: !!(window.WakeWordEngine && window.WakeWordEngine.isRunning && window.WakeWordEngine.isRunning()),
+    micLive: mic ? Math.max(0, acquired - mic.stops.length) : null,
     speaking: !!(window.speechSynthesis && window.speechSynthesis.speaking),
   }
 }
@@ -195,16 +266,17 @@ function trackRequests(page) {
  */
 async function ensureWake(page, timeoutMs = 25000) {
   if ((await getState(page)) === 'listening') return true
-  // 面板未展开时用页面上的文字按钮；展开后语音开关是球上的 mic 徽章。
-  // With the panel closed use the page's text button; once expanded the voice toggle is the
-  // mic badge on the ball.
-  for (const sel of ['text=开启语音唤醒', '.ball-mic']) {
-    try {
-      const loc = page.locator(sel).first()
-      if (await loc.count()) await loc.click({ timeout: 3000 })
-    } catch { /* 选择器不适用，试下一个 */ }
-    if ((await waitForState(page, ['listening'], 12000)).ok) return true
-  }
+  // 语音开关只有一处：悬浮球上的 mic 徽章（`.ball-mic.on` = 已开启）。徽章是**切换**语义，
+  // 所以只有确认它当前是关的才点 —— 否则会把已开启的唤醒点掉，后面 4 项全部变成空转。
+  // There is exactly one voice toggle: the mic badge on the float ball (`.ball-mic.on` = enabled).
+  // The badge *toggles*, so only click when it is currently off — clicking an enabled one would
+  // switch wake off and silently degenerate all four checks.
+  const badge = page.locator('.ball-mic').first()
+  try {
+    if (await badge.count() && !(await badge.evaluate(el => el.classList.contains('on')))) {
+      await badge.click({ timeout: 3000 })
+    }
+  } catch { /* 徽章点不动，交给下面的状态轮询报错 */ }
   return (await waitForState(page, ['listening'], timeoutMs)).ok
 }
 
@@ -379,6 +451,17 @@ async function main() {
   await page.goto(ARGS.url, { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(2500)
 
+  // 麦克风探针必须在**应用取流之前**装好（开启唤醒才会 getUserMedia，此刻还没开）。
+  // 装不上不终止验收，但要如实告诉用户第 4 项将因此只能报 INCONCLUSIVE。
+  // The mic probe must be installed *before* the app acquires a stream (only the wake enable
+  // calls getUserMedia, and it has not happened yet). A failure does not abort the run, but the
+  // user is told that check 4 can then only report INCONCLUSIVE.
+  const micProbeOk = await installMicProbe(page)
+  if (!micProbeOk) {
+    say('\n⚠️  麦克风探针安装失败（页面里没有可用的 mediaDevices/MediaStreamTrack）。')
+    say('   第 4 项无法证明「播报期麦克风确实关着」，将报 INCONCLUSIVE 而不是 PASS。')
+  }
+
   // 配置：待答超时是第 2 项的判据基准，唤醒词是第 3/4 项的依据。
   // Config: the answer timeout is check 2's baseline; the wake keyword underpins checks 3/4.
   const cfg = await page.evaluate(async () => (await fetch('/api/config')).json()).catch(() => ({}))
@@ -392,8 +475,8 @@ async function main() {
   }
 
   if (!(await ensureWake(page))) {
-    say('\n❌ 语音唤醒引擎未能在 25s 内进入 listening。')
-    say('   常见原因：Vosk 模型未加载（看 .playwright-mcp 或浏览器控制台）、麦克风被占用。')
+    say('\n❌ 语音唤醒未能在 25s 内进入 listening。')
+    say('   常见原因：麦克风被占用 / 权限被拒（看浏览器控制台与球上的状态行文案）、后端未启动。')
     say('   后续 4 项全部标 SKIP。')
     for (const [id, t] of [['1', '播报结束后直接开口说答案'], ['2', '播报后沉默 → 待机'],
                            ['3', '待机态唤醒 → 续答本题'], ['4', '播报含唤醒词 → 不自触发']]) {
@@ -592,17 +675,49 @@ async function runChecks({ page, reqs, keyword, answerTimeout, speakOn }) {
 }
 
 /**
- * 第 4 项的实现：让助手**用自己正常的播报链路**念出含唤醒词的文本，播报期间观察唤醒引擎。
+ * 第 4 项的实现：让助手**用自己正常的播报链路**念出含唤醒词的文本，播报期间观察
+ * 「有没有音频分段被录下来并上传」。
  *
  * Implementation of check 4: have the assistant speak a wake-word-containing text through its
- * *own normal playback path* and watch the wake engine during playback.
+ * *own normal playback path* and watch whether any audio segment is recorded and uploaded
+ * during playback.
  *
- * 关键点：必须走 App 自己的播报（它才会去设置 speaking 并触发门控）。直接注入
+ * 新架构下的等价危险：旧的「唤醒引擎自触发」已不存在（Vosk 引擎与模型都删了），剩下的是
+ * **助手自己的声音被麦克风采到、被 VAD 切段、当成用户说话上传云端**。所以判据换成：
+ *
+ *   1) **原因**：播报期间麦克风必须是关着的（活着的音频轨道数为 0）—— 由麦克风探针直接测。
+ *   2) **结果**：播报窗口内不得出现任何携带音频的上传
+ *      （`/api/voice/wake` 唤醒判定、`/api/voice/transcribe` 转写、`/api/voice/answer` 作答，
+ *      这三条都是分段录音器 `onSegment` 的下游出口）。
+ *
+ * 两条都拿不到证据时一律 **INCONCLUSIVE，绝不 PASS**：
+ *   - 助手没念出唤醒词（场景没搭成）
+ *   - 采样没覆盖到播报窗口
+ *   - 麦克风探针不可用（读不到轨道数）
+ *   - 播报**前**麦克风本来就是关的（没有东西可挡，此时「播报期没上传」不构成证据）
+ *
+ * The equivalent hazard under the new architecture: the old "wake engine self-triggers" is gone
+ * (the Vosk engine and its model were deleted); what remains is the assistant's **own voice
+ * caught by the mic, segmented by the VAD, and uploaded as if the user had spoken**. So the
+ * criteria become:
+ *
+ *   1) the *cause*: the mic must be closed during playback (0 live audio tracks) — measured
+ *      directly by the mic probe;
+ *   2) the *effect*: no audio-bearing upload may appear inside the playback window
+ *      (`/api/voice/wake` detection, `/api/voice/transcribe`, `/api/voice/answer` — all three
+ *      are downstream of the segment recorder's `onSegment`).
+ *
+ * When neither can be evidenced the verdict is **INCONCLUSIVE, never PASS**: the assistant never
+ * spoke the keyword (scenario not set up), the sampling missed the playback window, the mic
+ * probe is unavailable (no track count), or the mic was already closed *before* playback (there
+ * was nothing to gate, so "no upload during playback" proves nothing).
+ *
+ * 关键点：必须走 App 自己的播报（它才会去设置 speaking 并触发暂停监听的门控）。直接注入
  * speechSynthesis.speak 绕过了门控，那样测的是浏览器而不是本功能 —— 假通过。
  *
  * The crux: it must go through the app's own playback (only that sets `speaking` and engages
- * the gate). Injecting speechSynthesis.speak directly bypasses the gate, which would test the
- * browser rather than this feature — a false pass.
+ * the pause-listening gate). Injecting speechSynthesis.speak directly bypasses the gate, which
+ * would test the browser rather than this feature — a false pass.
  *
  * @param {{page: any, keyword: string, reqs: any}} ctx 上下文。Context.
  */
@@ -626,10 +741,10 @@ async function runSelfTriggerCheck({ page, keyword, reqs }) {
     say(`\n第 ${attempt} 次尝试让助手念出「${keyword}」…`)
     await page.evaluate(() => { window.__spoken = [] })
 
-    // 采样必须在发消息**之前**启动 —— 门控动作发生在播报期间，播报一结束引擎就重启了，
+    // 采样必须在发消息**之前**启动 —— 门控动作发生在播报期间，播报一结束监听就恢复了，
     // 事后补采会看到「一切正常」的假象。
-    // Sampling must start *before* the message: the gate acts during playback and the engine
-    // restarts the moment it ends, so sampling afterwards would show a falsely clean picture.
+    // Sampling must start *before* the message: the gate acts during playback and listening is
+    // restored the moment it ends, so sampling afterwards would show a falsely clean picture.
     sampler = startSampler(page)
     await sendMessage(page, `请一字不差地念出下面这四个字，不要添加任何其他文字：${keyword}`)
 
@@ -645,60 +760,99 @@ async function runSelfTriggerCheck({ page, keyword, reqs }) {
   }
 
   if (!spoken.includes(keyword)) {
+    // 别把成因一口咬定成「助手不肯念」：TTS 引擎若设为「后端 API」（engine=api），
+    // 声音由 <audio> 播放，浏览器端 speechSynthesis.speak 根本不会被调用，本项在浏览器侧
+    // 什么都看不到。两条成因行动完全不同，所以都写出来。
+    // Do not pin the cause on "the assistant refused to say it": with the backend API TTS engine
+    // (engine=api) the sound comes out of an <audio> element, speechSynthesis.speak is never
+    // called, and the browser side sees nothing. The two causes need different actions, so both
+    // are stated.
     record('4', '播报含唤醒词 → 不自触发', 'INCONCLUSIVE',
-      `助手两次都没有念出「${keyword}」，播报里没有唤醒词就测不到自触发 —— 不是通过`,
+      `浏览器端没有观察到助手用 speechSynthesis 念出「${keyword}」，播报里没有唤醒词就测不到自触发 —— 不是通过。` +
+      `若助手确实出声了，多半是播报引擎设成了「后端 API」（声音走 <audio>，浏览器侧看不到）：` +
+      `请在播报设置里切回浏览器引擎后重跑`,
       `实际播报文本：${spoken || '(空)'}`)
     return
   }
 
-  // 分析播报期间的采样。判据两条，缺一不可：
-  // 1) 门控**确实生效**：播报期内唤醒引擎被停过（isRunning 出现 false）
-  // 2) **确实没自触发**：全程没有任何一次进入 recording（进 recording 就意味着引擎听见
-  //    了唤醒词并开了录）
-  //
-  // Analyse the samples taken during playback. Two necessary conditions: the gate really
-  // engaged (isRunning went false at some point during playback) and nothing self-triggered
-  // (the state never once became recording — entering recording means the engine heard the
-  // wake word and opened the mic).
   const samples = sampler?.samples ?? []
   const playback = samples.filter(s => s.speaking)
-  const stoppedDuring = playback.filter(s => !s.isRunning)
-  const recording = samples.filter(s => s.state === 'recording')
   const stateSeq = samples.reduce((a, s) => (a.at(-1) === s.state || !s.state ? a : [...a, s.state]), [])
-  // 播报前后各有多少采样里引擎在跑 —— 用来证明「播报期引擎停着」不是因为引擎压根没起来。
-  // 若前后都在跑、只有播报期不跑，才是门控真的生效。
-  // How many samples had the engine running before and after playback — proof that "stopped
-  // during playback" is not simply the engine never having started. Running before and after
-  // but not during is what makes it the gate.
   const firstPlayIdx = samples.findIndex(s => s.speaking)
+  const lastPlayIdx = firstPlayIdx < 0 ? -1 : samples.findLastIndex(s => s.speaking)
   const before = samples.slice(0, firstPlayIdx < 0 ? 0 : firstPlayIdx)
-  const after = samples.slice(firstPlayIdx < 0 ? samples.length : samples.findLastIndex(s => s.speaking) + 1)
-  const runningBefore = before.filter(s => s.isRunning).length
-  const runningAfter = after.filter(s => s.isRunning).length
+  const after = samples.slice(lastPlayIdx < 0 ? samples.length : lastPlayIdx + 1)
+
+  // 播报前是否真有麦克风开着 —— 这是「门控有东西可挡」的前提，也是 PASS 不空洞的根据。
+  // 采样里出现 micLive>0 即证明当时确有活轨道。
+  // Whether a mic was genuinely open before playback — the precondition that the gate had
+  // something to gate, and what keeps a PASS from being vacuous. A micLive>0 sample proves a
+  // live track existed at that moment.
+  const micLiveBefore = before.some(s => s.micLive > 0)
+  // 播报期活轨道数：取窗口内的最大值（判 FAIL 用「曾经开着」而非「某一瞬间开着」，更严）。
+  // Live tracks during playback: the maximum across the window (FAIL on "was ever open", which
+  // is stricter than "was open at one instant").
+  const playbackMaxLive = playback.length ? Math.max(...playback.map(s => s.micLive ?? -1)) : -1
+  const probeUsable = playback.some(s => s.micLive !== null)
+
+  // 播报窗口内的音频上传。窗口 = [首个播报采样, 末个播报采样 + 500ms]。
+  //
+  // 起点**不**往前留余量：采样本身就是「播报已开始」的**事后**观测（最多晚 150ms），已经自带
+  // 前瞻；再往前扩只会把「用户自己说话、在播报前一瞬结束的那一段」误算成自触发。
+  // 门控是否失效由麦克风探针负责抓（见上），这里只做佐证。
+  // 末尾留 500ms：播报一结束监听就恢复，但新的一台录音器要取流 + 说满 minSpeechMs + 静音
+  // 1.5s 才可能产出分段，远超过这个余量，所以不会把恢复后的用户说话算进来。
+  //
+  // Audio uploads inside the playback window: [first speaking sample, last speaking sample + 500ms].
+  //
+  // No lead-in margin: the sample is itself a *post hoc* observation of "playback started" (up to
+  // 150ms late), so it already leads; widening it further would only pull in a segment of the
+  // user's own speech that ended just before playback. Whether the gate failed is the mic probe's
+  // job (above); this is corroboration. The 500ms tail covers the resume: listening comes back the
+  // moment playback ends, but a fresh recorder needs to acquire a stream, accumulate minSpeechMs
+  // and then 1.5s of silence before it can emit a segment — far beyond that margin.
+  // 注：采样时间戳取自浏览器 Date.now()，请求时间戳取自 Node Date.now() —— 本脚本驱动的是
+  // 本机 Chrome，两者同一口系统钟。
+  // Note: sample timestamps come from the browser's Date.now() and request timestamps from Node's;
+  // the harness drives a local Chrome, so both read the same system clock.
+  const winStart = firstPlayIdx < 0 ? Infinity : samples[firstPlayIdx].t
+  const winEnd = lastPlayIdx < 0 ? -Infinity : samples[lastPlayIdx].t + 500
+  const AUDIO_UPLOAD = /^\/api\/voice\/(wake|transcribe|answer)$/
+  const uploaded = reqs.list.filter(r => r.t >= winStart && r.t <= winEnd && AUDIO_UPLOAD.test(r.path))
+  const voiceAny = reqs.list.filter(r => r.t >= winStart && r.t <= winEnd && r.path.startsWith('/api/voice/'))
 
   let status, detail
   if (!playback.length) {
     status = 'INCONCLUSIVE'
     detail = '本次采样没有捕捉到 speechSynthesis 播报窗口，无法判定（不是通过）'
-  } else if (recording.length) {
+  } else if (!probeUsable) {
+    status = 'INCONCLUSIVE'
+    detail = '麦克风探针不可用（读不到活轨道数），无法证明播报期麦克风确实关着（不是通过）'
+  } else if (!micLiveBefore) {
+    status = 'INCONCLUSIVE'
+    detail = '播报前采样里麦克风就已经是关着的 —— 没有东西可挡，「播报期没上传」不构成证据（不是通过）'
+  } else if (uploaded.length) {
     status = 'FAIL'
-    detail = `播报期间状态机进入过 recording —— 助手自己的声音触发了唤醒（${recording.length} 次采样）`
-  } else if (!stoppedDuring.length) {
+    detail = `播报期间出现了 ${uploaded.length} 条携带音频的上传（${uploaded.map(r => r.path).join('、')}）—— 助手自己的声音被 VAD 切段并上传，即自触发`
+  } else if (playbackMaxLive > 0) {
     status = 'FAIL'
-    detail = '播报期间唤醒引擎始终在运行 —— 门控没有生效，只是这次恰好没被触发'
+    detail = `播报期间麦克风仍有 ${playbackMaxLive} 条活轨道 —— 暂停监听的门控没有生效（未释放麦克风），只是这次恰好没被上传`
   } else {
     status = 'PASS'
-    detail = `播报期间唤醒引擎被暂停（${stoppedDuring.length}/${playback.length} 次采样未运行），且全程未进入 recording`
+    detail = `播报期间麦克风已释放（${playback.length} 次采样活轨道均为 0，播报前确有 ${before.filter(s => s.micLive > 0).length} 次采样开着），且窗口内无任何音频上传`
   }
 
   record('4', '播报含唤醒词 → 不自触发', status, detail,
     `播报文本：${spoken.slice(0, 160)}\n` +
-    `引擎运行采样数 —— 播报前 ${runningBefore}/${before.length}，播报期 ${playback.length - stoppedDuring.length}/${playback.length}，播报后 ${runningAfter}/${after.length}\n` +
-    `（播报前后都在跑、只有播报期不跑 = 门控确实生效；若播报期也在跑则判 FAIL）\n` +
-    `进入 recording 的采样数：${recording.length}\n` +
+    `麦克风活轨道数 —— 播报前曾开着 ${before.filter(s => s.micLive > 0).length}/${before.length} 次采样，` +
+    `播报期最大 ${playbackMaxLive < 0 ? 'n/a' : playbackMaxLive}，播报后最大 ${Math.max(-1, ...after.map(s => s.micLive ?? -1))}\n` +
+    `（播报前开着、播报期归零 = 门控确实生效；播报期仍大于 0 则判 FAIL）\n` +
+    `播报窗口内音频上传（/api/voice/wake|transcribe|answer）：${uploaded.length} 条\n` +
+    `播报窗口内 /api/voice/* 请求：${voiceAny.length ? voiceAny.map(r => `${r.method} ${r.path}`).join('、') : '(无)'}\n` +
     `状态序列：${stateSeq.join(' → ')}\n` +
-    `注：本项可证伪的部分是**门控本身**。声学上的自触发还取决于扬声器→麦克风的实际通路；\n` +
-    `    若扬声器静音或麦克风听不到扬声器，第二半句无判别力（但第一半句仍有效）。`)
+    `注：` +
+    `「播报期无音频上传」这一半取决于扬声器→麦克风的实际通路（扬声器静音时它无判别力）；\n` +
+    `    「播报期麦克风已释放」这一半直接测轨道，不依赖声学通路，任何情况下都可证伪。`)
 }
 
 /**

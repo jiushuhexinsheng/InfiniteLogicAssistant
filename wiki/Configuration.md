@@ -49,15 +49,18 @@ voice:
     # 可配多个唤醒词，命中任意一个即唤醒；旧的单数写法 `keyword: 词` 仍兼容
     keywords:
       - 衍衡
-      - 洛吉斯                      # 浏览器端 Vosk WASM 唤醒词
+      - 洛吉斯
     sensitivity: 0.5
-    model_path: "/models/vosk-model-small-cn-0.22.tar.gz"   # 浏览器端 URL
-  vad:                          # 静音检测（自动停止录音）
-    silence_threshold: 0.02
-    silence_duration_ms: 1500
-    max_duration_ms: 10000
+    model_path: ""              # Vosk 时代遗留字段：唤醒改走云端判定后已无人读，留空即可
+  vad:                          # 本地 VAD：静音检测（决定一段从哪开始、到哪结束）
+    silence_threshold: 0.02     # 判定「有人在说」的 RMS 阈值
+    silence_duration_ms: 1500   # 静音多久算一段说完（决定何时切段上传）
+    max_duration_ms: 10000      # 单段硬上限
+    min_speech_ms: 300          # 短于此长度的段直接丢弃、不上传（省调用量的第一道闸）
+    upload_throttle_ms: 500     # 两次「唤醒判定」上传的最小间隔（只节流唤醒判定路径）
+    answer_timeout_ms: 8000     # 待答窗口：提问后一直没说话就进待机；唤醒后可回到本题续答
   asr:                          # 在线 ASR（OpenAI 兼容；密钥在 config.secrets.yaml / 环境变量）
-    active: openai
+    active: openai              # 唤醒判定与转写都走它 —— 见下「语音隐私边界」
     profiles:
       openai:
         provider: openai
@@ -77,6 +80,17 @@ voice:
         format: "wav"           # wav / mp3 / pcm16
         timeout: 30
 ```
+
+### 语音隐私边界
+
+唤醒词由**云端 ASR** 判定（本地无模型）；`vad.*` 全部是**本地**参数：
+
+- **每次本地 VAD 判到人声，都会把该音频片段上传到 `asr.active` 指向的服务商 —— 无论是否说出
+  唤醒词。** `vad.silence_threshold` / `min_speech_ms` 只**减少**上传次数（滤静音、滤过短片段），
+  **不是隐私屏障**。
+- 降低调用量的旋钮：调大 `vad.min_speech_ms` 与 `vad.upload_throttle_ms`、调高
+  `vad.silence_threshold`（更不容易判成说话）。代价是漏触发变多，反之亦然。
+- 完整边界说明见 [Security.md](Security.md) 的「语音隐私边界」。
 
 ## server — 服务
 
