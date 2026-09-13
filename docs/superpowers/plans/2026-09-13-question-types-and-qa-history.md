@@ -20,7 +20,11 @@
 - 后端验证：`python -m pytest tests/ -q` + `python -m mypy core/ server.py`。
 - 前端验证：`cd web && npm test` + `cd web && npm run build`。
 - TDD：先写失败测试 → 运行确认失败 → 最小实现 → 运行确认通过 → 提交。
-- **端到端过渡窗口（重要）**：Task 3 之后后端发 `kind="choice"`，而前端在 Task 7 / Task 8 之前仍判 `kind === "confirm"`，此时**真实 UI 的确认问题会退化为文本输入**。各 Task 自身的测试套件在此期间保持全绿（前端测试直接喂入 kind，不依赖后端），CI 不受影响；**端到端行为统一在 Task 10 验证**。不要在中途用真实 UI 验证确认流程。
+- **端到端过渡窗口（重要）**：Task 3 之后后端发 `kind="choice"`，而前端在 Task 7 / Task 8 之前仍判 `kind === "confirm"`，此时**真实 UI 的确认问题会退化为文本输入**。前端单元测试在此期间仍全绿（它们直接喂入 kind，不依赖后端）。
+  **但 CI 会红**：CI 的 `npm run build` 包含 `vue-tsc`，类型检查会在 Task 6 放宽 `kind` 后立刻报「`'confirm'` 与 `'choice'|'text'|'composite'` 无重叠」。
+  > **实施修正（2026-09-13）**：原计划写「CI 不受影响」是**错的**。Task 6/7/8 在类型检查层面是一个原子单元，只有 Task 8 完成后 `vue-tsc` 才恢复绿，故三者**合并为一次提交**（同 Task 4 的原理：接口放宽与其全部消费方必须同时落地）。
+
+- **端到端行为统一在 Task 10 验证**。不要在中途用真实 UI 验证确认流程。
 
 ---
 

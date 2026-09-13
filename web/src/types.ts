@@ -200,6 +200,17 @@ export interface ToolEndEvent {
  * 问题事件（澄清/确认）
  * Question event (clarification/confirmation)
  */
+/**
+ * 询问选项
+ * Question option
+ */
+export interface QuestionOption {
+  /** 机器可读取值。Machine-readable value. */
+  value: string
+  /** 展示文案。Display label. */
+  label: string
+}
+
 export interface QuestionEvent {
   /** 事件类型。Event type. */
   type: 'question'
@@ -207,12 +218,13 @@ export interface QuestionEvent {
   question: string
   /** 会话 ID。Session ID. */
   session_id: string
-  /** 提问类型：clarify（澄清，自由文本作答）/ confirm（确认，结构化选择）。
-   *  前端据 confirm 渲染「确认 / 取消」按钮，避免解析自由文本判定是否批准。
-   *  Question kind: clarify (free-form answer) / confirm (structured choice).
-   *  The frontend renders confirm/cancel buttons for confirm, so deciding whether
-   *  the operator approved never depends on parsing free text. */
-  kind: 'clarify' | 'confirm'
+  /** 作答方式：text 自由文本 / choice 从选项选 / composite 选项加补充说明。
+   *  选项按钮由 options 驱动，判定「是否批准」永不依赖解析自由文本。
+   *  How to answer: text (free input) / choice (pick an option) / composite (option plus a
+   *  note). Buttons come from options, so approval never depends on parsing free text. */
+  kind: 'choice' | 'text' | 'composite'
+  /** 选项列表（kind 为 choice / composite 时非空）。Options (non-empty for choice / composite). */
+  options: QuestionOption[]
 }
 
 /**

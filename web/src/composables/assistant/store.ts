@@ -1,5 +1,5 @@
 import { ref, watch } from 'vue'
-import type { TokenUsage, WakeWordConfig, VadConfig } from '../../types'
+import type { QuestionOption, TokenUsage, WakeWordConfig, VadConfig } from '../../types'
 
 /** 助手状态类型，定义状态机的所有可能状态。
  *  Assistant state type, defines all possible states of the state machine. */
@@ -74,13 +74,16 @@ export const statusLine = ref('')
 /** Token 使用量统计。Token usage statistics. */
 export const tokenUsage = ref<TokenUsage>({})
 
-/** 待回答的提问（含提问类型，决定前端渲染按钮还是文本输入）。
- *  Pending question (with its kind, which decides buttons vs. a text input). */
+/** 待回答的提问（含作答方式与选项，决定前端渲染按钮还是输入框）。
+ *  Pending question (with how to answer and its options, deciding whether the frontend
+ *  renders buttons or an input). */
 export interface PendingQuestion {
   /** 问题内容。Question content. */
   text: string
-  /** 提问类型。Question kind. */
-  kind: 'clarify' | 'confirm'
+  /** 作答方式。How to answer. */
+  kind: 'choice' | 'text' | 'composite'
+  /** 选项列表（choice / composite 用）。Options (for choice / composite). */
+  options: QuestionOption[]
 }
 
 /** 编排问答：待回答的澄清/确认问题。Orchestration Q&A: pending clarification/confirmation question. */

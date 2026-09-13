@@ -14,23 +14,26 @@
       <div v-for="(line, i) in log" :key="i" class="log-line" :class="line.kind">{{ line.text }}</div>
     </div>
 
-    <!-- 澄清/确认问题卡片：任务需要用户回答时显示。确认类走结构化按钮，澄清类走自由文本。
-         Clarification/confirmation card: confirmation questions use structured buttons,
-         clarification questions use free text. -->
+    <!-- 澄清/确认问题卡片：按 kind 渲染成输入框 / 按钮 / 按钮加输入框（与 QuestionCard 一致）。
+         Clarification/confirmation card: rendered per kind as an input, buttons, or buttons
+         plus an input (consistent with QuestionCard). -->
     <div v-if="pendingQuestion" class="confirm-card">
-      <div class="confirm-title">❓ {{ isConfirm ? '需要你确认' : '需要你回答' }}</div>
+      <div class="confirm-title">❓ {{ pendingQuestion.kind === 'text' ? '需要你回答' : '需要你确认' }}</div>
       <p class="confirm-q">{{ pendingQuestion.text }}</p>
-      <!-- 确认类：只提供按钮。后端对确认类只接受结构化 choice，自由文本仅精确
-           等于「确认」等字面量才生效 —— 给输入框只会让用户白输（并被取消任务）。
-           Confirmation: buttons only. The backend accepts only a structured choice for
-           confirmation; free text works only on an exact literal match, so offering an
-           input box would just waste the user's effort (and cancel the task). -->
-      <div v-if="isConfirm" class="confirm-row">
-        <UiButton variant="secondary" size="sm" @click="choose('no')">取消</UiButton>
-        <UiButton variant="primary" size="sm" @click="choose('yes')">确认</UiButton>
+      <!-- 选项按钮（choice / composite）。Option buttons (choice / composite). -->
+      <div v-if="pendingQuestion.options.length" class="confirm-row">
+        <UiButton
+          v-for="opt in pendingQuestion.options"
+          :key="opt.value"
+          :variant="opt.value === 'yes' ? 'primary' : 'secondary'"
+          size="sm"
+          @click="choose(opt.value)"
+        >{{ opt.label }}</UiButton>
       </div>
-      <!-- 澄清类：自由文本回答。Clarification: free-text answer. -->
-      <div v-else class="confirm-row">
+      <!-- 文本输入（text / composite）。choice 下不渲染：自由文本会被后端判为未选择而拒绝，
+           给了输入框只会让用户白输。Not rendered for choice, where free text is rejected by
+           the backend as "no selection". -->
+      <div v-if="pendingQuestion.kind !== 'choice'" class="confirm-row">
         <UiInput v-model="answer" placeholder="输入回答后回车…" @keydown.enter="sendAnswer" />
         <UiButton variant="secondary" size="sm" @click="sendAnswer">回答</UiButton>
       </div>
@@ -39,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { api, streamUtter } from '../../api'
 import { formatError } from '../../errors'
 import { UiButton, UiInput, UiTextarea } from '../ui'
@@ -50,10 +53,9 @@ const input = ref('')
 const answer = ref('')
 /** 当前流式会话 ID。Current streaming session ID. */
 const sessionId = ref('')
-/** 待回答的提问（含提问类型，决定渲染按钮还是输入框）。Pending question (with its kind, which decides buttons vs. an input). */
-const pendingQuestion = ref<{ text: string; kind: 'clarify' | 'confirm' } | null>(null)
-/** 是否为确认类提问。Whether this is a confirmation question. */
-const isConfirm = computed(() => pendingQuestion.value?.kind === 'confirm')
+/** 待回答的提问（含作答方式与选项，决定渲染按钮还是输入框）。
+ *  Pending question (with how to answer and its options, deciding buttons vs. an input). */
+const pendingQuestion = ref<{ text: string; kind: 'choice' | 'text' | 'composite'; options: { value: string; label: string }[] } | null>(null)
 /** 任务是否正在运行。Whether a task is running. */
 const running = ref(false)
 /** 任务执行日志（kind: user/state/tool/assistant/error）。Task execution log (kind: user/state/tool/assistant/error). */
@@ -89,12 +91,15 @@ async function send() {
       }
     },
     onContent: (t) => push('assistant', t),
-    onQuestion: ({ question, kind, session_id }) => {
+    onQuestion: ({ question, kind, options, session_id }) => {
       if (session_id) sessionId.value = session_id
-      // kind 决定渲染按钮还是输入框；缺省按澄清处理（向后兼容无该字段的后端）。
-      // kind decides buttons vs. input; default to clarify (backward compatible with
-      // a backend that omits the field).
-      pendingQuestion.value = { text: question, kind: kind === 'confirm' ? 'confirm' : 'clarify' }
+      // kind 与 options 决定渲染按钮还是输入框；缺省按文本处理（向后兼容无该字段的后端）。
+      // kind and options decide buttons vs. an input; default to text for an older backend.
+      pendingQuestion.value = {
+        text: question,
+        kind: kind === 'choice' || kind === 'composite' ? kind : 'text',
+        options: options ?? [],
+      }
     },
     onError: (m) => push('error', '❌ ' + m),
     onDone: () => { running.value = false },
@@ -120,16 +125,17 @@ async function sendAnswer() {
 }
 
 /**
- * 发送结构化确认（确认类提问）：只回传 choice，不带文本。
- * Send a structured confirmation (confirmation questions): returns only the choice, with no text.
+ * 提交选项回答（choice / composite）：只回传选项值，不带文本。
+ * Submit an option answer (choice / composite): returns only the option value, with no text.
  *
- * @param choice 结构化选择。The structured choice.
+ * @param value 选项的机器可读值。The option's machine-readable value.
  */
-async function choose(choice: 'yes' | 'no') {
+async function choose(value: string) {
   if (!pendingQuestion.value) return
-  push('user', choice === 'yes' ? '（确认执行）' : '（取消执行）')
+  const label = pendingQuestion.value.options.find((o) => o.value === value)?.label || value
+  push('user', `（${label}）`)
   try {
-    await api.answer(sessionId.value, '', choice)
+    await api.answer(sessionId.value, '', value)
     pendingQuestion.value = null
   } catch (e) {
     push('error', '❌ 回答投递失败：' + formatError(e))
