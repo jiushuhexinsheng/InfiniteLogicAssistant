@@ -206,6 +206,13 @@ class VadConfig(BaseModel):
     # enters standby (the engine still listens for the wake word). It lives here rather
     # than in a new section because it shares the family with max_duration_ms.
     answer_timeout_ms: int = Field(8000, gt=0)
+    # 唤醒上传的两道成本闸（子项目 1）：短于此长度的片段不上传（滤掉咳嗽/关门等爆音），
+    # 两次上传之间的最小间隔（避免连续误触发时刷接口）。
+    # Two cost gates for wake uploads: clips shorter than min_speech_ms are never uploaded
+    # (filters coughs, door slams and other transients), and upload_throttle_ms sets the minimum
+    # gap between uploads so a burst of false triggers cannot hammer the endpoint.
+    min_speech_ms: int = Field(300, ge=0)
+    upload_throttle_ms: int = Field(500, ge=0)
 
 
 class VoiceSection(BaseModel):

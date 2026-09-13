@@ -77,6 +77,8 @@ class VadConfig(BaseModel):
     # 等待操作者语音回答的静音超时（毫秒）。
     # Silence timeout (ms) while waiting for a spoken answer.
     answer_timeout_ms: int = 8000
+    min_speech_ms: int = 300
+    upload_throttle_ms: int = 500
 
 
 class ConfigResponse(ApiResponse):
