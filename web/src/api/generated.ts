@@ -1791,7 +1791,16 @@ export interface components {
          * VadConfig
          * @description VAD（语音活动检测）配置。
          *
+         *     ⚠️ 本类是 `core/config/schema.py` 里 VadConfig 的**手工副本**（两处定义必须同步）：
+         *     FastAPI 的 response_model 会在序列化时**丢掉响应里多余字段**，故只改配置模型
+         *     而不同步这里，新增字段会被静默过滤掉、前端收不到。
+         *
          *     VAD (Voice Activity Detection) configuration.
+         *
+         *     NOTE: this is a hand-maintained **duplicate** of the VadConfig in
+         *     `core/config/schema.py`; the two must be kept in sync. FastAPI's response_model drops
+         *     extra fields during serialization, so adding a field only to the config model would be
+         *     silently filtered out and never reach the frontend.
          */
         VadConfig: {
             /**
@@ -1809,6 +1818,11 @@ export interface components {
              * @default 10000
              */
             max_duration_ms: number;
+            /**
+             * Answer Timeout Ms
+             * @default 8000
+             */
+            answer_timeout_ms: number;
         };
         /** ValidationError */
         ValidationError: {

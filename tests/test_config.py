@@ -177,3 +177,26 @@ def test_permissions_snapshot_exposed(monkeypatch):
     assert snap["permissions"]["tiers"]["read"] == "allow"
     assert snap["permissions"]["default_action"] == "ask"
     assert snap["permissions"]["rules"] == [{"match": "run_*", "action": "deny"}]
+
+
+def test_vad_answer_timeout_default_and_bounds():
+    """等待语音回答的静音超时：默认 8000ms，必须为正数（0 或负数会让等待立即超时）。
+    放在 VadConfig 里 —— 与 max_duration_ms（最大录音时长）同族，且 /api/config 与
+    可编辑快照都以 VadConfig 类型暴露它，故无需新增接线。
+    The answer-wait silence timeout defaults to 8000ms and must be positive. It lives in
+    VadConfig alongside max_duration_ms: both /api/config and the editable snapshot expose
+    it through the VadConfig type, so no extra wiring is needed."""
+    assert c.Settings().voice.vad.answer_timeout_ms == 8000
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        c.Settings(voice={"vad": {"answer_timeout_ms": 0}})
+
+
+def test_vad_answer_timeout_reaches_frontend_payload(monkeypatch):
+    """必须出现在 /api/config 的 vad 字段里 —— 前端 vadConfig 靠它取超时值。
+    It must appear in /api/config's vad field, which is where the frontend's vadConfig
+    reads the timeout from."""
+    settings = c.Settings(voice={"vad": {"answer_timeout_ms": 12000}})
+    monkeypatch.setattr(c, "get_settings", lambda: settings)
+    snap = c.editable_snapshot()
+    assert snap["vad"]["answer_timeout_ms"] == 12000

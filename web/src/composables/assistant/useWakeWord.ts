@@ -194,11 +194,11 @@ function startVAD(stream: MediaStream) {
   }, checkInterval)
 }
 
-/** 待答时长（毫秒）：来自 voice.answer_timeout_s，缺省 8s。
- *  Answer-wait duration in ms, from voice.answer_timeout_s (default 8s). */
+/** 待答时长（毫秒）：来自 vad.answer_timeout_ms，缺省 8s。
+ *  Answer-wait duration in ms, from vad.answer_timeout_ms (default 8s). */
 function answerTimeoutMs(): number {
-  const s = (wakeConfig as { answer_timeout_s?: number }).answer_timeout_s
-  return (s && s > 0 ? s : 8) * 1000
+  const ms = (vadConfig as { answer_timeout_ms?: number }).answer_timeout_ms
+  return ms && ms > 0 ? ms : 8000
 }
 
 /** 启动最大录音时长定时器。`ms` 缺省用 VAD 的 max_duration_ms；待答态传 answer_timeout_s。
