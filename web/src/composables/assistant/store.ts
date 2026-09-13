@@ -138,7 +138,7 @@ export const currentSessionId = ref('')
  *  Wake word config (merged in-place from /api/config during init using Object.assign to keep reference stable). */
 export const wakeConfig: WakeWordConfig = { enabled: true, keywords: ['衍衡', '洛吉斯'], sensitivity: 0.5, model_path: '/models/vosk-model-small-cn-0.22.tar.gz' }
 /** VAD（语音活动检测）配置。VAD (Voice Activity Detection) configuration. */
-export const vadConfig: VadConfig = { silence_threshold: 0.02, silence_duration_ms: 1500, max_duration_ms: 10000, answer_timeout_ms: 8000 }
+export const vadConfig: VadConfig = { silence_threshold: 0.02, silence_duration_ms: 1500, max_duration_ms: 10000, answer_timeout_ms: 8000, min_speech_ms: 300, upload_throttle_ms: 500 }
 /** 响应式唤醒词列表（**可多个**，命中任意一个即唤醒）。Reactive wake keywords (plural; any hit wakes). */
 export const wakeKeywords = ref<string[]>([...(wakeConfig.keywords ?? [])])
 
