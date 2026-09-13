@@ -14,11 +14,23 @@
       <div v-for="(line, i) in log" :key="i" class="log-line" :class="line.kind">{{ line.text }}</div>
     </div>
 
-    <!-- 澄清/确认问题卡片：任务需要用户回答时显示。Clarification/confirmation card: shown when a task requires user's answer. -->
+    <!-- 澄清/确认问题卡片：任务需要用户回答时显示。确认类走结构化按钮，澄清类走自由文本。
+         Clarification/confirmation card: confirmation questions use structured buttons,
+         clarification questions use free text. -->
     <div v-if="pendingQuestion" class="confirm-card">
-      <div class="confirm-title">❓ 需要你回答</div>
-      <p class="confirm-q">{{ pendingQuestion }}</p>
-      <div class="confirm-row">
+      <div class="confirm-title">❓ {{ isConfirm ? '需要你确认' : '需要你回答' }}</div>
+      <p class="confirm-q">{{ pendingQuestion.text }}</p>
+      <!-- 确认类：只提供按钮。后端对确认类只接受结构化 choice，自由文本仅精确
+           等于「确认」等字面量才生效 —— 给输入框只会让用户白输（并被取消任务）。
+           Confirmation: buttons only. The backend accepts only a structured choice for
+           confirmation; free text works only on an exact literal match, so offering an
+           input box would just waste the user's effort (and cancel the task). -->
+      <div v-if="isConfirm" class="confirm-row">
+        <UiButton variant="secondary" size="sm" @click="choose('no')">取消</UiButton>
+        <UiButton variant="primary" size="sm" @click="choose('yes')">确认</UiButton>
+      </div>
+      <!-- 澄清类：自由文本回答。Clarification: free-text answer. -->
+      <div v-else class="confirm-row">
         <UiInput v-model="answer" placeholder="输入回答后回车…" @keydown.enter="sendAnswer" />
         <UiButton variant="secondary" size="sm" @click="sendAnswer">回答</UiButton>
       </div>
@@ -27,7 +39,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { api, streamUtter } from '../../api'
 import { formatError } from '../../errors'
 import { UiButton, UiInput, UiTextarea } from '../ui'
@@ -38,8 +50,10 @@ const input = ref('')
 const answer = ref('')
 /** 当前流式会话 ID。Current streaming session ID. */
 const sessionId = ref('')
-/** 待回答的澄清问题。Pending clarification question. */
-const pendingQuestion = ref('')
+/** 待回答的提问（含提问类型，决定渲染按钮还是输入框）。Pending question (with its kind, which decides buttons vs. an input). */
+const pendingQuestion = ref<{ text: string; kind: 'clarify' | 'confirm' } | null>(null)
+/** 是否为确认类提问。Whether this is a confirmation question. */
+const isConfirm = computed(() => pendingQuestion.value?.kind === 'confirm')
 /** 任务是否正在运行。Whether a task is running. */
 const running = ref(false)
 /** 任务执行日志（kind: user/state/tool/assistant/error）。Task execution log (kind: user/state/tool/assistant/error). */
@@ -55,11 +69,17 @@ async function send() {
   const text = input.value.trim()
   if (!text || running.value) return
   running.value = true
-  pendingQuestion.value = ''
+  pendingQuestion.value = null
   log.value = []
   push('user', text)
-  sessionId.value = await streamUtter(text, {
+  const sid = await streamUtter(text, {
     onTaskState: (s) => {
+      // 流进行中就要拿到 session_id：作答与停止都发生在流结束之前，
+      // 只靠 streamUtter 的返回值会在作答时拿到空串（404）。
+      // Capture session_id while the stream is running: answering and stopping both
+      // happen before it ends, so relying solely on streamUtter's return value would
+      // yield an empty id at answer time (404).
+      if (s.session_id) sessionId.value = s.session_id
       if (s.state === 'understanding') push('state', '🧠 理解中…')
       if (s.state === 'done') {
         push('state', '✅ ' + s.status + ': ' + s.summary)
@@ -69,21 +89,48 @@ async function send() {
       }
     },
     onContent: (t) => push('assistant', t),
-    onQuestion: ({ question }) => { pendingQuestion.value = question },
+    onQuestion: ({ question, kind, session_id }) => {
+      if (session_id) sessionId.value = session_id
+      // kind 决定渲染按钮还是输入框；缺省按澄清处理（向后兼容无该字段的后端）。
+      // kind decides buttons vs. input; default to clarify (backward compatible with
+      // a backend that omits the field).
+      pendingQuestion.value = { text: question, kind: kind === 'confirm' ? 'confirm' : 'clarify' }
+    },
     onError: (m) => push('error', '❌ ' + m),
     onDone: () => { running.value = false },
   })
+  // 事件未携带 session_id 时兜底用返回值；反之保留事件里的（不覆盖）。
+  // Fall back to the return value when no event carried an id; otherwise keep the
+  // event-derived one (do not overwrite).
+  if (sid) sessionId.value = sid
 }
 
-/** 发送用户对澄清问题的回答。Send user's answer to clarification question. */
+/** 发送用户对澄清问题的自由文本回答。Send the user's free-text answer to a clarification question. */
 async function sendAnswer() {
   const a = answer.value.trim()
   if (!a) return
   push('user', '（回答）' + a)
   try {
     await api.answer(sessionId.value, a)
-    pendingQuestion.value = ''
+    pendingQuestion.value = null
     answer.value = ''
+  } catch (e) {
+    push('error', '❌ 回答投递失败：' + formatError(e))
+  }
+}
+
+/**
+ * 发送结构化确认（确认类提问）：只回传 choice，不带文本。
+ * Send a structured confirmation (confirmation questions): returns only the choice, with no text.
+ *
+ * @param choice 结构化选择。The structured choice.
+ */
+async function choose(choice: 'yes' | 'no') {
+  if (!pendingQuestion.value) return
+  push('user', choice === 'yes' ? '（确认执行）' : '（取消执行）')
+  try {
+    await api.answer(sessionId.value, '', choice)
+    pendingQuestion.value = null
   } catch (e) {
     push('error', '❌ 回答投递失败：' + formatError(e))
   }
