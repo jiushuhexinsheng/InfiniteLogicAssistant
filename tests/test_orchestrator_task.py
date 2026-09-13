@@ -61,7 +61,7 @@ async def test_run_clarify_asks_operator(monkeypatch):
             self.answers = list(answers)
             self.asked: list[str] = []
 
-        async def ask(self, q, *, kind="clarify"):
+        async def ask(self, q, *, kind="text", options=None):
             self.asked.append(q)
             a = self.answers.pop(0)
             return a if isinstance(a, Answer) else Answer(text=a)

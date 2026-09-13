@@ -38,7 +38,7 @@ class _Channel:
     def __init__(self, answers):
         self.answers = list(answers)
 
-    async def ask(self, q, *, kind="clarify"):
+    async def ask(self, q, *, kind="text", options=None):
         a = self.answers.pop(0)
         return a if isinstance(a, Answer) else Answer(text=a)
 

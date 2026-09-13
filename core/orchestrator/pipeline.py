@@ -77,20 +77,20 @@ class EventQueueChannel(OperatorChannel):
         """向事件队列写入 notify 状态事件。Write a notify state event into the event queue."""
         await self.events.put(TaskStateEvent(state="notify", text=text, session_id=self.session_id).emit())
 
-    async def ask(self, question: str, *, kind: str = "clarify") -> Answer:
+    async def ask(self, question: str, *, kind: str = "text", options: list | None = None) -> Answer:
         """写入 question 事件并阻塞等待操作者回答（串行化，同会话同时最多一个待答问题）。
 
-        kind 随事件下发：前端据 kind="confirm" 渲染确认按钮而非文本输入。
+        kind 与 options 随事件下发，前端据此决定渲染按钮还是输入框。
 
-        Write a question event and block until the operator answers (serialized:
-        at most one pending question per session). kind travels with the event so
-        the frontend renders confirm buttons instead of a text input for
-        kind="confirm".
+        Write a question event and block until the operator answers (serialized: at most
+        one pending question per session). kind and options travel with the event so the
+        frontend can decide between buttons and a text input.
         """
         # 串行化提问：同会话同时最多一个待答问题，避免并发子代理答非所问
         async with self._ask_lock:
             await self.events.put(
-                QuestionEvent(question=question, session_id=self.session_id, kind=kind).emit()
+                QuestionEvent(question=question, session_id=self.session_id,
+                              kind=kind, options=options or []).emit()
             )
             return await self.answers.get()
 

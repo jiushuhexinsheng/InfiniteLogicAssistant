@@ -301,9 +301,17 @@ Expected: PASS
 - [ ] **Step 5: 提交**
 
 ```bash
-git add core/orchestrator/session.py core/orchestrator/pipeline.py tests/test_orchestrator_pipeline.py
+git add core/orchestrator/session.py core/orchestrator/pipeline.py tests/
 git commit -m "feat(编排): ask 透传 kind/options，QuestionEvent 携带选项集"
 ```
+
+> **实施修正（2026-09-13）**：本 Task 改的是 `OperatorChannel.ask` **协议**，
+> 必须**同时**更新全部实现方，否则套件变红。除 `core/` 的两处外，还有 6 个
+> 测试替身需补 `options=None` 形参，分布在：
+> `tests/test_coordinator.py:62`、`tests/test_orchestrator_confirm.py:22`、
+> `tests/test_orchestrator_executor.py:41`、`tests/test_orchestrator_task.py:64`、
+> `tests/test_skills_executor.py:59` 与 `:103`。
+> 原计划漏了后两个文件（改协议时未清点全部实现方），已在实施中补齐。
 
 ---
 

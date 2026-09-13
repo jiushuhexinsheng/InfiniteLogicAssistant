@@ -59,7 +59,7 @@ async def test_coordinator_emits_notify_events(monkeypatch):
     class _Rec:
         async def notify(self, text):
             events.append(text)
-        async def ask(self, q):
+        async def ask(self, q, *, kind="text", options=None):
             return ""
 
     s = Session()

@@ -56,7 +56,7 @@ async def test_run_skill_dangerous_rejected():
         def __init__(self):
             self.answers = ["取消"]
 
-        async def ask(self, q, *, kind="clarify"):
+        async def ask(self, q, *, kind="text", options=None):
             a = self.answers.pop(0)
             return a if isinstance(a, Answer) else Answer(text=a)
 
@@ -100,7 +100,7 @@ class _ConfirmChannel:
         self.answers = list(answers)
         self.notified: list[str] = []
 
-    async def ask(self, q, *, kind="clarify"):
+    async def ask(self, q, *, kind="text", options=None):
         a = self.answers.pop(0)
         return a if isinstance(a, Answer) else Answer(text=a)
 
