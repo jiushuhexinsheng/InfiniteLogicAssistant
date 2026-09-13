@@ -200,7 +200,7 @@ function stopProgress() {
  * Watch state changes: start progress on recording, stop otherwise.
  */
 watch(() => props.state, (s) => {
-  if (s === 'recording') startProgress()
+  if (s === 'recording' || s === 'awaiting_answer') startProgress()
   else stopProgress()
 })
 
@@ -208,7 +208,7 @@ watch(() => props.state, (s) => {
  * 计算录音状态环样式（conic 渐变进度）。Compute recording ring style (conic gradient progress).
  */
 const ringStyle = computed(() => {
-  if (props.state !== 'recording') return {}
+  if (props.state !== 'recording' && props.state !== 'awaiting_answer') return {}
   const pct = Math.round(recordingProgress.value * 360)
   return { background: `conic-gradient(var(--brand-c2) ${pct}deg, rgba(255,255,255,.08) ${pct}deg)` }
 })
