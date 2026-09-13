@@ -297,12 +297,27 @@ def test_vad_duplicate_in_api_schemas_stays_in_sync():
     """**手工副本陷阱**：`core/api/schemas.py` 里有 VadConfig 的副本，不同步的话
     FastAPI 的 response_model 会静默丢掉新字段，前端 `/api/config` 收不到。
 
-    这条用例直接对比两份模型的字段集合，任何一边漏改都会红。
+    逐字段比较「字段名 → (注解, 默认值)」：任何一边漏改（增删改名）、默认值漂移
+    （config 300 vs api 1000）、或注解变化（int → float）都会红。
+
+    ⚠️ 不比较校验约束（ge/le）：api 副本本来就**故意不带**约束（它只负责 response_model
+    的字段名/类型/默认值契约），canonical 模型才做校验。拿 model_json_schema() 比会把这种
+    有意差异误报成漂移。
 
     **The duplicate-model trap**: `core/api/schemas.py` carries a copy of VadConfig. If they drift,
     FastAPI's response_model silently drops the new field and the frontend never sees it in
-    /api/config. This case compares the two field sets directly, so either side drifting fails.
+    /api/config. This case compares each field's name → (annotation, default), so a missing/renamed
+    field, a default drift, or an annotation change on either side fails.
+
+    NOTE: validation constraints (ge/le) are intentionally **not** compared — the api copy
+    deliberately carries none (it only defines the response_model contract of names/types/defaults),
+    while only the canonical model validates. Comparing model_json_schema() would misreport that
+    deliberate difference as drift.
     """
     from core.api import schemas as api_schemas
     from core.config import schema as cfg_schema
-    assert set(cfg_schema.VadConfig.model_fields) == set(api_schemas.VadConfig.model_fields)
+
+    def signature(model_cls):
+        return {name: (field.annotation, field.default) for name, field in model_cls.model_fields.items()}
+
+    assert signature(cfg_schema.VadConfig) == signature(api_schemas.VadConfig)
