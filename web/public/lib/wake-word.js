@@ -59,7 +59,7 @@ var WakeWordEngine = (function () {
       if (_stateCallback) _stateCallback({ rms: 0, partial: text });
       if (match(text)) {
         console.log('[WW] WAKE! (partial) ' + text);
-        if (_wakeCallback) _wakeCallback();
+        _fireWake();
         _latestPartial = '';
         _destroyRec();
         _recognizer = _newRecognizer();
@@ -73,7 +73,7 @@ var WakeWordEngine = (function () {
       console.log('[WW] result:' + text);
       if (match(text)) {
         console.log('[WW] WAKE! (final) ' + text);
-        if (_wakeCallback) _wakeCallback();
+        _fireWake();
       }
     });
 
@@ -84,11 +84,31 @@ var WakeWordEngine = (function () {
     if (_recognizer) { try { _recognizer.remove(); } catch (e) {} _recognizer = null; }
   }
 
+  // 唤醒命中后的统一出口。回调缺失时**必须留下可见痕迹** —— 这条路径上的静默失败
+  // 曾经表现为「唤醒词明明识别到了，应用却毫无反应」，极难定位。
+  // The single exit point for a wake hit. A missing callback **must leave a visible trace**:
+  // a silent failure on this path once presented as "the wake word is clearly recognized but
+  // the app does nothing", which is very hard to diagnose.
+  function _fireWake() {
+    if (_wakeCallback) { _wakeCallback(); return; }
+    console.warn('[WW] 唤醒命中但没有唤醒回调 —— 应用层收不到本次唤醒（引擎是否被无参 start() 重启过？）');
+  }
+
   async function start(onWake, onState) {
     if (!_modelLoaded) { console.error('[WW] no model'); return false; }
     if (_running) return true;
-    _wakeCallback = onWake || null;
-    _stateCallback = onState || null;
+    // 只在**显式传入**时替换回调。start() 的契约是「重建流与 recognizer」，
+    // 不传参即代表「沿用上次注册的回调」—— 恢复监听（播报结束）正是这么调的。
+    // 若在此无条件赋 null，引擎照旧识别并打印 [WW] WAKE!，应用层却收不到唤醒回调，
+    // 表现为「第一次唤醒能用，之后再也唤不醒」的静默失败。
+    // Only replace the callbacks when explicitly provided: start()'s contract is "rebuild the
+    // stream and recognizer", so omitting them means "keep the ones registered earlier" —
+    // which is exactly how listening is resumed after playback. Unconditionally assigning null
+    // here would leave the engine recognizing (and even logging [WW] WAKE!) while the app never
+    // receives the callback: a silent failure presenting as "the first wake works, later ones
+    // never do".
+    if (onWake) _wakeCallback = onWake;
+    if (onState) _stateCallback = onState;
     _latestPartial = '';
     _chunkCount = 0;
 
