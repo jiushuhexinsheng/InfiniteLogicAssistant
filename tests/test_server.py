@@ -780,3 +780,52 @@ def test_voice_answer_unknown_session_404(client):
     """未知会话返回 404。An unknown session returns 404."""
     r = client.post("/api/voice/answer", json={"session_id": "nope", "text": "确认"})
     assert r.status_code == 404
+
+
+# ─── /api/tools/call 走权限策略 ───
+
+
+def _policy_returning(action, source="rule:test"):
+    from core.tools.policy import Decision
+    return lambda name, section=None: Decision(action, source)
+
+
+def test_tool_call_denied_by_policy_returns_403(client, monkeypatch):
+    """策略 deny 的工具即使带 confirm: true 也拒绝 —— confirm 不能覆盖 deny（关键安全不变式）。
+    A policy-denied tool is refused even with confirm: true — confirm cannot override
+    deny (the key security invariant)."""
+    from core.api import tools as tools_api
+    monkeypatch.setattr(tools_api, "decide", _policy_returning("deny", "rule:run_*"))
+    r = client.post("/api/tools/call",
+                    json={"name": "run_shell_tool", "args": {"command": "echo hi"}, "confirm": True})
+    assert r.status_code == 403
+    assert "禁止" in r.json()["error"]
+
+
+def test_tool_call_allowed_by_policy_needs_no_confirm(client, monkeypatch):
+    """策略 allow 的工具无需 confirm 标记即可执行。A policy-allowed tool runs without the confirm flag."""
+    from core.api import tools as tools_api
+    monkeypatch.setattr(tools_api, "decide", _policy_returning("allow", "tier:read"))
+    r = client.post("/api/tools/call", json={"name": "get_datetime", "args": {}})
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+
+
+def test_tool_call_ask_without_confirm_returns_needs_confirm(client, monkeypatch):
+    """策略 ask 且未带 confirm → 返回 needs_confirm 让前端弹窗。
+    A policy-ask tool without confirm returns needs_confirm so the front end can prompt."""
+    from core.api import tools as tools_api
+    monkeypatch.setattr(tools_api, "decide", _policy_returning("ask", "tier:exec"))
+    r = client.post("/api/tools/call", json={"name": "run_shell_tool", "args": {"command": "echo hi"}})
+    assert r.status_code == 200
+    assert r.json().get("needs_confirm") is True
+
+
+def test_tool_call_ask_with_confirm_executes(client, monkeypatch):
+    """策略 ask 且带 confirm → 正常执行（前端弹窗确认后的重调路径）。
+    A policy-ask tool with confirm executes normally (the front end's post-confirmation re-call)."""
+    from core.api import tools as tools_api
+    monkeypatch.setattr(tools_api, "decide", _policy_returning("ask", "tier:read"))
+    r = client.post("/api/tools/call", json={"name": "get_datetime", "args": {}, "confirm": True})
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
