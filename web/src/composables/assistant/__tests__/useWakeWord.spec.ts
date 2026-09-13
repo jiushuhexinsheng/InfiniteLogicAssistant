@@ -63,3 +63,69 @@ describe('describeMicError 麦克风错误文案', () => {
     expect(describeMicError({})).toBe('麦克风访问失败：未知错误')
   })
 })
+
+/**
+ * 提问待答时的转写必须走答案通道，而不是开新一轮 —— 这是「一说话就把当前提问搞挂」的根因修复。
+ * 断言可观测效果（api.answer 被调用 / messages 未变），而非 spy 内部函数。
+ *
+ * A transcript while a question is pending must go to the answer channel, not start a new
+ * turn — the fix for "speaking hangs the pending question". Assertions are on observable
+ * effects (api.answer called / messages unchanged) rather than on internal spies.
+ */
+describe('useWakeWord handleTranscript 分流', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    ;(globalThis as any).WakeWordEngine = { init: vi.fn(async () => true) }
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no network')))
+  })
+
+  async function setup(transcript: string, opts?: { pending?: boolean; match?: boolean }) {
+    const apiMod = await import('../../../api')
+    const store = await import('../store')
+    vi.spyOn(apiMod.api, 'transcribe').mockResolvedValue({ ok: true, text: transcript } as any)
+    const answerSpy = vi.spyOn(apiMod.api, 'answer').mockResolvedValue({ ok: true } as any)
+    store.currentSessionId.value = 's1'
+    store.messages.value = []
+    store.pendingQuestion.value = (opts?.pending ?? true)
+      ? {
+          text: '确认执行吗？', kind: 'choice',
+          options: opts?.match === false
+            ? [{ value: 'yes', label: '允许本次' }]
+            : [{ value: 'yes', label: '允许本次' }, { value: 'no', label: '拒绝' }],
+        }
+      : null
+    return { apiMod, store, answerSpy }
+  }
+
+  /** 命中选择 → 回传对应 value，不开新一轮。
+   *  记录里应是**回答记录**（用 option 的 label），而非 turn 路径写入的原始消息。 */
+  it('命中选项时回传 choice 且不开新一轮', async () => {
+    const { store, answerSpy } = await setup('允许本次')
+    const { handleTranscript } = await import('../useWakeWord')
+    await handleTranscript(new Blob(['x']))
+    expect(answerSpy).toHaveBeenCalledWith('s1', '', 'yes')
+    // sendAnswer 成功后会把回答写入记录（P4 的行为），文本取 option 的 label
+    expect(store.messages.value).toHaveLength(1)
+    expect(store.messages.value[0].role).toBe('user')
+    expect(store.messages.value[0].text).toBe('允许本次')
+  })
+
+  /** 未命中选择 → 整段作为文本作答。 */
+  it('未命中选项时作为文本作答', async () => {
+    const { store, answerSpy } = await setup('随便吧')
+    const { handleTranscript } = await import('../useWakeWord')
+    await handleTranscript(new Blob(['x']))
+    expect(answerSpy).toHaveBeenCalledWith('s1', '随便吧', undefined)
+    expect(store.messages.value).toHaveLength(1)
+    expect(store.messages.value[0].text).toBe('随便吧')
+  })
+
+  /** 无待答提问 → 维持原行为（写入 user 消息并开新一轮）。回归。 */
+  it('无待答提问时维持原行为', async () => {
+    const { store, answerSpy } = await setup('你好', { pending: false })
+    const { handleTranscript } = await import('../useWakeWord')
+    await handleTranscript(new Blob(['x']))
+    expect(answerSpy).not.toHaveBeenCalled()
+    expect(store.messages.value.some((m) => m.text === '你好')).toBe(true)
+  })
+})
