@@ -14,9 +14,9 @@ import { useSettings } from '../useSettings'
  * into undefined in the components. This test is the guard rail for that.
  */
 
-/** 子组件依赖的成员清单（与 useSettings() 的返回键一一对应）。 */
+/** 子组件依赖的成员清单（与 useSettings() 的返回键一一对应）。
+ *  `app`（全局配置缓存）仅供 state.ts 内部 saveModule 刷新用，无组件消费，故不对外暴露。 */
 const EXPECTED_KEYS = [
-  'app',
   'editable', 'saving', 'detecting', 'connResults', 'issues', 'catalog',
   'addingSection', 'customAdding', 'customName', 'activeMenu', 'keyModal', 'showKey',
   'sec', 'ed', 'menuDot',
