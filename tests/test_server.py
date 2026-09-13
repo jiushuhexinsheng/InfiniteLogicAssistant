@@ -1035,8 +1035,8 @@ def test_voice_wake_asr_failure_reports_error(client, monkeypatch):
 
 
 def test_voice_wake_writes_audit(client, monkeypatch, tmp_path):
-    """每次唤醒上传都写审计 —— 这是统计调用量与成本的唯一依据。
-    Every wake upload is audited: that record is the only basis for measuring call volume and cost.
+    """每次唤醒上传都写审计 —— 这是统计上传量与成本的依据。
+    Every wake upload is audited: that record is the basis for measuring upload volume and cost.
 
     ⚠️ patch 目标是 `core.api.voice.audit`，**不是** `core.logger.audit`：voice.py 用
     `from core.logger import audit` 顶层导入，名字绑定进了本模块命名空间，改源头那个不影响它。
@@ -1055,4 +1055,119 @@ def test_voice_wake_writes_audit(client, monkeypatch, tmp_path):
 
     monkeypatch.setattr(voice_pkg, "get_asr", lambda: _Asr())
     client.post("/api/voice/wake", json={"audio_base64": "AAAA"})
-    assert any("wake" in l and "matched" in l for l in lines), lines
+    assert any(l.startswith("audio-upload via=wake") and "matched" in l for l in lines), lines
+
+
+def test_voice_transcribe_writes_audit(client, monkeypatch):
+    """/voice/transcribe 也必须逐条写审计 —— 它和 /voice/wake 一样把音频送上云。
+
+    为什么非有不可：作答与指令两条通道都走 transcribe（前端 `transcribeSegment`），
+    而作答复用频率最高。只记 wake 会让「数审计行 = 数上传次数」不成立 ——
+    照 wake 行估算成本会**显著偏低**。
+
+    /voice/transcribe must be audited line-by-line too: like /voice/wake it sends audio to the
+    cloud. The answer and command channels both go through transcribe (the frontend's
+    `transcribeSegment`) and answering is the most frequent path, so auditing only wakes would
+    break "count audit lines = count uploads" and make cost estimates **far too low**.
+    """
+    import core.voice as voice_pkg
+    import core.api.voice as voice_api
+
+    lines: list[str] = []
+    monkeypatch.setattr(voice_api, "audit", lambda msg: lines.append(msg))
+
+    class _Asr:
+        def available(self): return True
+        async def transcribe_base64(self, b64, fmt="wav"): return "下载目录。"
+
+    monkeypatch.setattr(voice_pkg, "get_asr", lambda: _Asr())
+    resp = client.post("/api/voice/transcribe", json={"audio_base64": "AAAA"})
+    assert resp.json()["ok"] is True
+    assert any(l.startswith("audio-upload via=transcribe") for l in lines), lines
+
+
+# 会携带音频、因而必须逐条记上传审计的 `/api/voice/*` 端点 → 其审计行的 `via=` 取值。
+# 这张表是**判据的一部分**（见下方用例），不是随手抄的清单。
+#
+# The `/api/voice/*` endpoints that carry audio and must therefore audit every upload, mapped to
+# their `via=` value. This table is **part of the criterion** (see the test below), not a casual list.
+_AUDIO_UPLOAD_ENDPOINTS = {
+    "/api/voice/wake": "wake",
+    "/api/voice/transcribe": "transcribe",
+}
+
+# 明确**不**携带音频、因而不记上传审计的 `/api/voice/*` 端点。逐条附理由，免得日后被当成漏网。
+# `/api/voice/*` endpoints that explicitly do NOT carry audio, so they are not audited as uploads.
+# Each carries its reason so a later reader cannot mistake it for an oversight.
+_NON_UPLOAD_VOICE_ENDPOINTS = {
+    "/api/voice/utter": "只收文本走 SSE 事件流，不出音频。Text in, SSE event stream out; no audio.",
+    "/api/voice/answer": "只把文本/choice 投给编排层（channel.answer），无 ASR、无 HTTP。"
+                         "Text/choice handed to the orchestrator's channel.answer; no ASR, no HTTP.",
+}
+
+
+def test_audio_upload_audit_prefix_is_shared(client, monkeypatch):
+    """钉住**成本口径本身**：审计行数必须等于真实上传次数，否则 README / Security 里
+    「数审计行估成本」的指引就是错的。
+
+    具体钉三件事：
+      ① **分类完备**：`/api/voice/` 下每个 POST 端点，要么在「携带音频」表里，要么在
+         「不携带音频」白名单里。新增端点若两边都不在，**本例会红** —— 逼作者做一次明确
+         判断，而不是悄悄漏计（原先的版本只数自己发起的两次调用，新增端点漏审计照样通过，
+         所以它证明的其实不是「行数 = 上传次数」）。
+      ② **不多不少**：每个上传端点调用一次，恰好产生一行；行数 == 上传端点数。
+      ③ **前缀共用**：这些行的 `via=` 取值集合恰好等于表里的取值集合，可一条 grep 数全。
+
+    ⚠️ 诚实边界：把某个**新**端点判为「不携带音频」仍是人的判断（白名单是手写的），
+    本例不能替人做这个判断 —— 它保证的是「这个判断必须被做出并被写下来」。
+
+    This test pins **the accounting rule itself**: audit lines must equal real uploads, or the
+    "count audit lines to estimate cost" guidance in README/Security is wrong. It pins three
+    things: (1) **classification is total** — every POST endpoint under `/api/voice/` is either in
+    the audio table or in the non-audio allow-list; an unclassified new endpoint fails this test,
+    forcing an explicit decision instead of a silent undercount (the earlier version only counted
+    its own two calls, so a new unaudited endpoint would still pass — it did not actually pin
+    "lines == uploads"); (2) **exactly one line per call**, with the line count equal to the number
+    of upload endpoints; (3) **the prefix is shared**, so a single grep counts them all.
+
+    Honest limit: classifying a *new* endpoint as "carries no audio" remains a human judgement
+    (the allow-list is hand-written). This test cannot make that judgement — it guarantees the
+    judgement has to be made and written down.
+    """
+    import core.voice as voice_pkg
+    import core.api.voice as voice_api
+
+    # ① 分类完备：/api/voice/ 下的 POST 端点集合必须被上面两张表完全覆盖。
+    # Classification is total: the POST endpoints under /api/voice/ must be fully covered by the
+    # two tables above.
+    declared = {
+        r.path for r in client.app.routes
+        if getattr(r, "methods", None) and "POST" in r.methods and r.path.startswith("/api/voice/")
+    }
+    classified = set(_AUDIO_UPLOAD_ENDPOINTS) | set(_NON_UPLOAD_VOICE_ENDPOINTS)
+    assert declared == classified, (
+        f"/api/voice/ 下未分类的 POST 端点：{declared - classified}；已失效的分类：{classified - declared}。"
+        f"新增端点若携带音频，请用 `audio-upload via=` 前缀记审计并加进 _AUDIO_UPLOAD_ENDPOINTS；"
+        f"确实不携带音频则加进 _NON_UPLOAD_VOICE_ENDPOINTS 并写明理由。"
+        f"Unclassified POST endpoints under /api/voice/: {declared - classified}; stale entries: "
+        f"{classified - declared}."
+    )
+
+    lines: list[str] = []
+    monkeypatch.setattr(voice_api, "audit", lambda msg: lines.append(msg))
+
+    class _Asr:
+        def available(self): return True
+        async def transcribe_base64(self, b64, fmt="wav"): return "衍衡。"
+
+    monkeypatch.setattr(voice_pkg, "get_asr", lambda: _Asr())
+
+    # ② 每个上传端点恰好一行。Exactly one line per upload endpoint.
+    for path in _AUDIO_UPLOAD_ENDPOINTS:
+        resp = client.post(path, json={"audio_base64": "AAAA"})
+        assert resp.status_code == 200 and resp.json()["ok"] is True, (path, resp.text)
+
+    uploads = [l for l in lines if l.startswith("audio-upload via=")]
+    assert len(uploads) == len(_AUDIO_UPLOAD_ENDPOINTS), uploads
+    # ③ 前缀共用、取值集合吻合。Shared prefix with a matching set of via= values.
+    assert {l.split()[1] for l in uploads} == {f"via={v}" for v in _AUDIO_UPLOAD_ENDPOINTS.values()}, lines

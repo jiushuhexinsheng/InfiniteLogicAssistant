@@ -101,7 +101,17 @@ export interface paths {
          * Voice Transcribe
          * @description 语音转写：接收 base64 音频 → 返回识别文本。
          *
+         *     ⚠️ **本端点同样会把音频送上云**（作答与指令两条通道都经它，见前端 `transcribeSegment`），
+         *     所以它和 `/voice/wake` 一样逐条写审计 —— 否则「数审计行 = 数上传次数」不成立，
+         *     按 `wake` 行估算成本会**显著偏低**（作答复用这条通道，而那正是使用最频繁的一段）。
+         *
          *     ASR transcription: accept base64 audio and return the recognized text.
+         *
+         *     NOTE: this endpoint sends audio to the cloud too (both the answer and the command channels go
+         *     through it — see the frontend's `transcribeSegment`), so it is audited line-by-line just like
+         *     `/voice/wake`. Without that, "count audit lines = count uploads" would not hold and estimating
+         *     cost from `wake` lines alone would come out **far too low** (answering reuses this channel, and
+         *     that is the most frequently used path).
          *
          *     Args:
          *         request: FastAPI 请求，JSON 体含 audio_base64。The FastAPI request with

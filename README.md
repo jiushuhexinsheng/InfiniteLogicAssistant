@@ -234,7 +234,19 @@ npm run verify:voice -- --skip 4                       # 跳过某项
 | 6 | 双击悬浮球手动触发仍可用（回归） | **待人工验收** |
 
 另有一项**成本实测**同样待做：人工验收期间留意 console 的 `[wake]` 日志，记录
-**每 10 分钟正常对话约触发几次上传**（后端 `data/audit.log` 里每行 `wake` 即一次云端调用）。
+**每 10 分钟正常对话约触发几次上传**。
+
+数上传次数请用**审计日志的共用前缀**（两个上传端点口径一致，避免漏计）：
+
+```bash
+grep -c 'audio-upload via=' data/audit.log     # 云端上传总次数
+grep -o 'via=[a-z]*' data/audit.log | sort | uniq -c   # 按通道拆分：wake / transcribe
+```
+
+- `via=wake`：唤醒检测那一段（`POST /api/voice/wake`）
+- `via=transcribe`：**作答与指令**两段（`POST /api/voice/transcribe`）—— 问答期间使用最频繁，
+  **不能漏计**。（`POST /api/voice/answer` 只回传文本，不出音频，故不在此列。）
+
 这个数字是成本控制的依据，目前**尚无实测值** —— 不要拿估算冒充实测。
 
 ## 测试
@@ -303,7 +315,9 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
   说出唤醒词**。VAD 只是**本地闸门**（滤静音、滤过短的爆音，减少上传次数），它不构成隐私屏障：
   没说唤醒词的那段话**同样出了本机**。待答期间更是如此，每一段都会上传（当回答提交）。
   - 关闭语音唤醒（再次点 mic 徽章）即停止取麦与上传；助手播报期间麦克风被释放。
-  - 上传内容会记一行审计（`data/audit.log`，含转写文本前 80 字）供自查调用量与成本。
+  - **每一次上传都记一行审计**（`data/audit.log`，含转写文本前 80 字），两条上传通道口径一致：
+    `audio-upload via=wake`（唤醒检测）与 `audio-upload via=transcribe`（作答 / 指令）。
+    `grep -c 'audio-upload via=' data/audit.log` 即云端上传总次数，供自查调用量与成本。
   - 结论：**只有在你能接受「屋里的人声片段会送到该第三方 ASR 服务商」时，才开启语音唤醒**；
     不接受就把 `voice.wake_word.enabled` 设为 `false`，改用文字输入。
 - **审计**：工具执行与高风险确认决策写入 `data/audit.log`（独立于 agent.log）。
