@@ -169,6 +169,20 @@ async def voice_utter(request: Request):
     session = Session()
     session_id = params.get("session_id")
     if isinstance(session_id, str) and session_id:
+        # 该会话正阻塞在 ask()：拒绝本次 utter。否则会新建 Session 覆盖注册表，
+        # 旧的 ask() 将永久挂死（前端 runTurn 也会 abort 掉那条流）。
+        # 前端路由正确时走不到这里；它防的是前端出 bug 或有人直接打 API。
+        # The session is blocked in ask(): reject this utter. Otherwise a fresh Session
+        # would overwrite the registry and the old ask() would hang forever (the
+        # frontend's runTurn would also abort that stream). Correct frontend routing never
+        # reaches this branch; it guards against a frontend bug or a direct API call.
+        busy = state.get_session(session_id)
+        busy_channel = getattr(busy, "channel", None) if busy else None
+        if busy_channel is not None and getattr(busy_channel, "awaiting_answer", False):
+            return JSONResponse(
+                {"ok": False, "error": "该会话正在等待回答，请先作答或新建会话"},
+                status_code=409,
+            )
         # 续接已有会话：固定 id；请求未带历史种子时从存储加载
         session = Session(session_id=session_id)
         if messages is None:

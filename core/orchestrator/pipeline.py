@@ -72,6 +72,9 @@ class EventQueueChannel(OperatorChannel):
         self.session_id = session_id
         self.answers: asyncio.Queue = asyncio.Queue()
         self._ask_lock = asyncio.Lock()
+        # 是否正阻塞在 ask()：供 /voice/utter 判断该会话是否已被占用。
+        # Whether an ask() is currently pending, so /voice/utter can tell the session is busy.
+        self.awaiting_answer = False
 
     async def notify(self, text: str) -> None:
         """向事件队列写入 notify 状态事件。Write a notify state event into the event queue."""
@@ -92,7 +95,11 @@ class EventQueueChannel(OperatorChannel):
                 QuestionEvent(question=question, session_id=self.session_id,
                               kind=kind, options=options or []).emit()
             )
-            return await self.answers.get()
+            self.awaiting_answer = True
+            try:
+                return await self.answers.get()
+            finally:
+                self.awaiting_answer = False
 
     def answer(self, text: str, choice: str | None = None) -> None:
         """投递操作者回答到回答队列（由 /api/voice/answer 调用）。

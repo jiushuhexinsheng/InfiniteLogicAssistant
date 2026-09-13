@@ -198,3 +198,19 @@ async def test_background_extract_task_is_referenced(monkeypatch):
     await asyncio.sleep(0)
     # 完成后 done_callback 已将其丢弃
     assert len(pl._bg_tasks) == 0, "已完成的后台任务未被清理，引用集会持续增长"
+
+
+@pytest.mark.asyncio
+async def test_channel_awaiting_answer_flag_tracks_ask():
+    """ask() 期间 awaiting_answer 为 True，返回后复位 —— 供 /voice/utter 判断会话是否被占用。
+    awaiting_answer is True while ask() is pending and resets afterwards, so /voice/utter
+    can tell whether the session is busy."""
+    events: asyncio.Queue = asyncio.Queue()
+    ch = EventQueueChannel(events, session_id="s1")
+    assert ch.awaiting_answer is False
+    t = asyncio.ensure_future(ch.ask("问题?"))
+    await asyncio.wait_for(events.get(), timeout=1.0)   # 事件入队即 ask 已进入阻塞
+    assert ch.awaiting_answer is True
+    ch.answer("回答")
+    await asyncio.wait_for(t, timeout=1.0)
+    assert ch.awaiting_answer is False
