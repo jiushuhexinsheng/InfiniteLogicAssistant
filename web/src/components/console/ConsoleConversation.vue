@@ -4,7 +4,7 @@
     <div class="conv-top">
       <UiButton variant="secondary" size="sm" @click="newSession">＋ 新建会话</UiButton>
     </div>
-    <ConsoleMessageList :messages="asst.messages.value" :wake-keyword="asst.wakeKeyword.value" @retry="asst.retryTool($event)" @cancel="asst.cancelTool($event)" />
+    <ConsoleMessageList :messages="asst.messages.value" :wake-hint="asst.wakeHint.value" @retry="asst.retryTool($event)" @cancel="asst.cancelTool($event)" />
     <div class="console-input">
       <ChatInput :disabled="false" @send="onSend" />
     </div>

@@ -48,10 +48,16 @@ llm:
       max_tokens: 4096
 
 voice:
-  # 离线语音唤醒（浏览器端 Vosk WASM，关键词可任意改）
+  # 离线语音唤醒（浏览器端 Vosk WASM）
+  # keywords 支持**多个**唤醒词，说哪个都能唤醒（命中任意一个即可）；旧写法 `keyword: 词`
+  # 仍兼容（会当成唯一的那个唤醒词）。
+  # 注意：识别靠 Vosk 中文小模型，非高频字识别率低 —— 换生僻字前先实测，或给
+  # public/lib/wake-word.js 的 _homophones 补同音字。
   wake_word:
     enabled: true
-    keyword: "小逻小逻"
+    keywords:
+      - 衍衡
+      - 洛吉斯
     sensitivity: 0.5
     model_path: "/models/vosk-model-small-cn-0.22.tar.gz"  # 浏览器端 URL
   # 静音检测（自动停止录音）

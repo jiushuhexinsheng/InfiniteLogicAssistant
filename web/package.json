@@ -9,7 +9,8 @@
     "test": "vitest run",
     "preview": "vite preview",
     "verify:voice": "node scripts/verify-voice.mjs",
-    "gen:api": "python ../scripts/gen_openapi.py && openapi-typescript src/api/openapi.json -o src/api/generated.ts"
+    "gen:api": "python ../scripts/gen_openapi.py && openapi-typescript src/api/openapi.json -o src/api/generated.ts",
+    "shot": "node scripts/screenshot.mjs"
   },
   "dependencies": {
     "lucide-vue-next": "^1.0.0",

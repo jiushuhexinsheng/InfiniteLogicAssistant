@@ -46,7 +46,10 @@ xinghuo / minimax / siliconflow / openrouter / ollama / lmstudio / anthropic / g
 voice:
   wake_word:
     enabled: true
-    keyword: "小逻小逻"           # 浏览器端 Vosk WASM 唤醒词
+    # 可配多个唤醒词，命中任意一个即唤醒；旧的单数写法 `keyword: 词` 仍兼容
+    keywords:
+      - 衍衡
+      - 洛吉斯                      # 浏览器端 Vosk WASM 唤醒词
     sensitivity: 0.5
     model_path: "/models/vosk-model-small-cn-0.22.tar.gz"   # 浏览器端 URL
   vad:                          # 静音检测（自动停止录音）

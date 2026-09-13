@@ -1964,9 +1964,18 @@ export interface components {
         };
         /**
          * WakeWordConfig
-         * @description 唤醒词配置。
+         * @description 唤醒词配置（**可多个**）。
          *
-         *     Wake-word detection configuration.
+         *     ⚠️ 本类是 `core/config/schema.py` 里 WakeWordConfig 的**手工副本**（两处定义必须同步）：
+         *     FastAPI 的 response_model 会在序列化时**丢掉响应里多余字段**，故只改配置模型而不同步这里，
+         *     新增字段会被静默过滤掉、前端收不到（`VadConfig` 那次就是这么踩的）。
+         *
+         *     Wake-word detection configuration (plural keywords).
+         *
+         *     NOTE: this is a hand-maintained **duplicate** of the WakeWordConfig in
+         *     `core/config/schema.py`; the two must be kept in sync. FastAPI's response_model drops extra
+         *     fields during serialization, so changing only the config model would silently filter the field
+         *     out and the frontend would never see it (exactly how `VadConfig` was broken before).
          */
         WakeWordConfig: {
             /**
@@ -1975,10 +1984,10 @@ export interface components {
              */
             enabled: boolean;
             /**
-             * Keyword
-             * @default
+             * Keywords
+             * @default []
              */
-            keyword: string;
+            keywords: string[];
             /**
              * Sensitivity
              * @default 0.5

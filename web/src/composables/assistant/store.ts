@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { QuestionOption, TokenUsage, WakeWordConfig, VadConfig } from '../../types'
 
 /** 助手状态类型，定义状态机的所有可能状态。
@@ -136,11 +136,23 @@ export const currentSessionId = ref('')
 
 /** 唤醒词配置（init 时从 /api/config 用 Object.assign 原地合并，保持引用稳定）。
  *  Wake word config (merged in-place from /api/config during init using Object.assign to keep reference stable). */
-export const wakeConfig: WakeWordConfig = { enabled: true, keyword: '小逻小逻', sensitivity: 0.5, model_path: '/models/vosk-model-small-cn-0.22.tar.gz' }
+export const wakeConfig: WakeWordConfig = { enabled: true, keywords: ['衍衡', '洛吉斯'], sensitivity: 0.5, model_path: '/models/vosk-model-small-cn-0.22.tar.gz' }
 /** VAD（语音活动检测）配置。VAD (Voice Activity Detection) configuration. */
 export const vadConfig: VadConfig = { silence_threshold: 0.02, silence_duration_ms: 1500, max_duration_ms: 10000, answer_timeout_ms: 8000 }
-/** 响应式唤醒关键字，供 UI 提示与状态文案使用。Reactive wake keyword for UI hints and status text. */
-export const wakeKeyword = ref(wakeConfig.keyword)
+/** 响应式唤醒词列表（**可多个**，命中任意一个即唤醒）。Reactive wake keywords (plural; any hit wakes). */
+export const wakeKeywords = ref<string[]>([...(wakeConfig.keywords ?? [])])
+
+/**
+ * 唤醒词的展示文案，供 UI 提示与状态文案使用，形如「衍衡」或「洛吉斯」。
+ *
+ * 由列表算出而非另存一个字符串：否则「界面提示的词」与「真正能唤醒的词」会有两份来源，
+ * 改了配置忘改文案就会出现「按提示说却唤不醒」。
+ *
+ * Display text for the wake keywords, e.g. 「衍衡」或「洛吉斯」. Derived from the list rather
+ * than stored separately: two sources of truth would let the on-screen hint drift from what
+ * actually wakes the engine, producing "I said exactly what it told me and nothing happened".
+ */
+export const wakeHint = computed(() => wakeKeywords.value.map(k => `「${k}」`).join('或'))
 
 /** 消息与 token 用量持久化的本地存储键。Local storage key for message and token usage persistence. */
 const STORAGE_KEY = 'xluo.history'

@@ -49,7 +49,7 @@ const tokenTotal = computed<number | null>(() => {
 const statCards = computed(() => [
   { num: stats.value.messageCount, lbl: '消息总数' },
   { num: stats.value.userCount, lbl: '你的提问' },
-  { num: stats.value.assistantCount, lbl: '小逻回复' },
+  { num: stats.value.assistantCount, lbl: '衍衡回复' },
   { num: stats.value.toolCount, lbl: '工具调用' },
   { num: stats.value.toolDuration + 's', lbl: '工具总耗时' },
   { num: tokenTotal.value ?? '—', lbl: 'token 用量' },

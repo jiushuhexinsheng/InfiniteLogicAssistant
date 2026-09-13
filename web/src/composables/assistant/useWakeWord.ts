@@ -36,7 +36,7 @@ async function initWakeModel() {
     statusLine.value = '正在加载语音模型（首次需下载约 44MB，请稍候）...'
     const ok = await WakeWordEngine.init({
       modelPath: wakeConfig.model_path,
-      keyword: wakeConfig.keyword,
+      keywords: wakeConfig.keywords,
       sensitivity: wakeConfig.sensitivity,
     })
     modelLoaded = ok

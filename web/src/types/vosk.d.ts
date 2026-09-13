@@ -56,10 +56,12 @@ declare const vosk: {
 interface WakeWordConfig {
   /** 模型路径 / Model path */
   modelPath: string
-  /** 唤醒词关键词 / Wake word keyword */
-  keyword: string
+  /** 唤醒词（可多个，命中任意一个即唤醒）/ Wake keywords (any hit wakes) */
+  keywords: string[]
   /** 灵敏度 / Sensitivity */
   sensitivity: number
+  /** 旧的单数写法，引擎仍兼容（优先取 keywords）/ Legacy singular form, still accepted */
+  keyword?: string
 }
 
 /**

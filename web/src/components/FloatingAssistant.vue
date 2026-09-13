@@ -35,7 +35,7 @@
         :state="asst.state.value"
         :visual="asst.visual.value"
         :panel-style="panelStyle"
-        :wake-keyword="asst.wakeKeyword.value"
+        :wake-hint="asst.wakeHint.value"
         @clear="asst.clearMessages()"
         @close="asst.expanded.value = false"
       >
@@ -43,7 +43,7 @@
           :messages="asst.messages.value"
           :state="asst.state.value"
           :visual="asst.visual.value"
-          :wake-keyword="asst.wakeKeyword.value"
+          :wake-hint="asst.wakeHint.value"
           @select="goConsole"
         />
         <ChatInput :disabled="false" @send="onInputSend" />
