@@ -1,7 +1,8 @@
 import { api } from '../../api'
 import { formatError } from '../../errors'
-import { state, partialText, statusLine, expanded, wakeEnabled, wakeConfig, vadConfig, addMessage, failWake, modelLoading, modelProgress } from './store'
-import { runTurn } from './useChat'
+import { state, partialText, statusLine, expanded, wakeEnabled, wakeConfig, vadConfig, addMessage, failWake, modelLoading, modelProgress, pendingQuestion } from './store'
+import { runTurn, sendAnswer } from './useChat'
+import { matchOption } from './answerMatch'
 
 /** 录音管线相关变量。Recording pipeline variables. */
 let wakeRecorder: MediaRecorder | null = null
@@ -235,15 +236,34 @@ function onWakeDetected() {
   startMaxTimer()
 }
 
-/** ASR 转写处理。ASR transcription handling.
- *  @param blob - 音频 Blob。Audio Blob. */
-async function handleTranscript(blob: Blob) {
+/** ASR 转写处理：提问待答时走答案通道，否则开新一轮。
+ *
+ * 提问待答时**绝不能**走 runTurn —— 那会开一条新的 /voice/utter 并 abort 掉当前流，
+ * 使后端阻塞中的 ask() 永久挂死（这正是本设计要修的既有缺陷）。
+ *
+ * ASR transcription handling: a pending question routes to the answer channel, otherwise a
+ * new turn starts. While a question is pending it must NEVER call runTurn — that opens a
+ * new /voice/utter and aborts the current stream, leaving the backend's blocked ask()
+ * hanging forever (the existing defect this design fixes).
+ *
+ * @param blob 录音音频。The recorded audio.
+ */
+export async function handleTranscript(blob: Blob) {
   try {
     const r = await api.transcribe(blob)
     if (r.ok && r.text) {
       const text = r.text.trim()
       if (!text) { state.value = 'listening'; return }
       partialText.value = text
+      const pq = pendingQuestion.value
+      if (pq) {
+        // 精确匹配到选项则回传该选项的 value；否则整段作为文本作答。
+        // An exact option match returns that option's value; otherwise the whole text is
+        // submitted as free text.
+        const matched = matchOption(text, pq.options)
+        await sendAnswer(matched ? '' : text, matched?.value)
+        return
+      }
       addMessage('user', text)
       await runTurn()
     } else {
