@@ -964,3 +964,95 @@ def test_voice_utter_passes_mode_to_pipeline(client, monkeypatch):
             assert r.status_code == 200
             list(r.iter_lines())
         assert captured["mode"] == expected, f"{payload} → 期望 {expected}"
+
+
+# ─── /voice/wake 唤醒检测端点 ───
+
+def test_voice_wake_matches_and_splits(client, monkeypatch):
+    """唤醒端点：转写 → 匹配 → 切分，text 始终是原始转写。
+    The wake endpoint transcribes, matches and splits, always returning the raw transcript."""
+    import core.voice as voice_pkg
+
+    class _Asr:
+        def available(self): return True
+        async def transcribe_base64(self, b64, fmt="wav"): return "衍衡，帮我查天气。"
+
+    monkeypatch.setattr(voice_pkg, "get_asr", lambda: _Asr())
+    r = client.post("/api/voice/wake", json={"audio_base64": "AAAA"})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["matched"] is True
+    assert d["command"] == "帮我查天气"
+    assert d["text"] == "衍衡，帮我查天气。"
+
+
+def test_voice_wake_no_match(client, monkeypatch):
+    """无关对话不命中，但 text 仍返回（便于排障）。
+    Unrelated speech does not match, yet text still comes back for debugging."""
+    import core.voice as voice_pkg
+
+    class _Asr:
+        def available(self): return True
+        async def transcribe_base64(self, b64, fmt="wav"): return "今天天气怎么样。"
+
+    monkeypatch.setattr(voice_pkg, "get_asr", lambda: _Asr())
+    d = client.post("/api/voice/wake", json={"audio_base64": "AAAA"}).json()
+    assert d["matched"] is False and d["command"] == ""
+
+
+def test_voice_wake_without_audio(client):
+    """缺 audio_base64 → 400，不调 ASR。A missing audio_base64 yields 400 without touching the ASR."""
+    r = client.post("/api/voice/wake", json={})
+    assert r.status_code == 400
+    assert r.json()["ok"] is False
+
+
+def test_voice_wake_asr_unavailable(client, monkeypatch):
+    """ASR 未配置 → 明确报错，不假装成功。An unconfigured ASR reports an error rather than faking success."""
+    import core.voice as voice_pkg
+
+    class _Asr:
+        def available(self): return False
+
+    monkeypatch.setattr(voice_pkg, "get_asr", lambda: _Asr())
+    d = client.post("/api/voice/wake", json={"audio_base64": "AAAA"}).json()
+    assert d["ok"] is False
+    assert "ASR" in d["error"]
+
+
+def test_voice_wake_asr_failure_reports_error(client, monkeypatch):
+    """ASR 抛异常 → ok=False 带错误信息（前端据此计熔断）。An ASR exception returns ok=False with a
+    message, which is what the frontend counts toward its circuit breaker."""
+    import core.voice as voice_pkg
+
+    class _Asr:
+        def available(self): return True
+        async def transcribe_base64(self, b64, fmt="wav"): raise RuntimeError("上游 502")
+
+    monkeypatch.setattr(voice_pkg, "get_asr", lambda: _Asr())
+    d = client.post("/api/voice/wake", json={"audio_base64": "AAAA"}).json()
+    assert d["ok"] is False and "502" in d["error"]
+
+
+def test_voice_wake_writes_audit(client, monkeypatch, tmp_path):
+    """每次唤醒上传都写审计 —— 这是统计调用量与成本的唯一依据。
+    Every wake upload is audited: that record is the only basis for measuring call volume and cost.
+
+    ⚠️ patch 目标是 `core.api.voice.audit`，**不是** `core.logger.audit`：voice.py 用
+    `from core.logger import audit` 顶层导入，名字绑定进了本模块命名空间，改源头那个不影响它。
+    Patch `core.api.voice.audit`, not `core.logger.audit`: voice.py imports the name at module
+    level, so it is bound into this module's namespace and patching the source has no effect.
+    """
+    import core.voice as voice_pkg
+    import core.api.voice as voice_api
+
+    lines: list[str] = []
+    monkeypatch.setattr(voice_api, "audit", lambda msg: lines.append(msg))
+
+    class _Asr:
+        def available(self): return True
+        async def transcribe_base64(self, b64, fmt="wav"): return "衍衡。"
+
+    monkeypatch.setattr(voice_pkg, "get_asr", lambda: _Asr())
+    client.post("/api/voice/wake", json={"audio_base64": "AAAA"})
+    assert any("wake" in l and "matched" in l for l in lines), lines

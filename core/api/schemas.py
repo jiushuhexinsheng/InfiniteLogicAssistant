@@ -114,6 +114,21 @@ class AckResponse(ApiResponse):
     ack: str = ""
 
 
+class WakeResponse(ApiResponse):
+    """唤醒检测响应。
+
+    text 是**原始**转写（不被归一化改写），matched 为是否命中，command 为唤醒词之后的内容
+    （仅唤醒词时为空串）。
+
+    Wake-detection response. text is the **raw** transcript, matched says whether a wake word hit,
+    and command is what followed it (empty when only the wake word was spoken).
+    """
+
+    matched: bool = False
+    command: str = ""
+    text: str = ""
+
+
 # ─────────────────────────── tools ───────────────────────────
 
 

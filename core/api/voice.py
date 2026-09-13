@@ -12,9 +12,16 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from core import config as config
 from core.api import state
-from core.api.schemas import AckResponse, ApiResponse, ConfigResponse, PingResponse, TextResponse
+from core.api.schemas import (
+    AckResponse,
+    ApiResponse,
+    ConfigResponse,
+    PingResponse,
+    TextResponse,
+    WakeResponse,
+)
 from core.orchestrator.events import DoneEvent, ErrorEvent
-from core.logger import logger
+from core.logger import audit, logger
 
 router = APIRouter()
 
@@ -135,6 +142,54 @@ async def voice_transcribe(request: Request):
     except Exception as e:
         logger.error("voice_transcribe: {}", e)
         return JSONResponse({"ok": False, "error": str(e)})
+
+
+@router.post("/voice/wake", response_model=WakeResponse)
+async def voice_wake(request: Request):
+    """唤醒检测：接收音频片段 → 转写 → 判定唤醒词 → 切出指令。
+
+    与 /voice/transcribe 分开而不是复用：这一步的产物是**判定**（matched / command），
+    不是文本 —— 前端据此决定「直接发起任务」还是「提示音后等指令」，把判定放后端
+    可以让它被 pytest 单测，前端保持薄。
+
+    Wake detection: accept an audio clip, transcribe it, judge the wake word and split out the
+    command. Kept separate from /voice/transcribe because the product here is a **judgement**
+    (matched / command) rather than text: the frontend decides between "start the task now" and
+    "chime, then wait for the command", and putting that judgement server-side makes it unit
+    testable while keeping the frontend thin.
+    """
+    from core.voice import get_asr
+    from core.voice.wake import detect
+
+    body = await request.body()
+    try:
+        params = json.loads(body.decode("utf-8")) if body else {}
+    except Exception:
+        return JSONResponse({"ok": False, "error": "无效 JSON"}, status_code=400)
+    b64 = (params.get("audio_base64") or "").strip()
+    if not b64:
+        return JSONResponse({"ok": False, "error": "请提供 audio_base64 参数"}, status_code=400)
+
+    asr = get_asr()
+    if not asr.available():
+        return JSONResponse({"ok": False, "error": "ASR 未配置"})
+    try:
+        text = await asr.transcribe_base64(b64, "wav")
+    except Exception as e:
+        logger.error("voice_wake: {}", e)
+        # 不吞异常：前端要靠 ok=False 计连续失败次数并熔断，静默成功会让它一直重试。
+        # Do not swallow: the frontend counts ok=False toward its circuit breaker; a silent success
+        # would keep it retrying.
+        return JSONResponse({"ok": False, "error": str(e)})
+
+    result = detect(text, config.settings.voice.wake_word.keywords)
+    # 每次上传记一笔：这是统计调用量与成本的唯一依据（spec「成本与隐私」）。
+    # One audit line per upload: the only basis for measuring call volume and cost.
+    audit(
+        f"wake matched={result.matched} chars={len(text)} "
+        f"command={result.command[:40]!r} text={text[:80]!r}"
+    )
+    return {"ok": True, "matched": result.matched, "command": result.command, "text": result.text}
 
 
 @router.post("/voice/utter")

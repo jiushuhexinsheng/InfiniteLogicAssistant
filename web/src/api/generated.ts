@@ -117,6 +117,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/voice/wake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Voice Wake
+         * @description 唤醒检测：接收音频片段 → 转写 → 判定唤醒词 → 切出指令。
+         *
+         *     与 /voice/transcribe 分开而不是复用：这一步的产物是**判定**（matched / command），
+         *     不是文本 —— 前端据此决定「直接发起任务」还是「提示音后等指令」，把判定放后端
+         *     可以让它被 pytest 单测，前端保持薄。
+         *
+         *     Wake detection: accept an audio clip, transcribe it, judge the wake word and split out the
+         *     command. Kept separate from /voice/transcribe because the product here is a **judgement**
+         *     (matched / command) rather than text: the frontend decides between "start the task now" and
+         *     "chime, then wait for the command", and putting that judgement server-side makes it unit
+         *     testable while keeping the frontend thin.
+         */
+        post: operations["voice_wake_api_voice_wake_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/voice/utter": {
         parameters: {
             query?: never;
@@ -1973,6 +2003,40 @@ export interface components {
             ctx?: Record<string, never>;
         };
         /**
+         * WakeResponse
+         * @description 唤醒检测响应。
+         *
+         *     text 是**原始**转写（不被归一化改写），matched 为是否命中，command 为唤醒词之后的内容
+         *     （仅唤醒词时为空串）。
+         *
+         *     Wake-detection response. text is the **raw** transcript, matched says whether a wake word hit,
+         *     and command is what followed it (empty when only the wake word was spoken).
+         */
+        WakeResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Matched
+             * @default false
+             */
+            matched: boolean;
+            /**
+             * Command
+             * @default
+             */
+            command: string;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+        };
+        /**
          * WakeWordConfig
          * @description 唤醒词配置（**可多个**）。
          *
@@ -2114,6 +2178,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TextResponse"];
+                };
+            };
+        };
+    };
+    voice_wake_api_voice_wake_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WakeResponse"];
                 };
             };
         };
