@@ -27,9 +27,18 @@ class _FakeLLMClient:
             yield e
 
 
+async def _next_event(events: asyncio.Queue) -> dict:
+    """取下一个事件，带超时 —— 事件未入队时快速失败而不是永久挂起。
+
+    Take the next event with a timeout, so a missing event fails fast instead of hanging
+    the whole suite (which is what happens when the producer raised before enqueuing).
+    """
+    return await asyncio.wait_for(events.get(), timeout=1.0)
+
+
 @pytest.mark.asyncio
 async def test_channel_ask_blocks_until_answer():
-    """ask 阻塞直到收到回答。ask blocks until an answer arrives."""
+    """ask 阻塞直到收到回答；缺省 kind 为 text。ask blocks until an answer arrives; kind defaults to text."""
     events: asyncio.Queue = asyncio.Queue()
     ch = EventQueueChannel(events, session_id="s1")
 
@@ -37,33 +46,46 @@ async def test_channel_ask_blocks_until_answer():
         return await ch.ask("问题?")
 
     t = asyncio.ensure_future(do_ask())
-    await asyncio.sleep(0.05)
-    # question 事件已入队（含 session_id 与 kind，供前端回答）
-    evt = await events.get()
-    assert evt == {"type": "question", "question": "问题?", "session_id": "s1", "kind": "clarify"}
+    # question 事件已入队（含 session_id / kind / options，供前端决定渲染方式）
+    evt = await _next_event(events)
+    assert evt == {"type": "question", "question": "问题?", "session_id": "s1", "kind": "text", "options": []}
     # 投递回答 → ask 返回
     ch.answer("回答")
-    assert await t == Answer(text="回答")
+    assert await asyncio.wait_for(t, timeout=1.0) == Answer(text="回答")
 
 
 @pytest.mark.asyncio
-async def test_channel_ask_confirm_carries_kind_and_choice():
-    """确认提问带 kind=confirm，且结构化 choice 随回答回传。
-    Confirmation questions carry kind=confirm, and the structured choice travels back with the answer."""
+async def test_channel_ask_choice_carries_options_and_choice():
+    """选择类提问带 options，回答带结构化 choice。
+    A choice question carries options, and the answer carries the structured choice."""
     events: asyncio.Queue = asyncio.Queue()
     ch = EventQueueChannel(events, session_id="s1")
 
     async def do_ask():
-        return await ch.ask("确认执行吗？", kind="confirm")
+        return await ch.ask("确认执行吗？", kind="choice",
+                            options=[{"value": "yes", "label": "确认"}, {"value": "no", "label": "取消"}])
 
     t = asyncio.ensure_future(do_ask())
-    await asyncio.sleep(0.05)
-    evt = await events.get()
-    # 前端据 kind=confirm 渲染「确认 / 取消」按钮
-    assert evt["kind"] == "confirm"
-    # 按钮回传结构化选择
+    evt = await _next_event(events)
+    assert evt["kind"] == "choice"
+    assert evt["options"] == [{"value": "yes", "label": "确认"}, {"value": "no", "label": "取消"}]
     ch.answer("", choice="yes")
-    assert await t == Answer(text="", choice="yes")
+    assert await asyncio.wait_for(t, timeout=1.0) == Answer(text="", choice="yes")
+
+
+@pytest.mark.asyncio
+async def test_channel_ask_composite_kind():
+    """综合类 kind 透传（前端渲染按钮 + 输入框）。A composite kind is passed through (frontend renders buttons plus an input)."""
+    events: asyncio.Queue = asyncio.Queue()
+    ch = EventQueueChannel(events, session_id="s1")
+
+    async def do_ask():
+        return await ch.ask("选一个并补充", kind="composite", options=[{"value": "a", "label": "甲"}])
+
+    t = asyncio.ensure_future(do_ask())
+    assert (await _next_event(events))["kind"] == "composite"
+    ch.answer("补充说明")
+    assert await asyncio.wait_for(t, timeout=1.0) == Answer(text="补充说明")
 
 
 @pytest.mark.asyncio

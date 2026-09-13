@@ -28,7 +28,7 @@ class _SilentChannel:
         """初始化被拒绝问题列表。Initializes the list of rejected questions."""
         self.rejected: list[str] = []
 
-    async def ask(self, question: str, *, kind: str = "clarify") -> Answer:
+    async def ask(self, question: str, *, kind: str = "text", options: list | None = None) -> Answer:
         """向操作者提问：无人值守时记录问题并返回空回答（无 choice → 确认被拒）。
         Asks the operator a question: when unattended, records the question and returns an empty answer (no choice → confirmation rejected)."""
         self.rejected.append(question)

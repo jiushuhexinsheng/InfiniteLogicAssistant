@@ -57,7 +57,7 @@ class OperatorChannel(Protocol):
     and announcing messages.
     """
 
-    async def ask(self, question: str, *, kind: str = "clarify") -> Answer: ...
+    async def ask(self, question: str, *, kind: str = "text", options: list | None = None) -> Answer: ...
 
     async def notify(self, text: str) -> None: ...
 
@@ -126,15 +126,17 @@ class Session:
         if self.channel is not None:
             await self.channel.notify(text)
 
-    async def ask(self, question: str, *, kind: str = "clarify") -> Answer:
+    async def ask(self, question: str, *, kind: str = "text", options: list | None = None) -> Answer:
         """向操作者提问并等待回答；无通道时抛 RuntimeError。
 
-        kind 区分提问类型：clarify（澄清，自由文本作答）或 confirm（确认，结构化选择）。
+        kind 决定前端渲染方式（text 自由文本 / choice 按选项出按钮 / composite 两者并存），
+        options 供 choice 与 composite 使用。
 
-        Ask the operator a question and wait for the answer; raise RuntimeError
-        when there is no channel. kind distinguishes the question type: clarify
-        (free-form answer) or confirm (structured choice).
+        Ask the operator a question and wait for the answer; raise RuntimeError when there
+        is no channel. kind decides how the frontend renders it (text for free input,
+        choice for option buttons, composite for both); options is used by choice and
+        composite.
         """
         if self.channel is None:
             raise RuntimeError("会话无 OperatorChannel，无法向操作者提问")
-        return await self.channel.ask(question, kind=kind)
+        return await self.channel.ask(question, kind=kind, options=options)

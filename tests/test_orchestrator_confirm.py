@@ -19,7 +19,7 @@ class _Channel:
         self.notified: list[str] = []
         self.kinds: list[str] = []
 
-    async def ask(self, q, *, kind="clarify"):
+    async def ask(self, q, *, kind="text", options=None):
         self.kinds.append(kind)
         a = self.answers.pop(0)
         return a if isinstance(a, Answer) else Answer(text=a)
