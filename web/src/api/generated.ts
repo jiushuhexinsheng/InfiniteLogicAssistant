@@ -127,6 +127,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/voice/wake/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Voice Wake Check
+         * @description 本地 KWS 快检：只回答「这段音频里有没有唤醒词」，毫秒级、不出本机、零云端调用。
+         *
+         *     判定与提取分离的前半段：命中 → 前端**立即**提示音 + 进入等指令窗口（动作先行，
+         *     不等任何「二次确认」）；指令文本的提取由完整 /voice/wake 在后台异步完成。
+         *
+         *     Local KWS quick check: answers only "does this clip contain a wake word" —
+         *     milliseconds, no cloud call, audio never leaves the machine. First half of
+         *     "verdict first, extraction later": on a hit the frontend acts **immediately**
+         *     (chime + command window) with no re-confirmation; command extraction happens
+         *     asynchronously via the full /voice/wake.
+         */
+        post: operations["voice_wake_check_api_voice_wake_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/voice/wake": {
         parameters: {
             query?: never;
@@ -2032,6 +2061,39 @@ export interface components {
             ctx?: Record<string, never>;
         };
         /**
+         * WakeCheckResponse
+         * @description 本地 KWS 快检响应（`POST /voice/wake/check`）。
+         *
+         *     只做「有没有唤醒词」的本地判定（毫秒级、不出本机、不调云端 ASR）：
+         *     hit=True 命中；hit=False 未命中（调用方丢弃该段）；bypass=True 闸门不可用
+         *     （模型缺失/解析失败），调用方应回退完整 /voice/wake 路径而不是丢唤醒。
+         *
+         *     Local KWS quick-check response. Only the local "is the wake word present"
+         *     verdict (milliseconds, no cloud ASR): hit=True means yes; hit=False means drop
+         *     the clip; bypass=True means the gate is unavailable (model missing / parse
+         *     failure) and the caller should fall back to the full /voice/wake path rather
+         *     than lose the wake.
+         */
+        WakeCheckResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Hit
+             * @default false
+             */
+            hit: boolean;
+            /**
+             * Bypass
+             * @default false
+             */
+            bypass: boolean;
+        };
+        /**
          * WakeResponse
          * @description 唤醒检测响应。
          *
@@ -2217,6 +2279,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TextResponse"];
+                };
+            };
+        };
+    };
+    voice_wake_check_api_voice_wake_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WakeCheckResponse"];
                 };
             };
         };
