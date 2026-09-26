@@ -1,8 +1,10 @@
 <template>
-  <!-- 聊天输入区域。Chat input area. -->
+  <!-- 聊天输入区域。提问交互由 question 块承载（消息流内的 QuestionBlock），
+       此处不再挂重复的 QuestionCard（收敛：系统-操作员对话模块唯一）。
+       Chat input area. Question interaction is carried by the question block
+       (QuestionBlock in the message stream); the duplicate QuestionCard is no
+       longer mounted here (converged: one system-operator dialogue module). -->
   <div class="chat-input">
-    <!-- 待回答问题卡片（助手发起追问时显示）。Pending question card (shown when assistant asks a follow-up). -->
-    <QuestionCard v-if="asst.pendingQuestion.value" />
     <div class="chat-input-row">
       <!-- 消息输入框：Enter 发送，Shift+Enter 换行。Message textarea: Enter to send, Shift+Enter for new line. -->
       <textarea
@@ -25,11 +27,6 @@
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
 import { UiIcon } from '../ui'
-import QuestionCard from './QuestionCard.vue'
-import { useAssistant } from '../../composables/useAssistant'
-
-/** 获取助手实例。Get assistant instance. */
-const asst = useAssistant()
 
 /**
  * 组件属性定义。Component props definition.

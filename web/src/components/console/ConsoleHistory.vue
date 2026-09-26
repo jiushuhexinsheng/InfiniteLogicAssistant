@@ -94,11 +94,21 @@ async function create() {
   }
 }
 
-/** 点击会话 = 切换：加载其历史消息填充对话视图，后续对话续接该会话。Click a session = switch: load its history into the conversation view and continue from that session. */
+/** 点击会话 = 切换：加载其历史消息（含块结构与真实时间戳）填充对话视图，后续对话续接该会话。
+ *  Click a session = switch: load its history (with block structure and real timestamps)
+ *  into the conversation view and continue from that session. */
 async function open(id: string) {
   try {
     const r = await api.getHistoryDetail(id)
-    const msgs = (r.conversation.messages || []).map(m => ({ role: m.role, content: m.content }))
+    const msgs = (r.conversation.messages || []).map(m => ({
+      role: m.role,
+      content: m.content,
+      // generated.ts 的 blocks 是宽松 Record；后端产出的是块信封，经 unknown 断言到 Block[]
+      // generated.ts types blocks as a loose Record; the backend emits block
+      // envelopes, so assert to Block[] via unknown.
+      blocks: (m.blocks as unknown as import('../../blocks/types').Block[] | undefined) ?? null,
+      ts: m.ts ?? null,
+    }))
     switchSession(id, msgs)
     activeTab.value = 'conv'
   } catch (e) {

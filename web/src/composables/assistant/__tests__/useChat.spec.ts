@@ -49,12 +49,13 @@ describe('useChat sendAnswer 错误处理', () => {
     expect(messages.value.some((m) => m.role === 'system' || m.text.includes('失败'))).toBe(false)
   })
 
-  /** 结构化确认：空文本 + choice 也应投递（按钮回答不带文本）。 */
+  /** 结构化确认：空文本 + choice 也应投递（按钮回答不带文本）。
+   *  api.answer 现在携带 source/qid（作答通道可审计、问答配对）。 */
   it('结构化确认允许空文本并透传 choice', async () => {
     currentSessionId.value = 's1'
     vi.mocked(api.answer).mockResolvedValue({ ok: true })
     await sendAnswer('', 'yes')
-    expect(api.answer).toHaveBeenCalledWith('s1', '', 'yes')
+    expect(api.answer).toHaveBeenCalledWith('s1', '', 'yes', expect.objectContaining({ source: 'typed' }))
   })
 
   /** 既无文本也无 choice 时不投递（避免空回答解除后端阻塞）。 */
@@ -69,7 +70,7 @@ describe('useChat sendAnswer 错误处理', () => {
     currentSessionId.value = 's1'
     vi.mocked(api.answer).mockResolvedValue({ ok: true })
     await sendAnswer('', 'always')
-    expect(api.answer).toHaveBeenCalledWith('s1', '', 'always')
+    expect(api.answer).toHaveBeenCalledWith('s1', '', 'always', expect.objectContaining({ source: 'typed' }))
   })
 })
 
@@ -84,17 +85,25 @@ describe('useChat 问答入聊天记录', () => {
     vi.mocked(streamUtter).mockReset()
   })
 
-  /** 提问以 assistant 角色 + ❓ 前缀入记录（经 runTurn 真实入口）。 */
-  it('提问以 assistant 角色入聊天记录', async () => {
+  /** 提问以 question 块入记录（块协议：不再拼 ❓ 前缀文本，投影供旧读取方）。
+   *  模拟真实分发顺序：onEvent 先于 onQuestion。 */
+  it('提问以 question 块入聊天记录', async () => {
     vi.mocked(streamUtter).mockImplementation(async (_t: string, h: any) => {
+      const evt = { type: 'question', question: '确认执行吗？', session_id: 's1', kind: 'choice',
+                    options: [{ value: 'yes', label: '确认' }], qid: 'q_1' }
+      h.onEvent?.(evt)
       h.onQuestion?.({ question: '确认执行吗？', session_id: 's1', kind: 'choice',
-                       options: [{ value: 'yes', label: '确认' }] })
+                       options: [{ value: 'yes', label: '确认' }], qid: 'q_1' })
       return 's1'
     })
-    messages.value = [{ id: 'm1', role: 'user', text: '做事', timestamp: Date.now() }]
+    messages.value = [{ id: 'm1', role: 'user', text: '做事', blocks: [], timestamp: Date.now() }]
     await runTurn()
     const q = messages.value.find((m) => m.role === 'assistant')
-    expect(q?.text).toBe('❓ 确认执行吗？')
+    const qBlock = q?.blocks?.find((b) => b.type === 'question')
+    expect(qBlock?.payload.question).toBe('确认执行吗？')
+    expect(qBlock?.payload.qid).toBe('q_1')
+    // 文本投影保留 ❓ 形态（旧读取方/摘要消费）
+    expect(q?.text).toContain('确认执行吗？')
   })
 
   /** 选择类回答：以被选 option 的 label 入记录（不写机器值）。 */

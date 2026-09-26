@@ -1,5 +1,8 @@
 import { computed, ref, watch } from 'vue'
 import type { QuestionOption, TokenUsage, WakeWordConfig, VadConfig } from '../../types'
+import type { Block } from '../../blocks/types'
+import { makeBlock } from '../../blocks/normalize'
+import { summarizeBlock } from '../../blocks/registry'
 
 /** 助手状态类型，定义状态机的所有可能状态。
  *  Assistant state type, defines all possible states of the state machine. */
@@ -40,15 +43,22 @@ export interface ToolCall {
 }
 
 /** 聊天消息接口，表示对话中的一条消息。
- *  Chat message interface, represents a message in the conversation. */
+ *  blocks 是事实源（思考/工具/正文/提问/汇总等模块化块），text 是派生投影
+ *  （供 TTS 摘要、MiniHistory 等只读消费方过渡使用）。
+ *  Chat message interface. blocks is the source of truth (modular thinking / tool /
+ *  text / question / summary blocks); text is a derived projection (for TTS
+ *  summaries, MiniHistory and other read-only consumers during the transition). */
 export interface ChatMessage {
   /** 消息唯一标识。Unique message identifier. */
   id: string
   /** 消息角色：用户、助手或系统。Message role: user, assistant, or system. */
   role: 'user' | 'assistant' | 'system'
-  /** 消息文本内容。Message text content. */
+  /** 消息文本内容（派生投影）。Message text content (derived projection). */
   text: string
-  /** 消息关联的工具调用。Tool calls associated with the message. */
+  /** 消息块列表（事实源）。Message blocks (source of truth). */
+  blocks: Block[]
+  /** 消息关联的工具调用（已废弃：tool 块取代，保留兼容旧读取方）。
+   *  Tool calls (deprecated: superseded by tool blocks; kept for old readers). */
   toolCalls?: ToolCall[]
   /** 消息时间戳。Message timestamp. */
   timestamp: number
@@ -88,6 +98,8 @@ export interface PendingQuestion {
   kind: 'choice' | 'text' | 'composite'
   /** 选项列表（choice / composite 用）。Options (for choice / composite). */
   options: QuestionOption[]
+  /** 问题 ID（问答配对、陈旧作答拒收）。Question ID (pairs answers, rejects stale ones). */
+  qid?: string
 }
 
 /** 编排问答：待回答的澄清/确认问题。Orchestration Q&A: pending clarification/confirmation question. */
@@ -144,6 +156,27 @@ export const vadConfig: VadConfig = { silence_threshold: 0.02, silence_duration_
 /** 响应式唤醒词列表（**可多个**，命中任意一个即唤醒）。Reactive wake keywords (plural; any hit wakes). */
 export const wakeKeywords = ref<string[]>([...(wakeConfig.keywords ?? [])])
 
+/** 唤醒模式：auto = 自动优先本地、回退云端；local = 强制本地 Sherpa-ONNX；cloud = 强制云端；webspeech = 浏览器 Web Speech API。
+ *  Wake mode: auto = prefer local with cloud fallback; local = force local Sherpa-ONNX; cloud = force cloud; webspeech = browser Web Speech API. */
+export type WakeMode = 'auto' | 'local' | 'cloud' | 'webspeech'
+const WAKE_MODE_KEY = 'xluo.wakeMode'
+/** 当前唤醒模式（持久化到 localStorage）。Current wake mode (persisted to localStorage). */
+export const wakeMode = ref<WakeMode>(loadWakeMode())
+
+/** 读取持久化的唤醒模式，缺省 auto。Read the persisted wake mode, defaulting to auto. */
+function loadWakeMode(): WakeMode {
+  try {
+    const v = localStorage.getItem(WAKE_MODE_KEY)
+    return v === 'local' || v === 'cloud' || v === 'webspeech' ? v : 'auto'
+  } catch { return 'auto' }
+}
+
+/** 切换唤醒模式并持久化。Switch the wake mode and persist it. */
+export function setWakeMode(m: WakeMode) {
+  wakeMode.value = m
+  try { localStorage.setItem(WAKE_MODE_KEY, m) } catch { /* 隐私模式忽略 */ }
+}
+
 /**
  * 唤醒词的展示文案，供 UI 提示与状态文案使用，形如「衍衡」或「洛吉斯」。
  *
@@ -177,13 +210,20 @@ watch([messages, tokenUsage], () => {
   saveTimer = setTimeout(() => { saveTimer = null; saveState() }, 500)
 }, { deep: true })
 
-/** 从本地存储加载状态。Load state from local storage. */
+/** 从本地存储加载状态。旧格式快照（消息无 blocks）直接丢弃 —— 已决定去掉旧历史。
+ *  Load state from local storage. Old-format snapshots (messages without blocks)
+ *  are dropped outright — old history is retired. */
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return
     const data = JSON.parse(raw)
-    if (Array.isArray(data?.messages)) messages.value = data.messages.slice(-MAX_MESSAGES)
+    if (Array.isArray(data?.messages)) {
+      const withBlocks = data.messages.filter(
+        (m: any) => m && Array.isArray(m.blocks),
+      ) as ChatMessage[]
+      if (withBlocks.length) messages.value = withBlocks.slice(-MAX_MESSAGES)
+    }
     if (data?.tokenUsage && typeof data.tokenUsage === 'object') tokenUsage.value = data.tokenUsage
   } catch { /* 解析失败忽略。Parse failure: ignore. */ }
 }
@@ -195,16 +235,64 @@ export function genId() {
   try { return crypto.randomUUID() } catch { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8) }
 }
 
+/** 块列表 → 纯文本投影（text 字段的单一来源）：text/code 取正文、tool 行、
+ *  question 加 ❓、answer/notice 原文；thinking/summary 不进投影。
+ *  Blocks → plain-text projection (single source for the text field).
+ *  text/code contribute their body; tool becomes a line; question gets ❓;
+ *  answer/notice contribute verbatim; thinking/summary are excluded. */
+export function textProjection(blocks: Block[]): string {
+  const lines: string[] = []
+  for (const b of blocks) {
+    const p = b.payload || {}
+    switch (b.type) {
+      case 'text': if (p.md) lines.push(String(p.md)); break
+      case 'code': if (p.code) lines.push(String(p.code)); break
+      case 'tool': lines.push(`${p.name || ''}: ${String(p.output || '').slice(0, 200)}`); break
+      case 'question': if (p.question) lines.push('❓ ' + p.question); break
+      case 'answer': if (p.text) lines.push(String(p.text)); break
+      case 'notice': if (p.text) lines.push(String(p.text)); break
+    }
+  }
+  return lines.join('\n')
+}
+
 /** 添加消息到消息列表。Add message to message list.
  *  @param role - 消息角色。Message role.
- *  @param text - 消息文本。Message text.
- *  @param toolCalls - 可选的工具调用。Optional tool calls. */
+ *  @param text - 消息文本（自动包装为 text 块）。Message text (wrapped into a text block).
+ *  @param toolCalls - 可选的工具调用（已废弃，转为 tool 块）。Optional tool calls (deprecated, converted to tool blocks). */
 export function addMessage(role: ChatMessage['role'], text: string, toolCalls?: ToolCall[]) {
+  const blocks: Block[] = []
+  if (text) blocks.push(makeBlock('text', { md: text, variant: 'bubble' }))
+  // 兼容旧调用方：toolCalls 降级为 tool 块（新代码请直接用 addBlocks）
+  for (const tc of toolCalls || []) {
+    blocks.push(makeBlock('tool', {
+      call_id: tc.id, name: tc.name, args: tc.args || {},
+      status: tc.status === 'done' ? 'ok' : tc.status === 'failed' ? 'error' : 'running',
+      output: tc.result || '', output_preview: (tc.result || '').slice(0, 500),
+      duration_ms: tc.durationMs,
+    }))
+  }
   messages.value.push({
     id: genId(),
     role,
-    text,
+    text: textProjection(blocks) || text,
+    blocks,
     toolCalls,
+    timestamp: Date.now(),
+  })
+  if (messages.value.length > MAX_MESSAGES) messages.value.shift()
+}
+
+/** 添加块消息（模块化入口：思考/工具/正文/提问/汇总等任意块序列）。
+ *  Add a block message (modular entry: any block sequence).
+ *  @param role - 消息角色。Message role.
+ *  @param blocks - 块列表。Block list. */
+export function addBlocks(role: ChatMessage['role'], blocks: Block[]) {
+  messages.value.push({
+    id: genId(),
+    role,
+    text: textProjection(blocks),
+    blocks,
     timestamp: Date.now(),
   })
   if (messages.value.length > MAX_MESSAGES) messages.value.shift()
@@ -227,23 +315,30 @@ export function failWake(msg: string) {
 }
 
 /** 多轮历史构建（system 由后端各自注入；工具结果拼入 assistant content，供多轮引用）。
- *  Build multi-turn history (system injected by backend separately; tool results appended to assistant content for multi-turn reference).
+ *  块序列化：text 取 md、tool 取结果两行、question/answer 取问答两行；
+ *  thinking/summary 不喂（防上下文膨胀）。
+ *  Build multi-turn history (system injected by backend separately; tool results
+ *  appended to assistant content for multi-turn reference). Block serialization:
+ *  text takes md, tool its result lines, question/answer their pair; thinking and
+ *  summary are not fed (keeps the context compact).
  *  @returns 包含最近 6 条消息的历史记录。History containing last 6 messages. */
 export function buildHistory(): { role: string; content: string }[] {
   const history: { role: string; content: string }[] = []
   for (const m of messages.value.slice(-6)) {
     if (m.role === 'user') history.push({ role: 'user', content: m.text })
     else if (m.role === 'assistant') {
-      let content = m.text
-      // 附加工具执行结果，供后续指令引用。
-      // Append tool execution results for subsequent command reference.
-      if (m.toolCalls?.length) {
-        const results = m.toolCalls
-          .map((tc) => `[工具 ${tc.name} 执行结果]\n${tc.result || ''}`)
-          .join('\n\n')
-        content = `${content}\n\n${results}`
+      // 有块序列化块（thinking/summary 跳过）；无块退化为 text 投影
+      // Serialize blocks (thinking/summary skipped); fall back to the text projection.
+      const parts: string[] = []
+      for (const b of m.blocks || []) {
+        const p = b.payload || {}
+        if (b.type === 'text' && p.md) parts.push(String(p.md))
+        else if (b.type === 'tool') parts.push(`[工具 ${p.name} 执行结果]\n${p.output || ''}`)
+        else if (b.type === 'question') parts.push(`❓ ${p.question || ''}`)
+        else if (b.type === 'answer') parts.push(String(p.text || ''))
+        else if (b.type === 'code' && p.code) parts.push(String(p.code))
       }
-      history.push({ role: 'assistant', content })
+      history.push({ role: 'assistant', content: parts.join('\n\n') || m.text })
     }
   }
   return history
@@ -260,13 +355,29 @@ export function createNewSession(sessionId = '') {
 }
 
 /** 切换到某会话：用其历史消息填充对话视图，设置当前会话 id。
- *  Switch to a session: populate conversation view with its history messages, set current session id.
+ *  块结构随消息还原（blocks/turn_id/ts 透传；timestamp 取消息真实时间）。
+ *  Switch to a session: populate conversation view with its history messages,
+ *  set current session id. Block structure is restored (blocks/turn_id/ts pass
+ *  through; timestamp uses the message's real time).
  *  @param sessionId - 目标会话 ID。Target session ID.
- *  @param msgs - 会话历史消息。Session history messages. */
-export function switchSession(sessionId: string, msgs: { role: string; content: string }[]) {
+ *  @param msgs - 会话历史消息（含 blocks/ts）。Session history messages (with blocks/ts). */
+export function switchSession(
+  sessionId: string,
+  msgs: { role: string; content: string; blocks?: Block[] | null; ts?: string | null }[],
+) {
   messages.value = msgs
     .filter(m => m.role === 'user' || m.role === 'assistant')
-    .map(m => ({ id: genId(), role: m.role as 'user' | 'assistant', text: m.content, timestamp: Date.now() }))
+    .map(m => {
+      const blocks = m.blocks ?? (m.content ? [makeBlock('text', { md: m.content, variant: 'bubble' })] : [])
+      const tsMs = m.ts ? Date.parse(m.ts) : NaN
+      return {
+        id: genId(),
+        role: m.role as 'user' | 'assistant',
+        text: m.content || textProjection(blocks),
+        blocks,
+        timestamp: isFinite(tsMs) ? tsMs : Date.now(),
+      }
+    })
   tokenUsage.value = {}
   pendingQuestion.value = null
   currentSessionId.value = sessionId

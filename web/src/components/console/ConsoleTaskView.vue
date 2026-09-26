@@ -4,151 +4,57 @@
     <div class="task-input">
       <UiTextarea v-model="input" :rows="2" placeholder="输入指令，如：把桌面 readme.txt 复制到下载" @keydown.enter.exact.prevent="send" />
       <div class="task-actions">
-        <UiButton variant="secondary" size="sm" :disabled="running" @click="send">发送</UiButton>
-        <UiButton v-if="sessionId && running" variant="secondary" size="sm" hover="danger" @click="stop">停止</UiButton>
+        <UiButton variant="secondary" size="sm" :disabled="isBusy" @click="send">发送</UiButton>
+        <UiButton v-if="currentSessionId && isBusy" variant="secondary" size="sm" hover="danger" @click="stop">停止</UiButton>
       </div>
     </div>
 
-    <!-- 任务执行日志：展示用户输入、状态变化、工具调用和助手回复。Task execution log: shows user input, state changes, tool calls and assistant replies. -->
-    <div v-if="log.length" class="task-log">
-      <div v-for="(line, i) in log" :key="i" class="log-line" :class="line.kind">{{ line.text }}</div>
-    </div>
-
-    <!-- 澄清/确认问题卡片：按 kind 渲染成输入框 / 按钮 / 按钮加输入框（与 QuestionCard 一致）。
-         Clarification/confirmation card: rendered per kind as an input, buttons, or buttons
-         plus an input (consistent with QuestionCard). -->
-    <div v-if="pendingQuestion" class="confirm-card">
-      <div class="confirm-title">❓ {{ pendingQuestion.kind === 'text' ? '需要你回答' : '需要你确认' }}</div>
-      <p class="confirm-q">{{ pendingQuestion.text }}</p>
-      <!-- 选项按钮（choice / composite）。Option buttons (choice / composite). -->
-      <div v-if="pendingQuestion.options.length" class="confirm-row">
-        <UiButton
-          v-for="opt in pendingQuestion.options"
-          :key="opt.value"
-          :variant="opt.value === 'yes' ? 'primary' : 'secondary'"
-          size="sm"
-          @click="choose(opt.value)"
-        >{{ opt.label }}</UiButton>
-      </div>
-      <!-- 文本输入（text / composite）。choice 下不渲染：自由文本会被后端判为未选择而拒绝，
-           给了输入框只会让用户白输。Not rendered for choice, where free text is rejected by
-           the backend as "no selection". -->
-      <div v-if="pendingQuestion.kind !== 'choice'" class="confirm-row">
-        <UiInput v-model="answer" placeholder="输入回答后回车…" @keydown.enter="sendAnswer" />
-        <UiButton variant="secondary" size="sm" @click="sendAnswer">回答</UiButton>
+    <!-- 任务执行日志：共享消息流经 BlockHost 以 task 皮肤渲染（紧凑平铺日志）。
+         独立流消费/重复问题卡已收敛 —— 提问即 question 块（QuestionBlock 交互），
+         与对话 tab 同一份数据、同一套块协议。
+         Task execution log: the shared message stream renders via BlockHost with the
+         task skin (compact flat log). The private stream and duplicate question card
+         are converged away — a question is a question block (QuestionBlock interactive),
+         same data and block protocol as the conversation tab. -->
+    <div v-if="messages.length" class="task-log">
+      <div v-for="m in messages" :key="m.id" class="log-entry" :class="m.role">
+        <BlockHost :blocks="m.blocks || []" skin="task" @retry="retryTool" @cancel="cancelTool" />
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { api, streamUtter } from '../../api'
+import { computed, ref } from 'vue'
+import { api } from '../../api'
 import { formatError } from '../../errors'
-import { UiButton, UiInput, UiTextarea } from '../ui'
+import { UiButton, UiTextarea } from '../ui'
+import BlockHost from '../blocks/BlockHost.vue'
+import { messages, currentSessionId, state, addMessage } from '../../composables/assistant/store'
+import { runTurn, retryTool, cancelTool } from '../../composables/assistant/useChat'
 
 /** 用户指令输入。User command input. */
 const input = ref('')
-/** 用户对澄清问题的回答。User's answer to clarification question. */
-const answer = ref('')
-/** 当前流式会话 ID。Current streaming session ID. */
-const sessionId = ref('')
-/** 待回答的提问（含作答方式与选项，决定渲染按钮还是输入框）。
- *  Pending question (with how to answer and its options, deciding buttons vs. an input). */
-const pendingQuestion = ref<{ text: string; kind: 'choice' | 'text' | 'composite'; options: { value: string; label: string }[] } | null>(null)
-/** 任务是否正在运行。Whether a task is running. */
-const running = ref(false)
-/** 任务执行日志（kind: user/state/tool/assistant/error）。Task execution log (kind: user/state/tool/assistant/error). */
-const log = ref<{ kind: string; text: string }[]>([])
 
-/** 向日志追加一条记录。Append a record to the log. */
-function push(kind: string, text: string) {
-  log.value.push({ kind, text })
-}
+/** 任务是否在跑（复用助手状态机，不再私有 running 标志）。Whether a task is running (shared state machine, no private flag). */
+const isBusy = computed(() => ['thinking', 'tool_calling', 'responding', 'transcribing'].includes(state.value))
 
-/** 发送任务指令：通过 SSE 流式执行任务并实时更新日志。Send task command: execute task via SSE streaming and update log in real-time. */
+/** 发送任务指令：走共享 useChat 管线（与语音/对话 tab 同一条编排 SSE）。
+ *  Send task command: shared useChat pipeline (same orchestration SSE as voice/conversation). */
 async function send() {
   const text = input.value.trim()
-  if (!text || running.value) return
-  running.value = true
-  pendingQuestion.value = null
-  log.value = []
-  push('user', text)
-  const sid = await streamUtter(text, {
-    onTaskState: (s) => {
-      // 流进行中就要拿到 session_id：作答与停止都发生在流结束之前，
-      // 只靠 streamUtter 的返回值会在作答时拿到空串（404）。
-      // Capture session_id while the stream is running: answering and stopping both
-      // happen before it ends, so relying solely on streamUtter's return value would
-      // yield an empty id at answer time (404).
-      if (s.session_id) sessionId.value = s.session_id
-      if (s.state === 'understanding') push('state', '🧠 理解中…')
-      if (s.state === 'done') {
-        push('state', '✅ ' + s.status + ': ' + s.summary)
-        if (s.steps?.length) {
-          for (const st of s.steps) push('tool', '🔧 ' + st.tool + ' ' + st.status + ' → ' + st.result)
-        }
-      }
-    },
-    onContent: (t) => push('assistant', t),
-    onQuestion: ({ question, kind, options, session_id }) => {
-      if (session_id) sessionId.value = session_id
-      // kind 与 options 决定渲染按钮还是输入框；缺省按文本处理（向后兼容无该字段的后端）。
-      // kind and options decide buttons vs. an input; default to text for an older backend.
-      pendingQuestion.value = {
-        text: question,
-        kind: kind === 'choice' || kind === 'composite' ? kind : 'text',
-        options: options ?? [],
-      }
-    },
-    onError: (m) => push('error', '❌ ' + m),
-    onDone: () => { running.value = false },
-  })
-  // 事件未携带 session_id 时兜底用返回值；反之保留事件里的（不覆盖）。
-  // Fall back to the return value when no event carried an id; otherwise keep the
-  // event-derived one (do not overwrite).
-  if (sid) sessionId.value = sid
-}
-
-/** 发送用户对澄清问题的自由文本回答。Send the user's free-text answer to a clarification question. */
-async function sendAnswer() {
-  const a = answer.value.trim()
-  if (!a) return
-  push('user', '（回答）' + a)
-  try {
-    await api.answer(sessionId.value, a)
-    pendingQuestion.value = null
-    answer.value = ''
-  } catch (e) {
-    push('error', '❌ 回答投递失败：' + formatError(e))
-  }
-}
-
-/**
- * 提交选项回答（choice / composite）：只回传选项值，不带文本。
- * Submit an option answer (choice / composite): returns only the option value, with no text.
- *
- * @param value 选项的机器可读值。The option's machine-readable value.
- */
-async function choose(value: string) {
-  if (!pendingQuestion.value) return
-  const label = pendingQuestion.value.options.find((o) => o.value === value)?.label || value
-  push('user', `（${label}）`)
-  try {
-    await api.answer(sessionId.value, '', value)
-    pendingQuestion.value = null
-  } catch (e) {
-    push('error', '❌ 回答投递失败：' + formatError(e))
-  }
+  if (!text || isBusy.value) return
+  input.value = ''
+  addMessage('user', text)
+  await runTurn()
 }
 
 /** 停止当前正在运行的任务。Stop the currently running task. */
 async function stop() {
   try {
-    await api.stopTask(sessionId.value)
-    push('state', '🛑 已发送停止指令')
+    await api.stopTask(currentSessionId.value)
   } catch (e) {
-    push('error', '❌ 停止失败：' + formatError(e))
+    addMessage('system', '停止失败：' + formatError(e))
   }
 }
 </script>
@@ -158,16 +64,7 @@ async function stop() {
 .task-input { display: flex; flex-direction: column; gap: 8px; }
 .task-actions { display: flex; gap: 8px; }
 .task-log { display: flex; flex-direction: column; gap: 6px; }
-.log-line { font-size: 12px; padding: 6px 10px; border-radius: 8px; background: var(--surface-control); color: var(--text-2); word-break: break-word; }
-.log-line.user { color: var(--text-1); border-left: 2px solid var(--brand-c2); }
-.log-line.state { color: var(--info); }
-.log-line.tool { color: var(--brand-c1); font-family: var(--font-mono); font-size: 11px; }
-.log-line.assistant { color: var(--text-1); background: var(--surface-raised); }
-.log-line.error { color: var(--err); }
-
-/* 澄清/确认问题卡片（与悬浮助手 QuestionCard 一致）。Clarification/confirm card (consistent with floating assistant QuestionCard). */
-.confirm-card { border: 1px solid #f59e0b; border-radius: 10px; background: rgba(245, 158, 11, .06); padding: 10px 12px; }
-.confirm-title { font-size: 12px; font-weight: 600; color: var(--warn); margin-bottom: 4px; }
-.confirm-q { font-size: 13px; margin: 0 0 8px; color: var(--text-1); }
-.confirm-row { display: flex; gap: 8px; align-items: center; }
+.log-entry { padding: 6px 10px; border-radius: 8px; background: var(--surface-control); word-break: break-word; }
+.log-entry.user { border-left: 2px solid var(--brand-c2); }
+.log-entry.system { border-left: 2px solid var(--err); }
 </style>

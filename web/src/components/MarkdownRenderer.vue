@@ -10,8 +10,10 @@
  */
 import { computed } from 'vue'
 
-/** 属性：待渲染的原始 Markdown 文本。Props: raw Markdown text to render. */
-const props = defineProps<{ text: string }>()
+/** 属性：待渲染的原始 Markdown 文本。preserveNewlines 供文档变体保留换行（气泡折叠）。
+ *  Props: raw Markdown text to render. preserveNewlines keeps newlines for the doc
+ *  variant (bubbles fold them). */
+const props = defineProps<{ text: string; preserveNewlines?: boolean }>()
 
 /**
  * 对字符串进行 HTML 实体转义，防止 XSS 注入。
@@ -55,9 +57,17 @@ const html = computed(() => {
   s = s.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>')
   // 段落与换行：聊天场景下把换行折叠为空格（而非 <br/>）。按句换行的回复若拆成多行，
   // 会让 .msg-bubble（fit-content 收缩）塌成每行两三个字的窄气泡。
+  // 文档变体（preserveNewlines）保留换行为 <br/>：长文/文档排版需要真实的行结构。
   // Paragraphs and line breaks: in chat mode, collapse newlines to spaces (not <br/>).
-  // Multi-line replies would cause .msg-bubble (fit-content shrink) to collapse into narrow bubbles with only a few characters per line.
-  s = s.replace(/\s*\n\s*/g, ' ')
+  // Multi-line replies would cause .msg-bubble (fit-content shrink) to collapse into
+  // narrow bubbles with only a few characters per line. The doc variant
+  // (preserveNewlines) keeps newlines as <br/>: long-form/document layout needs
+  // real line structure.
+  if (props.preserveNewlines) {
+    s = s.replace(/\n/g, '<br/>')
+  } else {
+    s = s.replace(/\s*\n\s*/g, ' ')
+  }
   return '<p>' + s + '</p>'
 })
 </script>

@@ -50,7 +50,7 @@ describe('QuestionCard', () => {
     const w = mount(QuestionCard)
     await w.findAll('button').find((b) => b.text() === '确认')!.trigger('click')
     await flushPromises()
-    expect(api.answer).toHaveBeenCalledWith('s1', '', 'yes')
+    expect(api.answer).toHaveBeenCalledWith('s1', '', 'yes', expect.objectContaining({ source: 'typed' }))
   })
 
   /** 点击「取消」→ 回传结构化 choice=no。 */
@@ -60,7 +60,7 @@ describe('QuestionCard', () => {
     const w = mount(QuestionCard)
     await w.findAll('button').find((b) => b.text() === '取消')!.trigger('click')
     await flushPromises()
-    expect(api.answer).toHaveBeenCalledWith('s1', '', 'no')
+    expect(api.answer).toHaveBeenCalledWith('s1', '', 'no', expect.objectContaining({ source: 'typed' }))
   })
 
   /** 文本类提问：渲染自由文本输入，回答不带 choice。 */
@@ -72,7 +72,7 @@ describe('QuestionCard', () => {
     await w.find('input').setValue('桌面')
     await w.findAll('button').find((b) => b.text() === '回答')!.trigger('click')
     await flushPromises()
-    expect(api.answer).toHaveBeenCalledWith('s1', '桌面', undefined)
+    expect(api.answer).toHaveBeenCalledWith('s1', '桌面', undefined, expect.objectContaining({ source: 'typed' }))
   })
 
   /** 综合类：按钮 + 输入框，只点按钮即可提交。 */
@@ -86,7 +86,7 @@ describe('QuestionCard', () => {
     expect(w.find('input').exists()).toBe(true)
     await w.findAll('button').find((b) => b.text() === '甲')!.trigger('click')
     await flushPromises()
-    expect(api.answer).toHaveBeenCalledWith('s1', '', 'a')
+    expect(api.answer).toHaveBeenCalledWith('s1', '', 'a', expect.objectContaining({ source: 'typed' }))
   })
 
   /** 综合类：只输文本也可提交（不带 choice）。 */
@@ -100,12 +100,14 @@ describe('QuestionCard', () => {
     await w.find('input').setValue('我补充一下')
     await w.findAll('button').find((b) => b.text() === '回答')!.trigger('click')
     await flushPromises()
-    expect(api.answer).toHaveBeenCalledWith('s1', '我补充一下', undefined)
+    expect(api.answer).toHaveBeenCalledWith('s1', '我补充一下', undefined, expect.objectContaining({ source: 'typed' }))
   })
 
-  /** 无待答问题时整卡不渲染。The card renders nothing when no question is pending. */
+  /** 无待答问题时整卡不渲染（薄壳透传 QuestionBlock，判据用块类名）。
+   *  The card renders nothing when no question is pending (thin shell over
+   *  QuestionBlock; the probe uses the block's class). */
   it('无待答问题时不渲染', () => {
     const w = mount(QuestionCard)
-    expect(w.find('.confirm-card').exists()).toBe(false)
+    expect(w.find('.blk-question').exists()).toBe(false)
   })
 })

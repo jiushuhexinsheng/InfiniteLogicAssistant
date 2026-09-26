@@ -63,6 +63,12 @@
           :wake-hint="asst.wakeHint.value"
           @select="goConsole"
         />
+        <!-- 提问作答面：MiniHistory 摘要皮肤不渲染交互块，用 QuestionCard 薄壳补齐
+             （控制台完整皮肤在消息流内直接交互，不需要这里）。
+             Answer surface: MiniHistory's summary skin renders no interactive blocks,
+             so the QuestionCard shell covers it (the console's full skin interacts
+             in-stream and needs nothing here). -->
+        <QuestionCard />
         <ChatInput :disabled="false" @send="onInputSend" />
         <template #footer>
           <button class="open-console" @click="goConsole">查看完整记录 →</button>
@@ -85,6 +91,7 @@ import MiniPlayer from './assistant/MiniPlayer.vue'
 import StatusPill from './assistant/StatusPill.vue'
 import AssistantPanel from './assistant/AssistantPanel.vue'
 import MiniHistory from './assistant/MiniHistory.vue'
+import QuestionCard from './assistant/QuestionCard.vue'
 import ChatInput from './assistant/ChatInput.vue'
 import { ballSide as ballSideAt, dockStyle as dockStyleAt } from '../composables/assistant/dockLayout'
 

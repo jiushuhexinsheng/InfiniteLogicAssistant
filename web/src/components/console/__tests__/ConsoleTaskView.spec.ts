@@ -3,130 +3,33 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
 vi.mock('../../../api', () => ({
-  api: { answer: vi.fn(), stopTask: vi.fn() },
+  api: { answer: vi.fn(), stopTask: vi.fn(), callTool: vi.fn() },
   streamUtter: vi.fn(),
 }))
+vi.mock('../../../composables/assistant/useTts', () => ({ speakAuto: vi.fn() }))
 
 import { api, streamUtter } from '../../../api'
+import { messages, currentSessionId, pendingQuestion, state } from '../../../composables/assistant/store'
 import ConsoleTaskView from '../ConsoleTaskView.vue'
 
-/**
- * 任务视图的错误文案（保留任务日志语义，仅统一 formatError 与标点）。
- * Error text in the task view (keeps the task-log semantics, only unifying formatError and punctuation).
- */
 const CONFIRM_OPTIONS = [{ value: 'yes', label: '确认' }, { value: 'no', label: '取消' }]
 
-describe('ConsoleTaskView 任务日志错误文案', () => {
-  beforeEach(() => {
-    vi.mocked(api.answer).mockReset()
-    vi.mocked(streamUtter).mockReset()
-    vi.restoreAllMocks()
-  })
-
-  /** 回答投递失败：写入任务日志（不是 toast —— 该组件的错误本就归档在日志里）。 */
-  it('回答投递失败时写入统一格式的任务日志', async () => {
-    // 模拟一次会抛出澄清问题的 SSE 轮次 / Simulate an SSE turn that raises a clarification question
-    vi.mocked(streamUtter).mockImplementation(async (_t: string, h: any) => {
-      h.onQuestion?.({ question: '确认执行吗', session_id: 's1' })
-      return 's1'
-    })
-    vi.mocked(api.answer).mockRejectedValue(new Error('会话已失效'))
-
-    const w = mount(ConsoleTaskView)
-    // 发一条指令，进入有 sessionId + pendingQuestion 的状态
-    await w.find('textarea').setValue('做事')
-    await w.findAll('button').find((b) => b.text() === '发送')!.trigger('click')
-    await flushPromises()
-
-    // 回答问题 → 投递失败 → 日志出现统一格式的错误行
-    await w.find('input').setValue('确认')
-    await w.findAll('button').find((b) => b.text() === '回答')!.trigger('click')
-    await flushPromises()
-
-    expect(w.text()).toContain('❌ 回答投递失败：会话已失效')
-  })
-
-  /**
-   * 确认类提问：本视图必须与对话视图一致地渲染结构化按钮。
-   * 否则用户在这里看到输入框、输入「确定」等自由文本，而后端只接受精确的
-   * 「确认」——自由文本会被判为拒绝并取消任务（此为改造后引入的回归）。
-   *
-   * Confirmation questions must render structured buttons here exactly as the
-   * conversation view does. Otherwise the user sees a text box, types free text
-   * such as "确定", and the backend — which only accepts an exact "确认" — rejects
-   * it and cancels the task (a regression introduced by the structured-confirmation change).
-   */
-  it('确认类提问渲染结构化按钮且不提供输入框', async () => {
-    vi.mocked(streamUtter).mockImplementation(async (_t: string, h: any) => {
-      h.onQuestion?.({ question: '确认执行吗？', session_id: 's1', kind: 'choice', options: CONFIRM_OPTIONS })
-      return 's1'
-    })
-    const w = mount(ConsoleTaskView)
-    await w.find('textarea').setValue('删文件')
-    await w.findAll('button').find((b) => b.text() === '发送')!.trigger('click')
-    await flushPromises()
-
-    const card = w.find('.confirm-card')
-    expect(card.exists()).toBe(true)
-    // 按钮顺序由后端下发的 options 顺序决定（不再由前端硬编码）——注意这与改造前
-    // 的「取消在左」相反，属有意的行为变化。The button order now follows the backend's
-    // options order rather than being hardcoded (note this reverses the previous
-    // cancel-on-the-left layout; an intentional behaviour change).
-    expect(card.findAll('button').map((b) => b.text())).toEqual(['确认', '取消'])
-    expect(card.find('input').exists()).toBe(false)
-  })
-
-  /** 点击「确认」→ 回传结构化 choice=yes。 */
-  it('点击确认回传结构化 choice=yes', async () => {
-    vi.mocked(streamUtter).mockImplementation(async (_t: string, h: any) => {
-      h.onQuestion?.({ question: '确认执行吗？', session_id: 's1', kind: 'choice', options: CONFIRM_OPTIONS })
-      return 's1'
-    })
-    vi.mocked(api.answer).mockResolvedValue({ ok: true } as any)
-    const w = mount(ConsoleTaskView)
-    await w.find('textarea').setValue('删文件')
-    await w.findAll('button').find((b) => b.text() === '发送')!.trigger('click')
-    await flushPromises()
-
-    await w.findAll('button').find((b) => b.text() === '确认')!.trigger('click')
-    await flushPromises()
-    expect(api.answer).toHaveBeenCalledWith('s1', '', 'yes')
-  })
-
-  /** 综合类：按钮与输入框并存，只点按钮即可提交。 */
-  it('composite 类只点按钮即可提交', async () => {
-    vi.mocked(streamUtter).mockImplementation(async (_t: string, h: any) => {
-      h.onQuestion?.({ question: '选一个并补充', session_id: 's1', kind: 'composite',
-                       options: [{ value: 'a', label: '甲' }] })
-      return 's1'
-    })
-    vi.mocked(api.answer).mockResolvedValue({ ok: true } as any)
-    const w = mount(ConsoleTaskView)
-    await w.find('textarea').setValue('做事')
-    await w.findAll('button').find((b) => b.text() === '发送')!.trigger('click')
-    await flushPromises()
-
-    const card = w.find('.confirm-card')
-    expect(card.find('input').exists()).toBe(true)
-    await card.findAll('button').find((b) => b.text() === '甲')!.trigger('click')
-    await flushPromises()
-    expect(api.answer).toHaveBeenCalledWith('s1', '', 'a')
-  })
-})
-
 /**
- * session_id 的获取时机：作答发生在流【进行中】，而 streamUtter 的返回值要等流结束才有。
- * 因此必须从事件回调里捕获 session_id —— 否则作答会打到空 session 上（404），
- * 「任务」tab 将完全无法回答任何提问，停止按钮同样失效。
+ * 任务视图已收敛：独立流消费与重复问题卡删除，共享 useChat + BlockHost(task 皮肤)。
+ * 这些用例钉住收敛后仍然成立的保障：确认类只出按钮、事件期 session_id/qid 可用、
+ * 停止按钮流中可用。
  *
- * When session_id becomes available: answering happens while the stream is still
- * running, whereas streamUtter's return value only arrives once it ends. The id must
- * therefore be captured from the event callbacks — otherwise answers hit an empty
- * session (404), leaving the Task tab unable to answer any question at all (and the
- * stop button equally broken).
+ * The task view is converged: the private stream and duplicate question card are
+ * gone, sharing useChat + BlockHost (task skin). These cases pin the guarantees
+ * that must still hold: choice questions render buttons only, session_id/qid are
+ * available while the stream is running, and the stop button works mid-stream.
  */
-describe('ConsoleTaskView session_id 捕获时机', () => {
+describe('ConsoleTaskView 收敛后（共享块协议）', () => {
   beforeEach(() => {
+    messages.value = []
+    currentSessionId.value = ''
+    pendingQuestion.value = null
+    state.value = 'idle'
     vi.mocked(api.answer).mockReset()
     vi.mocked(api.answer).mockResolvedValue({ ok: true } as any)
     vi.mocked(api.stopTask).mockReset()
@@ -134,49 +37,67 @@ describe('ConsoleTaskView session_id 捕获时机', () => {
     vi.mocked(streamUtter).mockReset()
   })
 
-  /** 模拟真实时序：流阻塞等待作答，期间 streamUtter 尚未返回。 */
-  function pendingStream(onQuestion: Record<string, unknown>) {
+  /** 模拟真实时序的流：onEvent 先于具体回调；流在 onDone 前保持打开。 */
+  function turnStream(events: Array<Record<string, unknown>>) {
     let release!: (v: string) => void
     vi.mocked(streamUtter).mockImplementation(((_t: string, h: any) => {
-      h.onQuestion?.(onQuestion)
+      for (const evt of events) {
+        h.onEvent?.(evt)
+        if (evt.type === 'question') {
+          h.onQuestion?.({ question: evt.question, session_id: evt.session_id,
+                           kind: evt.kind, options: evt.options, qid: evt.qid })
+        }
+      }
       return new Promise<string>((r) => { release = r })
     }) as any)
-    return () => release('s-live')
+    return () => { release('s-live'); }
   }
 
-  /** 澄清作答必须用事件里的 session_id，而不是尚未赋值的本地 ref。 */
-  it('澄清作答使用事件携带的 session_id', async () => {
-    const release = pendingStream({ question: '目标位置？', session_id: 's-live', kind: 'text' })
-    const w = mount(ConsoleTaskView)
+  /** 确认类提问渲染结构化按钮且不提供输入框（确认安全 UI 不变式）。
+   *  Choice questions render structured buttons and no input (confirmation-safety invariant). */
+  it('确认类提问渲染结构化按钮且不提供输入框', async () => {
+    const release = turnStream([
+      { type: 'question', question: '确认执行吗？', session_id: 's1', kind: 'choice',
+        options: CONFIRM_OPTIONS, qid: 'q1' },
+    ])
+    const w = mount(ConsoleTaskView, { attachTo: document.body })
     await w.find('textarea').setValue('删文件')
     await w.findAll('button').find((b) => b.text() === '发送')!.trigger('click')
     await flushPromises()
 
-    await w.find('.confirm-card input').setValue('桌面')
-    await w.findAll('button').find((b) => b.text() === '回答')!.trigger('click')
-    await flushPromises()
-    expect(api.answer).toHaveBeenCalledWith('s-live', '桌面')
+    const card = w.find('.blk-question')
+    expect(card.exists()).toBe(true)
+    expect(card.findAll('button').map((b) => b.text())).toEqual(['确认', '取消'])
+    expect(card.find('input').exists()).toBe(false)
     release()
+    w.unmount()
   })
 
-  /** 结构化确认同样必须用事件里的 session_id。 */
-  it('结构化确认使用事件携带的 session_id', async () => {
-    const release = pendingStream({ question: '确认执行吗？', session_id: 's-live', kind: 'choice', options: CONFIRM_OPTIONS })
-    const w = mount(ConsoleTaskView)
+  /** 点击「确认」→ api.answer 收到事件期 session_id + choice=yes + qid。
+   *  Clicking 确认 delivers the event-captured session_id + choice=yes + qid. */
+  it('点击确认回传结构化 choice 与事件期 session_id/qid', async () => {
+    const release = turnStream([
+      { type: 'question', question: '确认执行吗？', session_id: 's-live', kind: 'choice',
+        options: CONFIRM_OPTIONS, qid: 'q-live' },
+    ])
+    const w = mount(ConsoleTaskView, { attachTo: document.body })
     await w.find('textarea').setValue('删文件')
     await w.findAll('button').find((b) => b.text() === '发送')!.trigger('click')
     await flushPromises()
 
     await w.findAll('button').find((b) => b.text() === '确认')!.trigger('click')
     await flushPromises()
-    expect(api.answer).toHaveBeenCalledWith('s-live', '', 'yes')
+    expect(api.answer).toHaveBeenCalledWith('s-live', '', 'yes', expect.objectContaining({ qid: 'q-live' }))
     release()
+    w.unmount()
   })
 
-  /** 停止按钮依赖 sessionId：流进行中就必须可用。 */
-  it('流进行中停止按钮即可用并使用事件携带的 session_id', async () => {
-    const release = pendingStream({ question: '目标位置？', session_id: 's-live', kind: 'text' })
-    const w = mount(ConsoleTaskView)
+  /** 流进行中停止按钮可用并使用事件携带的 session_id。 */
+  it('流进行中停止按钮可用并使用事件携带的 session_id', async () => {
+    const release = turnStream([
+      { type: 'question', question: '目标位置？', session_id: 's-live', kind: 'text', qid: 'q2' },
+    ])
+    const w = mount(ConsoleTaskView, { attachTo: document.body })
     await w.find('textarea').setValue('删文件')
     await w.findAll('button').find((b) => b.text() === '发送')!.trigger('click')
     await flushPromises()
@@ -187,5 +108,6 @@ describe('ConsoleTaskView session_id 捕获时机', () => {
     await flushPromises()
     expect(api.stopTask).toHaveBeenCalledWith('s-live')
     release()
+    w.unmount()
   })
 })

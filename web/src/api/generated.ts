@@ -1160,7 +1160,15 @@ export interface components {
          * HistoryMessage
          * @description 历史记录中的单条消息。
          *
-         *     A single message in a conversation history.
+         *     content 是纯文本投影（LLM 回喂降级与摘要取用）；blocks 为消息块协议的
+         *     块列表（消息恒带 blocks，旧历史已清除）。tool_calls 已废弃（块协议的
+         *     tool 块取代），保留字段仅供 API 形状稳定。
+         *
+         *     A single message in a conversation history. content is the plain-text
+         *     projection (for LLM feed fallback and summaries); blocks is the
+         *     message-block-protocol list (messages always carry blocks; old history has
+         *     been dropped). tool_calls is deprecated (superseded by tool blocks) and kept
+         *     only for API shape stability.
          */
         HistoryMessage: {
             /** Role */
@@ -1174,6 +1182,17 @@ export interface components {
             tool_calls?: {
                 [key: string]: unknown;
             }[] | null;
+            /**
+             * Blocks
+             * @default []
+             */
+            blocks: {
+                [key: string]: unknown;
+            }[];
+            /** Turn Id */
+            turn_id?: string | null;
+            /** Ts */
+            ts?: string | null;
         };
         /**
          * LibraryDetailResponse

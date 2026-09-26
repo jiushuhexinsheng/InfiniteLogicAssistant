@@ -120,10 +120,19 @@ export interface ToolStep {
 // ─── Orchestration SSE Events (/api/voice/utter, corresponds to backend core/orchestrator/events.py) ───
 
 /**
+ * SSE 事件公共字段（对应后端 _BaseEvent）
+ * Common SSE event fields (corresponds to backend _BaseEvent)
+ */
+export interface SseEventBase {
+  /** 所属回合 ID（一次用户话语 → 一次编排运行 → done）。Owning turn ID. */
+  turn_id?: string
+}
+
+/**
  * 任务状态变化事件
  * Task state change event
  */
-export interface TaskStateEvent {
+export interface TaskStateEvent extends SseEventBase {
   /** 事件类型。Event type. */
   type: 'task_state'
   /** 任务状态。Task state. */
@@ -144,7 +153,7 @@ export interface TaskStateEvent {
  * 内容增量事件
  * Content delta event
  */
-export interface ContentDeltaEvent {
+export interface ContentDeltaEvent extends SseEventBase {
   /** 事件类型。Event type. */
   type: 'content_delta'
   /** 增量文本内容。Delta text content. */
@@ -155,7 +164,7 @@ export interface ContentDeltaEvent {
  * 推理过程增量事件
  * Reasoning delta event
  */
-export interface ReasoningDeltaEvent {
+export interface ReasoningDeltaEvent extends SseEventBase {
   /** 事件类型。Event type. */
   type: 'reasoning_delta'
   /** 增量推理文本。Delta reasoning text. */
@@ -166,7 +175,7 @@ export interface ReasoningDeltaEvent {
  * Token 使用量事件
  * Token usage event
  */
-export interface UsageEvent {
+export interface UsageEvent extends SseEventBase {
   /** 事件类型。Event type. */
   type: 'usage'
   /** Token 使用量。Token usage. */
@@ -177,28 +186,40 @@ export interface UsageEvent {
  * 工具开始执行事件
  * Tool start event
  */
-export interface ToolStartEvent {
+export interface ToolStartEvent extends SseEventBase {
   /** 事件类型。Event type. */
   type: 'tool_start'
   /** 工具名称。Tool name. */
   name: string
   /** 工具参数。Tool arguments. */
   args: Record<string, any>
+  /** 工具调用 ID（与 tool_end 配对）。Tool call ID (pairs with tool_end). */
+  call_id?: string
+  /** 归属（main / sub:<type>）。Ownership (main / sub:<type>). */
+  agent?: string
 }
 
 /**
  * 工具执行结束事件
  * Tool end event
  */
-export interface ToolEndEvent {
+export interface ToolEndEvent extends SseEventBase {
   /** 事件类型。Event type. */
   type: 'tool_end'
   /** 工具名称。Tool name. */
   name: string
   /** 执行状态。Execution status. */
   status: string
-  /** 执行输出。Execution output. */
+  /** 执行输出（预览，≤500 字）。Execution output (preview, ≤500 chars). */
   output: string
+  /** 工具调用 ID（与 tool_start 配对）。Tool call ID (pairs with tool_start). */
+  call_id?: string
+  /** 归属（main / sub:<type>）。Ownership (main / sub:<type>). */
+  agent?: string
+  /** 输出是否被截断。Whether the output was truncated. */
+  truncated?: boolean
+  /** 输出原始长度。Original output length. */
+  output_len?: number
 }
 
 /**
@@ -216,7 +237,7 @@ export interface QuestionOption {
   label: string
 }
 
-export interface QuestionEvent {
+export interface QuestionEvent extends SseEventBase {
   /** 事件类型。Event type. */
   type: 'question'
   /** 问题内容。Question content. */
@@ -230,13 +251,43 @@ export interface QuestionEvent {
   kind: 'choice' | 'text' | 'composite'
   /** 选项列表（kind 为 choice / composite 时非空）。Options (non-empty for choice / composite). */
   options: QuestionOption[]
+  /** 问题 ID（问答配对、陈旧作答拒收）。Question ID (pairs answers, rejects stale ones). */
+  qid?: string
+}
+
+/**
+ * 操作员作答事件（作答入块、语音可审计）
+ * Operator answer event (answers become blocks, voice auditable)
+ */
+export interface AnswerEvent extends SseEventBase {
+  /** 事件类型。Event type. */
+  type: 'answer'
+  /** 对应问题 ID。Corresponding question ID. */
+  qid?: string
+  /** 作答文本。Answer text. */
+  text: string
+  /** 结构化选择（选项 value）。Structured choice (option value). */
+  choice?: string
+  /** 作答通道：typed / voice / button。Answer channel: typed / voice / button. */
+  source?: string
+}
+
+/**
+ * 离散消息块直通事件（image/file/ext:* 等即插即用）
+ * Discrete message-block passthrough event (image/file/ext:* plug-in)
+ */
+export interface BlockEvent extends SseEventBase {
+  /** 事件类型。Event type. */
+  type: 'block'
+  /** 消息块（信封 + payload，见 core/orchestrator/blocks.py）。Message block (envelope + payload). */
+  block: Record<string, any>
 }
 
 /**
  * 错误事件
  * Error event
  */
-export interface ErrorEvent {
+export interface ErrorEvent extends SseEventBase {
   /** 事件类型。Event type. */
   type: 'error'
   /** 错误消息。Error message. */
@@ -247,7 +298,7 @@ export interface ErrorEvent {
  * 完成事件
  * Done event
  */
-export interface DoneEvent {
+export interface DoneEvent extends SseEventBase {
   /** 事件类型。Event type. */
   type: 'done'
 }
@@ -264,5 +315,7 @@ export type SseEvent =
   | ToolStartEvent
   | ToolEndEvent
   | QuestionEvent
+  | AnswerEvent
+  | BlockEvent
   | ErrorEvent
   | DoneEvent

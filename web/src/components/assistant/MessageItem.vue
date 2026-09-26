@@ -11,17 +11,23 @@
         <span class="msg-role">{{ roleName }}</span>
         <span class="msg-time">{{ formatTime(message.timestamp) }}</span>
       </div>
-      <!-- 消息气泡：助手消息渲染 Markdown，系统消息纯文本。Message bubble: assistant renders Markdown, system uses plain text. -->
+      <!-- 消息气泡：块宿主按注册协议渲染（思考/工具/正文/提问/汇总等模块）。
+           无块的旧消息退化为文本投影渲染（过渡期保护）。
+           Message bubble: the block host renders via the registry protocol
+           (thinking / tool / text / question / summary modules). Messages without
+           blocks degrade to the text projection (transition guard). -->
       <div class="msg-bubble" :class="message.role">
-        <MarkdownRenderer v-if="message.role !== 'system'" :text="message.text" />
-        <div v-else class="msg-text">{{ message.text }}</div>
-        <!-- 工具调用时间线（助手消息有工具调用时显示）。Tool timeline (shown when assistant message has tool calls). -->
-        <ToolTimeline
-          v-if="message.toolCalls?.length"
-          :steps="timelineSteps"
+        <BlockHost
+          v-if="message.blocks?.length"
+          :blocks="message.blocks"
+          skin="full"
           @retry="emit('retry', $event)"
           @cancel="emit('cancel', $event)"
         />
+        <template v-else>
+          <MarkdownRenderer v-if="message.role !== 'system'" :text="message.text" />
+          <div v-else class="msg-text">{{ message.text }}</div>
+        </template>
       </div>
     </div>
   </div>
@@ -31,9 +37,8 @@
 import { computed } from 'vue'
 import { UiIcon } from '../ui'
 import MarkdownRenderer from '../MarkdownRenderer.vue'
-import ToolTimeline from './ToolTimeline.vue'
-import type { ChatMessage, ToolCall } from '../../composables/useAssistant'
-import type { ToolStep } from '../../types'
+import BlockHost from '../blocks/BlockHost.vue'
+import type { ChatMessage } from '../../composables/useAssistant'
 
 /**
  * 组件属性定义。Component props definition.
@@ -59,34 +64,6 @@ const roleName = computed(() => {
     default: return '系统'
   }
 })
-
-/**
- * 获取工具调用图标名称。Get tool call icon name.
- * @param tc - 工具调用对象。Tool call object.
- */
-function toolIcon(tc: ToolCall) { return 'wrench' }
-
-/**
- * 获取工具调用显示标签。Get tool call display label.
- * @param tc - 工具调用对象。Tool call object.
- */
-function toolLabel(tc: ToolCall) { return tc.name }
-
-/**
- * 将消息的 toolCalls 转换为时间线步骤数据。
- * Convert message toolCalls to timeline step data.
- */
-const timelineSteps = computed<ToolStep[]>(() =>
-  (props.message.toolCalls || []).map((tc) => ({
-    id: tc.id,
-    name: toolLabel(tc),
-    icon: toolIcon(tc),
-    status: tc.status === 'pending' ? 'queued' : tc.status,
-    durationMs: (tc as ToolCall & { durationMs?: number }).durationMs,
-    args: tc.args,
-    result: tc.result,
-  }))
-)
 
 /**
  * 格式化时间戳为中文格式（HH:MM）。Format timestamp to Chinese format (HH:MM).
@@ -144,9 +121,9 @@ function formatTime(ts: number) {
   border-left: 2px solid var(--bubble-ai-border);
   border-bottom-left-radius: 4px;
 }
-/* 系统气泡：居中红色警告风格。System bubble: centered red warning style. */
+/* 系统气泡：居中红色警告风格（语义令牌 --bubble-sys-*）。System bubble: centered red warning style (semantic tokens). */
 .msg-bubble.system {
-  align-self: center; background: #7f1d1d; color: #fca5a5;
+  align-self: center; background: var(--bubble-sys); color: var(--bubble-sys-text);
   font-size: 12px; max-width: 80%; text-align: center;
 }
 .msg-text { white-space: pre-wrap; }

@@ -10,6 +10,7 @@ import {
   Search, Send, Trash2, ChevronDown, X, Play, Square, Ellipsis, User,
   Globe, CalendarClock, Database, Bot, Zap, Clock, Infinity as InfinityIcon,
   Settings, Volume2, Plus, CirclePlus, Activity, BarChart3, History, List, Sun, Moon, Loader2,
+  Copy, FileText, Image as ImageIcon,
 } from 'lucide-vue-next'
 
 /**
@@ -55,6 +56,10 @@ const ICONS: Record<string, Component> = {
   sun: Sun,
   moon: Moon,
   'loader-2': Loader2,
+  // 消息块 Message blocks
+  copy: Copy,
+  'file-text': FileText,
+  image: ImageIcon,
 }
 
 /** 图标组件 Props：图标名称(对应 ICONS 映射表键)/图标尺寸(像素)。Icon props: icon name (key in ICONS map), size in pixels. */
