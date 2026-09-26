@@ -117,9 +117,18 @@ export const api = {
   // Wake detection: transcribe, judge the wake word, split out the command. The backend owns the
   // judgement; the frontend only acts on the result.
   /** 唤醒检测。Wake detection. */
-  wakeDetect: async (blob: Blob): Promise<WakeResponse> => {
+  /** 本地 KWS 快检：只回答「有没有唤醒词」，毫秒级、不出本机、零云端调用。
+   *  Local KWS quick check: only "is the wake word present" — milliseconds, no cloud call. */
+  wakeCheck: async (blob: Blob): Promise<{ ok?: boolean; hit?: boolean; bypass?: boolean; error?: string }> => {
     const base64Wav = await blobToWavBase64(blob)
-    return post<WakeResponse>('/voice/wake', { audio_base64: base64Wav })
+    return post<{ ok?: boolean; hit?: boolean; bypass?: boolean; error?: string }>('/voice/wake/check', { audio_base64: base64Wav })
+  },
+  wakeDetect: async (blob: Blob, opts?: { mode?: string }): Promise<WakeResponse> => {
+    const base64Wav = await blobToWavBase64(blob)
+    // mode 随请求下发：cloud 显式旁路后端 KWS 闸门（纯云端判定，最大召回）
+    // The mode travels with the request: cloud explicitly bypasses the backend KWS
+    // gate (pure cloud judging, maximum recall).
+    return post<WakeResponse>('/voice/wake', { audio_base64: base64Wav, ...(opts?.mode ? { mode: opts.mode } : {}) })
   },
 
   // 单工具执行（前端"重试失败工具"走后端真实重跑；高风险工具需 confirm: true 显式确认）
@@ -135,9 +144,15 @@ export const api = {
 
   // ── 编排管线（P0）──
   // ── Orchestration Pipeline (P0) ──
-  /** 发送回答。Send answer. */
-  answer: (sessionId: string, text: string, choice?: string) =>
-    post<ApiResponse>('/voice/answer', choice ? { session_id: sessionId, text, choice } : { session_id: sessionId, text }),
+  /** 发送回答（qid 供问答配对/陈旧拒收；source 标记作答通道）。
+   *  Send answer (qid pairs answers / rejects stale ones; source marks the channel). */
+  answer: (sessionId: string, text: string, choice?: string, opts?: { qid?: string; source?: string }) => {
+    const body: Record<string, unknown> = { session_id: sessionId, text }
+    if (choice) body.choice = choice
+    if (opts?.qid) body.qid = opts.qid
+    if (opts?.source) body.source = opts.source
+    return post<ApiResponse>('/voice/answer', body)
+  },
   /** 停止任务。Stop task. */
   stopTask: (sessionId: string) => post<ApiResponse>(`/task/${sessionId}/stop`),
   /** 获取环境变量。Get environment variables. */
@@ -214,6 +229,9 @@ export type HistoryConversationDetail = components['schemas']['HistoryConversati
  * Utter SSE event handler interface
  */
 export interface UtterHandlers {
+  /** 原始事件通配回调（块 reducer 用，先于具体分发回调触发）。
+   *  Wildcard raw-event callback (for the block reducer; fires before the specific handlers). */
+  onEvent?: (ev: SseEvent) => void
   /** 任务状态变化回调。Task state change callback. */
   onTaskState?: (s: TaskState) => void
   /** 内容增量回调。Content delta callback. */
@@ -227,7 +245,7 @@ export interface UtterHandlers {
   /** Token 使用量回调。Token usage callback. */
   onUsage?: (usage: TokenUsage) => void
   /** 问题事件回调（澄清/确认）。Question event callback (clarification/confirmation). */
-  onQuestion?: (q: { question: string; session_id: string; kind: QuestionEvent['kind']; options: QuestionOption[] }) => void
+  onQuestion?: (q: { question: string; session_id: string; kind: QuestionEvent['kind']; options: QuestionOption[]; qid?: string }) => void
   /** 错误回调。Error callback. */
   onError?: (msg: string) => void
   /** 完成回调。Done callback. */
@@ -316,6 +334,9 @@ export async function streamUtter(
           try { evt = JSON.parse(data) as SseEvent } catch { continue }
           // 标记已接收到事件 / Mark event as received
           received = true
+          // 原始事件先交通配回调（块 reducer 归一），再走具体分发
+          // Raw events go to the wildcard callback (block reducer) first, then the specific dispatch
+          h.onEvent?.(evt)
           // 根据事件类型分发处理 / Dispatch handling based on event type
           switch (evt.type) {
             case 'task_state':
@@ -336,7 +357,7 @@ export async function streamUtter(
             // 问题事件（澄清/确认）/ Question event (clarification/confirmation)
             case 'question':
               if (evt.session_id) sessionId = evt.session_id
-              h.onQuestion?.({ question: evt.question, session_id: evt.session_id, kind: evt.kind, options: evt.options })
+              h.onQuestion?.({ question: evt.question, session_id: evt.session_id, kind: evt.kind, options: evt.options, qid: evt.qid })
               break
             // 错误事件，终止处理 / Error event, terminate processing
             case 'error': h.onError?.(evt.message); return 'done'

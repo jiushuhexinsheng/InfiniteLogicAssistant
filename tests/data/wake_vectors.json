@@ -1,0 +1,35 @@
+{
+  "_comment": [
+    "唤醒词匹配共享测试向量 — pytest(tests/test_voice_wake.py) 与 vitest",
+    "(web/src/composables/assistant/__tests__/wakeMatch.spec.ts) 共同消费，",
+    "钉住后端 core/voice/wake.py 与前端 wakeMatch.ts 的判定语义一致。",
+    "正例含实测 ASR 转写样本（spec 2026-09-13），反例一条都不能命中。",
+    "Shared wake-matching vectors: consumed by both pytest and vitest to pin",
+    "identical semantics between backend wake.py and frontend wakeMatch.ts."
+  ],
+  "keywords": ["衍衡", "洛吉斯"],
+  "positives": [
+    { "text": "衍衡。", "command": "", "note": "原字 + ASR 补句号" },
+    { "text": "燕恒。", "command": "", "note": "实测 ASR 转写：同音字" },
+    { "text": "言恒", "command": "", "note": "同音异字（表外字也必须命中——拼音级的全部意义）" },
+    { "text": "严衡", "command": "", "note": "同上" },
+    { "text": "演横", "command": "", "note": "同上" },
+    { "text": "沿哼", "command": "", "note": "同上" },
+    { "text": "呃衍衡", "command": "", "note": "句首容差：1 个语气词" },
+    { "text": "衍衡，帮我查天气。", "command": "帮我查天气", "note": "唤醒词 + 指令一句话" },
+    { "text": "衍衡帮我查天气", "command": "帮我查天气", "note": "无标点" },
+    { "text": "洛吉斯。", "command": "", "note": "实测 ASR 转写：一字不差" },
+    { "text": "罗基斯", "command": "", "note": "同音异字" },
+    { "text": "洛吉斯，打开设置。", "command": "打开设置", "note": "唤醒词 + 指令" }
+  ],
+  "negatives": [
+    { "text": "也行", "note": "实测 Vosk 误识别；yexing≠yanheng，极常见短语绝不能命中" },
+    { "text": "若缉私", "note": "实测 Vosk 误识别；ruojisi≠luojisi" },
+    { "text": "若", "note": "实测 Vosk 误识别为单字" },
+    { "text": "今天天气怎么样", "note": "无关话语" },
+    { "text": "我昨天说衍衡那个事", "note": "唤醒词在句中（前导 4 字 > 容差 2）" },
+    { "text": "帮我看看洛吉斯的情况", "note": "同上" },
+    { "text": "你好帮我查衍衡", "note": "唤醒词离句首太远（防 TTS 回声循环）" },
+    { "text": "", "note": "空转写" }
+  ]
+}

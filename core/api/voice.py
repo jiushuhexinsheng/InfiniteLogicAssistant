@@ -5,6 +5,7 @@ voice domain API — config / TTS / ASR transcription / orchestration SSE entry
 (the only agent path)
 """
 import asyncio
+import base64
 import json
 
 from fastapi import APIRouter, Request
@@ -18,6 +19,7 @@ from core.api.schemas import (
     ConfigResponse,
     PingResponse,
     TextResponse,
+    WakeCheckResponse,
     WakeResponse,
 )
 from core.orchestrator.events import DoneEvent, ErrorEvent
@@ -159,6 +161,42 @@ async def voice_transcribe(request: Request):
         return JSONResponse({"ok": False, "error": str(e)})
 
 
+@router.post("/voice/wake/check", response_model=WakeCheckResponse)
+async def voice_wake_check(request: Request):
+    """本地 KWS 快检：只回答「这段音频里有没有唤醒词」，毫秒级、不出本机、零云端调用。
+
+    判定与提取分离的前半段：命中 → 前端**立即**提示音 + 进入等指令窗口（动作先行，
+    不等任何「二次确认」）；指令文本的提取由完整 /voice/wake 在后台异步完成。
+
+    Local KWS quick check: answers only "does this clip contain a wake word" —
+    milliseconds, no cloud call, audio never leaves the machine. First half of
+    "verdict first, extraction later": on a hit the frontend acts **immediately**
+    (chime + command window) with no re-confirmation; command extraction happens
+    asynchronously via the full /voice/wake.
+    """
+    from core.voice.kws import get_kws
+
+    body = await request.body()
+    try:
+        params = json.loads(body.decode("utf-8")) if body else {}
+    except Exception:
+        return JSONResponse({"ok": False, "error": "无效 JSON"}, status_code=400)
+    b64 = (params.get("audio_base64") or "").strip()
+    if not b64:
+        return JSONResponse({"ok": False, "error": "请提供 audio_base64 参数"}, status_code=400)
+
+    try:
+        wav_bytes = base64.b64decode(b64)
+    except Exception:
+        return JSONResponse({"ok": False, "error": "audio_base64 非法"}, status_code=400)
+    hit = get_kws().detect_wav_bytes(wav_bytes)  # True命中 / False未命中 / None旁路
+    if hit is False:
+        audit("kws-gate skip=1")
+    elif hit is True:
+        audit("kws-gate hit=1")
+    return {"ok": True, "hit": hit is True, "bypass": hit is None}
+
+
 @router.post("/voice/wake", response_model=WakeResponse)
 async def voice_wake(request: Request):
     """唤醒检测：接收音频片段 → 转写 → 判定唤醒词 → 切出指令。
@@ -174,6 +212,7 @@ async def voice_wake(request: Request):
     testable while keeping the frontend thin.
     """
     from core.voice import get_asr
+    from core.voice.kws import get_kws
     from core.voice.wake import detect
 
     body = await request.body()
@@ -184,6 +223,22 @@ async def voice_wake(request: Request):
     b64 = (params.get("audio_base64") or "").strip()
     if not b64:
         return JSONResponse({"ok": False, "error": "请提供 audio_base64 参数"}, status_code=400)
+
+    # 本地 KWS 前置闸门：未命中直接丢弃，不上云（背景媒体声/闲聊不花钱、不出本机）。
+    # mode=cloud 显式旁路闸门（用户要纯云端判定，最大召回）。审计用独立前缀
+    # `kws-gate skip=`：它不是云端上传，不得混入 `audio-upload via=` 成本口径。
+    # Local KWS pre-gate: misses are dropped without any cloud call (background media
+    # and chatter cost nothing and never leave the machine). mode=cloud explicitly
+    # bypasses the gate (pure cloud judging, maximum recall). Audited under its own
+    # `kws-gate skip=` prefix: it is NOT a cloud upload and must not pollute the
+    # `audio-upload via=` cost accounting.
+    wav_bytes = base64.b64decode(b64)
+    kws_hit: bool | None = None
+    if params.get("mode") != "cloud":
+        kws_hit = get_kws().detect_wav_bytes(wav_bytes)  # True命中 / False未命中 / None旁路
+        if kws_hit is False:
+            audit("kws-gate skip=1")
+            return {"ok": True, "matched": False, "command": "", "text": ""}
 
     asr = get_asr()
     if not asr.available():
@@ -198,16 +253,26 @@ async def voice_wake(request: Request):
         return JSONResponse({"ok": False, "error": str(e)})
 
     result = detect(text, config.settings.voice.wake_word.keywords)
+    # 音频判定优先于文本判定：KWS（发音级）听到了唤醒词就唤醒成立，ASR 文本只负责
+    # 切指令 —— 文本判不中（ASR 把词写飞）时按「仅唤醒」处理（command 空 → 提示音 +
+    # 等指令），不能把一次真实唤醒丢掉。反之文本判中而 KWS 未中（闸门旁路时）照常成立。
+    # Audio verdict beats text verdict: once KWS (pronunciation level) heard the wake
+    # word, the wake stands and the ASR text only splits out the command. When the text
+    # judge misses (ASR wrote the word wildly), fall back to "wake only" (empty command
+    # → chime + wait for the command) instead of dropping a real wake. Conversely, a
+    # text hit with no KWS hit (gate bypassed) stands as usual.
+    matched = result.matched or kws_hit is True
+    command = result.command if result.matched else ""
     # 每次上传记一笔：这是统计调用量与成本的依据（spec「成本与隐私」）。前缀与
     # /voice/transcribe 共用，`grep -c 'audio-upload via=' data/audit.log` 即云端上传总次数。
     # One audit line per upload: the basis for measuring call volume and cost (spec, "cost and
     # privacy"). The prefix is shared with /voice/transcribe, so a single grep counts every cloud
     # upload.
     audit(
-        f"audio-upload via=wake matched={result.matched} chars={len(text)} "
-        f"command={result.command[:40]!r} text={text[:80]!r}"
+        f"audio-upload via=wake matched={matched} chars={len(text)} "
+        f"command={command[:40]!r} text={text[:80]!r}"
     )
-    return {"ok": True, "matched": result.matched, "command": result.command, "text": result.text}
+    return {"ok": True, "matched": matched, "command": command, "text": result.text}
 
 
 @router.post("/voice/utter")
@@ -267,8 +332,11 @@ async def voice_utter(request: Request):
                 from core.session.history import get_history_store
                 conv = await get_history_store().get_conversation(session_id)
                 if conv and conv.get("messages"):
+                    # 恢复含块结构（blocks/turn_id/ts 透传）
+                    # Restore with block structure (blocks/turn_id/ts pass through).
                     messages = [
-                        {"role": m["role"], "content": m["content"]}
+                        {"role": m["role"], "content": m["content"],
+                         "blocks": m.get("blocks"), "turn_id": m.get("turn_id"), "ts": m.get("ts")}
                         for m in conv["messages"]
                         if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)
                     ]
@@ -340,7 +408,17 @@ async def voice_answer(request: Request):
     # the consumer (e.g. the permission policy layer), so new option sets need no change here.
     raw_choice = params.get("choice")
     choice = raw_choice.strip() if isinstance(raw_choice, str) and raw_choice.strip() else None
-    channel.answer(str(params.get("text") or ""), choice)
+    # qid 可选：携带且与当前待答问题不符 → 409（防陈旧语音作答错配到新问题）；
+    # 缺省不带则照旧投递（兼容旧前端）。
+    # qid is optional: when present and mismatched with the pending question the
+    # delivery is refused with 409 (a stale voice answer cannot be mismatched onto
+    # a newer question); absent means legacy behavior (compatible with old frontends).
+    raw_qid = params.get("qid")
+    qid = raw_qid.strip() if isinstance(raw_qid, str) and raw_qid.strip() else None
+    raw_source = params.get("source")
+    source = raw_source.strip() if isinstance(raw_source, str) and raw_source.strip() else None
+    if not channel.answer(str(params.get("text") or ""), choice, qid=qid, source=source):
+        return JSONResponse({"ok": False, "error": "问题已过期或 qid 不匹配"}, status_code=409)
     return {"ok": True}
 
 

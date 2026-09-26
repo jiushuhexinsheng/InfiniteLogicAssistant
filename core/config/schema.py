@@ -225,16 +225,46 @@ class VadConfig(BaseModel):
     upload_throttle_ms: int = Field(500, ge=0)
 
 
-class VoiceSection(BaseModel):
-    """语音段配置：唤醒词、VAD、ASR 与 TTS 子配置。
+class KwsConfig(BaseModel):
+    """本地 KWS（关键词检测）前置闸门配置：sherpa-onnx zipformer-wenetspeech。
 
-    Voice section config: wake-word, VAD, ASR, and TTS sub-configs.
+    KWS 在**云端 ASR 之前**本地判定音频里有没有唤醒词：未命中直接丢弃（背景媒体声/
+    闲聊不上云、不花钱），命中才调 ASR 抬取指令文本。发音级检测（拼音 tokens），
+    对「ASR 写什么字」免疫。
+
+    本地前置闸门（keyword-spotting gate）configuration: sherpa-onnx
+    zipformer-wenetspeech. KWS judges locally whether the audio contains a wake word
+    **before** any cloud ASR call: misses are dropped outright (background media /
+    chatter never leaves the machine or costs money), hits proceed to ASR for command
+    extraction. Pronunciation-level detection (pinyin tokens), immune to "whatever
+    ASR writes".
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    # 模型目录（tokens.txt + encoder/decoder/joiner onnx）；不存在时闸门自动禁用（不报错）。
+    # Model dir (tokens.txt + encoder/decoder/joiner onnx); the gate auto-disables when absent.
+    model_dir: str = "models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
+    # 检测阈值：越低越灵敏（漏报少、误报多）。默认 0.25 是 sherpa 官方示例值。
+    # Detection threshold: lower is more sensitive (fewer misses, more false hits).
+    # 0.25 is the sherpa reference default.
+    keywords_threshold: float = Field(0.25, ge=0.0, le=1.0)
+    # 关键词得分加成：越高越易命中。Keyword score boost: higher hits more easily.
+    keywords_score: float = Field(1.0, ge=0.0)
+
+
+class VoiceSection(BaseModel):
+    """语音段配置：唤醒词、VAD、KWS、ASR 与 TTS 子配置。
+
+    Voice section config: wake-word, VAD, KWS, ASR, and TTS sub-configs.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     wake_word: WakeWordConfig = Field(default_factory=lambda: WakeWordConfig())
     vad: VadConfig = Field(default_factory=lambda: VadConfig())
+    kws: KwsConfig = Field(default_factory=lambda: KwsConfig())
     asr: AsrSection = Field(default_factory=lambda: AsrSection())
     tts: TtsSection = Field(default_factory=lambda: TtsSection())
 

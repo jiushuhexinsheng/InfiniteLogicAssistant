@@ -1,20 +1,30 @@
 # -*- coding: utf-8 -*-
-"""唤醒词匹配（normalize / detect）的测试。
+"""唤醒词匹配（normalize / detect）的测试 — 拼音级判定。
 
-**用例全部来自实测**：下面的「云端实测转写」是把合成音频喂给已配置的 ASR
+**用例全部来自实测**：「云端实测转写」是把合成音频喂给已配置的 ASR
 （mimo-v2.5-asr）拿到的真实输出，不是臆造的。改匹配规则前先看这些样本 ——
 它们是本次重构最有价值的回归资产。
 
-Tests for wake-word matching (normalize / detect). Every case comes from **measurement**:
-the "measured transcript" strings below are real output from feeding synthesised audio to the
-configured ASR (mimo-v2.5-asr). Read these samples before changing the matching rules — they are
-the most valuable regression asset of this rework.
+**共享测试向量**：tests/data/wake_vectors.json 同时被本文件（pytest）与
+web/src/composables/assistant/__tests__/wakeMatch.spec.ts（vitest）消费，
+钉住前后端判定语义一致 —— 改任一侧的匹配规则，两侧测试必须同时变绿。
+
+Tests for wake-word matching (normalize / detect), pinyin level. Every case comes from
+**measurement**: the "measured transcript" strings are real output from feeding synthesised audio
+to the configured ASR (mimo-v2.5-asr). The shared vectors (tests/data/wake_vectors.json) are
+consumed by both this file and the frontend vitest spec, pinning identical semantics on both
+sides.
 """
+import json
+from pathlib import Path
+
 import pytest
 
 from core.voice.wake import WakeResult, detect, normalize
 
 KEYWORDS = ["衍衡", "洛吉斯"]
+
+_VECTORS = json.loads((Path(__file__).parent / "data" / "wake_vectors.json").read_text(encoding="utf-8"))
 
 
 # ─── normalize ───
@@ -35,64 +45,33 @@ def test_normalize_strips_punctuation_and_space(raw, expected):
     assert normalize(raw) == expected
 
 
-# ─── detect：正例（全部为实测转写）───
-
-def test_detect_measured_luoji_si():
-    """实测：云端把「洛吉斯」转成「洛吉斯。」—— 一字不差，直接命中。
-    Measured: the cloud transcribes 洛吉斯 verbatim as "洛吉斯。"."""
-    r = detect("洛吉斯。", KEYWORDS)
-    assert r == WakeResult(matched=True, command="", text="洛吉斯。")
+# ─── 共享测试向量（前后端语义对齐锚点）───
 
 
-def test_detect_measured_yan_heng_homophone():
-    """实测：云端把「衍衡」转成「燕恒。」—— 靠同音字表命中。
-    这是整套同音字容错存在的唯一理由。
-    Measured: the cloud renders 衍衡 as "燕恒。" — a hit only via the homophone table, which is the
-    sole reason that table exists."""
-    r = detect("燕恒。", KEYWORDS)
-    assert r.matched is True and r.command == ""
+@pytest.mark.parametrize("case", _VECTORS["positives"], ids=lambda c: c["text"] or "empty")
+def test_vectors_positives(case):
+    """正例：发音对就行（同音异字/语气词前导/一句话带指令都命中）。
+    Positives: pronunciation decides — homophones, leading fillers, one-shot commands."""
+    r = detect(case["text"], _VECTORS["keywords"])
+    assert r.matched is True, case
+    assert r.command == case["command"], case
 
 
-def test_detect_wake_word_plus_command():
-    """唤醒词 + 指令：切出后半段作为指令。Wake word plus command splits out the command."""
-    r = detect("衍衡，帮我查天气。", KEYWORDS)
-    assert r.matched is True
-    assert r.command == "帮我查天气"
-
-
-def test_detect_verbatim_keyword():
-    """原字命中也算（不能只认同音字）。A verbatim hit counts too — homophones are a fallback."""
-    assert detect("衍衡", KEYWORDS).matched is True
-
-
-# ─── detect：反例（绝不能命中）───
-
-@pytest.mark.parametrize(
-    "text",
-    [
-        "今天天气怎么样",
-        "我昨天说衍衡那个事",          # 唤醒词不在开头 → 不命中
-        "帮我看看洛吉斯的情况",         # 同上
-        "若缉私",                      # Vosk 的误识别，不该被云端路径接受
-        "也行",                        # 实测 Vosk 把「衍衡」听成「也行」—— 极常见短语，绝不能命中
-        "若",                          # 实测 Vosk 把「洛吉斯」听成单字「若」
-        "",
-    ],
-)
-def test_detect_negatives(text):
+@pytest.mark.parametrize("case", _VECTORS["negatives"], ids=lambda c: c["text"] or "empty")
+def test_vectors_negatives(case):
     """反例一条都不能命中。唤醒是执行闸门的前置，错触发的代价远大于漏触发。
-
-    尤其注意 `也行` 与 `若`：这两个是 Vosk 的错误输出、且在中文里极常见 —— 若把它们
-    写进同音字表，「衍衡」会变成一句日常用语就能唤醒。
-
-    Not one negative may match. A false wake is far costlier than a miss. Note "也行" and "若" in
-    particular: they are Vosk's misrecognitions and are extremely common Chinese — folding them into
-    the homophone table would make an everyday phrase wake the assistant.
-    """
-    r = detect(text, KEYWORDS)
-    assert r.matched is False, text
+    尤其注意 `也行` 与 `若`：实测 Vosk 的误识别且在中文里极常见 —— 它们与唤醒词
+    **不同音**（yexing≠yanheng、ruo≠luojisi），拼音严格相等恰好挡住。
+    Not one negative may match. Note "也行" and "若": common Chinese and Vosk's measured
+    misrecognitions — yet *different sounds* from the wake words, which strict pinyin equality
+    rejects."""
+    r = detect(case["text"], _VECTORS["keywords"])
+    assert r.matched is False, case
     assert r.command == ""
-    assert r.text == text
+    assert r.text == case["text"]
+
+
+# ─── detect 补充语义（不在向量里但必须钉住）───
 
 
 def test_detect_no_keywords_configured():
@@ -112,3 +91,11 @@ def test_detect_longest_match_wins():
     The longest matching candidate wins, so a short one cannot pre-empt a longer one."""
     r = detect("衍衡查天气", ["衍", "衍衡"])
     assert r.command == "查天气"
+
+
+def test_detect_result_is_frozen():
+    """判定结果不可变（dataclass frozen）。The judgement is an immutable dataclass."""
+    r = detect("衍衡", KEYWORDS)
+    assert isinstance(r, WakeResult)
+    with pytest.raises(Exception):
+        r.matched = False  # type: ignore[misc]

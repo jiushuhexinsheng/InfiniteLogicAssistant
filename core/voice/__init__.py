@@ -9,6 +9,7 @@ Voice module — ASR / TTS (OpenAI-compatible multi-provider, async httpx).
 - ASR:  POST {endpoint}{chat_path} + messages[0].content input_audio (OpenAI compatible)
 - TTS:  POST {endpoint}{chat_path} + {"model","input","voice"}; the response is binary audio
 """
+import asyncio
 import os
 import tempfile
 
@@ -17,6 +18,23 @@ import httpx
 from core.config import add_reload_hook, is_asr_configured, is_tts_enabled, resolve_asr_profile, resolve_tts_profile
 from core.logger import logger
 
+# 网络级瞬时故障（对齐 core/llm/client.py 的分类）：这类错误重试大概率成功，
+# 不该让一次抖动丢掉整段音频。4xx/5xx 状态错误不在此列（重试无意义）。
+# Transient network failures (aligned with core/llm/client.py's classification):
+# retrying these usually succeeds, and one blip should not lose the whole clip.
+# HTTP status errors are not included (retrying them is pointless).
+_RETRYABLE_EXC = (httpx.TimeoutException, httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError)
+
+# 瞬时故障的最大尝试次数与退避秒数（音频转写是交互路径，退避保持短促）。
+# Max attempts and backoff seconds for transient failures (transcription is an
+# interactive path, so the backoff stays short).
+_MAX_ATTEMPTS = 3
+_BACKOFF_S = (0.5, 1.0)
+
+# MiMo 文档规定 Base64 音频字符串上限 10MB（文档明示的硬限制）。
+# MiMo docs cap the Base64 audio string at 10MB (an explicit hard limit).
+_MAX_B64_CHARS = 10 * 1024 * 1024
+
 
 class ASRClient:
     """ASR 语音识别客户端（OpenAI 兼容，async）
@@ -24,12 +42,15 @@ class ASRClient:
     ASR speech recognition client (OpenAI-compatible, async).
 
     profile.compat 兼容开关（来自厂商预设，默认不影响既有行为）：
-    - auth_header: "api-key"  用 api-key 头认证（小米 MiMo ASR 要求；默认 Bearer）
+    - auth_header: "api-key"  用 api-key 头认证（缺省 Bearer —— 官方文档的方式；
+      实测 MiMo 两种头都收，此开关只是兼容选项，**不是必需**）
     - audio_data_url: true    input_audio.data 加 "data:{mime};base64," 前缀
     - send_language: true     请求体带 asr_options.language（提升指定语种准确率）
 
     Compatibility switches in profile.compat (from vendor presets; defaults keep existing behavior):
-    - auth_header: "api-key"  authenticate with the api-key header (required by Xiaomi MiMo ASR; default is Bearer)
+    - auth_header: "api-key"  authenticate with the api-key header (default is Bearer, which is
+      what the official docs use; measured: MiMo accepts both — this switch is a compatibility
+      option, **not a requirement**)
     - audio_data_url: true    prefix input_audio.data with "data:{mime};base64,"
     - send_language: true     include asr_options.language in the request body (boosts accuracy for the given language)
     """
@@ -87,6 +108,13 @@ class ASRClient:
             识别出的文本。 / The recognized text.
         """
         url = f"{self.endpoint.rstrip('/')}{self.chat_path}"
+        # MiMo 文档：Base64 字符串上限 10MB —— 超限直接本地报错，省一次注定失败的上传。
+        # MiMo docs: the Base64 string limit is 10MB — fail locally rather than attempt
+        # an upload destined to be rejected.
+        if len(audio_base64) > _MAX_B64_CHARS:
+            raise ValueError(
+                f"音频过大：Base64 后 {len(audio_base64)} 字符，超过 MiMo 上限 {_MAX_B64_CHARS}（10MB）"
+            )
         audio = audio_base64
         if self.compat.get("audio_data_url"):
             mime = "audio/mpeg" if audio_format in ("mp3", "mpeg") else "audio/wav"
@@ -96,18 +124,45 @@ class ASRClient:
             "messages": [{
                 "role": "user",
                 "content": [
+                    # `format` 是 OpenAI 标准 input_audio 的冗余字段：MiMo 文档只列 `data`，
+                    # 实测带与不带行为一致（且断连与否无关）——保留以兼容严格校验的 OpenAI 兼容端点。
+                    # `format` is OpenAI-standard input_audio redundancy: MiMo's docs list only
+                    # `data`; measured identical behavior with and without it (disconnects are
+                    # unrelated). Kept for strictly-validating OpenAI-compatible endpoints.
                     {"type": "input_audio", "input_audio": {"data": audio, "format": audio_format}}
                 ]
             }],
-            "max_tokens": 1024,
+            # 转写文本的长度护栏（防失控输出）；MiMo 文档示例不设此项。
+            # 实际 VAD 段最长 10s，远不会触及；直接调 API 传长音频时防截断误判，故留足余量。
+            # Guardrail on transcript length (not in MiMo's doc examples). VAD clips max at
+            # 10s and never get close; the ceiling only matters for direct API calls with
+            # long audio, so it is set with margin.
+            "max_tokens": 2048,
         }
         if self.compat.get("send_language") and self.language:
             body["asr_options"] = {"language": self.language}
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(url, json=body, headers=self._headers)
-            resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"].strip()
+        # 瞬时网络故障（Server disconnected / 超时 / 连接错误）指数退避重试；
+        # 这是间歇性断连的第一道防线 —— 实测该 ASR 服务会随机掐连接。
+        # Retry transient network failures (Server disconnected / timeout / connect
+        # error) with exponential backoff — the first line of defense against the
+        # measured intermittent disconnects of this ASR service.
+        last_exc: Exception | None = None
+        for attempt in range(_MAX_ATTEMPTS):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    resp = await client.post(url, json=body, headers=self._headers)
+                    resp.raise_for_status()
+                data = resp.json()
+                return data["choices"][0]["message"]["content"].strip()
+            except Exception as e:
+                if not isinstance(e, _RETRYABLE_EXC) or attempt == _MAX_ATTEMPTS - 1:
+                    raise
+                last_exc = e
+                logger.warning("ASR 转写瞬时故障（{}/{}），{}s 后重试: {}",
+                               attempt + 1, _MAX_ATTEMPTS, _BACKOFF_S[attempt], e)
+                await asyncio.sleep(_BACKOFF_S[attempt])
+        assert last_exc is not None  # 循环内必已赋值 / always assigned inside the loop
+        raise last_exc
 
 
 class TTSClient:

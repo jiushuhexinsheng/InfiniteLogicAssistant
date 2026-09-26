@@ -88,3 +88,91 @@ async def test_asr_default_compat_preserves_behavior(monkeypatch):
     audio = body["messages"][0]["content"][0]["input_audio"]
     assert audio["data"] == "QUJD"
     assert "asr_options" not in body
+
+
+# ─── 瞬时网络故障重试（实测该 ASR 服务会随机「Server disconnected」）───
+# Transient network failure retries (the ASR service was measured to drop
+# connections with "Server disconnected" at random).
+
+
+class _FlakyClient:
+    """前 N-1 次抛瞬时网络异常，最后一次成功。Fails with a transient network error
+    N-1 times, then succeeds."""
+
+    def __init__(self, failures: int, exc_factory):
+        self.failures = failures
+        self.exc_factory = exc_factory
+        self.calls = 0
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def post(self, url, json=None, headers=None):
+        self.calls += 1
+        if self.calls <= self.failures:
+            raise self.exc_factory()
+        return _FakeResp()
+
+
+def _profile() -> dict:
+    return {"provider": "openai", "endpoint": "https://x", "api_key": "k",
+            "model": "m", "chat_path": "/v1/chat/completions"}
+
+
+@pytest.mark.asyncio
+async def test_asr_retries_transient_disconnects_then_succeeds(monkeypatch):
+    """「Server disconnected」（RemoteProtocolError）重试后成功 —— 一次抖动不丢段。
+    A "Server disconnected" (RemoteProtocolError) is retried to success — one blip
+    must not lose the clip."""
+    import httpx
+
+    flaky = _FlakyClient(2, lambda: httpx.RemoteProtocolError("Server disconnected without sending a response."))
+    monkeypatch.setattr(voice_mod, "resolve_asr_profile", lambda: ("x", _profile()))
+    monkeypatch.setattr(voice_mod.httpx, "AsyncClient", lambda *a, **kw: flaky)
+    # 退避不真睡（测试提速）；只验重试次数与最终结果。Backoff is stubbed out for speed.
+    async def _no_sleep(_):
+        return None
+    monkeypatch.setattr(voice_mod.asyncio, "sleep", _no_sleep)
+
+    client = voice_mod.ASRClient()
+    text = await client.transcribe_base64("QUJD", "wav")
+    assert text == "你好"
+    assert flaky.calls == 3  # 2 次失败 + 1 次成功
+
+
+@pytest.mark.asyncio
+async def test_asr_retry_gives_up_after_max_attempts(monkeypatch):
+    """持续断连时按上限放弃并抛出原异常（不无限重试）。
+    Persistent disconnects give up at the attempt limit and raise the original
+    error (no infinite retries)."""
+    import httpx
+
+    flaky = _FlakyClient(99, lambda: httpx.RemoteProtocolError("Server disconnected"))
+    monkeypatch.setattr(voice_mod, "resolve_asr_profile", lambda: ("x", _profile()))
+    monkeypatch.setattr(voice_mod.httpx, "AsyncClient", lambda *a, **kw: flaky)
+
+    async def _no_sleep(_):
+        return None
+    monkeypatch.setattr(voice_mod.asyncio, "sleep", _no_sleep)
+
+    client = voice_mod.ASRClient()
+    with pytest.raises(httpx.RemoteProtocolError):
+        await client.transcribe_base64("QUJD", "wav")
+    assert flaky.calls == 3  # _MAX_ATTEMPTS
+
+
+@pytest.mark.asyncio
+async def test_asr_does_not_retry_client_errors(monkeypatch):
+    """4xx 等非瞬时错误不重试（重试无意义，立刻抛）。
+    Non-transient errors (e.g. 4xx) are not retried — raise immediately."""
+    flaky = _FlakyClient(99, lambda: ValueError("bad request body"))
+    monkeypatch.setattr(voice_mod, "resolve_asr_profile", lambda: ("x", _profile()))
+    monkeypatch.setattr(voice_mod.httpx, "AsyncClient", lambda *a, **kw: flaky)
+
+    client = voice_mod.ASRClient()
+    with pytest.raises(ValueError):
+        await client.transcribe_base64("QUJD", "wav")
+    assert flaky.calls == 1  # 一次都不重试。Not one retry.

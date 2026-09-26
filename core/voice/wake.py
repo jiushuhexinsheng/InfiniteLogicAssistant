@@ -1,30 +1,38 @@
 # -*- coding: utf-8 -*-
-"""唤醒词检测 —— 从 ASR 转写里判定唤醒词并切出指令。
+"""唤醒词检测 — 从 ASR 转写里判定唤醒词并切出指令（拼音级）
 
-**为什么要有同音字表**：实测把「衍衡」的音频喂给已配置的云端 ASR，转写结果是
-「燕恒」—— 同音不同字。没有这张表，「衍衡」永远唤不醒。
+**为什么是拼音级**：ASR 是「听音写字」，同一发音会被写成不同汉字（实测「衍衡」→
+「燕恒」，还可能「言恒/严衡」……）。字面量/同音字表是打地鼠 —— 表永远补不全。
+拼音级匹配只看发音：只要声母韵母对，写成什么字都命中。
 
-**为什么只收同音字、不做拼音或模糊匹配**：唤醒是执行闸门的前置，错触发的代价
-远大于漏触发。实测中 Vosk 曾把「衍衡」听成「也行」、把「洛吉斯」听成「若」——
-这两个都是中文里的高频词，一旦写进表里，一句日常用语就能唤醒助手。故本表只收
-**声母韵母都相同**的字，且逐条经过评估。
+**为什么不是模糊/近音匹配**：唤醒是执行闸门的前置，错触发的代价远大于漏触发。
+实测 Vosk 把「衍衡」听成「也行」、把「洛吉斯」听成「若」—— 这两个都是中文里的
+高频词，且与唤醒词**不同音**（yexing≠yanheng、ruo≠luojisi）。拼音严格相等恰好
+把它们挡在外面：比同音字表宽（同音全收），比拼音模糊匹配严（近音不收）。
+
+**句首容差**：唤醒词前允许至多 2 个字的语气词噪音（「呃衍衡」命中），再远就是
+句中提及（「我昨天说衍衡那个事」），不命中 —— 防误触发与 TTS 回声循环。
+
+前端镜像：web/src/composables/assistant/wakeMatch.ts（Web Speech 路径），
+语义由共享测试向量 tests/data/wake_vectors.json 钉住（pytest 与 vitest 共跑）。
 
 Wake-word detection: decide whether an ASR transcript starts with a wake word and split out the
-command. **Why a homophone table exists**: feeding 衍衡's audio to the configured cloud ASR yields
-"燕恒" — same sound, different characters; without the table 衍衡 could never wake. **Why only
-homophones and never pinyin or fuzzy matching**: a wake is the gateway to execution, so a false
-trigger costs far more than a miss. Measurement showed Vosk hearing 衍衡 as "也行" and 洛吉斯 as
-"若" — both extremely common Chinese words; folding them in would let an everyday phrase wake the
-assistant. The table therefore admits only same-syllable characters, each vetted by hand.
+command (pinyin level). **Why pinyin**: ASR maps sound to characters and writes the same sound
+differently (measured 衍衡 → 燕恒, also 言恒/严衡/…). Literal or homophone-table matching is
+whack-a-mole — the table can never be complete. Pinyin-level matching looks only at the
+pronunciation. **Why not fuzzy**: a false wake is far costlier than a miss. Measurement showed
+Vosk hearing 衍衡 as 也行 and 洛吉斯 as 若 — both common Chinese words, yet *different sounds*
+(yexing≠yanheng, ruo≠luojisi). Strict pinyin equality keeps them out: broader than a homophone
+table (all homophones in), stricter than fuzzy pinyin (near-sounds out). **Leading tolerance**: up
+to 2 filler characters before the keyword (呃衍衡 hits); further back it is a mid-sentence
+mention (我昨天说衍衡那个事) and must not fire — prevents false wakes and TTS echo loops.
+
+Frontend mirror: web/src/composables/assistant/wakeMatch.ts (Web Speech path). Semantics pinned by
+the shared test vectors tests/data/wake_vectors.json (run by both pytest and vitest).
 """
 from dataclasses import dataclass
 
-# 同音字容错表：字符 → 与之同音、且实测/预期会被 ASR 混淆的字。
-# Homophone fallbacks: character → same-syllable characters the ASR is known or expected to confuse.
-_HOMOPHONES: dict[str, tuple[str, ...]] = {
-    "衍": ("燕", "演", "眼", "沿"),
-    "衡": ("恒", "横", "哼"),
-}
+from core.voice.pinyin import to_syllables
 
 # 归一化时剥掉的字符：ASCII 标点 + 中文标点 + 全部空白。
 # Characters stripped during normalisation: ASCII punctuation, CJK punctuation, all whitespace.
@@ -33,6 +41,10 @@ _STRIP = set(
     "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
     "，。！？、；：“”‘’（）《》【】〈〉「」『』…—～·"
 )
+
+# 句首容差：唤醒词前允许的噪音字数（语气词/口头禅）。
+# Leading tolerance: how many noise characters (fillers) may precede the keyword.
+MAX_LEAD_CHARS = 2
 
 
 def normalize(text: str) -> str:
@@ -52,30 +64,6 @@ def normalize(text: str) -> str:
     return "".join(ch for ch in text if ch not in _STRIP)
 
 
-def _variants(keyword: str) -> list[str]:
-    """把唤醒词展开成「原字 ∪ 同音字」的所有组合。
-
-    例：衍衡 → 衍衡 / 衍恒 / 燕衡 / 燕恒 / …（5 × 4 = 20 种）。
-
-    Expand a wake word into every combination of its characters and their homophones. For 衍衡
-    that is 5 × 4 = 20 candidates.
-
-    Args:
-        keyword: 唤醒词。The wake word.
-
-    Returns:
-        候选字面量列表；唤醒词为空时返回空列表。The candidate literals, empty when the keyword is blank.
-    """
-    key = normalize(keyword)
-    if not key:
-        return []
-    sets = [tuple({ch, *_HOMOPHONES.get(ch, ())}) for ch in key]
-    out = [""]
-    for chars in sets:
-        out = [prefix + ch for prefix in out for ch in chars]
-    return out
-
-
 @dataclass(frozen=True)
 class WakeResult:
     """唤醒判定结果。The outcome of a wake-word judgement.
@@ -93,14 +81,18 @@ class WakeResult:
 
 
 def detect(text: str, keywords: list[str]) -> WakeResult:
-    """判定转写是否**以**唤醒词开头，并切出其后内容作为指令。
+    """判定转写是否**靠近句首**包含唤醒词（拼音级），并切出其后内容作为指令。
 
-    只在开头匹配 —— 唤醒词出现在句中不算命中（`我昨天说衍衡那个事` 不应触发）。
-    多个候选命中时取最长者，避免短词抢占。
+    匹配在「归一化文本的音节序列」上做（音节与字符 1:1 对齐，下标即字符下标）：
+    - 发音对就行：「衍衡/燕恒/言恒/严衡」同为 yanheng，全命中
+    - 句首容差 MAX_LEAD_CHARS：「呃衍衡」命中；「我昨天说衍衡那个事」不命中
+    - 多个候选命中时取最长者，避免短词抢占（「衍」vs「衍衡」）
 
-    Decide whether the transcript **starts with** a wake word and split out what follows as the
-    command. Only a leading match counts: a wake word mid-sentence must not fire ("我昨天说衍衡那个事").
-    When several candidates match, the longest wins so a short one cannot pre-empt a longer one.
+    Decide whether the transcript contains a wake word NEAR THE START (pinyin level) and split out
+    what follows as the command. Matching runs on the normalised text's syllable sequence
+    (syllables align 1:1 with characters, so a syllable index is a character index):
+    pronunciation decides (衍衡/燕恒/言恒/严衡 are all yanheng and all hit); leading tolerance is
+    MAX_LEAD_CHARS (呃衍衡 hits, 我昨天说衍衡那个事 does not); the longest candidate wins.
 
     Args:
         text: ASR 原始转写。The raw ASR transcript.
@@ -110,11 +102,30 @@ def detect(text: str, keywords: list[str]) -> WakeResult:
         判定结果。The judgement.
     """
     norm = normalize(text)
-    best = ""
+    norm_sylls = to_syllables(norm)
+    best_len = 0
+    best_end = -1
     for keyword in keywords:
-        for variant in _variants(keyword):
-            if len(variant) > len(best) and norm.startswith(variant):
-                best = variant
-    if not best:
+        kw_sylls = to_syllables(normalize(keyword))
+        if not kw_sylls:
+            continue
+        # 只看第一次出现：后面的出现必然更偏离句首（前导只会更长）
+        # Only the first occurrence matters: later ones are further from the start.
+        idx = _index_of(norm_sylls, kw_sylls)
+        if idx < 0 or idx > MAX_LEAD_CHARS:
+            continue
+        if len(kw_sylls) > best_len:
+            best_len = len(kw_sylls)
+            best_end = idx + len(kw_sylls)
+    if best_end < 0:
         return WakeResult(matched=False, command="", text=text)
-    return WakeResult(matched=True, command=norm[len(best):], text=text)
+    return WakeResult(matched=True, command=norm[best_end:], text=text)
+
+
+def _index_of(haystack: list[str], needle: list[str]) -> int:
+    """音节序列里找第一次出现的下标（无则 -1）。First occurrence of needle in haystack, or -1."""
+    n = len(needle)
+    for i in range(0, len(haystack) - n + 1):
+        if haystack[i:i + n] == needle:
+            return i
+    return -1

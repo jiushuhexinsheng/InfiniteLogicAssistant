@@ -7,15 +7,23 @@ import { nextTick } from 'vue'
 describe('handleSegment 分流', () => {
   beforeEach(() => { vi.resetModules(); localStorage.clear() })
 
-  async function setup(wakeResp: any) {
+  async function setup(wakeResp: any, checkResp?: any) {
     const sent: string[] = []
     // transcribe 桩必须给出转写文本：「等指令」这一段走的是转写通道，桩若返回 undefined，
     // 「下一段当指令」的用例就永远拿不到指令可发（brief 原文是 vi.fn()，属笔误 —— 已就地补文本）。
     // The transcribe stub must yield a transcript: the "awaiting the command" segment goes through
     // the transcribe channel, and a stub returning undefined would leave that case with no command
     // to send at all. (The brief wrote a bare `vi.fn()`; fixed in place.)
+    //
+    // wakeCheck 是新的本地 KWS 快检（判定先行）；wakeDetect 退居后台提取（提取尾随指令）。
+    // wakeCheck is the new local KWS quick check (verdict first); wakeDetect demoted to
+    // background extraction (pulling the trailing command).
     vi.doMock('../../../api', () => ({
-      api: { wakeDetect: vi.fn(async () => wakeResp), transcribe: vi.fn(async () => ({ ok: true, text: '帮我查天气' })) },
+      api: {
+        wakeCheck: vi.fn(async () => checkResp ?? { ok: true, hit: true, bypass: false }),
+        wakeDetect: vi.fn(async () => wakeResp),
+        transcribe: vi.fn(async () => ({ ok: true, text: '帮我查天气' })),
+      },
     }))
     vi.doMock('../useChat', () => ({
       sendText: (t: string) => { sent.push(t) },
@@ -27,10 +35,11 @@ describe('handleSegment 分流', () => {
     return { mod, sent }
   }
 
-  /** 唤醒词 + 指令 → 直接用后半段起一轮，不再多录一次。 */
-  it('唤醒词带指令 → 直接发起一轮', async () => {
+  /** 唤醒词 + 指令 → 后台提取到指令后直接起一轮（一句话场景）。 */
+  it('唤醒词带指令 → 提取后直接发起一轮', async () => {
     const { mod, sent } = await setup({ ok: true, matched: true, command: '帮我查天气', text: '衍衡，帮我查天气。' })
     await mod.handleSegment(new Blob(['x']))
+    await new Promise((r) => setTimeout(r, 0))   // 等后台提取 settle。Let the background extraction settle.
     expect(sent).toEqual(['帮我查天气'])
   })
 
@@ -38,24 +47,260 @@ describe('handleSegment 分流', () => {
   it('只有唤醒词 → 下一段当指令', async () => {
     const { mod, sent } = await setup({ ok: true, matched: true, command: '', text: '衍衡。' })
     await mod.handleSegment(new Blob(['x']))
+    await new Promise((r) => setTimeout(r, 0))   // 提取为空 → 窗口保持。Extraction empty → window stays.
     expect(sent).toEqual([])
     // 下一段不再判定唤醒词，直接当指令
     await mod.handleSegment(new Blob(['x']))
     expect(sent.length).toBe(1)
   })
 
-  /** 不命中 → 什么都不做（噪音/无关对话被丢弃）。 */
-  it('不命中 → 丢弃', async () => {
-    const { mod, sent } = await setup({ ok: true, matched: false, command: '', text: '今天天气怎么样。' })
+  /** 快检未命中 → 什么都不做（噪音/无关对话被丢弃，不调云端提取）。
+   *  A quick-check miss drops the clip outright (no background extraction call). */
+  it('快检未命中 → 丢弃且不提取', async () => {
+    const { mod, sent } = await setup(
+      { ok: true, matched: true, command: 'X', text: 'X' },   // 提取桩给「会命中」的假结果
+      { ok: true, hit: false, bypass: false },               // 但快检未命中 → 提取根本不该被调
+    )
     await mod.handleSegment(new Blob(['x']))
+    await new Promise((r) => setTimeout(r, 0))
     expect(sent).toEqual([])
+    const { api } = await import('../../../api')
+    expect(vi.mocked(api.wakeDetect)).not.toHaveBeenCalled()
   })
 
-  /** ASR 失败 → 不起轮，且计入失败次数。 */
-  it('唤醒检测失败 → 丢弃并计数', async () => {
-    const { mod, sent } = await setup({ ok: false, error: '上游 502' })
+  /** 快检失败 → 丢弃并计入失败次数（熔断计数）。
+   *  A quick-check failure drops the clip and counts toward the breaker. */
+  it('快检失败 → 丢弃并计数', async () => {
+    const { mod, sent } = await setup(
+      { ok: true, matched: true, command: 'X', text: 'X' },
+      { ok: false },
+    )
     await mod.handleSegment(new Blob(['x']))
     expect(sent).toEqual([])
+    const { api } = await import('../../../api')
+    expect(vi.mocked(api.wakeDetect)).not.toHaveBeenCalled()
+  })
+
+  /** 快检旁路（KWS 模型缺失）→ 回退完整云端判定路径，不丢唤醒。
+   *  A quick-check bypass (KWS model missing) falls back to the full cloud path — never loses the wake. */
+  it('快检旁路 → 回退完整判定路径', async () => {
+    const { mod, sent } = await setup(
+      { ok: true, matched: true, command: '帮我查天气', text: '衍衡，帮我查天气。' },
+      { ok: true, hit: false, bypass: true },
+    )
+    await mod.handleSegment(new Blob(['x']))
+    expect(sent).toEqual(['帮我查天气'])   // 走完整路径：判定+切分直接出结果
+  })
+
+  /** 动作先行：快检命中后立即进等指令窗口，**不等**后台提取返回。
+   *  Act first: the command window opens as soon as the check hits, without waiting
+   *  for the background extraction to return. */
+  it('快检命中 → 立即进等指令窗口（不等提取）', async () => {
+    let release!: (v: any) => void
+    const wakeDetect = vi.fn(() => new Promise<any>((res) => { release = res }))   // 提取挂着不返回
+    vi.doMock('../../../api', () => ({
+      api: {
+        wakeCheck: vi.fn(async () => ({ ok: true, hit: true, bypass: false })),
+        wakeDetect,
+        transcribe: vi.fn(async () => ({ ok: true, text: '帮我查天气' })),
+      },
+    }))
+    vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
+    const store = await import('../store')
+    const mod = await import('../useWakeWord')
+    store.state.value = 'listening'
+
+    await mod.handleSegment(new Blob(['x']))    // 提取仍挂起，窗口必须已开
+    expect(store.state.value).toBe('recording')
+    expect(store.statusLine.value).toContain('请说指令')
+
+    release({ ok: true, matched: true, command: '', text: '衍衡。' })   // 迟来的提取：无指令，无副作用
+  })
+
+  /** 竞态护栏：指令段消费后，迟到的尾随提取结果必须被丢弃（防止双重执行）。
+   *  Race guard: once a segment has been consumed as the command, a late trailing-extraction
+   *  result must be discarded (no double execution). */
+  it('指令段消费后迟到的提取被丢弃', async () => {
+    vi.useFakeTimers()
+    try {
+      let release!: (v: any) => void
+      const wakeDetect = vi.fn(() => new Promise<any>((res) => { release = res }))
+      vi.doMock('../../../api', () => ({
+        api: {
+          wakeCheck: vi.fn(async () => ({ ok: true, hit: true, bypass: false })),
+          wakeDetect,
+          transcribe: vi.fn(async () => ({ ok: true, text: '查天气' })),
+        },
+      }))
+      vi.doMock('../useChat', () => ({ sendText: (t: string) => { sent.push(t) }, sendAnswer: vi.fn(), runTurn: vi.fn() }))
+      vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
+      const sent: string[] = []
+      const store = await import('../store')
+      const mod = await import('../useWakeWord')
+      store.state.value = 'listening'
+
+      await mod.handleSegment(new Blob(['x']))        // 裸唤醒词 → 窗口开，提取挂起
+      await mod.handleSegment(new Blob(['x']))        // 第二段被消费为指令 → sendText('查天气')
+      expect(sent).toEqual(['查天气'])
+
+      release({ ok: true, matched: true, command: '挂起期间冒出的指令', text: 'X' })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(sent).toEqual(['查天气'])               // 迟到提取被丢弃，不得追加执行
+    } finally { vi.useRealTimers() }
+  })
+
+  /** 双重执行竞态（本项目实际踩过的 bug）：指令段转写在途时后台提取先返回 ——
+   *  两者都带「同一句」时只能执行一次。The double-execution race this project actually
+   *  hit: the extraction resolves while the command segment's transcription is still in
+   *  flight — when both carry the same utterance, it must run exactly once. */
+  it('提取与指令段转写同时在途 → 只执行一次', async () => {
+    vi.useFakeTimers()
+    try {
+      let releaseExtract!: (v: any) => void
+      let releaseTranscribe!: (v: any) => void
+      const wakeDetect = vi.fn(() => new Promise<any>((res) => { releaseExtract = res }))
+      const transcribe = vi.fn(() => new Promise<any>((res) => { releaseTranscribe = res }))
+      vi.doMock('../../../api', () => ({
+        api: {
+          wakeCheck: vi.fn(async () => ({ ok: true, hit: true, bypass: false })),
+          wakeDetect,
+          transcribe,
+        },
+      }))
+      vi.doMock('../useChat', () => ({ sendText: (t: string) => { sent.push(t) }, sendAnswer: vi.fn(), runTurn: vi.fn() }))
+      vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
+      const sent: string[] = []
+      const store = await import('../store')
+      const mod = await import('../useWakeWord')
+      store.state.value = 'listening'
+
+      await mod.handleSegment(new Blob(['x']))   // 裸唤醒词 → 窗口开，提取挂起
+      const p = mod.handleSegment(new Blob(['x']))   // 指令段 → 转写挂起（尚未认领）
+
+      releaseExtract({ ok: true, matched: true, command: '查天气', text: '衍衡，查天气' })
+      await vi.advanceTimersByTimeAsync(0)       // 提取先回来 → 认领 → 发送
+
+      releaseTranscribe({ ok: true, text: '查天气' })
+      await p
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(sent).toEqual(['查天气'])           // 恰好一次，不得两连发（两份响应 = 重复音频）
+    } finally { vi.useRealTimers() }
+  })
+
+  /** TTS 回声护栏：播报结束后的尾音/回声段必须整体丢弃 —— 助手自称「衍衡」，
+   *  拾到就误唤醒 → 新回合掐死待答问题 → 新回应再回声（连锁循环的根）。
+   *  Echo guard: segments in the post-playback window must be dropped — the assistant
+   *  calls itself 衍衡, catching it false-wakes, kills the pending question with a new
+   *  turn, and the new response echoes again (the root of the cascade). */
+  it('播报结束后的回声段被丢弃（不唤醒、不代答）', async () => {
+    vi.useFakeTimers()
+    try {
+      const sent: string[] = []
+      vi.doMock('../../../api', () => ({
+        api: {
+          wakeCheck: vi.fn(async () => ({ ok: true, hit: true, bypass: false })),
+          wakeDetect: vi.fn(async () => ({ ok: true, matched: true, command: '打开网页', text: '衍衡打开网页' })),
+          transcribe: vi.fn(async () => ({ ok: true, text: '不要回答我' })),
+        },
+      }))
+      vi.doMock('../useChat', () => ({ sendText: (t: string) => { sent.push(t) }, sendAnswer: vi.fn(), runTurn: vi.fn() }))
+      // speaking 必须是响应式 ref：orchestrator 的 watch 挂在它上面（回声护栏由该 watch 武装）。
+      // speaking must be a reactive ref: the orchestrator's watch hangs on it (it arms the echo guard).
+      const { ref } = await import('vue')
+      const speaking = ref(false)
+      vi.doMock('../useTts', () => ({ speaking, speakAuto: vi.fn() }))
+      const store = await import('../store')
+      const mod = await import('../useWakeWord')
+
+      // 模拟一次播报结束（watch 播报门控 → 启动回声护栏）。
+      // Simulate a playback ending (the speaking watch arms the echo guard).
+      speaking.value = true
+      await nextTick()
+      speaking.value = false
+      await nextTick()
+
+      await mod.handleSegment(new Blob(['x']))   // 回声窗口内的段
+      await vi.advanceTimersByTimeAsync(0)
+      expect(sent).toEqual([])                    // 不得唤醒/发送
+      const { api } = await import('../../../api')
+      expect(vi.mocked(api.wakeCheck)).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(1300)    // 窗口过后恢复
+      await mod.handleSegment(new Blob(['x']))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(sent).toEqual(['打开网页'])
+    } finally { vi.useRealTimers() }
+  })
+
+  /** 段串行化：背靠背的段不得交错穿透 await 空隙双重触发（重复执行/重复录音）。
+   *  Segment serialization: back-to-back segments must not interleave through the await
+   *  gaps and double-fire (repeated execution / repeated recording prompts). */
+  it('背靠背段串行处理，不双重触发', async () => {
+    const sent: string[] = []
+    let active = 0
+    let maxActive = 0
+    const wakeCheck = vi.fn(async () => {
+      active++; maxActive = Math.max(maxActive, active)
+      await new Promise((r) => setTimeout(r, 30))   // 制造 await 空隙
+      active--
+      return { ok: true, hit: true, bypass: false }
+    })
+    vi.doMock('../../../api', () => ({
+      api: {
+        wakeCheck,
+        wakeDetect: vi.fn(async () => ({ ok: true, matched: true, command: 'X', text: '衍衡X' })),
+        transcribe: vi.fn(async () => ({ ok: true, text: 'Y' })),
+      },
+    }))
+    vi.doMock('../useChat', () => ({ sendText: (t: string) => { sent.push(t) }, sendAnswer: vi.fn(), runTurn: vi.fn() }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
+    const store = await import('../store')
+    const mod = await import('../useWakeWord')
+    store.vadConfig.upload_throttle_ms = 0
+
+    void mod.handleSegment(new Blob(['x']))
+    void mod.handleSegment(new Blob(['x']))
+    await new Promise((r) => setTimeout(r, 200))
+
+    expect(maxActive).toBe(1)   // 任意时刻只有一个段在处理中
+    expect(sent).toEqual(['X'])  // 提取只认领一次
+  })
+
+  /** 语音作答后陈旧超时不得再把状态踢进待机（回答完成后不再冒出录音/待答）。
+   *  场景：作答已投递，但前端状态停留在 awaiting_answer（回合继续、状态未变）——
+   *  8 秒前武装的超时若不清掉，会把状态踢进 standby，待机再开口就回到待答录音界面。
+   *  A stale answer timeout must not yank the state into standby after the answer was
+   *  delivered: the answer is in, but the state still sits on awaiting_answer (the turn
+   *  continues without a state change) — the timer armed 8s earlier must be defused. */
+  it('作答后陈旧应答超时不再把状态踢进待机', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.doMock('../../../api', () => ({
+        api: {
+          wakeCheck: vi.fn(async () => ({ ok: true, hit: true, bypass: false })),
+          wakeDetect: vi.fn(async () => ({ ok: true, matched: false, command: '', text: '' })),
+          transcribe: vi.fn(async () => ({ ok: true, text: '允许本次' })),
+        },
+      }))
+      vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
+      vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
+      const store = await import('../store')
+      const mod = await import('../useWakeWord')
+      store.wakeEnabled.value = true
+      store.pendingQuestion.value = {
+        text: '确认执行吗？', kind: 'choice',
+        options: [{ value: 'yes', label: '允许本次' }],
+      }
+      store.state.value = 'awaiting_answer'
+      await nextTick()
+      await mod.handleSegment(new Blob(['x']))   // 作答 → 认领 + 清掉陈旧定时器
+
+      expect(store.state.value).toBe('awaiting_answer')   // 状态未变（回合继续中）
+      await vi.advanceTimersByTimeAsync(9000)             // 越过原 8s 超时点
+      expect(store.state.value).toBe('awaiting_answer')   // 不得被踢进 standby
+    } finally { vi.useRealTimers() }
   })
 
   /**
@@ -70,6 +315,7 @@ describe('handleSegment 分流', () => {
   it('待答提问时走答案通道，不判唤醒词', async () => {
     vi.doMock('../../../api', () => ({
       api: {
+        wakeCheck: vi.fn(async () => ({ ok: true, hit: true, bypass: false })),
         wakeDetect: vi.fn(async () => ({ ok: true, matched: true, command: 'X', text: 'X' })),
         transcribe: vi.fn(async () => ({ ok: true, text: '允许本次' })),
       },
@@ -87,8 +333,9 @@ describe('handleSegment 分流', () => {
     const { handleSegment } = await import('../useWakeWord')
     await handleSegment(new Blob(['x']))
 
+    expect(vi.mocked(api.wakeCheck)).not.toHaveBeenCalled()
     expect(vi.mocked(api.wakeDetect)).not.toHaveBeenCalled()
-    expect(vi.mocked(sendAnswer)).toHaveBeenCalledWith('', 'yes')   // label 精确命中 → 回传 value
+    expect(vi.mocked(sendAnswer)).toHaveBeenCalledWith('', 'yes', 'voice')   // label 精确命中 → 回传 value（source=voice 供审计）
   })
 })
 
@@ -98,39 +345,52 @@ describe('handleSegment 分流', () => {
 describe('useWakeWord 成本控制', () => {
   beforeEach(() => { vi.resetModules(); localStorage.clear() })
 
-  /** 装好桩与真实 store；`wakeDetect` 由调用方注入以便断言调用次数。
-   *  Wire the stubs and the real store; the caller injects `wakeDetect` so the call count can be asserted. */
-  async function setup(wakeDetect: any) {
+  /** 装好桩与真实 store；`wakeCheck` 由调用方注入以便断言探测调用次数。
+   *  Wire the stubs and the real store; the caller injects `wakeCheck` so the probe
+   *  call count can be asserted. */
+  async function setup(wakeCheck: any, wakeDetect?: any) {
     vi.doMock('../../../api', () => ({
-      api: { wakeDetect, transcribe: vi.fn(async () => ({ ok: true, text: '你好' })) },
+      api: {
+        wakeCheck,
+        wakeDetect: wakeDetect ?? vi.fn(async () => ({ ok: true, matched: false, command: '', text: '' })),
+        transcribe: vi.fn(async () => ({ ok: true, text: '你好' })),
+      },
     }))
     vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
     vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
     const store = await import('../store')
     const mod = await import('../useWakeWord')
-    return { mod, store, api: { wakeDetect } }
+    return { mod, store, api: { wakeCheck, wakeDetect } }
   }
 
-  /** 两段之间的间隔小于 upload_throttle_ms → 第二段不上传。 */
+  /** 两段之间的间隔小于 upload_throttle_ms → 第二段不探测。
+   *  Two segments closer than upload_throttle_ms → only one probe. */
   it('节流：间隔小于 upload_throttle_ms 的连续段只上传一次', async () => {
-    const { mod, store, api } = await setup(vi.fn(async () => ({ ok: true, matched: false, command: '', text: '噪音' })))
+    const { mod, store, api } = await setup(
+      vi.fn(async () => ({ ok: true, hit: false, bypass: false })),   // 未命中：不触发后台提取，计数干净
+    )
     store.vadConfig.upload_throttle_ms = 500
 
     await mod.handleSegment(new Blob(['x']))
     await mod.handleSegment(new Blob(['x']))
 
-    expect(api.wakeDetect).toHaveBeenCalledTimes(1)
+    expect(api.wakeCheck).toHaveBeenCalledTimes(1)
   })
 
-  /** 连续失败达阈值 → 停上传并明确提示（spec「错误与降级」：不静默失败）。 */
+  /** 连续失败达阈值 → 停探测并明确提示（spec「错误与降级」：不静默失败）。
+   *  Three consecutive failures stop probing with a visible warning. */
   it('熔断：连续 3 次失败后停止上传并提示', async () => {
-    const { mod, store, api } = await setup(vi.fn(async () => ({ ok: false, error: '上游 502' })))
+    const { mod, store, api } = await setup(vi.fn(async () => ({ ok: false })))
     store.vadConfig.upload_throttle_ms = 0   // 关掉节流，单独验熔断。Throttle off so only the breaker is under test.
 
     for (let i = 0; i < 5; i++) await mod.handleSegment(new Blob(['x']))
 
-    expect(api.wakeDetect).toHaveBeenCalledTimes(3)
-    expect(store.statusLine.value).toContain('云端唤醒不可用')
+    expect(api.wakeCheck).toHaveBeenCalledTimes(3)
+    expect(store.statusLine.value).toContain('云端唤醒暂不可用')
+    // 提示写明两条出路：自动恢复 + 手动关开。
+    // The warning names two ways out: auto-recovery and off/on.
+    expect(store.statusLine.value).toContain('1 分钟后自动重试')
+    expect(store.statusLine.value).toContain('关闭再开启')
   })
 })
 
@@ -153,7 +413,7 @@ describe('useWakeWord 成本控制', () => {
 describe('useWakeWord 熔断恢复', () => {
   beforeEach(() => { vi.resetModules(); localStorage.clear() })
 
-  /** 熔断后关闭再开启 → 计数清零、上传恢复。Recovery via off/on clears the counter and resumes uploads. */
+  /** 熔断后关闭再开启 → 计数清零、探测恢复。Recovery via off/on clears the counter and resumes probes. */
   it('熔断后关闭再开启 → 计数清零且上传恢复（无需刷新页面）', async () => {
     const { ww, store } = await setupWake()
     const { api } = await import('../../../api')
@@ -162,9 +422,9 @@ describe('useWakeWord 熔断恢复', () => {
     await ww.toggleWake()                    // 开启监听。Enable listening.
     for (let i = 0; i < 3; i++) await ww.handleSegment(new Blob(['x']))
 
-    expect(vi.mocked(api.wakeDetect)).toHaveBeenCalledTimes(3)
-    expect(store.statusLine.value).toContain('云端唤醒不可用')
-    // 提示写明的出路必须与实现一致：文案说「关闭再开启唤醒可重试」。
+    expect(vi.mocked(api.wakeCheck)).toHaveBeenCalledTimes(3)
+    expect(store.statusLine.value).toContain('云端唤醒暂不可用')
+    // 提示写明的出路必须与实现一致：文案说「关闭再开启唤醒可立即恢复」。
     // The route named in the warning must match the implementation: it says off/on retries.
     expect(store.statusLine.value).toContain('关闭再开启')
 
@@ -172,7 +432,34 @@ describe('useWakeWord 熔断恢复', () => {
     await ww.toggleWake()                    // 再开启 —— 恢复动作。Switch on again: the recovery.
     await ww.handleSegment(new Blob(['x']))
 
-    expect(vi.mocked(api.wakeDetect)).toHaveBeenCalledTimes(4)   // 真的又上传了。Genuinely uploading again.
+    expect(vi.mocked(api.wakeCheck)).toHaveBeenCalledTimes(4)   // 真的又探测了。Genuinely probing again.
+  })
+
+  /** 冷静期结束后自动恢复试探 —— 断连是间歇性的，不能要求用户手动关开。
+   *  Auto-probe after the cooldown: disconnects are intermittent, so recovery must not
+   *  require a manual off/on. */
+  it('熔断冷静期（60s）结束后自动恢复上传', async () => {
+    vi.useFakeTimers()
+    try {
+      const { ww, store } = await setupWake()
+      const { api } = await import('../../../api')
+      store.vadConfig.upload_throttle_ms = 0
+
+      await ww.toggleWake()
+      for (let i = 0; i < 3; i++) await ww.handleSegment(new Blob(['x']))
+      expect(vi.mocked(api.wakeCheck)).toHaveBeenCalledTimes(3)
+
+      // 冷静期内不上传。No uploads during the cooldown.
+      await ww.handleSegment(new Blob(['x']))
+      expect(vi.mocked(api.wakeCheck)).toHaveBeenCalledTimes(3)
+
+      // 60s 后自动放行试探。A probe is allowed after 60s.
+      await vi.advanceTimersByTimeAsync(61_000)
+      await ww.handleSegment(new Blob(['x']))
+      expect(vi.mocked(api.wakeCheck)).toHaveBeenCalledTimes(4)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
@@ -194,9 +481,13 @@ describe('useWakeWord 状态反馈', () => {
 
   /** 装好桩与真实 store；`wakeDetect` 由调用方注入以便控制解析时机。
    *  Wire the stubs and the real store; the caller injects `wakeDetect` to control when it resolves. */
-  async function setup(wakeDetect: any) {
+  async function setup(wakeDetect: any, checkResp?: any) {
     vi.doMock('../../../api', () => ({
-      api: { wakeDetect, transcribe: vi.fn(async () => ({ ok: true, text: '你好' })) },
+      api: {
+        wakeCheck: vi.fn(async () => checkResp ?? { ok: true, hit: true, bypass: false }),
+        wakeDetect,
+        transcribe: vi.fn(async () => ({ ok: true, text: '你好' })),
+      },
     }))
     vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
     vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
@@ -206,11 +497,14 @@ describe('useWakeWord 状态反馈', () => {
     return { store, mod }
   }
 
-  /** 判定在途 → transcribing；返回未命中 → 回落到原状态（不能卡在识别中）。 */
+  /** cloud 模式（完整云端判定路径）：判定在途 → transcribing；返回未命中 → 回落到原状态。
+   *  Cloud mode (full cloud-judging path): in-flight judgement → transcribing; a miss
+   *  falls back to the prior state. (本地快检路径不设 transcribing —— 它毫秒级返回。) */
   it('云端判定期间进入 transcribing，返回后回落到原状态', async () => {
     let release!: (v: any) => void
     const wakeDetect = vi.fn(() => new Promise<any>((res) => { release = res }))
     const { store, mod } = await setup(wakeDetect)
+    store.setWakeMode('cloud')                  // 走完整云端判定路径。Force the full cloud path.
     store.state.value = 'listening'
 
     const p = mod.handleSegment(new Blob(['x']))
@@ -222,7 +516,8 @@ describe('useWakeWord 状态反馈', () => {
     expect(store.state.value).toBe('listening')      // 未命中 → 回聆听。No match → back to listening.
   })
 
-  /** plan:195 指定的那条：matched 且 command 空 → recording；窗口过期回聆听。 */
+  /** plan:195 指定的那条：快检命中 → 立即 recording 等指令；窗口过期回聆听。
+   *  A quick-check hit enters recording at once (no cloud wait); the window expiry returns to listening. */
   it('只命中唤醒词 → 进入 recording 等指令；窗口过期回聆听', async () => {
     vi.useFakeTimers()
     try {
@@ -233,7 +528,7 @@ describe('useWakeWord 状态反馈', () => {
       store.state.value = 'listening'
 
       await mod.handleSegment(new Blob(['x']))
-      expect(store.state.value).toBe('recording')
+      expect(store.state.value).toBe('recording')    // 命中即动作，不等提取。Acts on the hit, not the extraction.
 
       await vi.advanceTimersByTimeAsync(8000)        // 命令窗口过期。The command window expires.
       expect(store.state.value).toBe('listening')    // 不能永久停在录音中。Never park on "recording".
@@ -252,6 +547,7 @@ describe('useWakeWord 状态反馈', () => {
     const { sendText } = await import('../useChat')
     store.state.value = 'listening'
     await mod.handleSegment(new Blob(['x']))         // 裸唤醒词 → recording。Bare wake word → recording.
+    await new Promise((r) => setTimeout(r, 0))       // 后台提取 settle（无指令，窗口保持）。Extraction settles (no command, window stays).
     expect(store.state.value).toBe('recording')
 
     const p = mod.handleSegment(new Blob(['x']))     // 第二段 = 指令。Second segment is the command.
@@ -358,7 +654,15 @@ async function setupWake(opts: { throwOnStart?: boolean } = {}) {
       getUserMedia,
     },
   })
-  vi.doMock('../../../api', () => ({ api: { wakeDetect: vi.fn(), transcribe: vi.fn() } }))
+  vi.doMock('../../../api', () => ({
+    api: {
+      // wakeCheck 桩返回失败：模拟探测持续失败（熔断计数的来源）。
+      // The wakeCheck stub fails: simulated probe failures (what the breaker counts).
+      wakeCheck: vi.fn(async () => ({ ok: false })),
+      wakeDetect: vi.fn(async () => ({ ok: true, matched: false, command: '', text: '' })),
+      transcribe: vi.fn(async () => ({ ok: true, text: '' })),
+    },
+  }))
   vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
   vi.doMock('../useTts', async () => {
     const { ref } = await import('vue')
@@ -504,10 +808,11 @@ describe('useWakeWord 等待窗口与收尾', () => {
 
   /** 装好桩与真实 store；调用方负责 fake/real 计时器的开关。
    *  Wire the stubs and the real store; the caller owns the fake/real timer switch. */
-  async function setupWait(opts: { wake?: any; sent?: string[] } = {}) {
+  async function setupWait(opts: { wake?: any; check?: any; sent?: string[] } = {}) {
     const sent = opts.sent ?? []
     vi.doMock('../../../api', () => ({
       api: {
+        wakeCheck: opts.check ?? vi.fn(async () => ({ ok: true, hit: true, bypass: false })),
         wakeDetect: opts.wake ?? vi.fn(async () => ({ ok: true, matched: false, command: '', text: '' })),
         transcribe: vi.fn(async () => ({ ok: true, text: '允许本次' })),
       },
@@ -546,28 +851,34 @@ describe('useWakeWord 等待窗口与收尾', () => {
       // to awaiting_answer and this segment is delivered as the answer.
       await mod.handleSegment(new Blob(['x']))
       expect(store.state.value).toBe('awaiting_answer')
-      expect(sendAnswer).toHaveBeenCalledWith('', 'yes')
+      expect(sendAnswer).toHaveBeenCalledWith('', 'yes', 'voice')
     } finally { vi.useRealTimers() }
   })
 
-  /** 只说了唤醒词、没说指令 → 窗口过后，无关语音**不得**被当成指令执行。 */
+  /** 只说了唤醒词、没说指令 → 窗口过后，无关语音**不得**被当成指令执行。
+   *  A bare wake word with no command: after the window expires, unrelated speech must
+   *  not be executed as a command. */
   it('等指令过期 → 之后的无关语音不被当成指令执行', async () => {
     vi.useFakeTimers()
     try {
       const sent: string[] = []
+      const check = vi.fn()
+        .mockResolvedValueOnce({ ok: true, hit: true, bypass: false })   // 第一段：命中（裸唤醒词）
+        .mockResolvedValue({ ok: true, hit: false, bypass: false })      // 之后：无关语音，快检未命中
       const wakeDetect = vi.fn()
-        .mockResolvedValueOnce({ ok: true, matched: true, command: '', text: '衍衡。' })
-        .mockResolvedValue({ ok: true, matched: false, command: '', text: '今天天气怎么样。' })
-      const { store, mod } = await setupWait({ wake: wakeDetect, sent })
+        .mockResolvedValue({ ok: true, matched: true, command: '', text: '衍衡。' })   // 提取无指令 → 窗口保持
+      const { store, mod } = await setupWait({ check, wake: wakeDetect, sent })
 
       await mod.handleSegment(new Blob(['x']))    // 裸唤醒词 → 进等指令窗口。Bare wake word → command window opens.
+      await vi.advanceTimersByTimeAsync(0)        // 后台提取 settle（无指令）。Background extraction settles (no command).
       expect(sent).toEqual([])
 
       await vi.advanceTimersByTimeAsync(8000)     // 窗口过期。The window expires.
       await mod.handleSegment(new Blob(['x']))    // 之后的无关语音。A later unrelated segment.
+      await vi.advanceTimersByTimeAsync(0)
 
       expect(sent).toEqual([])                   // 不得被执行。Must not be executed.
-      expect(wakeDetect).toHaveBeenCalledTimes(2)  // 回到正常唤醒判定。Back to normal wake detection.
+      expect(check).toHaveBeenCalledTimes(2)     // 回到正常唤醒判定。Back to normal wake detection.
       expect(store.statusLine.value).not.toContain('请说指令')
     } finally { vi.useRealTimers() }
   })

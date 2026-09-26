@@ -793,6 +793,38 @@ def test_voice_answer_unknown_session_404(client):
     assert r.status_code == 404
 
 
+def test_voice_answer_rejects_stale_qid_409(client):
+    """携带的 qid 与待答问题不符 → 409（防陈旧语音作答错配）；匹配/缺省则 200。
+    A mismatched qid gets 409 (a stale voice answer cannot be mismatched); a matching
+    or absent qid gets 200.
+    """
+    import asyncio
+
+    from core.api import state
+    from core.orchestrator.control import StopController
+    from core.orchestrator.pipeline import EventQueueChannel
+    from core.orchestrator.session import Session
+
+    session = Session(session_id="ans-qid")
+    channel = EventQueueChannel(asyncio.Queue(), "ans-qid")
+    channel.pending_qid = "q_current"
+    session.channel = channel
+    state.register(session, StopController())
+    try:
+        # 陈旧 qid → 409 且不投递
+        r = client.post("/api/voice/answer",
+                        json={"session_id": "ans-qid", "text": "错", "qid": "q_stale"})
+        assert r.status_code == 409
+        assert channel.answers.empty()
+        # 匹配 qid → 200 且投递
+        r2 = client.post("/api/voice/answer",
+                         json={"session_id": "ans-qid", "text": "对", "qid": "q_current", "source": "voice"})
+        assert r2.status_code == 200
+        assert not channel.answers.empty()
+    finally:
+        state.cleanup("ans-qid")
+
+
 # ─── /api/tools/call 走权限策略 ───
 
 
@@ -1058,6 +1090,65 @@ def test_voice_wake_writes_audit(client, monkeypatch, tmp_path):
     assert any(l.startswith("audio-upload via=wake") and "matched" in l for l in lines), lines
 
 
+# ─── /voice/wake/check 本地 KWS 快检（判定与提取分离的前半段）───
+
+
+def test_voice_wake_check_hit_never_touches_asr(client, monkeypatch):
+    """KWS 命中 → hit=True，且**全程零 ASR 调用** —— 这是「本地判定不上传确认」的硬证据。
+    A KWS hit returns hit=True with **zero ASR calls** — the hard evidence that local
+    judging uploads nothing for confirmation.
+    """
+    import core.voice as voice_pkg
+    import core.voice.kws as kws_pkg
+
+    class _Asr:
+        def available(self):
+            raise AssertionError("check 端点绝不能调 ASR / the check endpoint must never call ASR")
+
+        def transcribe_base64(self, *a, **kw):
+            raise AssertionError("check 端点绝不能调 ASR / the check endpoint must never call ASR")
+
+    monkeypatch.setattr(voice_pkg, "get_asr", lambda: _Asr())
+
+    class _Gate:
+        def detect_wav_bytes(self, wav):
+            return True
+
+    monkeypatch.setattr(kws_pkg, "get_kws", lambda: _Gate())
+    d = client.post("/api/voice/wake/check", json={"audio_base64": "AAAA"}).json()
+    assert d["ok"] is True and d["hit"] is True and d["bypass"] is False
+
+
+def test_voice_wake_check_miss_and_bypass(client, monkeypatch):
+    """未命中 hit=False；闸门旁路 hit=False + bypass=True（前端据此回退完整路径）。
+    A miss returns hit=False; a gate bypass returns hit=False + bypass=True (the
+    frontend falls back to the full path on it).
+    """
+    import core.voice.kws as kws_pkg
+
+    class _GateMiss:
+        def detect_wav_bytes(self, wav):
+            return False
+
+    class _GateBypass:
+        def detect_wav_bytes(self, wav):
+            return None
+
+    monkeypatch.setattr(kws_pkg, "get_kws", lambda: _GateMiss())
+    d = client.post("/api/voice/wake/check", json={"audio_base64": "AAAA"}).json()
+    assert d["ok"] is True and d["hit"] is False and d["bypass"] is False
+
+    monkeypatch.setattr(kws_pkg, "get_kws", lambda: _GateBypass())
+    d = client.post("/api/voice/wake/check", json={"audio_base64": "AAAA"}).json()
+    assert d["ok"] is True and d["hit"] is False and d["bypass"] is True
+
+
+def test_voice_wake_check_without_audio(client):
+    """缺 audio_base64 → 400。A missing audio_base64 yields 400."""
+    r = client.post("/api/voice/wake/check", json={})
+    assert r.status_code == 400
+
+
 def test_voice_transcribe_writes_audit(client, monkeypatch):
     """/voice/transcribe 也必须逐条写审计 —— 它和 /voice/wake 一样把音频送上云。
 
@@ -1103,6 +1194,8 @@ _NON_UPLOAD_VOICE_ENDPOINTS = {
     "/api/voice/utter": "只收文本走 SSE 事件流，不出音频。Text in, SSE event stream out; no audio.",
     "/api/voice/answer": "只把文本/choice 投给编排层（channel.answer），无 ASR、无 HTTP。"
                          "Text/choice handed to the orchestrator's channel.answer; no ASR, no HTTP.",
+    "/api/voice/wake/check": "本地 KWS 快检：音频只到本机判定（sherpa-onnx），不调云端 ASR。"
+                             "Local KWS quick check: audio is judged on-box (sherpa-onnx), no cloud ASR.",
 }
 
 
