@@ -19,7 +19,9 @@
 | GET | `/api/config` | 配置概要（LLM/ASR/TTS profile、唤醒词、VAD） |
 | GET | `/api/tools` | 工具清单（@tool 注册中心的 OpenAI schema 数组） |
 | POST | `/api/voice/utter` | **编排入口**：文本 → SSE 事件流（唯一 agent 路径） |
-| POST | `/api/voice/answer` | 投递澄清/确认问题的回答（解除 ask() 阻塞） |
+| POST | `/api/voice/answer` | 投递澄清/确认问题的回答（可带 qid 配对，解除 ask() 阻塞） |
+| POST | `/api/voice/wake/check` | 本地 KWS 快检：只回答「有没有唤醒词」（毫秒级、零云端调用） |
+| POST | `/api/voice/wake` | 唤醒检测：转写 + 判定 + 切指令（mode=cloud 旁路本地闸门） |
 | POST | `/api/task/{session_id}/stop` | 停止该会话整个任务 |
 | POST | `/api/tools/call` | 单工具执行（前端「重试失败工具」用） |
 | POST | `/api/voice/transcribe` | ASR 转写（JSON 体 audio_base64，16kHz mono WAV） |
@@ -38,7 +40,9 @@
 | `content_delta` / `reasoning_delta` | 文本 / 思考增量（任务答复也流式返回） |
 | `tool_start` / `tool_end` | 工具开始 / 结束（tool_end 含 output 与 status） |
 | `usage` | token 用量增量 |
-| `question` | 需要操作者回答（澄清/确认），回答走 `/api/voice/answer` |
+| `question` | 需要操作者回答（澄清/确认，带 qid），回答走 `/api/voice/answer` |
+| `answer` | 操作员作答入块（qid/text/choice/source，语音可审计） |
+| `block` | 离散消息块直通（image/file/ext:* 等即插即用） |
 | `done` | 本轮完成（含 session_id） |
 | `error` | 出错（含 message） |
 

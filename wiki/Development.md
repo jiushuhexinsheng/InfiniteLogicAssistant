@@ -30,9 +30,10 @@ cd web && npm run build         # 前端类型检查（vue-tsc）+ 生产构建
 
 ## 前端结构要点
 
-- 状态：`web/src/composables/assistant/store.ts` 模块级单例（消息/localStorage 持久化/唤醒模型进度）。
-- 对话流：`useChat.ts` → `streamUtter`（唯一 agent 路径，含澄清问答卡片）。
-- SSE 解析：`web/src/api.ts::streamUtter`（支持 AbortSignal 取消与网络重试）。
+- 状态：`web/src/composables/assistant/store.ts` 模块级单例（消息/localStorage 持久化）；`ChatMessage.blocks` 为事实源、`text` 为派生投影。
+- 消息块协议：`web/src/blocks/`（types / registry 注册协议 / normalize 事件→块流 / speech TTS 管线）；块组件在 `components/blocks/`，新块类型 `registerBlock` 一行注册即插即用。
+- 对话流：`useChat.ts` → `streamUtter`（唯一 agent 路径）；SSE 解析在 `api.ts::streamUtter`（AbortSignal 取消 + 网络重试）。
+- 唤醒：`composables/assistant/wake/`（wakeOrchestrator 编排 / wakeChain 回退链 / 各 provider）；`wakeMatch.ts` 前端拼音匹配（Web Speech 路径）。
 - 新组件：`web/src/components/assistant/`（悬浮球）、`console/`（控制台 Tab），跨页复用放 `ui/` 原语组件（UiButton/UiInput/UiSelect/UiToggle/UiCard/UiModal 等 + 语义令牌）。
 - GUI 自动化（`pyautogui`/`pygetwindow` 等）已打成 wheel 入 `scripts/libs/`，离线 `--no-index` 完整可用。
 
