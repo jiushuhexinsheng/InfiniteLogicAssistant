@@ -1233,9 +1233,20 @@ def test_audio_upload_audit_prefix_is_shared(client, monkeypatch):
     # ① 分类完备：/api/voice/ 下的 POST 端点集合必须被上面两张表完全覆盖。
     # Classification is total: the POST endpoints under /api/voice/ must be fully covered by the
     # two tables above.
+    #
+    # 收集走 OpenAPI schema 而非 app.routes：starlette 1.6 起 include_router 的子路由
+    # 被包进 _IncludedRouter（path=None，真实路由藏在 original_router 且是无前缀的相对
+    # 路径），扁平遍历 app.routes 收集到空集、全表误报 stale。OpenAPI 是公开契约、带
+    # 全路径，对路由内部结构不敏感。
+    # Collected via the OpenAPI schema rather than app.routes: since starlette 1.6,
+    # include_router wraps sub-routes in _IncludedRouter (path=None; the real routes sit
+    # in original_router as prefix-less relative paths), so flat app.routes traversal
+    # collects nothing and the whole table is misreported as stale. OpenAPI is the public
+    # contract, carries full paths, and is immune to route-internals changes.
+    spec = client.app.openapi()
     declared = {
-        r.path for r in client.app.routes
-        if getattr(r, "methods", None) and "POST" in r.methods and r.path.startswith("/api/voice/")
+        path for path, ops in spec.get("paths", {}).items()
+        if "post" in ops and path.startswith("/api/voice/")
     }
     classified = set(_AUDIO_UPLOAD_ENDPOINTS) | set(_NON_UPLOAD_VOICE_ENDPOINTS)
     assert declared == classified, (
