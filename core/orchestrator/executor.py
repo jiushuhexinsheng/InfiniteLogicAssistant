@@ -17,9 +17,10 @@ from core import config
 from core.llm.client import get_llm_client
 from core.logger import logger
 from core.memory.context import build_context
+from core.orchestrator.blocks import HISTORY_LEN, PREVIEW_LEN, make_block
 from core.orchestrator.confirm import confirm_tool
 from core.orchestrator.control import CancellationToken
-from core.orchestrator.events import ContentDeltaEvent, ToolEndEvent, ToolStartEvent
+from core.orchestrator.events import ContentDeltaEvent, ToolEndEvent, ToolStartEvent, from_llm_event
 from core.orchestrator.session import Session
 from core.orchestrator.task import Task
 from core.tools import TOOLS
@@ -101,8 +102,15 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
             async for evt in get_llm_client().retry_stream_chat(history, tools=TOOLS.schemas()):
                 if evt["type"] == "done":
                     assistant_message = evt["message"]
-                elif events is not None and evt["type"] in ("content_delta", "usage"):
-                    await events.put(evt)
+                elif events is not None:
+                    # 经 from_llm_event 统一口径转发：content_delta / reasoning_delta / usage
+                    # （reasoning_delta 此前被静默丢弃 —— 思考流断链的修复点）
+                    # Forward through from_llm_event (single convention): content_delta /
+                    # reasoning_delta / usage. reasoning_delta used to be silently dropped —
+                    # the fix for the broken thinking stream.
+                    forwarded = from_llm_event(evt)
+                    if forwarded is not None:
+                        await events.put(forwarded)
             if assistant_message is None:
                 return {"status": "failed", "summary": "LLM 返回空消息", "steps": steps}
 
@@ -121,23 +129,28 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
                 """
                 cancel.throw_if_cancelled()
                 name = tc["function"]["name"]
+                call_id = tc.get("id", "")
                 raw = tc["function"].get("arguments") or "{}"
                 try:
                     args = json.loads(raw) if isinstance(raw, str) else raw
                 except json.JSONDecodeError:
                     args = {}
                 if events is not None:
-                    await events.put(ToolStartEvent(name=name, args=args).emit())
+                    await events.put(ToolStartEvent(name=name, args=args, call_id=call_id).emit())
                 # 高风险工具先确认（基于工具实际风险，而非任务声明的 risk）
                 ok = await confirm_tool(session, name, args)
                 result = (await TOOLS.acall(name, args, cancel=cancel, session=session)
                           if ok else f"Error: 操作者拒绝调用 {name}")
                 status = "error" if result.startswith("Error") else "ok"
                 if events is not None:
-                    await events.put(ToolEndEvent(name=name, status=status, output=result[:500]).emit())
+                    await events.put(ToolEndEvent(
+                        name=name, status=status, output=result[:PREVIEW_LEN],
+                        call_id=call_id, truncated=len(result) > PREVIEW_LEN,
+                        output_len=len(result),
+                    ).emit())
                 return (
-                    {"step": step, "tool": name, "args": args, "status": status, "result": result[:500]},
-                    {"role": "tool", "tool_call_id": tc.get("id", ""), "content": result},
+                    {"step": step, "tool": name, "args": args, "status": status, "result": result[:PREVIEW_LEN]},
+                    {"role": "tool", "tool_call_id": call_id, "content": result},
                 )
 
             # 免确认的工具并发执行；需确认的逐个串行（确认本身必须串行问）。
@@ -165,7 +178,24 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
                 step_entry, tool_msg = results[i]
                 steps.append(step_entry)
                 history.append(tool_msg)
-                session.append("tool", f"{step_entry['tool']}: {step_entry['result'][:200]}")
+                # 工具以 tool 块入会话（不再产生独立 "tool" 消息行）：
+                # output 入库截 HISTORY_LEN、预览/完整长度随块记录；content 投影
+                # 里的 "name: output[:200]" 文本行承担旧读路径兼容。
+                # Tools enter the session as tool blocks (no standalone "tool" message
+                # rows): output is stored up to HISTORY_LEN with preview/full lengths
+                # recorded; the "name: output[:200]" line in the content projection
+                # serves legacy read paths.
+                full_out = tool_msg["content"]
+                session.append_block("assistant", make_block("tool", {
+                    "call_id": tool_msg.get("tool_call_id", ""),
+                    "name": step_entry["tool"],
+                    "args": step_entry.get("args", {}),
+                    "status": step_entry["status"],
+                    "output": full_out[:HISTORY_LEN],
+                    "output_preview": full_out[:PREVIEW_LEN],
+                    "truncated": len(full_out) > PREVIEW_LEN,
+                    "full_len": len(full_out),
+                }))
         except asyncio.CancelledError:
             return {"status": "stopped", "summary": "已停止", "steps": steps}
         except Exception as e:

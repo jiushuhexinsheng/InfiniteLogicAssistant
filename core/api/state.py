@@ -115,7 +115,8 @@ async def persist(session: Session, created: float | None = None) -> None:
             "finished": datetime.now().isoformat(),
             "state": state_str,
             "messages": [
-                {"role": m.get("role"), "content": m.get("content")}
+                {"role": m.get("role"), "content": m.get("content"),
+                 "blocks": m.get("blocks"), "turn_id": m.get("turn_id"), "ts": m.get("ts")}
                 for m in session.messages[-20:] if isinstance(m, dict)
             ],
             "task": task_dict,

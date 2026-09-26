@@ -73,6 +73,28 @@ async def test_subagent_emits_tool_events(monkeypatch):
     assert any(e["type"] == "tool_end" and e["name"] == "get_datetime" and e["status"] == "ok" for e in evts)
 
 
+@pytest.mark.asyncio
+async def test_subagent_tool_events_carry_agent_and_call_id(monkeypatch):
+    """子代理工具事件带 agent 归属（sub:<type>）与 call_id 配对。
+    Sub-agent tool events carry the agent attribution (sub:<type>) and call_id pairing."""
+    import asyncio
+    fake = _FakeLLM([
+        [_done(tool="get_datetime")],
+        [_done(content="完成")],
+    ])
+    monkeypatch.setattr("core.agent.base.get_llm_client", lambda: fake)
+    events: asyncio.Queue = asyncio.Queue()
+    r = await run_subagent("你是助手", "查时间", events=events, agent="sub:searcher")
+    assert r.status == "done"
+    evts = []
+    while not events.empty():
+        evts.append(events.get_nowait())
+    start = next(e for e in evts if e["type"] == "tool_start")
+    end = next(e for e in evts if e["type"] == "tool_end")
+    assert start["agent"] == end["agent"] == "sub:searcher"
+    assert start["call_id"] == end["call_id"]
+
+
 # ─── 子代理高风险工具确认：非 read 工具未经确认不得执行 ───
 
 def _spy_acall(monkeypatch):

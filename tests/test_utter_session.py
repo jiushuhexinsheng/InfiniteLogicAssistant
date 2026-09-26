@@ -66,3 +66,31 @@ async def test_utter_without_session_id_creates_new(monkeypatch, store):
     assert captured["session_id"]  # 有 session id
     assert captured["seed"] is None  # 无历史种子
     assert captured["persisted"] == captured["session_id"]
+
+
+@pytest.mark.asyncio
+async def test_utter_resume_carries_blocks_in_seed(monkeypatch, store):
+    """恢复会话时历史种子含块结构（tool/thinking 块不再丢失）。
+    The history seed carries block structure on resume (tool/thinking blocks no
+    longer dropped)."""
+    tool_blk = {"v": 1, "id": "blk_t", "type": "tool", "ts": "t", "turn_id": "turn_1",
+                "agent": "", "meta": {}, "payload": {"name": "run_shell_tool", "output": "ok"}}
+    sid = await store.create_conversation("含块会话")
+    await store.save_conversation(sid, [
+        {"role": "user", "content": "跑个命令", "blocks": [{"type": "text", "payload": {"md": "跑个命令"}}],
+         "turn_id": "turn_1", "ts": "2026-09-26T10:00:00"},
+        {"role": "assistant", "content": "run_shell_tool: ok", "blocks": [tool_blk],
+         "turn_id": "turn_1", "ts": "2026-09-26T10:01:00"},
+    ], status="done", summary="s")
+
+    captured = {}
+    client = _client(monkeypatch, store, captured)
+    with client.stream("POST", "/api/voice/utter", json={"text": "继续", "session_id": sid}) as r:
+        assert r.status_code == 200
+        _drain(r)
+
+    seed = captured["seed"]
+    assistant_seed = next(m for m in seed if m["role"] == "assistant")
+    assert assistant_seed["blocks"] == [tool_blk]
+    assert assistant_seed["turn_id"] == "turn_1"
+    assert assistant_seed["ts"] == "2026-09-26T10:01:00"

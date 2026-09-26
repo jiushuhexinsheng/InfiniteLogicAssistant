@@ -153,6 +153,24 @@ class WakeResponse(ApiResponse):
     text: str = ""
 
 
+class WakeCheckResponse(ApiResponse):
+    """本地 KWS 快检响应（`POST /voice/wake/check`）。
+
+    只做「有没有唤醒词」的本地判定（毫秒级、不出本机、不调云端 ASR）：
+    hit=True 命中；hit=False 未命中（调用方丢弃该段）；bypass=True 闸门不可用
+    （模型缺失/解析失败），调用方应回退完整 /voice/wake 路径而不是丢唤醒。
+
+    Local KWS quick-check response. Only the local "is the wake word present"
+    verdict (milliseconds, no cloud ASR): hit=True means yes; hit=False means drop
+    the clip; bypass=True means the gate is unavailable (model missing / parse
+    failure) and the caller should fall back to the full /voice/wake path rather
+    than lose the wake.
+    """
+
+    hit: bool = False
+    bypass: bool = False
+
+
 # ─────────────────────────── tools ───────────────────────────
 
 
@@ -269,11 +287,22 @@ class ScheduleAddResponse(ApiResponse):
 class HistoryMessage(BaseModel):
     """历史记录中的单条消息。
 
-    A single message in a conversation history.
+    content 是纯文本投影（LLM 回喂降级与摘要取用）；blocks 为消息块协议的
+    块列表（消息恒带 blocks，旧历史已清除）。tool_calls 已废弃（块协议的
+    tool 块取代），保留字段仅供 API 形状稳定。
+
+    A single message in a conversation history. content is the plain-text
+    projection (for LLM feed fallback and summaries); blocks is the
+    message-block-protocol list (messages always carry blocks; old history has
+    been dropped). tool_calls is deprecated (superseded by tool blocks) and kept
+    only for API shape stability.
     """
     role: str
     content: str = ""
-    tool_calls: list[dict[str, Any]] | None = None
+    tool_calls: list[dict[str, Any]] | None = None  # 废弃保留（deprecated）
+    blocks: list[dict[str, Any]] = []
+    turn_id: str | None = None
+    ts: str | None = None
 
 
 class HistoryConversation(BaseModel):

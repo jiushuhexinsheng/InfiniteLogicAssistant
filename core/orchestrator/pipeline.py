@@ -10,6 +10,7 @@ consumed by the server's SSE generator; ask() blocks after emitting a question
 event until /api/voice/answer delivers the answer (human in the loop).
 """
 import asyncio
+from uuid import uuid4
 
 from core.llm.client import get_llm_client
 from core.logger import logger
@@ -19,7 +20,8 @@ from core.orchestrator.clarify import run_clarify
 from core.orchestrator.confirm import confirm_if_needed
 from core.orchestrator.control import StopController
 from core.orchestrator.events import (
-    ContentDeltaEvent, DoneEvent, ErrorEvent, QuestionEvent, TaskStateEvent,
+    AnswerEvent, ContentDeltaEvent, DoneEvent, ErrorEvent, QuestionEvent,
+    TaskStateEvent, from_llm_event,
 )
 from core.orchestrator.executor import execute_task
 from core.orchestrator.intent import judge_intent
@@ -114,6 +116,12 @@ class EventQueueChannel(OperatorChannel):
         # 是否正阻塞在 ask()：供 /voice/utter 判断该会话是否已被占用。
         # Whether an ask() is currently pending, so /voice/utter can tell the session is busy.
         self.awaiting_answer = False
+        # 当前待答问题的 qid（ask 时生成、答后清空）：/api/voice/answer 携带 qid 时校验，
+        # 防陈旧语音作答错配到新问题。
+        # qid of the pending question (generated in ask, cleared once answered):
+        # /api/voice/answer validates it when present, so a stale voice answer
+        # cannot be mismatched onto a newer question.
+        self.pending_qid: str | None = None
 
     async def notify(self, text: str) -> None:
         """向事件队列写入 notify 状态事件。Write a notify state event into the event queue."""
@@ -123,33 +131,52 @@ class EventQueueChannel(OperatorChannel):
         """写入 question 事件并阻塞等待操作者回答（串行化，同会话同时最多一个待答问题）。
 
         kind 与 options 随事件下发，前端据此决定渲染按钮还是输入框。
+        问题带 qid 下发，作答可回传配对（陈旧作答拒收）。
 
         Write a question event and block until the operator answers (serialized: at most
         one pending question per session). kind and options travel with the event so the
-        frontend can decide between buttons and a text input.
+        frontend can decide between buttons and a text input. The question carries a
+        qid so answers can be paired (stale answers rejected).
         """
         # 串行化提问：同会话同时最多一个待答问题，避免并发子代理答非所问
         async with self._ask_lock:
+            qid = "q_" + uuid4().hex[:12]
+            self.pending_qid = qid
             await self.events.put(
                 QuestionEvent(question=question, session_id=self.session_id,
-                              kind=kind, options=options or []).emit()
+                              kind=kind, options=options or [], qid=qid).emit()
             )
             self.awaiting_answer = True
             try:
                 return await self.answers.get()
             finally:
                 self.awaiting_answer = False
+                self.pending_qid = None
 
-    def answer(self, text: str, choice: str | None = None) -> None:
+    def answer(self, text: str, choice: str | None = None, *,
+               qid: str | None = None, source: str | None = None) -> bool:
         """投递操作者回答到回答队列（由 /api/voice/answer 调用）。
 
         choice 为结构化选择（"yes" / "no"），由前端确认按钮回传。
+        qid 与当前待答问题不符时拒绝投递并返回 False（防陈旧语音作答错配）；
+        source 标记作答通道（typed / voice / button），随 AnswerEvent 下发可审计。
 
         Deliver the operator's answer into the answer queue (called by
         /api/voice/answer). choice is the structured selection ("yes" / "no")
-        returned by the frontend's confirmation buttons.
+        returned by the frontend's confirmation buttons. When qid does not match
+        the pending question the delivery is rejected (returns False) so a stale
+        voice answer cannot be mismatched. source marks the answering channel
+        (typed / voice / button) and travels with the AnswerEvent for auditing.
+
+        Returns:
+            是否投递成功。Whether the delivery succeeded.
         """
+        if qid is not None and self.pending_qid is not None and qid != self.pending_qid:
+            return False
         self.answers.put_nowait(Answer(text=text, choice=choice))
+        self.events.put_nowait(AnswerEvent(qid=self.pending_qid, text=text,
+                                           choice=choice, source=source).emit())
+        return True
 
 
 async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str) -> None:
@@ -166,6 +193,13 @@ async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str) -
         if evt["type"] == "content_delta":
             await events.put(ContentDeltaEvent(text=evt["text"]).emit())
             reply_parts.append(evt["text"])
+        elif evt["type"] == "reasoning_delta":
+            # 思考流转发（与 executor 路径一致，修复断链）
+            # Forward the reasoning stream (consistent with the executor path;
+            # fixes the broken chain).
+            forwarded = from_llm_event(evt)
+            if forwarded is not None:
+                await events.put(forwarded)
     if reply_parts:
         session.append("assistant", "".join(reply_parts))  # 记录完整回复到会话历史
 
@@ -186,14 +220,27 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
         channel = EventQueueChannel(events, session.id)
     session.channel = channel
     if messages:
+        # 规范化历史种子：过滤合法消息并保证恒带 blocks（种子可能来自旧格式的
+        # {role, content} 裸 dict —— content 包成单 text 块）。
+        # Normalize the history seed: filter valid messages and guarantee blocks
+        # (the seed may be legacy {role, content} bare dicts — wrap content as a
+        # single text block).
+        from core.orchestrator.blocks import make_block
+
+        def _normalize(m: dict) -> dict:
+            if m.get("blocks") is None:
+                m = {**m, "blocks": [make_block("text", {"md": m.get("content") or ""})]
+                     if m.get("content") else []}
+            return m
+
         session.messages = [
-            m for m in messages
+            _normalize(m) for m in messages
             if isinstance(m, dict) and m.get("role") in ("user", "assistant")
             and isinstance(m.get("content"), str)
         ]
         # 确保当前用户消息在末尾（调用方可能只传历史）
         if not session.messages or session.messages[-1].get("role") != "user" or session.messages[-1].get("content") != text:
-            session.messages.append({"role": "user", "content": text})
+            session.append("user", text)
     else:
         session.append("user", text)
     session.set_state(SessionState.UNDERSTANDING)

@@ -55,3 +55,58 @@ async def test_delete(store):
     await store.delete("c1")
     assert await store.get_conversation("c1") is None
     assert await store.list_conversations() == []
+
+
+# ─── 块协议：blocks/turn_id/ts_iso 读写 + 旧历史清除 ───
+# Block protocol: blocks/turn_id/ts_iso round-trip + old-history drop.
+
+
+@pytest.mark.asyncio
+async def test_save_and_get_blocks_round_trip(store):
+    """块结构完整往返：blocks / turn_id / ts 原样读回。
+    Blocks round-trip intact: blocks / turn_id / ts read back unchanged."""
+    blk = {"v": 1, "id": "blk_1", "type": "tool", "ts": "2026-09-26T10:00:00",
+           "turn_id": "turn_1", "agent": "main", "meta": {"tts": "skip"},
+           "payload": {"name": "run_shell_tool", "output": "ok"}}
+    await store.save_conversation("c1", [
+        {"role": "user", "content": "跑个命令", "blocks": [{"type": "text", "payload": {"md": "跑个命令"}}],
+         "turn_id": "turn_1", "ts": "2026-09-26T09:59:00"},
+        {"role": "assistant", "content": "run_shell_tool: ok", "blocks": [blk],
+         "turn_id": "turn_1", "ts": "2026-09-26T10:00:00"},
+    ], status="done", summary="s")
+    conv = await store.get_conversation("c1")
+    m0, m1 = conv["messages"]
+    assert m0["blocks"][0]["type"] == "text"
+    assert m0["turn_id"] == "turn_1"
+    assert m0["ts"] == "2026-09-26T09:59:00"
+    assert m1["blocks"] == [blk]
+    assert m1["ts"] == "2026-09-26T10:00:00"
+
+
+@pytest.mark.asyncio
+async def test_messages_without_blocks_read_as_empty_list(store):
+    """无 blocks 的消息读回为空数组（blocks 恒为数组，不再有 None）。
+    Messages without blocks read back as an empty list (blocks is always a list)."""
+    await store.save_conversation("c1", [{"role": "user", "content": "hi"}], status="done", summary="s")
+    conv = await store.get_conversation("c1")
+    assert conv["messages"][0]["blocks"] == []
+
+
+def test_migration_drops_legacy_rows_without_blocks(tmp_path):
+    """迁移时清除无 blocks 的旧平铺消息行（用户决定不做新旧共存），会话记录保留。
+    Migration deletes legacy flat message rows without blocks (the user opted out
+    of new/old coexistence); conversation records remain."""
+    import sqlite3
+
+    path = tmp_path / "legacy.db"
+    # 造一个旧库：只有原 6 列，插一条旧消息
+    with sqlite3.connect(str(path)) as conn:
+        conn.execute(
+            "CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id TEXT, "
+            "role TEXT, content TEXT, tool_calls TEXT, ts TEXT)"
+        )
+        conn.execute("INSERT INTO messages (conversation_id, role, content) VALUES ('c1', 'user', '旧消息')")
+    store = HistoryStore(path)  # 构造即迁移
+    with sqlite3.connect(str(path)) as conn:
+        rows = conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+    assert rows == 0  # 旧消息行已清除

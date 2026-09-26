@@ -11,6 +11,7 @@ idle; any state may transition to stopped.
 import enum
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Protocol
 
 
@@ -106,9 +107,57 @@ class Session:
             raise ValueError(f"非法状态迁移: {self.state.value} -> {new.value}")
         self.state = new
 
-    def append(self, role: str, content: str) -> None:
-        """追加一条消息到会话历史。Append a message to the session history."""
-        self.messages.append({"role": role, "content": content})
+    def append(self, role: str, content: str, blocks: list[dict] | None = None,
+               ts: str | None = None, turn_id: str = "") -> None:
+        """追加一条消息到会话历史。
+
+        blocks 缺省时以 content 为源生成单 text 块（消息恒带 blocks）；
+        content 是纯文本投影（由 text_projection 从块单向生成），
+        供 LLM 回喂降级与摘要取用。
+
+        Append a message to the session history. When blocks is omitted, a single
+        text block is derived from content (messages always carry blocks). content
+        is the plain-text projection (generated one-way from blocks via
+        text_projection) for LLM feed fallback and summaries.
+        """
+        if blocks is None:
+            from core.orchestrator.blocks import make_block
+            blocks = [make_block("text", {"md": content})] if content else []
+        self.messages.append({
+            "role": role,
+            "content": content,
+            "blocks": blocks,
+            "ts": ts or datetime.now().isoformat(),
+            "turn_id": turn_id,
+        })
+
+    def append_block(self, role: str, block: dict) -> None:
+        """向当前回合的末条消息追加一个块（tool/thinking/answer 均走这里）。
+
+        末条消息角色不匹配或无消息时新建消息；content 投影同步重算。
+        工具行不再产生独立 "tool" 消息。
+
+        Append a block to the last message of the current turn (tool / thinking /
+        answer all go through here). A new message is started when the last one is
+        missing or has a different role; the content projection is recomputed.
+        Tool calls no longer create standalone "tool" messages.
+        """
+        from core.orchestrator.blocks import text_projection
+
+        if self.messages and self.messages[-1].get("role") == role:
+            msg = self.messages[-1]
+            if msg.get("blocks") is None:
+                msg["blocks"] = []
+            msg["blocks"].append(block)
+            msg["content"] = text_projection(msg["blocks"])
+        else:
+            self.messages.append({
+                "role": role,
+                "content": text_projection([block]),
+                "blocks": [block],
+                "ts": block.get("ts") or datetime.now().isoformat(),
+                "turn_id": block.get("turn_id", ""),
+            })
 
     def summary(self, max_messages: int = 8) -> list[dict]:
         """返回最近 N 条消息，供上下文注入。

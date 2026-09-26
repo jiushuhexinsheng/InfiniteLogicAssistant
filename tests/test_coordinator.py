@@ -21,7 +21,7 @@ async def test_coordinator_merges_subtasks(monkeypatch):
             {"goal": "子任务2", "agent_type": "searcher", "independent": True},
         ]
 
-    async def fake_subagent(role, goal, context="", cancel=None, max_steps=None, confirm=None, events=None):
+    async def fake_subagent(role, goal, context="", cancel=None, max_steps=None, confirm=None, events=None, agent=""):
         return SimpleNamespace(status="done", output=f"结果:{goal}", used_tools=["get_datetime"])
 
     async def fake_build(q):
@@ -44,7 +44,7 @@ async def test_coordinator_emits_notify_events(monkeypatch):
     async def fake_decompose(task, ctx=""):
         return [{"goal": "子任务", "agent_type": "doer", "independent": False}]
 
-    async def fake_subagent(role, goal, context="", cancel=None, max_steps=None, confirm=None, events=None):
+    async def fake_subagent(role, goal, context="", cancel=None, max_steps=None, confirm=None, events=None, agent=""):
         return SimpleNamespace(status="done", output="完成", used_tools=[])
 
     async def fake_build(q):

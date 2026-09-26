@@ -12,6 +12,7 @@ from core import config
 from core.llm.client import get_llm_client
 from core.logger import logger
 from core.orchestrator.control import CancellationToken
+from core.orchestrator.blocks import PREVIEW_LEN
 from core.orchestrator.events import ToolEndEvent, ToolStartEvent
 from core.prompts import UNTRUSTED_DATA_NOTE
 from core.tools.base import TOOLS
@@ -46,11 +47,13 @@ async def run_subagent(
     max_steps: int | None = None,
     confirm: Callable[[str, dict], Awaitable[bool]] | None = None,
     events: asyncio.Queue | None = None,
+    agent: str = "",
 ) -> SubAgentResult:
     """执行子任务：LLM 循环（可调工具），直到给出结论或步数/取消。
 
     confirm(name, args)：非 read 工具调用前的确认回调；None 表示无确认通道 → 直接拒绝非 read 工具。
     events 非空时流式发射 tool_start/tool_end（与主 ReAct 路径一致，前端可见子代理工具时间轴）。
+    agent 随工具事件下发（如 sub:searcher），前端可据此显示事件归属徽章。
 
     Execute a sub-task: an LLM loop (with tool-calling) that runs until a
     conclusion is produced, the step limit is reached, or cancellation is
@@ -73,6 +76,8 @@ async def run_subagent(
         events: 非空时流式发射 tool_start / tool_end 事件（前端可见子代理工具时间轴）。
                 When provided, emits ``tool_start`` / ``tool_end`` events
                 (visible in the front-end timeline).
+        agent: 事件归属标识（如 ``sub:searcher``），随工具事件下发。
+               Ownership label for events (e.g. ``sub:searcher``).
     """
     max_steps = max_steps or config.settings.agent.recursion_limit
     history = [
@@ -103,13 +108,15 @@ async def run_subagent(
             if cancel is not None and cancel.is_cancelled:
                 return SubAgentResult("stopped", "已停止", used)
             name = tc["function"]["name"]
+            call_id = tc.get("id", "")
             raw = tc["function"].get("arguments") or "{}"
             try:
                 args = json.loads(raw) if isinstance(raw, str) else raw
             except json.JSONDecodeError:
                 args = {}
             if events is not None:
-                await events.put(ToolStartEvent(name=name, args=args).emit())
+                await events.put(ToolStartEvent(name=name, args=args, call_id=call_id,
+                                                agent=agent or None).emit())
             # 工具调用走权限策略（与主 ReAct 路径一致）：allow 直放 / deny 直接拒绝 /
             # ask 需操作者确认，无确认通道时一律拒绝。
             # Tool calls go through the permission policy (consistent with the main ReAct
@@ -128,7 +135,11 @@ async def run_subagent(
                 result = f"Error: 操作者拒绝调用 {name}"
             if events is not None:
                 status = "error" if result.startswith("Error") else "ok"
-                await events.put(ToolEndEvent(name=name, status=status, output=result[:500]).emit())
+                await events.put(ToolEndEvent(
+                    name=name, status=status, output=result[:PREVIEW_LEN],
+                    call_id=call_id, agent=agent or None,
+                    truncated=len(result) > PREVIEW_LEN, output_len=len(result),
+                ).emit())
             used.append(name)
-            history.append({"role": "tool", "tool_call_id": tc.get("id", ""), "content": result})
+            history.append({"role": "tool", "tool_call_id": call_id, "content": result})
     return SubAgentResult("failed", f"超出步数上限（{max_steps}）", used)

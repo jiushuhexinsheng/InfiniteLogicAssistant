@@ -43,6 +43,24 @@ class HistoryStore:
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id TEXT, "
                 "role TEXT, content TEXT, tool_calls TEXT, ts TEXT)"
             )
+            # 迁移：块协议列 —— blocks（JSON 数组）、turn_id（回合归属）、
+            # ts_iso（消息真实时间；老行为是全表盖同一 now）。
+            # 旧历史直接清除（用户决定不做新旧共存）：无 blocks 的旧平铺消息行删除，
+            # 会话记录保留（message_count 归零）。此后消息恒带 blocks。
+            # Block-protocol columns: blocks (JSON array), turn_id (owning turn),
+            # ts_iso (real message time; the old behavior stamped one `now` over the
+            # whole table). Old history is dropped outright (the user opted out of
+            # new/old coexistence): legacy flat message rows without blocks are
+            # deleted, conversation records remain (message_count goes to zero).
+            # Every message carries blocks from here on.
+            msg_cols = [r[1] for r in conn.execute("PRAGMA table_info(messages)").fetchall()]
+            if "blocks" not in msg_cols:
+                conn.execute("ALTER TABLE messages ADD COLUMN blocks TEXT")
+            if "turn_id" not in msg_cols:
+                conn.execute("ALTER TABLE messages ADD COLUMN turn_id TEXT")
+            if "ts_iso" not in msg_cols:
+                conn.execute("ALTER TABLE messages ADD COLUMN ts_iso TEXT")
+            conn.execute("DELETE FROM messages WHERE blocks IS NULL")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id)")
 
     def _conn(self):
@@ -102,9 +120,15 @@ class HistoryStore:
                 if not isinstance(m, dict):
                     continue
                 tool_calls = json.dumps(m.get("tool_calls"), ensure_ascii=False) if m.get("tool_calls") else None
+                blocks = json.dumps(m.get("blocks"), ensure_ascii=False) if m.get("blocks") else None
+                # ts_iso：消息真实时间（块协议带 ts）；缺省回退整表 now（旧行为）
+                # ts_iso: the message's real time (blocks carry ts); falls back to the
+                # table-wide now (legacy behavior).
                 conn.execute(
-                    "INSERT INTO messages (conversation_id, role, content, tool_calls, ts) VALUES (?,?,?,?,?)",
-                    (conv_id, m.get("role", ""), m.get("content", "") or "", tool_calls, now),
+                    "INSERT INTO messages (conversation_id, role, content, tool_calls, ts, blocks, turn_id, ts_iso) "
+                    "VALUES (?,?,?,?,?,?,?,?)",
+                    (conv_id, m.get("role", ""), m.get("content", "") or "", tool_calls, now,
+                     blocks, m.get("turn_id") or None, m.get("ts") or now),
                 )
 
     async def list_conversations(self, limit: int = 30, archived: bool | None = False) -> list[dict]:
@@ -142,14 +166,20 @@ class HistoryStore:
             if not c:
                 return None
             msgs = conn.execute(
-                "SELECT role, content, tool_calls FROM messages WHERE conversation_id=? ORDER BY id", (conv_id,)
+                "SELECT role, content, tool_calls, blocks, turn_id, ts_iso FROM messages "
+                "WHERE conversation_id=? ORDER BY id", (conv_id,)
             ).fetchall()
         return {
             "id": c[0], "name": c[1], "created": c[2], "updated": c[3], "status": c[4] or "", "summary": c[5] or "",
             "archived": bool(c[6]),
             "messages": [
                 {"role": m[0], "content": m[1] or "",
-                 "tool_calls": json.loads(m[2]) if m[2] else None}
+                 "tool_calls": json.loads(m[2]) if m[2] else None,
+                 # 旧历史已在迁移时清除，blocks 恒为数组（最坏为空）
+                 # Old history was dropped at migration; blocks is always a list.
+                 "blocks": json.loads(m[3]) if m[3] else [],
+                 "turn_id": m[4] or None,
+                 "ts": m[5] or None}
                 for m in msgs
             ],
         }

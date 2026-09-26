@@ -129,6 +129,7 @@ async def run_coordinator(task: Task, session: Session, cancel: CancellationToke
         r = await run_subagent(
             _ROLE_PROMPTS.get(s["agent_type"], _ROLE_PROMPTS["doer"]),
             s["goal"], context=sub_context, cancel=cancel, confirm=_confirm, events=events,
+            agent=f"sub:{s['agent_type']}",
         )
         executed.append({
             "goal": s["goal"], "agent_type": s["agent_type"],
@@ -167,6 +168,7 @@ async def run_coordinator(task: Task, session: Session, cancel: CancellationToke
         critic_prompt += f"\n\n背景信息：\n{ctx}"
     critic = await run_subagent(
         _ROLE_PROMPTS["critic"], critic_prompt, cancel=cancel, confirm=_confirm, events=events,
+        agent="sub:critic",
     )
     critique = critic.output[:500]
 

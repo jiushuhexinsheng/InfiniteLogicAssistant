@@ -273,6 +273,62 @@ async def test_execute_emits_streaming_events(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_execute_forwards_reasoning_delta(monkeypatch):
+    """reasoning_delta 不再被丢弃 —— 思考流断链修复的回归。
+    reasoning_delta is no longer dropped — regression for the broken thinking stream."""
+    import asyncio
+    fake = _FakeLLM([
+        [{"type": "reasoning_delta", "text": "先想想"},
+         {"type": "reasoning_delta", "text": "再算算"},
+         _done(content="结果是 2")],
+    ])
+    monkeypatch.setattr("core.orchestrator.executor.get_llm_client", lambda: fake)
+    s = Session()
+    s.channel = _Channel([])
+    events: asyncio.Queue = asyncio.Queue()
+    r = await execute_task(Task("t", "算 1+1", risk="read"), s, CancellationToken(), events)
+    assert r["status"] == "done"
+    reasoning = []
+    while not events.empty():
+        e = events.get_nowait()
+        if e["type"] == "reasoning_delta":
+            reasoning.append(e["text"])
+    assert "".join(reasoning) == "先想想再算算"
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_events_carry_call_id_and_truncation(monkeypatch):
+    """工具事件带 call_id 配对与显式截断标注（truncated / output_len）。
+    Tool events carry call_id pairing and explicit truncation marks."""
+    import asyncio
+    big_output = "x" * 600
+    fake = _FakeLLM([
+        [_done(tool="calculate", args=json.dumps({"expression": "1+1"}))],
+        [_done(content="好")],
+    ])
+    monkeypatch.setattr("core.orchestrator.executor.get_llm_client", lambda: fake)
+
+    import core.tools as tools_pkg
+    async def fake_acall(name, args, cancel=None, session=None):
+        return big_output
+    monkeypatch.setattr(tools_pkg.TOOLS, "acall", fake_acall)
+    s = Session()
+    s.channel = _Channel([])
+    events: asyncio.Queue = asyncio.Queue()
+    r = await execute_task(Task("t", "跑命令", risk="read"), s, CancellationToken(), events)
+    assert r["status"] == "done"
+    evts = []
+    while not events.empty():
+        evts.append(events.get_nowait())
+    start = next(e for e in evts if e["type"] == "tool_start")
+    end = next(e for e in evts if e["type"] == "tool_end")
+    assert start["call_id"] == end["call_id"] == "c"  # _done 的 tool id
+    assert end["truncated"] is True
+    assert end["output_len"] == 600
+    assert len(end["output"]) == 500
+
+
+@pytest.mark.asyncio
 async def test_auto_allowed_tools_run_concurrently(monkeypatch):
     """被策略 allow 的工具（含 write 级）并发执行，不再逐个确认。
 

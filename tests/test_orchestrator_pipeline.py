@@ -46,9 +46,14 @@ async def test_channel_ask_blocks_until_answer():
         return await ch.ask("问题?")
 
     t = asyncio.ensure_future(do_ask())
-    # question 事件已入队（含 session_id / kind / options，供前端决定渲染方式）
+    # question 事件已入队（含 session_id / kind / options / qid，供前端决定渲染方式与问答配对）
     evt = await _next_event(events)
-    assert evt == {"type": "question", "question": "问题?", "session_id": "s1", "kind": "text", "options": []}
+    assert evt["type"] == "question"
+    assert evt["question"] == "问题?"
+    assert evt["session_id"] == "s1"
+    assert evt["kind"] == "text"
+    assert evt["options"] == []
+    assert evt["qid"].startswith("q_")
     # 投递回答 → ask 返回
     ch.answer("回答")
     assert await asyncio.wait_for(t, timeout=1.0) == Answer(text="回答")
@@ -86,6 +91,62 @@ async def test_channel_ask_composite_kind():
     assert (await _next_event(events))["kind"] == "composite"
     ch.answer("补充说明")
     assert await asyncio.wait_for(t, timeout=1.0) == Answer(text="补充说明")
+
+
+@pytest.mark.asyncio
+async def test_channel_answer_emits_answer_event():
+    """投递回答时同步发射 AnswerEvent（作答入块、source 可审计）。
+    Delivering an answer also emits an AnswerEvent (answers become blocks, source auditable)."""
+    events: asyncio.Queue = asyncio.Queue()
+    ch = EventQueueChannel(events, session_id="s1")
+
+    async def do_ask():
+        return await ch.ask("哪个城市？")
+
+    t = asyncio.ensure_future(do_ask())
+    qid = (await _next_event(events))["qid"]
+    assert ch.answer("上海", source="voice") is True
+    assert await asyncio.wait_for(t, timeout=1.0) == Answer(text="上海")
+    answer_evt = await _next_event(events)
+    assert answer_evt["type"] == "answer"
+    assert answer_evt["qid"] == qid
+    assert answer_evt["text"] == "上海"
+    assert answer_evt["source"] == "voice"
+
+
+@pytest.mark.asyncio
+async def test_channel_answer_rejects_stale_qid():
+    """qid 与待答问题不符 → 拒绝投递（防陈旧语音作答错配），answer 仍阻塞。
+    A mismatched qid is refused (a stale voice answer cannot be mismatched); the
+    ask() remains blocked."""
+    events: asyncio.Queue = asyncio.Queue()
+    ch = EventQueueChannel(events, session_id="s1")
+
+    async def do_ask():
+        return await ch.ask("哪个城市？")
+
+    t = asyncio.ensure_future(do_ask())
+    await _next_event(events)  # 消费 question 事件
+    assert ch.answer("错误答案", qid="q_stale") is False
+    # 未投递 → ask 仍阻塞；正确 qid 投递成功
+    assert ch.answer("上海", qid=ch.pending_qid) is True
+    assert await asyncio.wait_for(t, timeout=1.0) == Answer(text="上海")
+
+
+@pytest.mark.asyncio
+async def test_channel_answer_without_qid_is_legacy_passthrough():
+    """不带 qid 的作答照旧投递（兼容旧前端/旧调用方）。
+    An answer without qid is delivered as before (legacy callers unaffected)."""
+    events: asyncio.Queue = asyncio.Queue()
+    ch = EventQueueChannel(events, session_id="s1")
+
+    async def do_ask():
+        return await ch.ask("哪个城市？")
+
+    t = asyncio.ensure_future(do_ask())
+    await _next_event(events)
+    assert ch.answer("上海") is True
+    assert await asyncio.wait_for(t, timeout=1.0) == Answer(text="上海")
 
 
 @pytest.mark.asyncio
