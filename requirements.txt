@@ -6,7 +6,9 @@
 httpx==0.28.1
 fastapi==0.141.1
 uvicorn[standard]==0.52.1
-duckduckgo-search==8.1.1
+# ddgs（原 duckduckgo-search，已改名并停维护旧名）；search.py 优先 import ddgs、旧包兜底
+# ddgs (formerly duckduckgo-search; the old name is unmaintained and warns on every call)
+ddgs==9.16.0
 pyyaml==6.0.3
 loguru==0.7.3
 openpyxl==3.1.5
@@ -18,3 +20,17 @@ mcp==2.0.0
 pyautogui==0.9.54
 pygetwindow==0.0.9
 pillow==12.3.0
+# 语音唤醒（本地 KWS 前置闸门 + 拼音级判定）：
+# sherpa-onnx 关键词检测引擎；3.3M 模型不入 git（models/ 已 gitignore），下载解压到
+# models/：https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/
+# sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01.tar.bz2 （缺模型时闸门自动旁路，
+# 回退云端判定，不阻塞唤醒）。sentencepiece 是 sherpa text2token 生成关键词文件的依赖；
+# pypinyin 提供无声调拼音。
+# Voice wake (local KWS pre-gate + pinyin-level matching): sherpa-onnx keyword
+# spotting; the 3.3M model is NOT committed (models/ is gitignored) — download and
+# extract into models/ from the github release above (missing model auto-bypasses the
+# gate to cloud judging, never blocking wake). sentencepiece backs sherpa's
+# text2token; pypinyin provides toneless pinyin.
+sherpa-onnx==1.13.8
+sentencepiece==0.2.2
+pypinyin==0.55.0

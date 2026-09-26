@@ -38,3 +38,13 @@ docs/superpowers/plans/voice-verification-report.md
 
 # SDD 执行工作区（git-ignored 草稿）
 .superpowers/
+
+# 本地工作产物（勿入库）
+# Local working artifacts (never committed).
+/tmp/
+/models/
+/screenshots/
+/.design-audit/
+/design/
+/.claude/
+screen*.png
