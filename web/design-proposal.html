@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>无限逻辑助手 - 页面优化方案</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: "Microsoft YaHei", sans-serif; background: #0f172a; color: #e2e8f0; }
+    
+    .container { max-width: 1200px; margin: 0 auto; padding: 40px 20px; }
+    
+    h1 { 
+      text-align: center; 
+      font-size: 36px; 
+      margin-bottom: 40px;
+      background: linear-gradient(135deg, #a5b4fc, #67e8f9, #6ee7b7);
+      -webkit-background-clip: text; 
+      background-clip: text; 
+      color: transparent;
+    }
+    
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      margin-bottom: 60px;
+    }
+    
+    .panel {
+      background: rgba(30, 41, 59, 0.8);
+      border-radius: 16px;
+      padding: 30px;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+    
+    .panel-title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .badge {
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    .badge-before { background: rgba(248, 113, 113, 0.2); color: #f87171; }
+    .badge-after { background: rgba(52, 211, 153, 0.2); color: #34d399; }
+    
+    .issue-list { list-style: none; }
+    
+    .issue-item {
+      padding: 15px;
+      margin-bottom: 12px;
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 10px;
+      border-left: 3px solid;
+    }
+    
+    .issue-high { border-color: #f87171; }
+    .issue-medium { border-color: #fbbf24; }
+    .issue-low { border-color: #60a5fa; }
+    
+    .issue-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .issue-desc {
+      font-size: 14px;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+    
+    .metric {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: monospace;
+    }
+    
+    .metric-bad { background: rgba(248, 113, 113, 0.2); color: #f87171; }
+    .metric-good { background: rgba(52, 211, 153, 0.2); color: #34d399; }
+    
+    .solution-section {
+      margin-bottom: 60px;
+    }
+    
+    .solution-title {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: #67e8f9;
+    }
+    
+    .code-block {
+      background: #1e293b;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px;
+      overflow-x: auto;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+    
+    .code-block pre {
+      font-family: "Cascadia Code", "JetBrains Mono", monospace;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #e2e8f0;
+    }
+    
+    .code-block code {
+      color: #67e8f9;
+    }
+    
+    .checklist {
+      list-style: none;
+    }
+    
+    .checklist li {
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .checklist li:last-child { border-bottom: none; }
+    
+    .check-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    
+    .check-pending { background: rgba(148, 163, 184, 0.2); color: #94a3b8; }
+    .check-done { background: rgba(52, 211, 153, 0.2); color: #34d399; }
+    
+    .priority-legend {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 30px;
+      justify-content: center;
+    }
+    
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+    }
+    
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+    
+    .dot-high { background: #f87171; }
+    .dot-medium { background: #fbbf24; }
+    .dot-low { background: #60a5fa; }
+    
+    .summary {
+      text-align: center;
+      padding: 40px;
+      background: linear-gradient(135deg, rgba(165, 180, 252, 0.1), rgba(103, 232, 249, 0.1));
+      border-radius: 16px;
+      border: 1px solid rgba(103, 232, 249, 0.2);
+    }
+    
+    .summary h2 {
+      font-size: 28px;
+      margin-bottom: 16px;
+      color: #67e8f9;
+    }
+    
+    .summary p {
+      font-size: 16px;
+      color: #94a3b8;
+      line-height: 1.6;
+    }
+    
+    @media (max-width: 768px) {
+      .comparison {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>无限逻辑助手 - 页面优化方案</h1>
+    
+    <div class="priority-legend">
+      <div class="legend-item">
+        <div class="legend-dot dot-high"></div>
+        <span>高优先级</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot dot-medium"></div>
+        <span>中优先级</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot dot-low"></div>
+        <span>低优先级</span>
+      </div>
+    </div>
+    
+    <div class="comparison">
+      <div class="panel">
+        <div class="panel-title">
+          <span class="badge badge-before">修复前</span>
+          当前问题
+        </div>
+        <ul class="issue-list">
+          <li class="issue-item issue-high">
+            <div class="issue-title">
+              导航按钮对比度不足
+              <span class="metric metric-bad">1.07:1</span>
+            </div>
+            <div class="issue-desc">
+              活动导航按钮文字颜色与背景过于接近，难以阅读。需要达到 <span class="metric metric-good">4.5:1</span> 以上。
+            </div>
+          </li>
+          <li class="issue-item issue-high">
+            <div class="issue-title">
+              输入框焦点不可见
+              <span class="metric metric-bad">outline:none</span>
+            </div>
+            <div class="issue-desc">
+              输入框获得焦点时没有视觉提示，键盘用户无法知道当前焦点位置。
+            </div>
+          </li>
+          <li class="issue-item issue-high">
+            <div class="issue-title">
+              麦克风按钮太小
+              <span class="metric metric-bad">16×16px</span>
+            </div>
+            <div class="issue-desc">
+              按钮尺寸太小，难以在移动设备上点击。建议增大到 <span class="metric metric-good">44×44px</span>。
+            </div>
+          </li>
+          <li class="issue-item issue-high">
+            <div class="issue-title">
+              开关控件缺少标签
+              <span class="metric metric-bad">无 aria-label</span>
+            </div>
+            <div class="issue-desc">
+              切换开关没有可访问名称，屏幕阅读器无法识别其用途。
+            </div>
+          </li>
+          <li class="issue-item issue-medium">
+            <div class="issue-title">
+              部分文字太小
+              <span class="metric metric-bad">10px</span>
+            </div>
+            <div class="issue-desc">
+              某些辅助文字字号过小，影响可读性。建议最小 <span class="metric metric-good">12px</span>。
+            </div>
+          </li>
+          <li class="issue-item issue-medium">
+            <div class="issue-title">
+              页脚行高不足
+              <span class="metric metric-bad">1.2</span>
+            </div>
+            <div class="issue-desc">
+              页脚文字行高太紧凑，建议提高到 <span class="metric metric-good">1.5</span> 以改善可读性。
+            </div>
+          </li>
+          <li class="issue-item issue-low">
+            <div class="issue-title">
+              间距不统一
+              <span class="metric metric-bad">15种值</span>
+            </div>
+            <div class="issue-desc">
+              页面使用了15种不同的间距值，建议统一到4px网格系统。
+            </div>
+          </li>
+        </ul>
+      </div>
+      
+      <div class="panel">
+        <div class="panel-title">
+          <span class="badge badge-after">修复后</span>
+          优化效果
+        </div>
+        <ul class="issue-list">
+          <li class="issue-item issue-high" style="border-color: #34d399;">
+            <div class="issue-title">
+              导航按钮对比度达标
+              <span class="metric metric-good">4.5:1+</span>
+            </div>
+            <div class="issue-desc">
+              使用亮青色文字和半透明背景，确保在深色背景上清晰可读。
+            </div>
+          </li>
+          <li class="issue-item issue-high" style="border-color: #34d399;">
+            <div class="issue-title">
+              焦点样式清晰可见
+              <span class="metric metric-good">2px 青色轮廓</span>
+            </div>
+            <div class="issue-desc">
+              所有交互元素在获得焦点时显示明显的青色轮廓，便于键盘导航。
+            </div>
+          </li>
+          <li class="issue-item issue-high" style="border-color: #34d399;">
+            <div class="issue-title">
+              按钮尺寸符合标准
+              <span class="metric metric-good">44×44px</span>
+            </div>
+            <div class="issue-desc">
+              麦克风按钮和其他交互元素增大到44px，便于触摸操作。
+            </div>
+          </li>
+          <li class="issue-item issue-high" style="border-color: #34d399;">
+            <div class="issue-title">
+              完整的可访问性标签
+              <span class="metric metric-good">aria-label</span>
+            </div>
+            <div class="issue-desc">
+              所有控件都添加了适当的ARIA标签，屏幕阅读器可以正确识别。
+            </div>
+          </li>
+          <li class="issue-item issue-medium" style="border-color: #34d399;">
+            <div class="issue-title">
+              字号符合最小标准
+              <span class="metric metric-good">≥12px</span>
+            </div>
+            <div class="issue-desc">
+              所有文字字号调整到12px以上，确保在各种设备上清晰可读。
+            </div>
+          </li>
+          <li class="issue-item issue-medium" style="border-color: #34d399;">
+            <div class="issue-title">
+              行高舒适易读
+              <span class="metric metric-good">1.5</span>
+            </div>
+            <div class="issue-desc">
+              页脚和其他文本区域的行高调整到1.5，阅读体验更舒适。
+            </div>
+          </li>
+          <li class="issue-item issue-low" style="border-color: #34d399;">
+            <div class="issue-title">
+              间距统一规范
+              <span class="metric metric-good">4px网格</span>
+            </div>
+            <div class="issue-desc">
+              所有间距统一到4px网格系统，视觉更加协调一致。
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+    
+    <div class="solution-section">
+      <div class="solution-title">📝 CSS 修复代码</div>
+      
+      <div class="code-block">
+<pre><code>/* 1. 修复对比度问题 */
+.ah-nav-item.active {
+  color: var(--brand-c2); /* 使用亮青色 */
+  background: rgba(103, 232, 249, .12);
+}
+
+/* 2. 添加焦点样式 */
+.ui-input:focus-visible,
+.ui-button:focus-visible,
+.ui-toggle:focus-visible {
+  outline: 2px solid var(--brand-c2);
+  outline-offset: 2px;
+}
+
+/* 3. 增大点击目标 */
+.ball-mic {
+  width: 44px;
+  height: 44px;
+  padding: 10px;
+}
+
+/* 4. 统一间距到4px网格 */
+:root {
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 48px;
+}
+
+/* 5. 精简字号阶梯 */
+:root {
+  --fs-xs: 12px;
+  --fs-sm: 14px;
+  --fs-md: 16px;
+  --fs-lg: 18px;
+  --fs-xl: 24px;
+  --fs-2xl: 32px;
+  --fs-3xl: 48px;
+}
+
+/* 6. 修复页脚行高 */
+.page-footer {
+  line-height: 1.5;
+  padding: 16px 0;
+}</code></pre>
+      </div>
+    </div>
+    
+    <div class="solution-section">
+      <div class="solution-title">✅ 验收清单</div>
+      
+      <ul class="checklist">
+        <li>
+          <div class="check-icon check-pending">○</div>
+          <span>WCAG 对比度 ≥ 4.5:1</span>
+        </li>
+        <li>
+          <div class="check-icon check-pending">○</div>
+          <span>所有交互元素有焦点样式</span>
+        </li>
+        <li>
+          <div class="check-icon check-pending">○</div>
+          <span>点击目标 ≥ 44×44px</span>
+        </li>
+        <li>
+          <div class="check-icon check-pending">○</div>
+          <span>间距统一到 4px 网格</span>
+        </li>
+        <li>
+          <div class="check-icon check-pending">○</div>
+          <span>字号阶梯 ≤ 8 种</span>
+        </li>
+        <li>
+          <div class="check-icon check-pending">○</div>
+          <span>标题层级连续</span>
+        </li>
+        <li>
+          <div class="check-icon check-pending">○</div>
+          <span>所有控件有可访问名称</span>
+        </li>
+      </ul>
+    </div>
+    
+    <div class="summary">
+      <h2>🎯 优化目标</h2>
+      <p>
+        通过以上改进，页面将达到 WCAG 2.1 AA 级别的可访问性标准，<br>
+        同时保持现有的深色赛博朋克视觉风格，提升用户体验和可用性。
+      </p>
+    </div>
+  </div>
+</body>
+</html>

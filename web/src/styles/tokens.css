@@ -1,102 +1,91 @@
-/* 无限逻辑·语音助手 — 设计令牌（唯一 token 来源）
-   组件内的 --panel-bg / --border-base / --text-* / --brand-* 均沿用此处定义。 */
+/* 无限逻辑·语音助手 — 设计令牌
+   简洁静态设计：统一 4px 网格、精简字号、高对比度、无动画 */
 :root {
-  /* ── 色板 ── */
-  --bg-0: #020617;                 /* 最深背景 */
-  --bg-1: #0f172a;                 /* 面板/卡片底 */
-  --bg-2: #1e293b;                 /* 抬升面 */
-  --bg-3: #334155;                 /* 边框/分隔 */
-  --brand-c1: #a5b4fc;             /* 靛 */
-  --brand-c2: #67e8f9;             /* 青 */
-  --brand-c3: #6ee7b7;             /* 绿 */
-  --brand-grad: linear-gradient(135deg, var(--brand-c1), var(--brand-c2), var(--brand-c3));
-  --rainbow: conic-gradient(from 0deg,
-    #ef4444, #f97316, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444);
+  /* ── 色板（高对比度） ── */
+  --bg-0: #0a0f1a;
+  --bg-1: #111827;
+  --bg-2: #1f2937;
+  --bg-3: #374151;
+  --brand-c1: #818cf8;
+  --brand-c2: #22d3ee;
+  --brand-c3: #34d399;
+  --brand-grad: linear-gradient(135deg, var(--brand-c1), var(--brand-c2));
   --ok: #34d399;
   --warn: #fbbf24;
   --err: #f87171;
   --info: #22d3ee;
 
-  /* ── 表面 / 玻璃 ── */
-  --panel-bg: rgba(15, 23, 42, .92);
-  --glass-bg: rgba(15, 23, 42, .66);
-  --glass-bg-strong: rgba(15, 23, 42, .82);
-  --glass-border: rgba(148, 163, 184, .16);
-  --border-base: #334155;
-  --border-soft: rgba(148, 163, 184, .14);
-  --hairline: linear-gradient(90deg, transparent, rgba(165, 180, 252, .45), rgba(103, 232, 249, .45), transparent);
+  /* ── 表面 ── */
+  --panel-bg: rgba(17, 24, 39, .95);
+  --glass-bg: rgba(17, 24, 39, .8);
+  --glass-bg-strong: rgba(17, 24, 39, .9);
+  --glass-border: rgba(75, 85, 99, .3);
+  --border-base: #374151;
+  --border-soft: rgba(75, 85, 99, .2);
 
-  /* ── 文字 ── */
-  --text-1: #e2e8f0;
-  --text-2: #94a3b8;
-  --text-3: #64748b;
+  /* ── 文字（高对比度） ── */
+  --text-1: #f9fafb;
+  --text-2: #d1d5db;
+  --text-3: #9ca3af;
 
   /* ── 字体 ── */
   --font-sans: "Microsoft YaHei", "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "Cascadia Code", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
+  --font-mono: ui-monospace, SFMono-Regular, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
 
-  /* ── 字号刻度 ── */
-  --fs-2xs: 11px;
+  /* ── 字号（7 级） ── */
   --fs-xs: 12px;
-  --fs-sm: 13px;
-  --fs-md: 14px;
-  --fs-lg: 16px;
-  --fs-xl: 20px;
-  --fs-2xl: 28px;
-  --fs-3xl: 44px;
+  --fs-sm: 14px;
+  --fs-md: 16px;
+  --fs-lg: 18px;
+  --fs-xl: 24px;
+  --fs-2xl: 32px;
+  --fs-3xl: 48px;
 
-  /* ── 间距 ── */
+  /* ── 间距（4px 网格） ── */
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
   --sp-4: 16px;
-  --sp-5: 24px;
-  --sp-6: 32px;
-  --sp-7: 48px;
-  --sp-8: 64px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 48px;
 
   /* ── 圆角 ── */
   --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 14px;
-  --r-xl: 20px;
-  --r-2xl: 28px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-2xl: 20px;
   --r-full: 999px;
 
-  /* ── 阴影 / 层级 ── */
-  --shadow-1: 0 1px 2px rgba(2, 6, 23, .4), 0 1px 3px rgba(2, 6, 23, .3);
-  --shadow-2: 0 4px 14px -4px rgba(2, 6, 23, .55), 0 2px 6px rgba(2, 6, 23, .35);
-  --shadow-3: 0 18px 44px -12px rgba(2, 6, 23, .65), 0 8px 20px -8px rgba(2, 6, 23, .45);
-  --glow-brand: 0 6px 28px -6px rgba(165, 180, 252, .45), 0 6px 28px -8px rgba(110, 231, 183, .4);
-  --glow-cyan: 0 0 0 1px rgba(103, 232, 249, .12), 0 8px 32px -8px rgba(103, 232, 249, .4);
+  /* ── 阴影 ── */
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, .3);
+  --shadow-2: 0 4px 12px rgba(0, 0, 0, .4);
+  --shadow-3: 0 8px 24px rgba(0, 0, 0, .5);
 
-  /* ── 动效 ── */
-  --dur-fast: 140ms;
-  --dur-base: 240ms;
-  --dur-slow: 420ms;
-  --ease-out: cubic-bezier(.22, 1, .36, 1);
-  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  /* ── 可访问性 ── */
+  --focus-ring: 2px solid var(--brand-c2);
+  --focus-offset: 2px;
+  --min-target-size: 44px;
 }
 
-
-/* ── 语义令牌（ui/ 原语与业务组件共用，值仍来自上方色板）── */
+/* ── 语义令牌 ── */
 :root {
-  /* 表面 */
   --surface-card: var(--glass-bg);
   --surface-raised: var(--glass-bg-strong);
-  --surface-control: rgba(15, 23, 42, .5);
-  --surface-control-hover: rgba(103, 232, 249, .07);
-  --surface-input: #0b1120;
-  /* 控件 */
+  --surface-control: rgba(31, 41, 55, .8);
+  --surface-control-hover: rgba(34, 211, 238, .1);
+  --surface-input: #111827;
   --control-border: var(--border-soft);
   --control-text: var(--text-2);
-  --text-on-brand: #0f172a;
-  /* 对话气泡 */
+  --text-on-brand: #0a0f1a;
   --bubble-user: var(--brand-grad);
-  --bubble-user-text: #0f172a;
-  --bubble-ai: linear-gradient(180deg, rgba(51, 65, 85, .95), rgba(30, 41, 59, .95));
-  --bubble-ai-border: var(--brand-c2);
-  /* 布局 */
+  --bubble-user-text: #ffffff;
+  --bubble-ai: rgba(31, 41, 55, .95);
+  --bubble-ai-border: var(--border-soft);
+  --bubble-sys: rgba(127, 29, 29, .55);
+  --bubble-sys-text: #fca5a5;
   --nav-width: 232px;
   --header-h: 60px;
   --danger: var(--err);

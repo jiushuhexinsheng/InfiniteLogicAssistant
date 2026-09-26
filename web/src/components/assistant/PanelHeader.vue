@@ -4,11 +4,6 @@
     <!-- 助手头像。Assistant avatar. -->
     <span class="ph-avatar"><Icon name="brain" :size="16" /></span>
     <span class="ph-name">衍衡</span>
-    <!-- 状态指示器：彩色圆点 + 状态文本。Status indicator: colored dot + status text. -->
-    <span class="ph-status">
-      <span class="ph-dot" :style="{ background: visual.color }"></span>
-      <span class="ph-text">{{ statusText }}</span>
-    </span>
     <!-- 清空对话按钮。Clear conversation button. -->
     <button class="ph-btn" title="清空对话" @click="emit('clear')"><Icon name="trash" :size="14" /></button>
     <!-- 关闭面板按钮。Close panel button. -->
@@ -17,9 +12,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import Icon from '../Icon.vue'
-import { resolveStateLabel } from '../../composables/useAssistantVisuals'
 import type { AsstState } from '../../composables/useAssistant'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
 
@@ -29,7 +22,7 @@ import type { StateVisual } from '../../composables/useAssistantVisuals'
  * @property state - 助手当前状态。Current assistant state.
  * @property wakeHint - 唤醒词提示文案。Wake keyword hint.
  */
-const props = defineProps<{
+defineProps<{
   visual: StateVisual
   state: AsstState
   wakeHint: string
@@ -41,12 +34,6 @@ const props = defineProps<{
  * @event close - 关闭面板。Close the panel.
  */
 const emit = defineEmits<{ clear: []; close: [] }>()
-
-/**
- * 计算状态显示文本，根据视觉配置和唤醒关键词解析。
- * Compute status display text, resolved from visual config and wake keyword.
- */
-const statusText = computed(() => resolveStateLabel(props.visual, props.wakeHint))
 </script>
 
 <style scoped>
@@ -72,13 +59,7 @@ const statusText = computed(() => resolveStateLabel(props.visual, props.wakeHint
   flex-shrink: 0;
 }
 /* 助手名称。Assistant name. */
-.ph-name { font-size: 14px; font-weight: 600; color: var(--text-1); white-space: nowrap; }
-/* 状态区域。Status area. */
-.ph-status { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; }
-/* 状态圆点（颜色由状态决定）。Status dot (color determined by state). */
-.ph-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-/* 状态文本。Status text. */
-.ph-text { font-size: 12px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ph-name { font-size: 14px; font-weight: 600; color: var(--text-1); white-space: nowrap; flex: 1; }
 /* 操作按钮（清空/关闭）。Action buttons (clear/close). */
 .ph-btn {
   background: none; border: none; color: var(--text-2); cursor: pointer;

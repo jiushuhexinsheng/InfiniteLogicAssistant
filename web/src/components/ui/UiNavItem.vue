@@ -17,9 +17,10 @@ defineEmits<{ click: [] }>()
 <style scoped>
 .ui-nav-item {
   display: flex; align-items: center; gap: 10px; width: 100%;
-  padding: 8px 12px; border: none; border-radius: var(--r-md);
+  padding: 10px 12px; border: none; border-radius: var(--r-md);
   background: none; color: var(--text-2); font-family: inherit; font-size: var(--fs-sm);
   cursor: pointer; text-align: left;
+  min-height: var(--min-target-size);
   transition: background var(--dur-fast), color var(--dur-fast);
 }
 .ui-nav-item:hover { background: var(--surface-control); color: var(--text-1); }
@@ -27,9 +28,16 @@ defineEmits<{ click: [] }>()
   background: var(--brand-grad); color: var(--text-on-brand); font-weight: 600;
   box-shadow: 0 4px 14px -4px rgba(103, 232, 249, .5);
 }
+
+/* 焦点样式 */
+.ui-nav-item:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
 .ui-nav-badge {
-  margin-left: auto; font-family: var(--font-mono); font-size: 10px;
+  margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-xs);
   color: var(--text-3);
 }
-.ui-nav-item.active .ui-nav-badge { color: var(--text-on-brand); opacity: .7; }
+.ui-nav-item.active .ui-nav-badge { color: var(--brand-c2); opacity: .8; }
 </style>

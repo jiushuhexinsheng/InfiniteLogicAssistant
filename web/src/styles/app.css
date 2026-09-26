@@ -1,50 +1,67 @@
-/* 无限逻辑·语音助手 — 全局基础 */
+/* 无限逻辑·语音助手 — 全局基础
+   高对比度、统一交互 */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body, #app { height: 100%; }
 body {
   font-family: var(--font-sans);
   font-size: var(--fs-sm);
   color: var(--text-1);
-  background:
-    radial-gradient(1200px 600px at 50% -10%, rgba(103, 232, 249, .08), transparent 60%),
-    radial-gradient(900px 500px at 85% 110%, rgba(165, 180, 252, .07), transparent 60%),
-    var(--bg-0);
-  background-attachment: fixed;
+  background: var(--bg-0);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-}
-
-/* 细颗粒噪点：盖在整个页面上，赋予深色底"质感"，不拦截事件 */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 9990;
-  pointer-events: none;
-  opacity: .035;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  line-height: 1.5;
 }
 
 /* 滚动条 */
-::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, .28);
+  background: var(--bg-3);
   border-radius: var(--r-full);
-  border: 3px solid transparent;
-  background-clip: content-box;
 }
-::-webkit-scrollbar-thumb:hover { background-color: rgba(148, 163, 184, .45); }
-* { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, .35) transparent; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+* { scrollbar-width: thin; scrollbar-color: var(--bg-3) transparent; }
 
 /* 选中 / 焦点环 */
-::selection { background: rgba(103, 232, 249, .28); color: #fff; }
-:focus-visible { outline: 2px solid var(--brand-c2); outline-offset: 2px; border-radius: 4px; }
+::selection { background: rgba(34, 211, 238, .3); color: #fff; }
+
+:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+  border-radius: var(--r-sm);
+}
+
+/* 确保所有交互元素有最小点击目标（排除特殊小徽章） */
+button:not(.ball-mic):not(.orb-core):not(.new-dot),
+[role="button"]:not(.ball-mic),
+.ui-button,
+.ui-toggle {
+  min-height: var(--min-target-size);
+  min-width: var(--min-target-size);
+  cursor: pointer;
+}
+
+/* 链接样式 */
+a {
+  color: var(--brand-c2);
+  text-decoration: none;
+}
+a:hover { color: var(--brand-c1); }
+
+/* 等宽 */
+.mono { font-family: var(--font-mono); }
+
+/* 辅助文字最小字号 */
+.hint, .small, [class*="detail"] {
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
 
 /* 尊重系统减弱动效偏好 */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
 }
-
-/* 等宽（数据/时间戳） */
-.mono { font-family: var(--font-mono); }

@@ -10,13 +10,23 @@
     <!-- 隐私边界：spec 明确要求「必须写进 README 与设置页」。
          Privacy boundary, which the spec requires be stated on the settings page too. -->
     <p class="cs-note">
-      ⚠️ <strong>每次本地 VAD 判到人声，都会把该音频片段上传到云端 ASR</strong>（你
-      <code>config.yaml</code> 里 <code>asr</code> 指向的 endpoint）—— <strong>无论是否说出唤醒词</strong>。
-      VAD 只在本地滤静音与过短的片段以<em>减少</em>上传次数，<strong>不是隐私屏障</strong>。
-      关闭下方「唤醒启用」即停止取麦与上传；不接受请改用文字输入。
+      ⚠️ <strong>云端/自动模式</strong>下，每次 VAD 判到人声都会上传音频到云端 ASR —— <strong>无论是否说出唤醒词</strong>。
+      <strong>本地/浏览器模式</strong>下音频不出本机。
+      关闭下方「唤醒启用」即停止取麦；不接受音频上传请改用文字输入或本地模式。
     </p>
     <SettingsField v-if="s.editable.value" label="唤醒启用" row>
       <UiToggle :model-value="s.ed().wake_word.enabled" @update:model-value="v => (s.ed().wake_word.enabled = v)" />
+    </SettingsField>
+    <!-- 唤醒模式切换：本地（Web Speech API，零延迟）/ 云端（上传后端判定）/ 自动（优先本地） -->
+    <SettingsField label="唤醒模式">
+      <div class="cs-mode-row">
+        <button
+          v-for="m in modeOptions" :key="m.value"
+          class="cs-mode-btn" :class="{ active: currentMode === m.value }"
+          @click="switchMode(m.value)"
+        >{{ m.label }}</button>
+      </div>
+      <p class="cs-mode-hint">{{ modeHint }}</p>
     </SettingsField>
     <!-- 唤醒词是**列表**（命中任意一个即唤醒）：绑定 singular `keyword` 会读到 undefined
          （输入框空白、看起来「没配」），保存时又被 `keywords` 盖掉 —— 界面等于改不动唤醒词。
@@ -68,14 +78,43 @@
 
 <!-- 语音模块卡：唤醒词 / VAD 参数 + 内嵌 TTS 设置。Voice module card: wake word / VAD params + embedded TTS settings. -->
 <script setup lang="ts">
+import { computed } from 'vue'
 import TtsSettings from '../../assistant/TtsSettings.vue'
 import SettingsField from './SettingsField.vue'
 import { UiButton, UiCard, UiInput, UiToggle } from '../../ui'
 import { useSettings } from './useSettings'
 import { notify } from '../../../composables/useToast'
+import { wakeMode, setWakeMode, type WakeMode } from '../../../composables/assistant/store'
 
 /** 设置页单例状态与操作（保留对象引用以维持响应式）。Settings singleton (kept as an object to preserve reactivity). */
 const s = useSettings()
+
+/** 唤醒模式选项。Wake mode options. */
+const modeOptions: { value: WakeMode; label: string }[] = [
+  { value: 'auto', label: '自动' },
+  { value: 'local', label: '本地' },
+  { value: 'cloud', label: '云端' },
+  { value: 'webspeech', label: '浏览器' },
+]
+
+/** 当前唤醒模式。Current wake mode. */
+const currentMode = computed(() => wakeMode.value)
+
+/** 模式说明文案。Mode description text. */
+const modeHint = computed(() => {
+  switch (wakeMode.value) {
+    case 'local': return '⚡ 本地模式：Sherpa-ONNX KWS 本地检测，零延迟、音频不出本机（需模型可用）'
+    case 'cloud': return '☁️ 云端模式：音频上传到后端 ASR 判定，延迟较高但识别率高'
+    case 'webspeech': return '🌐 浏览器模式：Web Speech API 直接识别，免费但识别率较低'
+    default: return '🔄 自动模式：优先本地 Sherpa-ONNX，回退云端 ASR，最后 Web Speech API'
+  }
+})
+
+/** 切换唤醒模式。Switch the wake mode. */
+function switchMode(m: WakeMode) {
+  setWakeMode(m)
+  notify.ok(`唤醒模式已切换为「${modeOptions.find(o => o.value === m)?.label}」，重新开启唤醒后生效`)
+}
 
 /**
  * 数值输入：保留空串（清空），其余转 number（与原生 v-model.number 行为一致）。
@@ -132,5 +171,18 @@ function saveVoice() {
 }
 /* 唤醒词行：一行一个关键词 + 删除按钮。Wake-keyword row: one keyword plus a delete button. */
 .cs-kwrow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+/* 唤醒模式切换按钮组。Wake mode toggle button group. */
+.cs-mode-row { display: flex; gap: 6px; }
+.cs-mode-btn {
+  padding: 6px 16px; border-radius: var(--r-md); border: 1px solid var(--border-base);
+  background: var(--bg-2); color: var(--text-2); font-size: var(--fs-xs); cursor: pointer;
+  transition: all .15s;
+}
+.cs-mode-btn:hover { background: var(--bg-3); }
+.cs-mode-btn.active {
+  background: var(--brand-c2); color: var(--text-on-brand); border-color: var(--brand-c2);
+  font-weight: 600;
+}
+.cs-mode-hint { font-size: var(--fs-2xs); color: var(--text-3); margin: 6px 0 0; line-height: 1.5; }
 .cs-tts { margin-top: 2px; }
 </style>

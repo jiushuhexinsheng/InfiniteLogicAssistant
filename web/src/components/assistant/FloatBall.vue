@@ -9,7 +9,6 @@
     @touchmove.prevent="onTouchMove"
     @touchend="onTouchEnd"
     @click="onClick"
-    @dblclick="emit('dblclick')"
   >
     <!-- 状态环层：recording 时 conic 进度环；聆听时品牌色环。Status ring: conic progress during recording; brand-color ring during listening. -->
     <span class="ball-status-ring" :class="state" :style="ringStyle"></span>
@@ -142,18 +141,32 @@ function onTouchMove(e: TouchEvent) {
 function onTouchEnd() { /* 单击由 click 事件处理 */ }
 
 /**
- * 点击事件：若为拖拽则忽略，300ms 内视为有效单击。
- * Click handler: ignore if dragged, treat as valid tap within 300ms.
+ * 点击事件：用定时器区分单击与双击。
+ * 单击 250ms 后触发 click（展开面板）；期间再点一次则取消单击、触发 dblclick（切换语音）。
+ * Click handler: timer-based single/double click disambiguation.
+ * Single click fires after 250ms (toggle panel); a second click within that window cancels it
+ * and fires dblclick (toggle voice wake).
  */
+let clickTimer: ReturnType<typeof setTimeout> | null = null
 function onClick() {
   if (dragging.value) { dragging.value = false; return }
-  if (Date.now() - clickTime.value < 300) emit('click')
+  if (clickTimer) {
+    clearTimeout(clickTimer)
+    clickTimer = null
+    emit('dblclick')
+  } else {
+    clickTimer = setTimeout(() => {
+      clickTimer = null
+      emit('click')
+    }, 250)
+  }
 }
 
 /** 组件卸载时清理全局事件监听和进度定时器。Clean up global listeners and progress timer on unmount. */
 onUnmounted(() => {
   document.removeEventListener('pointermove', onDragMove)
   document.removeEventListener('pointerup', onDragEnd)
+  if (clickTimer) { clearTimeout(clickTimer); clickTimer = null }
   stopProgress()
 })
 

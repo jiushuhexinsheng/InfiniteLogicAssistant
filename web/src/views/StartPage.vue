@@ -1,11 +1,9 @@
-<!-- 启动页面模板 / Start page template -->
 <template>
   <div class="page">
-    <!-- 应用头部组件 / App header component -->
     <AppHeader />
 
     <main class="hero">
-      <!-- 光球动画区域 / Orb animation area -->
+      <!-- 光球动画区域 -->
       <div class="orb-wrap">
         <div class="orb" :class="asst.state.value">
           <span class="orb-halo"></span>
@@ -20,111 +18,107 @@
         </div>
       </div>
 
-      <!-- 页面标题 / Page title -->
+      <!-- 标题 -->
       <h1 class="title">无限逻辑</h1>
       <p class="subtitle">说{{ asst.wakeHint.value }}唤醒 · 或直接输入文字开聊</p>
 
-      <!-- 操作按钮区域 / Action buttons area -->
+      <!-- 操作按钮 -->
       <div class="actions">
-        <UiButton variant="primary" @click="asst.expanded.value = true">
+        <UiButton variant="primary" @click="asst.expanded.value = true" aria-label="开始对话">
           <UiIcon name="messages-square" :size="16" /> 开始对话
         </UiButton>
-        <UiButton variant="secondary" @click="asst.toggleWake()">
+        <UiButton variant="secondary" @click="asst.toggleWake()" :aria-label="asst.wakeEnabled.value ? '关闭语音唤醒' : '开启语音唤醒'">
           <UiIcon :name="asst.wakeEnabled.value ? 'stop' : 'mic'" :size="15" />
           {{ asst.wakeEnabled.value ? '关闭语音唤醒' : '开启语音唤醒' }}
         </UiButton>
-        <UiButton variant="ghost" @click="scrollToTts"><UiIcon name="settings" :size="15" /> 语音设置</UiButton>
+        <UiButton variant="ghost" @click="scrollToTts" aria-label="语音设置">
+          <UiIcon name="settings" :size="15" /> 语音设置
+        </UiButton>
       </div>
 
-      <!-- 状态卡片区域 / Status cards area -->
+      <!-- 状态卡片 -->
       <div class="cards">
-        <!-- 实时状态卡片 / Real-time status card -->
-        <UiCard class="start-card" title="实时状态">
-          <div class="status-row">
-            <div class="live">
-              <UiStatusDot :color="asst.stateColor.value" :size="9" :glow="8" />
-              <b>{{ asst.stateLabel.value }}</b>
-            </div>
-            <div class="chips">
-              <UiChip :tone="cfg?.llm_available ? 'ok' : 'neutral'" :detail="cfg?.llm_profile || '—'">LLM</UiChip>
-              <UiChip :tone="cfg?.asr_available ? 'ok' : 'neutral'" :detail="cfg?.asr_profile || '—'">ASR</UiChip>
-              <UiChip :tone="cfg?.tts_available ? 'ok' : 'neutral'" :detail="cfg?.tts_profile || '—'">TTS</UiChip>
-              <UiChip :tone="pingOk ? 'ok' : 'neutral'">后端 127.0.0.1:8520</UiChip>
-            </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">实时状态</span>
+            <span class="status-badge" :style="{ background: asst.stateColor.value }">{{ asst.stateLabel.value }}</span>
           </div>
-          <div class="status-foot">
-            <span class="mono hint">{{ pingMs != null ? '后端延迟 ' + pingMs + 'ms' : '—' }}</span>
-            <UiButton variant="ghost" size="sm" @click="checkPing">刷新</UiButton>
+          <div class="card-body">
+            <div class="service-grid">
+              <div class="service-item">
+                <span class="service-name">LLM</span>
+                <span class="service-status" :class="{ ok: cfg?.llm_available }">{{ cfg?.llm_profile || '未配置' }}</span>
+              </div>
+              <div class="service-item">
+                <span class="service-name">ASR</span>
+                <span class="service-status" :class="{ ok: cfg?.asr_available }">{{ cfg?.asr_profile || '未配置' }}</span>
+              </div>
+              <div class="service-item">
+                <span class="service-name">TTS</span>
+                <span class="service-status" :class="{ ok: cfg?.tts_available }">{{ cfg?.tts_profile || '未配置' }}</span>
+              </div>
+              <div class="service-item">
+                <span class="service-name">后端</span>
+                <span class="service-status" :class="{ ok: pingOk }">{{ pingMs != null ? pingMs + 'ms' : '未连接' }}</span>
+              </div>
+            </div>
+            <button class="btn-refresh" @click="checkPing" aria-label="刷新连接状态">刷新状态</button>
           </div>
-          <p v-if="asst.statusLine.value" class="status-detail">{{ asst.statusLine.value }}</p>
-        </UiCard>
+        </div>
 
-        <!-- 语音设置卡片 / Voice settings card -->
-        <UiCard class="start-card tts-card" title="语音设置">
-          <TtsMini />
-        </UiCard>
+        <div class="card tts-card">
+          <div class="card-header">
+            <span class="card-title">语音设置</span>
+          </div>
+          <div class="card-body">
+            <TtsMini />
+          </div>
+        </div>
       </div>
 
-      <!-- 功能特性区域 / Features area -->
-      <div class="features">
-        <UiCard v-for="f in features" :key="f.title" class="feature" hover>
-          <span class="feature-ic"><UiIcon :name="f.icon" :size="18" /></span>
-          <div class="feature-body"><h3>{{ f.title }}</h3><p>{{ f.desc }}</p></div>
-        </UiCard>
-      </div>
+      <!-- 功能特性 -->
+      <section class="features" aria-label="功能特性">
+        <div v-for="f in features" :key="f.title" class="feature-item">
+          <span class="feature-icon">{{ f.icon }}</span>
+          <div class="feature-content">
+            <h2 class="feature-title">{{ f.title }}</h2>
+            <p class="feature-desc">{{ f.desc }}</p>
+          </div>
+        </div>
+      </section>
 
-      <!-- 页面页脚 / Page footer -->
-      <footer class="page-footer mono">无限逻辑 · 本地优先 AI 助手 — v2.4</footer>
+      <!-- 页脚 -->
+      <footer class="page-footer">无限逻辑 · 本地优先 AI 助手 — v2.4</footer>
     </main>
   </div>
 </template>
 
-<!-- 启动页面脚本 / Start page script -->
 <script setup lang="ts">
-/**
- * 启动页面组件 - 展示应用状态、功能特性和语音设置
- * Start page component - displays application status, features, and voice settings
- */
 import { computed, onMounted, ref } from 'vue'
 import { useAssistant } from '../composables/useAssistant'
 import { useConfig } from '../composables/useApi'
 import { api } from '../api'
-import { UiButton, UiCard, UiChip, UiIcon, UiStatusDot } from '../components/ui'
+import { UiButton, UiIcon, UiStatusDot } from '../components/ui'
 import AppHeader from '../components/layout/AppHeader.vue'
 import TtsMini from '../components/assistant/TtsMini.vue'
 
-/** 获取助手实例 / Get assistant instance */
 const asst = useAssistant()
-/** 获取应用配置 / Get application config */
 const app = useConfig()
-
-/** 应用配置计算属性 / Application config computed property */
 const cfg = computed(() => app.config.value)
-/** 后端连接状态 / Backend connection status */
 const pingOk = ref(false)
-/** 后端延迟（毫秒） / Backend latency in milliseconds */
 const pingMs = ref<number | null>(null)
 
-/** 功能特性列表 / Features list */
 const features = [
-  { icon: 'sparkles', title: '灵感对话', desc: '自然语言直达任务，不必记指令' },
-  { icon: 'mic', title: '语音控制', desc: '一句话完成查询、调度与操作' },
-  { icon: 'database', title: '记忆常驻', desc: '上下文与偏好长期留存' },
-  { icon: 'wrench', title: '工具调用', desc: '挂载 MCP 与系统能力' },
+  { icon: '✨', title: '灵感对话', desc: '自然语言直达任务，不必记指令' },
+  { icon: '🎤', title: '语音控制', desc: '一句话完成查询、调度与操作' },
+  { icon: '💾', title: '记忆常驻', desc: '上下文与偏好长期留存' },
+  { icon: '🔧', title: '工具调用', desc: '挂载 MCP 与系统能力' },
 ]
 
-/**
- * 滚动到语音设置卡片
- * Scroll to voice settings card
- */
 function scrollToTts() {
   document.querySelector('.tts-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
-/**
- * 检查后端连接延迟
- * Check backend connection latency
- */
 async function checkPing() {
   try {
     const t0 = performance.now()
@@ -137,7 +131,6 @@ async function checkPing() {
   }
 }
 
-/** 组件挂载时初始化配置并检查后端连接 / Initialize config and check backend connection on mount */
 onMounted(async () => {
   if (!app.config.value) await app.initConfig()
   checkPing()
@@ -145,27 +138,39 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.page { min-height: 100vh; display: flex; flex-direction: column; user-select: none; }
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
 
 .hero {
-  flex: 1; width: 100%; max-width: 1080px; margin: 0 auto;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 12px; padding: 16px 24px 24px;
+  flex: 1;
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-6);
+  padding: var(--sp-8) var(--sp-5);
 }
 
 /* ── 光球 ── */
-/* ── Orb ── */
 .orb-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.orb { position: relative; width: 116px; height: 116px; border-radius: 50%; background: var(--brand-grad); display: grid; place-items: center; box-shadow: var(--glow-brand); }
+.orb {
+  position: relative; width: 116px; height: 116px; border-radius: 50%;
+  background: var(--brand-grad); display: grid; place-items: center;
+}
 .orb-halo {
   position: absolute; inset: 10px; border-radius: 50%;
   background: var(--brand-grad); filter: blur(26px); opacity: .45;
-  animation: orb-halo 5.5s var(--ease-out) infinite;
+  animation: orb-halo 5.5s ease-in-out infinite;
 }
 .orb-ripple {
   position: absolute; inset: 0; border-radius: 50%;
   border: 1.5px solid var(--brand-c2); opacity: .7;
-  animation: orb-ripple 3.4s var(--ease-out) infinite;
+  animation: orb-ripple 3.4s ease-out infinite;
 }
 .orb-core {
   position: relative; width: 98px; height: 98px; border-radius: 50%;
@@ -174,79 +179,181 @@ onMounted(async () => {
 }
 .orb.listening .orb-ripple { animation-duration: 2s; }
 .orb.recording .orb-ripple { animation-duration: 1.3s; }
-.orb.recording .orb-core { animation: orb-breathe .7s var(--ease-out) infinite; }
+.orb.recording .orb-core { animation: orb-breathe .7s ease-in-out infinite; }
 @keyframes orb-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 @keyframes orb-halo { 0%, 100% { opacity: .4; transform: scale(1); } 50% { opacity: .6; transform: scale(1.08); } }
 @keyframes orb-ripple { 0% { transform: scale(1); opacity: .7; } 75%, 100% { transform: scale(1.75); opacity: 0; } }
 
 .orb-label {
   display: inline-flex; align-items: center; gap: 8px;
-  padding: 5px 12px; border-radius: 999px;
+  padding: 6px 12px; border-radius: 999px;
   background: var(--surface-control); border: 1px solid var(--border-soft);
   font-size: var(--fs-xs); color: var(--text-2); letter-spacing: .04em;
 }
 
 /* ── 标题 ── */
-/* ── Title ── */
 .title {
   font-size: clamp(2.2rem, 6vw, 3rem); font-weight: 800; letter-spacing: .12em; margin: 0;
   background: linear-gradient(135deg, #c7d2fe 0%, #67e8f9 50%, #6ee7b7 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(0 0 26px rgba(103, 232, 249, .16));
 }
-.subtitle { font-size: var(--fs-lg); color: var(--text-2); letter-spacing: .05em; margin: 0; }
+
+.subtitle {
+  font-size: var(--fs-lg); color: var(--text-2); letter-spacing: .05em; margin: 0;
+  line-height: 1.5;
+}
 
 /* ── 操作按钮 ── */
-/* ── Action Buttons ── */
 .actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; padding-top: 2px; }
 
-/* ── 卡片行 ── */
-/* ── Card Row ── */
-.cards { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; width: 100%; padding-top: 4px; }
-.start-card { flex: 1 1 440px; max-width: 500px; min-width: 320px; }
-.status-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.live { display: flex; align-items: center; gap: 8px; }
-.live b { font-size: var(--fs-sm); font-weight: 600; }
-.chips { display: flex; gap: 6px; flex-wrap: wrap; }
-.status-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
-.hint { font-size: var(--fs-2xs); color: var(--text-3); }
-.status-detail { font-size: var(--fs-xs); color: var(--err); text-align: center; margin-top: 8px; }
+/* ── 卡片 ── */
+.cards {
+  display: flex;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  justify-content: center;
+  width: 100%;
+}
 
-/* ── 语音设置 ── */
-/* ── Voice Settings ── */
+.card {
+  flex: 1 1 400px;
+  max-width: 480px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-base);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+}
 
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-4);
+  border-bottom: 1px solid var(--border-base);
+}
 
-/* ── 特性 ── */
-/* ── Features ── */
+.card-title {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.status-badge {
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-full);
+  font-size: var(--fs-xs);
+  color: var(--text-on-brand);
+  font-weight: 500;
+}
+
+.card-body {
+  padding: var(--sp-4);
+}
+
+.service-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+}
+
+.service-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-2);
+  border-radius: var(--r-md);
+}
+
+.service-name {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.service-status {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.service-status.ok {
+  color: var(--ok);
+}
+
+.btn-refresh {
+  width: 100%;
+  margin-top: var(--sp-3);
+  padding: var(--sp-2);
+  background: var(--bg-2);
+  border: 1px solid var(--border-base);
+  border-radius: var(--r-md);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.btn-refresh:hover {
+  background: var(--surface-control-hover);
+  color: var(--text-1);
+}
+
+/* ── 功能特性 ── */
 .features {
-  width: 100%; max-width: 880px;
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;
-  padding-top: 6px;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--sp-3);
 }
-.feature { display: flex; gap: 12px; align-items: flex-start; }
-.feature-ic {
-  width: 36px; height: 36px; flex-shrink: 0; border-radius: var(--r-md);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--brand-c2); background: rgba(103, 232, 249, .08);
-  border: 1px solid rgba(103, 232, 249, .18);
+
+.feature-item {
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--bg-1);
+  border: 1px solid var(--border-base);
+  border-radius: var(--r-lg);
 }
-.feature h3 { font-size: var(--fs-md); font-weight: 600; margin: 0 0 4px; color: var(--text-1); }
-.feature p { font-size: var(--fs-xs); color: var(--text-3); line-height: 1.55; margin: 0; }
+
+.feature-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.feature-content {
+  min-width: 0;
+}
+
+.feature-title {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-1);
+  margin-bottom: var(--sp-1);
+  margin-top: 0;
+}
+
+.feature-desc {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  line-height: 1.5;
+}
 
 /* ── 页脚 ── */
-/* ── Footer ── */
-.page-footer { text-align: center; font-size: var(--fs-2xs); color: var(--text-3); letter-spacing: .08em; padding: 2px 0 14px; }
+.page-footer {
+  text-align: center;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  padding: var(--sp-6) 0;
+  line-height: 1.5;
+}
 
-/* ── 入场动效 ── */
-/* ── Entrance Animation ── */
-.orb-wrap, .title, .subtitle, .actions, .cards, .features {
-  animation: rise-in .6s var(--ease-out) both;
+/* ── 入场动效（仅上半部分） ── */
+.orb-wrap, .title, .subtitle, .actions {
+  animation: rise-in .6s ease-out both;
 }
 .orb-wrap { animation-delay: .08s; }
 .title { animation-delay: .14s; }
 .subtitle { animation-delay: .2s; }
 .actions { animation-delay: .26s; }
-.cards { animation-delay: .34s; }
-.features { animation-delay: .44s; }
 @keyframes rise-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 </style>

@@ -101,7 +101,7 @@ describe('VoiceCard', () => {
   /** spec 要求：隐私边界必须写进设置页。Spec: the privacy boundary must be stated on the settings page. */
   it('写明云端上传的隐私边界', () => {
     const w = mount(VoiceCard)
-    expect(w.text()).toContain('上传到云端 ASR')
+    expect(w.text()).toContain('云端 ASR')
     expect(w.text()).toContain('无论是否说出唤醒词')
   })
 })

@@ -10,18 +10,26 @@
       <div class="tm-toggles">
         <div class="tm-toggle">
           <!-- 语音唤醒开关。Voice wake toggle. -->
-          <UiToggle :model-value="wakeEnabled" @update:model-value="toggleWake()" />
+          <UiToggle
+            :model-value="wakeEnabled"
+            @update:model-value="toggleWake()"
+            aria-label="语音唤醒开关"
+          />
           <span>唤醒</span>
         </div>
         <div class="tm-toggle">
           <!-- 语音播报开关。Speech playback toggle. -->
-          <UiToggle :model-value="speakEnabled" @update:model-value="toggleSpeak()" />
+          <UiToggle
+            :model-value="speakEnabled"
+            @update:model-value="toggleSpeak()"
+            aria-label="语音播报开关"
+          />
           <span>播报</span>
         </div>
       </div>
     </div>
     <!-- 更多设置入口链接。More settings entry link. -->
-    <RouterLink class="tm-more" to="/console">更多设置 → 控制台</RouterLink>
+    <RouterLink class="tm-more" to="/console" aria-label="前往控制台查看更多设置">更多设置 → 控制台</RouterLink>
   </div>
 </template>
 
@@ -54,22 +62,29 @@ function toggleWake() {
 
 <style scoped>
 /* TTS 迷你面板容器。TTS mini panel container. */
-.tts-mini { display: flex; flex-direction: column; gap: 10px; }
+.tts-mini { display: flex; flex-direction: column; gap: 12px; }
 /* 行布局。Row layout. */
 .tm-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 /* 左侧信息区。Left info area. */
-.tm-left { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tm-left { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .tm-left b { font-size: var(--fs-sm); font-weight: 600; color: var(--text-1); white-space: nowrap; }
-.tm-left span { font-size: var(--fs-2xs); color: var(--text-3); }
+.tm-left span { font-size: var(--fs-xs); color: var(--text-3); }
 /* 开关组。Toggle group. */
-.tm-toggles { display: flex; gap: 14px; flex-shrink: 0; }
+.tm-toggles { display: flex; gap: 16px; flex-shrink: 0; }
 /* 单个开关项。Single toggle item. */
-.tm-toggle { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.tm-toggle span { font-size: var(--fs-2xs); color: var(--text-3); }
+.tm-toggle { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.tm-toggle span { font-size: var(--fs-xs); color: var(--text-3); }
 /* 更多设置链接。More settings link. */
 .tm-more {
-  align-self: flex-end; font-size: var(--fs-2xs); color: var(--brand-c2);
-  text-decoration: none; letter-spacing: .02em;
+  align-self: flex-end;
+  font-size: var(--fs-xs); /* 从 fs-2xs 调整到 fs-xs */
+  color: var(--brand-c2);
+  text-decoration: none;
+  letter-spacing: .02em;
+  padding: 8px 12px; /* 增加内边距 */
+  min-height: var(--min-target-size); /* 确保最小点击目标 */
+  display: inline-flex;
+  align-items: center;
   transition: color var(--dur-fast);
 }
 .tm-more:hover { color: var(--brand-c1); }
