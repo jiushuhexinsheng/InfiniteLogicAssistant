@@ -22,6 +22,7 @@ import QuestionBlock from '../components/blocks/QuestionBlock.vue'
 import AnswerBlock from '../components/blocks/AnswerBlock.vue'
 import NoticeBlock from '../components/blocks/NoticeBlock.vue'
 import TurnSummaryBlock from '../components/blocks/TurnSummaryBlock.vue'
+import SourcesBlock from '../components/blocks/SourcesBlock.vue'
 import UnknownBlock from '../components/blocks/UnknownBlock.vue'
 import type { Block } from './types'
 
@@ -109,6 +110,13 @@ registerBlock('summary', {
   component: TurnSummaryBlock,
   summarize: (b) => clip(String(b.payload.summary_text || '已完成')),
   speak: (b) => String(b.payload.tts_text || b.payload.summary_text || '') || null,
+})
+
+// ─── RAG 来源模块（docs/designs/05）：编号 chips，不进摘要皮肤、不播报 ───
+registerBlock('sources', {
+  component: SourcesBlock,
+  summarize: (b) => `📄 ${Array.isArray(b.payload.items) ? b.payload.items.length : 0} 个来源`,
+  speak: () => null,
 })
 
 // ─── 未知/扩展块兜底 ───

@@ -31,10 +31,14 @@ body {
   border-radius: var(--r-sm);
 }
 
-/* 确保所有交互元素有最小点击目标（排除特殊小徽章） */
-button:not(.ball-mic):not(.orb-core):not(.new-dot),
-[role="button"]:not(.ball-mic),
-.ui-button,
+/* 确保所有交互元素有最小点击目标（排除特殊小徽章与显式紧凑控件）。
+   注意基类名是 .ui-btn（非 .ui-button —— 后者从未匹配过任何元素）。
+   data-compact：密集行内的微操作钮（复制/展开/隐藏等），由 UiIconButton compact 提供。
+   Note the base class is .ui-btn (.ui-button never matched any element).
+   data-compact: micro-actions in dense rows (copy/expand/dismiss), provided by UiIconButton compact. */
+button:not(.ball-mic):not(.orb-core):not(.new-dot):not([data-compact]),
+[role="button"]:not(.ball-mic):not([data-compact]),
+.ui-btn,
 .ui-toggle {
   min-height: var(--min-target-size);
   min-width: var(--min-target-size);

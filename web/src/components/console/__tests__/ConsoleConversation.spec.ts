@@ -6,6 +6,10 @@ vi.mock('../../../api', () => ({ api: { createSession: vi.fn() }, streamUtter: v
 vi.mock('../../../composables/assistant/store', () => ({
   createNewSession: vi.fn(),
   switchSession: vi.fn(),
+  // ConsoleConversation 的 canAct 计算读这两者（docs/designs/07）。
+  // ConsoleConversation's canAct computed reads both (docs/designs/07).
+  state: { value: 'done' },
+  currentSessionId: { value: 's1' },
 }))
 vi.mock('../../../composables/useAssistant', () => ({
   useAssistant: () => ({
@@ -16,6 +20,10 @@ vi.mock('../../../composables/useAssistant', () => ({
     sendText: vi.fn(),
     retryTool: vi.fn(),
     cancelTool: vi.fn(),
+    // 消息级动作（docs/designs/07；本文件不触发，只保证渲染不炸）。
+    forkAt: vi.fn(),
+    sendEdited: vi.fn(),
+    regenerate: vi.fn(),
   }),
 }))
 

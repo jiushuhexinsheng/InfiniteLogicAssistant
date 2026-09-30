@@ -4,38 +4,55 @@
  * Sherpa-ONNX 是专为关键词检测（KWS）设计的轻量级引擎，模型仅 ~3.3MB，
  * 基于 zipformer-wenetspeech 训练，中文原生支持，精度远优于通用 ASR。
  *
- * 当前为占位实现：`isAvailable()` 返回 false，后续接入 sherpa-onnx-web WASM 后启用。
+ * 当前为占位实现：`isAvailable()` 返回 false。
+ *
+ * **Go/No-Go 评估（2026-09-29，docs/designs/03-B 批1）：No-Go**，接入暂缓：
+ * - npm 官方包 `sherpa-onnx@1.13.8` 只附带 **NodeJS 版 wasm**（README 明示 Node ≥ 18，
+ *   包内仅 `sherpa-onnx-wasm-nodejs.wasm`，无浏览器构建）；
+ * - GitHub release 的 wasm 资产只有 TTS/VAD/语音增强，**没有 KWS 浏览器包**；
+ * - 可行路径只剩两条重活：emscripten 自编 sherpa-onnx fork，或 onnxruntime-web 手搬
+ *   zipformer KWS 双模型状态机 —— 持续维护成本高，而增量收益仅「提示音提前 ~1.5s +
+ *   少一次本机 localhost 快检往返」（判定本地化、零云成本已由后端 KWS 闸门保证）。
+ * 结论：占位保留，等官方出浏览器 KWS 构建或社区包装再启用。
  *
  * Sherpa-ONNX KWS wake provider (placeholder).
  * Sherpa-ONNX is a lightweight keyword-spotting engine (~3.3MB model), trained on wenetspeech,
  * with native Chinese support and far better accuracy than general-purpose ASR.
- * Currently a placeholder: `isAvailable()` returns false. Will be enabled after integrating
- * sherpa-onnx-web WASM.
+ * Currently a placeholder: `isAvailable()` returns false.
+ *
+ * **Go/No-Go evaluation (2026-09-29, docs/designs/03-B batch 1): No-Go**, integration
+ * deferred: the official npm package ships only a **NodeJS wasm** (README: Node ≥ 18;
+ * package holds `sherpa-onnx-wasm-nodejs.wasm`, no browser build); GitHub release wasm
+ * assets cover TTS/VAD/speech-enhancement only — **no browser KWS bundle**; the remaining
+ * paths (emscripten-building a sherpa fork, or hand-porting the zipformer KWS two-model
+ * state machine onto onnxruntime-web) are heavy ongoing maintenance for gains limited to
+ * ~1.5s earlier chime plus one fewer localhost quick-check round-trip (local-only,
+ * zero-cloud judgement is already guaranteed by the backend KWS gate). Verdict: keep the
+ * placeholder until an official browser KWS build or community wrapper exists.
  *
  * @see https://github.com/k2-fsa/sherpa-onnx
+ * @see docs/designs/03-voice-conversation.md — B 节 Go/No-Go 评估
  * @see docs/superpowers/specs/2026-09-13-wake-detection-rework-design.md — 子项目 2
  */
 
 import type { WakeProvider, WakeResult } from './types'
 
 /**
- * 创建 Sherpa-ONNX KWS 唤醒提供者（占位）。
+ * 创建 Sherpa-ONNX KWS 唤醒提供者（占位；Go/No-Go = No-Go，见文件头）。
  *
- * Create a Sherpa-ONNX KWS wake provider (placeholder).
+ * Create a Sherpa-ONNX KWS wake provider (placeholder; Go/No-Go = No-Go, see header).
  *
- * 后续接入步骤：
- * 1. 安装 `sherpa-onnx-web` npm 包
- * 2. 下载 KWS 模型（sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01）
- * 3. 在 Web Worker 中初始化 sherpa-onnx WASM
- * 4. 实现 `detect()` — 音频 blob → PCM → keyword spotter → 结果
- * 5. `isAvailable()` 检查 WASM 是否加载成功
+ * 将来启用的接入步骤（待官方浏览器构建就绪）：
+ * 1. 接入浏览器版 sherpa-onnx WASM（官方或社区包装）
+ * 2. 模型复用 models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01/（经 /models/kws 路由）
+ * 3. 在 Web Worker 中初始化 spotter，AudioWorklet 喂 16kHz 帧（流式提前命中）
+ * 4. 实现 `detect()` — 段窗内命中缓存查询；`isAvailable()` = worker + 模型就绪
  *
- * Integration steps:
- * 1. Install `sherpa-onnx-web` npm package
- * 2. Download KWS model (sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01)
- * 3. Initialize sherpa-onnx WASM in a Web Worker
- * 4. Implement `detect()` — audio blob → PCM → keyword spotter → result
- * 5. `isAvailable()` checks whether WASM loaded successfully
+ * Future integration steps (once an official browser build exists):
+ * 1. Wire the browser sherpa-onnx WASM (official or community wrapper)
+ * 2. Reuse the model under models/sherpa-onnx-kws-... (served via /models/kws)
+ * 3. Init the spotter in a Web Worker, feed 16kHz frames from an AudioWorklet (streaming early hit)
+ * 4. Implement `detect()` — query the per-segment hit cache; `isAvailable()` = worker + model ready
  */
 export function createSherpaKwsProvider(): WakeProvider {
   /** WASM 是否已加载成功。Whether WASM loaded successfully. */

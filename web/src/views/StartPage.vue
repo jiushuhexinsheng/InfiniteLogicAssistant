@@ -1,9 +1,7 @@
 <template>
   <div class="page">
-    <AppHeader />
-
     <main class="hero">
-      <!-- 光球动画区域 -->
+      <!-- 光球动画区域（原光球下方的实时状态文字已移除，状态见顶部导航栏右侧） -->
       <div class="orb-wrap">
         <div class="orb" :class="asst.state.value">
           <span class="orb-halo"></span>
@@ -11,10 +9,6 @@
           <span class="orb-core">
             <UiIcon :name="asst.visual.value.icon" :size="30" />
           </span>
-        </div>
-        <div class="orb-label">
-          <UiStatusDot :color="asst.stateColor.value" :size="7" :glow="8" />
-          <span class="mono">{{ asst.stateLabel.value }} · 说{{ asst.wakeHint.value }}唤醒</span>
         </div>
       </div>
 
@@ -31,7 +25,7 @@
           <UiIcon :name="asst.wakeEnabled.value ? 'stop' : 'mic'" :size="15" />
           {{ asst.wakeEnabled.value ? '关闭语音唤醒' : '开启语音唤醒' }}
         </UiButton>
-        <UiButton variant="ghost" @click="scrollToTts" aria-label="语音设置">
+        <UiButton variant="ghost" @click="gotoTtsSettings" aria-label="语音设置">
           <UiIcon name="settings" :size="15" /> 语音设置
         </UiButton>
       </div>
@@ -62,11 +56,11 @@
                 <span class="service-status" :class="{ ok: pingOk }">{{ pingMs != null ? pingMs + 'ms' : '未连接' }}</span>
               </div>
             </div>
-            <button class="btn-refresh" @click="checkPing" aria-label="刷新连接状态">刷新状态</button>
+            <UiButton variant="secondary" size="sm" block @click="checkPing" aria-label="刷新连接状态">刷新状态</UiButton>
           </div>
         </div>
 
-        <div class="card tts-card">
+        <div class="card">
           <div class="card-header">
             <span class="card-title">语音设置</span>
           </div>
@@ -95,18 +89,22 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAssistant } from '../composables/useAssistant'
 import { useConfig } from '../composables/useApi'
 import { api } from '../api'
-import { UiButton, UiIcon, UiStatusDot } from '../components/ui'
-import AppHeader from '../components/layout/AppHeader.vue'
+import { UiButton, UiIcon } from '../components/ui'
 import TtsMini from '../components/assistant/TtsMini.vue'
+import { useConsole } from '../composables/useConsole'
+import { activeMenu } from '../components/console/settings/state'
 
 const asst = useAssistant()
 const app = useConfig()
 const cfg = computed(() => app.config.value)
 const pingOk = ref(false)
 const pingMs = ref<number | null>(null)
+const router = useRouter()
+const { activeTab } = useConsole()
 
 const features = [
   { icon: '✨', title: '灵感对话', desc: '自然语言直达任务，不必记指令' },
@@ -115,8 +113,19 @@ const features = [
   { icon: '🔧', title: '工具调用', desc: '挂载 MCP 与系统能力' },
 ]
 
-function scrollToTts() {
-  document.querySelector('.tts-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+/**
+ * 跳转到控制台「语音合成」设置页。
+ * Navigate to the console's voice-synthesis settings page.
+ *
+ * 先设置目标 tab / 菜单再导航，保证落页即渲染语音合成区块
+ * （activeTab 与 activeMenu 均为模块级单例，跨页共享）。
+ * Set the target tab/menu before navigating so the destination renders the
+ * TTS section immediately (both are module-level singletons shared across pages).
+ */
+function gotoTtsSettings() {
+  activeTab.value = 'settings'
+  activeMenu.value = 'tts'
+  void router.push('/console')
 }
 
 async function checkPing() {
@@ -139,7 +148,7 @@ onMounted(async () => {
 
 <style scoped>
 .page {
-  min-height: 100vh;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -183,13 +192,6 @@ onMounted(async () => {
 @keyframes orb-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 @keyframes orb-halo { 0%, 100% { opacity: .4; transform: scale(1); } 50% { opacity: .6; transform: scale(1.08); } }
 @keyframes orb-ripple { 0% { transform: scale(1); opacity: .7; } 75%, 100% { transform: scale(1.75); opacity: 0; } }
-
-.orb-label {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 6px 12px; border-radius: 999px;
-  background: var(--surface-control); border: 1px solid var(--border-soft);
-  font-size: var(--fs-xs); color: var(--text-2); letter-spacing: .04em;
-}
 
 /* ── 标题 ── */
 .title {
@@ -250,6 +252,8 @@ onMounted(async () => {
 .card-body {
   padding: var(--sp-4);
 }
+/* 网格与刷新按钮的间距（按钮已是 UiButton，间距由容器补）。Gap between grid and refresh button (button is UiButton; spacing comes from the container). */
+.card-body :deep(.ui-btn) { margin-top: var(--sp-3); }
 
 .service-grid {
   display: grid;
@@ -279,23 +283,6 @@ onMounted(async () => {
 
 .service-status.ok {
   color: var(--ok);
-}
-
-.btn-refresh {
-  width: 100%;
-  margin-top: var(--sp-3);
-  padding: var(--sp-2);
-  background: var(--bg-2);
-  border: 1px solid var(--border-base);
-  border-radius: var(--r-md);
-  color: var(--text-2);
-  font-size: var(--fs-xs);
-  cursor: pointer;
-}
-
-.btn-refresh:hover {
-  background: var(--surface-control-hover);
-  color: var(--text-1);
 }
 
 /* ── 功能特性 ── */

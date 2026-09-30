@@ -10,24 +10,24 @@
       <!-- 选项按钮（choice / composite；语音兼容：label 即语音精确匹配接口，勿随意改）。
            Option buttons (voice-compatible: the label is the exact-match speech interface). -->
       <div v-if="hasOptions" class="q-row">
-        <button
+        <UiButton
           v-for="opt in block.payload.options"
           :key="opt.value"
-          class="q-btn"
-          :class="{ primary: opt.value === 'yes' }"
+          shape="square"
+          :variant="opt.value === 'yes' ? 'primary' : 'secondary'"
           @click="choose(opt.value)"
-        >{{ opt.label }}</button>
+        >{{ opt.label }}</UiButton>
       </div>
       <!-- choice 下不渲染输入框：自由文本会被后端判为未选择而拒绝。
            No input for choice: free text is rejected as "no selection" by the backend. -->
       <div v-if="allowText" class="q-row">
-        <input
+        <UiInput
           v-model="text"
           class="q-input"
           placeholder="输入回答后回车…"
           @keydown.enter="submit"
         />
-        <button class="q-btn" @click="submit">回答</button>
+        <UiButton shape="square" variant="secondary" @click="submit">回答</UiButton>
       </div>
     </template>
     <div v-else class="q-answered">
@@ -38,6 +38,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { UiButton, UiInput } from '../ui'
 import { sendAnswer } from '../../composables/assistant/useChat'
 import type { Block, Skin } from '../../blocks/types'
 
@@ -85,20 +86,7 @@ function choose(value: string) {
 .q-title { font-size: var(--fs-xs); color: var(--text-3); margin-bottom: var(--sp-1); }
 .q-text { margin: 0 0 var(--sp-2); font-size: var(--fs-sm); color: var(--text-1); line-height: 1.5; }
 .q-row { display: flex; gap: var(--sp-2); margin-top: var(--sp-2); }
-.q-btn {
-  min-height: var(--min-target-size, 44px); padding: 0 var(--sp-3);
-  border-radius: var(--r-md); border: 1px solid var(--bg-3);
-  background: var(--bg-2); color: var(--text-1); cursor: pointer;
-  font-size: var(--fs-sm);
-}
-.q-btn.primary { background: var(--brand-c2); border-color: var(--brand-c2); color: var(--text-on-brand); }
-.q-btn:focus-visible, .q-input:focus-visible {
-  outline: 2px solid var(--focus-ring, var(--brand-c2)); outline-offset: var(--focus-offset, 2px);
-}
-.q-input {
-  flex: 1; min-height: var(--min-target-size, 44px); padding: 0 var(--sp-2);
-  border-radius: var(--r-md); border: 1px solid var(--bg-3);
-  background: var(--bg-2); color: var(--text-1); font-size: var(--fs-sm);
-}
+/* 输入框占满剩余行宽。Input fills the remaining row width. */
+.q-row :deep(.q-input) { flex: 1; min-width: 0; }
 .q-answered .q-label { color: var(--text-3); font-size: var(--fs-sm); }
 </style>

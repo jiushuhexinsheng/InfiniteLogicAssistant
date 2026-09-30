@@ -3,16 +3,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // 只桩掉网络层，保留 store 真实实现（断言写入的消息）。
 // Stub only the network layer, keeping the real store (to assert on the written message).
 vi.mock('../../../api', () => ({
-  api: { answer: vi.fn(), callTool: vi.fn() },
+  api: { answer: vi.fn(), callTool: vi.fn(), forkSession: vi.fn(), stopTask: vi.fn() },
   streamUtter: vi.fn(),
 }))
 // runTurn 会调用 speakAuto（TTS）；此处桩掉以免依赖浏览器语音 API。
 // runTurn calls speakAuto (TTS); stub it out so no browser speech API is needed.
-vi.mock('../useTts', () => ({ speakAuto: vi.fn() }))
+vi.mock('../useTts', async () => {
+  const { ref } = await import('vue')
+  return { speakAuto: vi.fn(), stopSpeak: vi.fn(), speaking: ref(false) }
+})
 
 import { api, streamUtter } from '../../../api'
-import { currentSessionId, messages, pendingQuestion } from '../store'
-import { runTurn, sendAnswer } from '../useChat'
+import { currentSessionId, messages, pendingQuestion, state, tokenUsage } from '../store'
+import { runTurn, sendAnswer, sendText, outboxCount, clearQueued, forkAt, sendEdited, regenerate } from '../useChat'
 
 /** useChat 回答投递的错误文案。Error text for useChat's answer delivery. */
 describe('useChat sendAnswer 错误处理', () => {
@@ -136,5 +139,200 @@ describe('useChat 问答入聊天记录', () => {
     vi.mocked(api.answer).mockRejectedValue(new Error('会话已失效'))
     await sendAnswer('桌面')
     expect(messages.value.some((m) => m.text === '桌面')).toBe(false)
+  })
+})
+
+/** 消息排队与作答转发（docs/designs/06 批3）：回合中再发入队、收束连发、
+ *  取消词立即中止清队、待答问题转作答语义。
+ *
+ *  Message queue and answer forwarding (docs/designs/06 batch 3): sending during a
+ *  turn queues, turn end chains, cancel words abort and clear, a pending question
+ *  becomes an answer. */
+describe('useChat 消息排队', () => {
+  beforeEach(() => {
+    messages.value = []
+    currentSessionId.value = ''
+    pendingQuestion.value = null
+    state.value = 'idle'
+    clearQueued()
+    vi.mocked(api.answer).mockReset()
+    vi.mocked(api.answer).mockResolvedValue({ ok: true })
+    vi.mocked(streamUtter).mockReset()
+    // 默认挂起的流：只记录 handlers 供测试手动触发收束。
+    // A hanging stream by default: only records handlers for the test to finish manually.
+    vi.mocked(streamUtter).mockImplementation(async (_t: string, h: any) => {
+      ;(streamUtter as any).__lastHandlers = h
+      return 's1'
+    })
+  })
+
+  /** 回合进行中发送 → 入队不落消息；onDone 收束 → 自动连发。 */
+  it('回合中入队，收束后自动连发', async () => {
+    sendText('第一条')                     // idle → 直接起一轮。Idle → start a turn.
+    expect(messages.value.filter(m => m.role === 'user')).toHaveLength(1)
+    expect(state.value).toBe('thinking')
+
+    sendText('第二条')                     // 回合中 → 入队。Turn running → queued.
+    expect(outboxCount.value).toBe(1)
+    expect(messages.value.filter(m => m.role === 'user')).toHaveLength(1)
+
+    ;(streamUtter as any).__lastHandlers.onDone('s1')   // 收束 → 弹队。Wrap up → flush.
+    await Promise.resolve()
+    expect(outboxCount.value).toBe(0)
+    const users = messages.value.filter(m => m.role === 'user')
+    expect(users).toHaveLength(2)
+    expect(users[1].text).toBe('第二条')   // 连发的是排队消息本身。The queued message itself is chained.
+  })
+
+  /** 取消词立即中止并清队（排队不得吞掉取消）。 */
+  it('取消词清队并中止', async () => {
+    sendText('第一条')
+    sendText('第二条')                      // 排队。Queued.
+    expect(outboxCount.value).toBe(1)
+
+    sendText('停止')
+    expect(outboxCount.value).toBe(0)        // 队列清空。Queue cleared.
+    expect(messages.value.filter(m => m.role === 'user')).toHaveLength(1)  // 不新增消息。No new message.
+  })
+
+  /** 回归靶子（实测 bug）：唤醒指令落在 listening 态、续聊接话落在 followup 态 ——
+   *  这些语音链状态必须**直接发送**，不得入队（没有在跑的回合会去弹队，入队即永久卡死）。
+   *
+   *  Regression target (field bug): wake commands land in listening, follow-up
+   *  replies in followup — these voice-chain states must send immediately, never
+   *  queue (no live turn exists to flush a queued message, so queueing wedges it
+   *  forever). */
+  it.each(['listening', 'followup', 'recording', 'transcribing', 'standby'] as const)(
+    '语音链状态 %s 直接发送不入队',
+    async (st) => {
+      state.value = st
+      sendText('你好')
+      expect(outboxCount.value).toBe(0)
+      expect(streamUtter).toHaveBeenCalledTimes(1)
+      expect(messages.value.filter(m => m.role === 'user')).toHaveLength(1)
+      expect(messages.value[messages.value.length - 1].text).toBe('你好')
+    },
+  )
+
+  /** 对照：真正的回合状态（thinking/tool_calling/responding）才入队。 */
+  it.each(['thinking', 'tool_calling', 'responding'] as const)(
+    '回合状态 %s 入队等待收束',
+    async (st) => {
+      state.value = st
+      sendText('你好')
+      expect(outboxCount.value).toBe(1)
+      expect(streamUtter).not.toHaveBeenCalled()
+      clearQueued()
+    },
+  )
+
+  /** 待答问题时发送 → 转作答语义（选项精确匹配成结构化 choice），不排队。 */
+  it('待答时发送转作答（选项命中 → choice）', async () => {
+    currentSessionId.value = 's1'
+    state.value = 'thinking'                 // 即便回合在跑，作答也优先。Answer wins even mid-turn.
+    pendingQuestion.value = {
+      text: '确认执行吗？', kind: 'choice',
+      options: [{ value: 'yes', label: '允许本次' }, { value: 'no', label: '拒绝' }],
+    }
+
+    sendText('允许本次')
+    await new Promise(r => setTimeout(r, 0))
+    expect(api.answer).toHaveBeenCalledWith('s1', '', 'yes', expect.objectContaining({ source: 'typed' }))
+    expect(outboxCount.value).toBe(0)        // 不排队。Not queued.
+    expect(streamUtter).not.toHaveBeenCalled()  // 不新开回合。No new turn.
+    // 记录形态是 answer 块（作答），不是普通话语消息。Recorded as an answer block, not an utterance.
+    const um = messages.value.filter(m => m.role === 'user')
+    expect(um).toHaveLength(1)
+    expect(um[0].blocks?.[0]?.type).toBe('answer')
+  })
+})
+
+/** 分叉 / 编辑重发 / 重新生成（docs/designs/07）。Fork / edit-resend / regenerate. */
+describe('useChat 分叉与编辑', () => {
+  beforeEach(() => {
+    messages.value = []
+    currentSessionId.value = 's1'
+    pendingQuestion.value = null
+    state.value = 'done'
+    tokenUsage.value = {}
+    clearQueued()
+    vi.mocked(api.answer).mockReset()
+    vi.mocked(api.forkSession).mockReset()
+    vi.mocked(streamUtter).mockReset()
+    vi.mocked(streamUtter).mockImplementation(async () => 's1')
+  })
+
+  const mkMsg = (role: 'user' | 'assistant', text: string) =>
+    ({ id: role + text, role, text, blocks: [], timestamp: Date.now() }) as any
+
+  /** forkAt：服务端 fork 成功 → 本地截断 + 切换会话 id + 清待答/用量。
+   *  Success → local truncation + session id switch + pending/usage reset. */
+  it('forkAt 截断前缀并切到新会话', async () => {
+    messages.value = [mkMsg('user', 'a'), mkMsg('assistant', 'b'), mkMsg('user', 'c')]
+    vi.mocked(api.forkSession).mockResolvedValue({ ok: true, session: { id: 's2' } as any })
+
+    const ok = await forkAt(1)
+    expect(ok).toBe(true)
+    expect(api.forkSession).toHaveBeenCalledWith('s1', 1)
+    expect(currentSessionId.value).toBe('s2')
+    expect(messages.value.map(m => m.text)).toEqual(['a', 'b'])
+  })
+
+  /** 服务端拒绝（如 409）→ 本地不动。Server refusal (409 etc.) leaves local state alone. */
+  it('forkAt 失败不改本地状态', async () => {
+    messages.value = [mkMsg('user', 'a'), mkMsg('assistant', 'b')]
+    vi.mocked(api.forkSession).mockRejectedValue(new Error('会话正在等待回答，无法分叉'))
+
+    const ok = await forkAt(0)
+    expect(ok).toBe(false)
+    expect(currentSessionId.value).toBe('s1')
+    // 原消息不动；失败追加系统消息（可感知）。Original messages untouched; a system message surfaces the failure.
+    expect(messages.value.filter(m => m.role !== 'system')).toHaveLength(2)
+    expect(messages.value.some(m => m.role === 'system' && m.text.includes('分叉失败'))).toBe(true)
+  })
+
+  /** 末条编辑：不调 fork，直接改写重发起一轮。
+   *  Tail edit: no fork call, rewrite in place and start a turn. */
+  it('sendEdited 末条直接改写重发', async () => {
+    messages.value = [mkMsg('user', '旧问题'), mkMsg('assistant', '回答'), mkMsg('user', '末条')]
+    vi.mocked(api.forkSession).mockResolvedValue({ ok: true, session: { id: 's2' } as any })
+
+    const ok = await sendEdited(2, '新末条')
+    expect(ok).toBe(true)
+    expect(api.forkSession).not.toHaveBeenCalled()
+    expect(messages.value[2].text).toBe('新末条')
+    expect(messages.value[2].blocks?.[0]?.payload).toMatchObject({ md: '新末条' })
+    expect(streamUtter).toHaveBeenCalledTimes(1)   // 已起新一轮。A new turn started.
+  })
+
+  /** 非末条编辑：必须先 fork（整段覆盖存储下保原路径），再改写重发。
+   *  Non-tail edit must fork first (whole-overwrite storage: keep the original path). */
+  it('sendEdited 非末条先分叉', async () => {
+    messages.value = [mkMsg('user', '第一问'), mkMsg('assistant', '第一答'), mkMsg('user', '第二问')]
+    vi.mocked(api.forkSession).mockResolvedValue({ ok: true, session: { id: 's2' } as any })
+
+    const ok = await sendEdited(0, '改写的第一问')
+    expect(ok).toBe(true)
+    expect(api.forkSession).toHaveBeenCalledWith('s1', 0)
+    expect(currentSessionId.value).toBe('s2')
+    // 用户消息截断到被编辑那条（其后可能有 runTurn 的空 assistant 占位，属 mock 无事件的产物）。
+    // User messages truncate at the edited one (a trailing empty assistant placeholder may
+    // follow — an artifact of runTurn under an event-less mock).
+    expect(messages.value.filter(m => m.role === 'user').map(m => m.text)).toEqual(['改写的第一问'])
+    expect(streamUtter).toHaveBeenCalledTimes(1)
+  })
+
+  /** regenerate：分叉到前一条用户消息（含），去掉本条回复后用原话重跑。
+   *  Regenerate: fork to the user message before it (inclusive), drop this reply,
+   *  rerun with the original words. */
+  it('regenerate 分叉到原问题并重跑', async () => {
+    messages.value = [mkMsg('user', '问题'), mkMsg('assistant', '要重生成的回答'), mkMsg('user', '后续')]
+    vi.mocked(api.forkSession).mockResolvedValue({ ok: true, session: { id: 's2' } as any })
+
+    const ok = await regenerate(1)
+    expect(ok).toBe(true)
+    expect(api.forkSession).toHaveBeenCalledWith('s1', 0)   // 前缀含原问题。Prefix keeps the question.
+    expect(messages.value.filter(m => m.role === 'user').map(m => m.text)).toEqual(['问题'])
+    expect(streamUtter).toHaveBeenCalledTimes(1)
   })
 })

@@ -9,14 +9,21 @@
     <div v-if="!messages.length" class="console-empty">
       还没有对话 —— 点右下角悬浮球，或输入文字开始。
     </div>
-    <!-- 消息列表：遍历渲染每条聊天消息，支持重试和取消工具调用。Message list: renders each chat message with retry and cancel tool-call support. -->
+    <!-- 消息列表：遍历渲染每条聊天消息，支持重试/取消工具与消息级 分叉/编辑/重生成（docs/designs/07）。
+         Message list: renders each chat message with tool retry/cancel plus message-level
+         fork/edit/regenerate (docs/designs/07). -->
     <div v-else class="console-msgs">
       <MessageItem
-        v-for="m in messages"
+        v-for="(m, i) in messages"
         :key="m.id"
         :message="m"
+        :index="i"
+        :can-act="canAct"
         @retry="emit('retry', $event)"
         @cancel="emit('cancel', $event)"
+        @fork="emit('fork', $event)"
+        @edit="(idx, text) => emit('edit', idx, text)"
+        @regen="emit('regen', $event)"
       />
     </div>
   </div>
@@ -28,10 +35,20 @@ import MessageItem from '../assistant/MessageItem.vue'
 import { UiIcon } from '../ui'
 import type { ChatMessage } from '../../composables/useAssistant'
 
-/** 组件 props：消息列表和可选的唤醒关键词。Component props: message list and optional wake keyword. */
-const props = withDefaults(defineProps<{ messages: ChatMessage[]; wakeHint?: string }>(), { wakeHint: '「衍衡」或「洛吉斯」' })
-/** 组件事件：重试工具调用和取消工具调用。Component events: retry and cancel tool calls. */
-const emit = defineEmits<{ retry: [id: string]; cancel: [id: string] }>()
+/** 组件 props：消息列表、唤醒词、消息级动作开关（回合空闲且有会话）。
+ *  Component props: message list, wake keyword, message-level action switch. */
+const props = withDefaults(
+  defineProps<{ messages: ChatMessage[]; wakeHint?: string; canAct?: boolean }>(),
+  { wakeHint: '「衍衡」或「洛吉斯」', canAct: false },
+)
+/** 组件事件：工具重试/取消 + 消息分叉/编辑/重生成。Component events. */
+const emit = defineEmits<{
+  retry: [id: string]
+  cancel: [id: string]
+  fork: [index: number]
+  edit: [index: number, text: string]
+  regen: [index: number]
+}>()
 
 /** 滚动容器 DOM 引用。Scroll container DOM reference. */
 const scrollEl = ref<HTMLElement | null>(null)

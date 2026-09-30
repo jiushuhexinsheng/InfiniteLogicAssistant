@@ -1,46 +1,51 @@
 <template>
   <!-- 控制台侧边导航栏。Console sidebar navigation. -->
   <aside class="console-sidebar">
-    <!-- 品牌标识区域。Brand identity area. -->
+    <!-- 品牌标识区域：仅英文标识。Brand area: English caption only. -->
     <div class="sb-brand">
-      <span class="sb-mark"><UiIcon name="infinity" :size="14" /></span>
-      <div class="sb-name"><b>完整控制台</b><span class="mono">CONSOLE</span></div>
+      <span class="sb-name mono">CONSOLE</span>
     </div>
-    <!-- 导航标题。Navigation heading. -->
-    <span class="sb-eyebrow mono">导航</span>
-    <!-- 标签页导航列表。Tab navigation list. -->
-    <UiNavItem
-      v-for="t in CONSOLE_TABS"
-      :key="t.key"
-      :label="t.label"
-      :icon="t.icon"
-      :active="active === t.key"
-      @click="emit('select', t.key)"
-    />
-    <!-- 语音唤醒状态底栏。Voice wake status footer. -->
-    <div class="sb-foot">
-      <UiStatusDot :color="wakeEnabled ? '#34d399' : '#64748b'" :size="7" :glow="wakeEnabled ? 8 : 0" />
-      <div class="sb-foot-txt">
-        <b>{{ wakeEnabled ? '语音唤醒已开启' : '语音唤醒未开启' }}</b>
-        <!-- 双击悬浮球切换语音唤醒。Double-click the floating ball to toggle voice wake. -->
-        <span class="mono">双击悬浮球切换</span>
+    <!-- 中间导航区单独滚动，保证底栏（唤醒状态 + 清空）始终可见。
+         The nav region scrolls on its own so the footer stays pinned and visible. -->
+    <div class="sb-nav">
+      <!-- 标签页导航列表。Tab navigation list. -->
+      <UiNavItem
+        v-for="t in CONSOLE_TABS"
+        :key="t.key"
+        :label="t.label"
+        :icon="t.icon"
+        :active="active === t.key"
+        @click="emit('select', t.key)"
+      />
+    </div>
+    <!-- 底栏：语音唤醒状态 + 清空对话（原控制台顶栏按钮移此）。
+         Footer: wake status + clear conversation (moved from the old console header). -->
+    <div class="sb-foot-stack">
+      <div class="sb-foot">
+        <UiStatusDot :color="wakeEnabled ? '#34d399' : '#64748b'" :size="7" :glow="wakeEnabled ? 8 : 0" />
+        <div class="sb-foot-txt">
+          <b>{{ wakeEnabled ? '语音唤醒已开启' : '语音唤醒未开启' }}</b>
+          <!-- 双击悬浮球切换语音唤醒。Double-click the floating ball to toggle voice wake. -->
+          <span class="mono">双击悬浮球切换</span>
+        </div>
       </div>
+      <UiButton variant="secondary" size="sm" hover="danger" block @click="emit('clear')">清空对话</UiButton>
     </div>
   </aside>
 </template>
 
 <script setup lang="ts">
 /**
- * 控制台侧边栏组件，包含品牌标识、标签页导航和语音唤醒状态显示。
- * Console sidebar component, contains brand identity, tab navigation and voice wake status display.
+ * 控制台侧边栏组件，包含品牌标识、标签页导航、语音唤醒状态与清空对话按钮。
+ * Console sidebar: brand identity, tab nav, wake status and clear-conversation button.
  */
 import { CONSOLE_TABS, type ConsoleTabKey } from '../../composables/useConsole'
-import { UiIcon, UiNavItem, UiStatusDot } from '../ui'
+import { UiButton, UiNavItem, UiStatusDot } from '../ui'
 
 /** 属性：当前激活标签页和语音唤醒开关状态。Props: currently active tab key and voice wake toggle state. */
 defineProps<{ active: ConsoleTabKey; wakeEnabled: boolean }>()
-/** 事件：选择标签页。Event: select a tab. */
-const emit = defineEmits<{ select: [key: ConsoleTabKey] }>()
+/** 事件：选择标签页、清空对话。Events: select tab, clear conversation. */
+const emit = defineEmits<{ select: [key: ConsoleTabKey]; clear: [] }>()
 </script>
 
 <style scoped>
@@ -52,24 +57,25 @@ const emit = defineEmits<{ select: [key: ConsoleTabKey] }>()
   background: var(--surface-raised); backdrop-filter: blur(14px) saturate(140%);
   -webkit-backdrop-filter: blur(14px) saturate(140%);
   box-shadow: var(--shadow-2);
-  overflow-y: auto;
+  overflow: hidden; /* 整体不滚，仅 .sb-nav 滚动，底栏常驻。Only .sb-nav scrolls; the footer stays pinned. */
 }
-.sb-brand { display: flex; align-items: center; gap: 9px; padding: 0 6px 12px; }
-.sb-mark {
-  width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
-  background: var(--brand-grad); color: var(--text-on-brand);
-  display: grid; place-items: center;
+.sb-nav {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 7px;
 }
-.sb-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.sb-name b { font-size: var(--fs-md); font-weight: 600; color: var(--text-1); }
-.sb-name span { font-size: 9px; letter-spacing: .1em; color: var(--text-3); }
-.sb-eyebrow {
-  font-size: 10px; letter-spacing: .14em; color: var(--text-3);
-  padding: 0 12px 4px;
+.sb-brand { padding: 0 6px 12px; }
+/* 仅英文标识：等宽字 + 字距，作为侧栏标题。English-only caption: mono + tracking, acts as the sidebar title. */
+.sb-name {
+  font-size: var(--fs-md); font-weight: 600;
+  letter-spacing: .12em; color: var(--text-1);
+}
+.sb-foot-stack {
+  margin-top: auto;
+  display: flex; flex-direction: column; gap: 7px;
 }
 .sb-foot {
   display: flex; align-items: center; gap: 8px;
-  margin-top: auto; padding: 11px 10px;
+  padding: 11px 10px;
   border: 1px solid rgba(52, 211, 153, .3); border-radius: var(--r-md);
   background: rgba(52, 211, 153, .06);
 }

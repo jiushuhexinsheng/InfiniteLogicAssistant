@@ -71,8 +71,11 @@
         <QuestionCard />
         <ChatInput :disabled="false" @send="onInputSend" />
         <template #footer>
-          <button class="open-console" @click="goConsole">查看完整记录 →</button>
-          <!-- 查看完整记录。View full history -->
+          <!-- 分隔线由包裹层承担，按钮本体交给 UiButton（避免特异性相争）。
+               The divider lives on the wrapper; the button itself is UiButton (avoids specificity fights). -->
+          <div class="open-console-wrap">
+            <UiButton variant="ghost" block size="sm" @click="goConsole">查看完整记录 →</UiButton>
+          </div>
         </template>
       </AssistantPanel>
     </Transition>
@@ -93,6 +96,7 @@ import AssistantPanel from './assistant/AssistantPanel.vue'
 import MiniHistory from './assistant/MiniHistory.vue'
 import QuestionCard from './assistant/QuestionCard.vue'
 import ChatInput from './assistant/ChatInput.vue'
+import { UiButton } from './ui'
 import { ballSide as ballSideAt, dockStyle as dockStyleAt } from '../composables/assistant/dockLayout'
 
 /** 组件属性：接收 useAssistant 组合式函数的返回实例。Props: receives the useAssistant composable instance. */
@@ -206,17 +210,13 @@ const panelStyle = computed(() => ({
 .mini-enter-active, .mini-leave-active { transition: all .25s ease; }
 .mini-enter-from, .mini-leave-to { opacity: 0; transform: translateX(-8px); }
 
-/* 面板 footer：查看完整记录。Panel footer: view full history. */
-.open-console {
-  width: 100%;
-  border: none;
+/* 面板 footer：顶部分隔线 + 通栏按钮。Panel footer: top divider + full-width button. */
+.open-console-wrap {
   border-top: 1px solid var(--border-base);
-  background: transparent;
-  color: var(--text-2);
-  font-size: 12px;
-  padding: 8px 0 9px;
-  cursor: pointer;
-  transition: color .15s, background .15s;
 }
-.open-console:hover { color: var(--brand-c2); background: rgba(103, 232, 249, .06); }
+.open-console-wrap :deep(.ui-btn) {
+  font-size: 12px;
+  border-radius: 0;
+  justify-content: flex-start;
+}
 </style>

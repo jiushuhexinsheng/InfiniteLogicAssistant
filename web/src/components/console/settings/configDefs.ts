@@ -55,19 +55,24 @@ export const sectionDefs: SectionDef[] = [
   { key: 'asr', name: 'ASR', title: 'ASR 语音识别', toggle: false,
     fields: ['provider', 'endpoint', 'model', 'language', 'chat_path', 'timeout'] },
   { key: 'tts', name: 'TTS', title: 'TTS 语音合成', toggle: true,
-    fields: ['provider', 'endpoint', 'model', 'voice', 'format', 'chat_path', 'timeout'] },
+    fields: ['provider', 'endpoint', 'model', 'voice', 'voices', 'voice_ref', 'format', 'chat_path', 'timeout'] },
 ]
 
 /** 高级模块定义（Agent / LLM 客户端 / 工具 / RAG / 服务器）。Advanced module definitions (Agent / LLM client / Tools / RAG / Server). */
 export const advancedDefs: AdvancedDef[] = [
   { key: 'agent', title: 'Agent 任务执行',
-    fields: [['recursion_limit', 'number'], ['multi_agent', 'bool'], ['structured_temperature', 'number']] },
+    fields: [['recursion_limit', 'number'], ['multi_agent', 'bool'], ['structured_temperature', 'number'],
+      ['confirm_timeout_s', 'number'], ['condense_threshold_chars', 'number']] },
   { key: 'llm_client', title: 'LLM 客户端（重试 / 熔断）',
     fields: [['retry_max', 'number'], ['retry_backoff_base', 'number'], ['retry_backoff_max', 'number'],
       ['circuit_breaker_threshold', 'number'], ['circuit_breaker_cooldown', 'number'], ['request_timeout', 'number']] },
   { key: 'tools', title: '工具参数',
-    fields: [['search_max_results', 'number'], ['weather_timeout', 'number']] },
-  { key: 'rag', title: 'RAG 检索', fields: [['auto_index', 'bool']] },
+    fields: [['search_max_results', 'number'], ['weather_timeout', 'number'], ['llm_max_output_chars', 'number']] },
+  { key: 'rag', title: 'RAG 检索',
+    fields: [['auto_index', 'bool'], ['rerank', 'text'], ['rerank_candidates', 'number'], ['rerank_top_k', 'number']] },
+  { key: 'memory', title: '长期记忆（docs/designs/04）',
+    fields: [['recency_half_life_days', 'number'], ['recency_weight', 'number'],
+      ['inject_top_k', 'number'], ['inject_max_chars', 'number'], ['extract_recent_messages', 'number']] },
   { key: 'server', title: '服务器',
     fields: [['host', 'text'], ['port', 'number'], ['open_browser', 'bool']] },
 ]
@@ -77,19 +82,30 @@ export const NUMERIC = new Set([
   'max_tokens', 'temperature', 'timeout', 'sensitivity', 'silence_threshold',
   'silence_duration_ms', 'max_duration_ms', 'recursion_limit', 'structured_temperature', 'retry_max',
   'retry_backoff_base', 'retry_backoff_max', 'circuit_breaker_threshold', 'circuit_breaker_cooldown',
-  'request_timeout', 'search_max_results', 'weather_timeout', 'port',
+  'request_timeout', 'search_max_results', 'weather_timeout', 'port', 'confirm_timeout_s',
+  'recency_half_life_days', 'recency_weight', 'inject_top_k', 'inject_max_chars',
+  'extract_recent_messages', 'rerank_candidates', 'rerank_top_k',
+  'condense_threshold_chars', 'llm_max_output_chars',
 ])
 
 /** 字段中文标签映射。Chinese label mapping for fields. */
 export const LABELS: Record<string, string> = {
   provider: '协议', endpoint: 'Endpoint', model: '模型', vision_model: '视觉模型',
   chat_path: 'Chat Path', max_tokens: 'Max Tokens', temperature: 'Temperature', timeout: '超时(s)',
-  language: '语言', voice: '音色', format: '格式', recursion_limit: 'ReAct 步数上限',
+  language: '语言', voice: '音色', voices: '音色列表（下拉候选）',
+  voice_ref: '参考音频（voiceclone）', format: '格式', recursion_limit: 'ReAct 步数上限',
   multi_agent: '多智能体', structured_temperature: '结构化输出温度', retry_max: '重试次数',
   retry_backoff_base: '退避基数(s)', retry_backoff_max: '退避上限(s)', circuit_breaker_threshold: '熔断阈值',
   circuit_breaker_cooldown: '熔断冷却(s)',
   request_timeout: '请求超时(s)', search_max_results: '搜索结果数', weather_timeout: '天气超时(s)',
   auto_index: '自动建索引', host: 'Host', port: 'Port', open_browser: '启动打开浏览器',
+  confirm_timeout_s: '确认/澄清超时(s，0=不限)',
+  recency_half_life_days: '记忆半衰期(天)', recency_weight: '新近度权重(0=关)',
+  inject_top_k: '注入条数上限', inject_max_chars: '注入字符预算',
+  extract_recent_messages: '提取回看对话(条)',
+  rerank: '精排(none/llm)', rerank_candidates: '粗排候选数', rerank_top_k: '注入条数',
+  condense_threshold_chars: '滚动压缩阈值(字符,0=关)',
+  llm_max_output_chars: '工具输出LLM上限(字,0=不限)',
 }
 
 /**

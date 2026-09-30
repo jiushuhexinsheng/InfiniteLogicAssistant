@@ -30,7 +30,7 @@ describe('handleSegment 分流', () => {
       sendAnswer: vi.fn(),
       runTurn: vi.fn(),
     }))
-    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
     const mod = await import('../useWakeWord')
     return { mod, sent }
   }
@@ -106,7 +106,7 @@ describe('handleSegment 分流', () => {
       },
     }))
     vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
-    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
     const store = await import('../store')
     const mod = await import('../useWakeWord')
     store.state.value = 'listening'
@@ -134,7 +134,7 @@ describe('handleSegment 分流', () => {
         },
       }))
       vi.doMock('../useChat', () => ({ sendText: (t: string) => { sent.push(t) }, sendAnswer: vi.fn(), runTurn: vi.fn() }))
-      vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
+      vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
       const sent: string[] = []
       const store = await import('../store')
       const mod = await import('../useWakeWord')
@@ -169,7 +169,7 @@ describe('handleSegment 分流', () => {
         },
       }))
       vi.doMock('../useChat', () => ({ sendText: (t: string) => { sent.push(t) }, sendAnswer: vi.fn(), runTurn: vi.fn() }))
-      vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
+      vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
       const sent: string[] = []
       const store = await import('../store')
       const mod = await import('../useWakeWord')
@@ -210,7 +210,7 @@ describe('handleSegment 分流', () => {
       // speaking must be a reactive ref: the orchestrator's watch hangs on it (it arms the echo guard).
       const { ref } = await import('vue')
       const speaking = ref(false)
-      vi.doMock('../useTts', () => ({ speaking, speakAuto: vi.fn() }))
+      vi.doMock('../useTts', () => ({ speaking, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
       const store = await import('../store')
       const mod = await import('../useWakeWord')
 
@@ -255,7 +255,7 @@ describe('handleSegment 分流', () => {
       },
     }))
     vi.doMock('../useChat', () => ({ sendText: (t: string) => { sent.push(t) }, sendAnswer: vi.fn(), runTurn: vi.fn() }))
-    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
     const store = await import('../store')
     const mod = await import('../useWakeWord')
     store.vadConfig.upload_throttle_ms = 0
@@ -285,7 +285,7 @@ describe('handleSegment 分流', () => {
         },
       }))
       vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
-      vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
+      vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
       const store = await import('../store')
       const mod = await import('../useWakeWord')
       store.wakeEnabled.value = true
@@ -321,7 +321,7 @@ describe('handleSegment 分流', () => {
       },
     }))
     vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
-    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
     const { api } = await import('../../../api')
     const { sendAnswer } = await import('../useChat')
     const store = await import('../store')
@@ -357,7 +357,7 @@ describe('useWakeWord 成本控制', () => {
       },
     }))
     vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
-    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
     const store = await import('../store')
     const mod = await import('../useWakeWord')
     return { mod, store, api: { wakeCheck, wakeDetect } }
@@ -490,7 +490,7 @@ describe('useWakeWord 状态反馈', () => {
       },
     }))
     vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
-    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
     const store = await import('../store')
     const mod = await import('../useWakeWord')
     store.vadConfig.upload_throttle_ms = 0
@@ -666,7 +666,7 @@ async function setupWake(opts: { throwOnStart?: boolean } = {}) {
   vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
   vi.doMock('../useTts', async () => {
     const { ref } = await import('vue')
-    return { speaking: ref(false), speakAuto: vi.fn() }
+    return { speaking: ref(false), speakAuto: vi.fn(), stopSpeak: vi.fn() }
   })
   const store = await import('../store')
   const tts = await import('../useTts')
@@ -822,7 +822,7 @@ describe('useWakeWord 等待窗口与收尾', () => {
       sendAnswer: vi.fn(),
       runTurn: vi.fn(),
     }))
-    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn() }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
     const store = await import('../store')
     const chat = await import('../useChat')
     const mod = await import('../useWakeWord')
@@ -883,17 +883,133 @@ describe('useWakeWord 等待窗口与收尾', () => {
     } finally { vi.useRealTimers() }
   })
 
-  /** 一轮结束（done/error）3 秒后回聆听，界面不会永久停在「完成」。 */
-  it('一轮结束 3 秒后回到聆听', async () => {
+  /** 一轮结束（done/error）3 秒后回聆听，界面不会永久停在「完成」。
+   *  续聊窗口关闭（followup_window_ms=0）时保持旧语义。 */
+  it('窗口关闭：一轮结束 3 秒后回到聆听（旧行为）', async () => {
     vi.useFakeTimers()
     try {
       const { store } = await setupWait()
       store.wakeEnabled.value = true
+      store.vadConfig.followup_window_ms = 0
       store.state.value = 'done'
       await nextTick()
       expect(store.state.value).toBe('done')      // 3 秒内不动。Unchanged within three seconds.
 
       await vi.advanceTimersByTimeAsync(3000)
+      expect(store.state.value).toBe('listening')
+    } finally { vi.useRealTimers() }
+  })
+})
+
+/** 续聊窗口（docs/designs/03-A）：回合结束 → followup 态，窗口内段免唤醒直接成指令，
+ *  到期回聆听；说唤醒词照常进指令窗（窗口与唤醒语义兼容）。
+ *
+ *  Follow-up window (docs/designs/03-A): turn end → followup; segments inside become
+ *  wake-free instructions; expiry returns to listening; the wake word still opens the
+ *  command window as usual (window and wake semantics stay compatible). */
+describe('useWakeWord 续聊窗口', () => {
+  beforeEach(() => { vi.resetModules(); localStorage.clear() })
+
+  async function setupFw(opts: { transcribe?: any; sent?: string[] } = {}) {
+    const sent = opts.sent ?? []
+    vi.doMock('../../../api', () => ({
+      api: {
+        wakeCheck: vi.fn(async () => ({ ok: true, hit: false, bypass: false })),
+        wakeDetect: vi.fn(async () => ({ ok: true, matched: false })),
+        transcribe: opts.transcribe ?? vi.fn(async () => ({ ok: true, text: '接着查一下气温' })),
+      },
+    }))
+    vi.doMock('../useChat', () => ({
+      sendText: (t: string) => { sent.push(t) },
+      sendAnswer: vi.fn(),
+      runTurn: vi.fn(),
+    }))
+    // speaking 必须是真 ref：播报门控与窗口重武装的 watch 都挂在它上面。
+    // speaking must be a real ref: the playback gate and window re-arm watches hang on it.
+    const { ref } = await import('vue')
+    const speaking = ref(false)
+    vi.doMock('../useTts', () => ({ speaking, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
+    const store = await import('../store')
+    const mod = await import('../useWakeWord')
+    store.vadConfig.upload_throttle_ms = 0
+    store.vadConfig.followup_window_ms = 6000
+    return { store, mod, sent, speaking }
+  }
+
+  /** 回合结束 → 立即进 followup；到期回聆听。
+   *  Turn end → followup immediately; expiry → listening. */
+  it('done → followup → 到期 listening', async () => {
+    vi.useFakeTimers()
+    try {
+      const { store } = await setupFw()
+      store.wakeEnabled.value = true
+      store.state.value = 'done'
+      await nextTick()
+      expect(store.state.value).toBe('followup')
+
+      await vi.advanceTimersByTimeAsync(5999)
+      expect(store.state.value).toBe('followup')   // 窗口未到。Inside the window.
+      await vi.advanceTimersByTimeAsync(2)
+      expect(store.state.value).toBe('listening')
+    } finally { vi.useRealTimers() }
+  })
+
+  /** 窗口内的段免唤醒直接成为新指令（不走快检/熔断/节流）。
+   *  A segment inside the window becomes a fresh instruction without the wake word. */
+  it('窗口内段 → 转写后直接 sendText（免唤醒）', async () => {
+    vi.useFakeTimers()
+    try {
+      const { store, mod, sent } = await setupFw()
+      store.wakeEnabled.value = true
+      store.state.value = 'done'
+      await nextTick()
+      expect(store.state.value).toBe('followup')
+
+      await mod.handleSegment(new Blob(['x']))
+      expect(sent).toEqual(['接着查一下气温'])
+      store.state.value = 'thinking'   // sendText 的 mock 不改状态，模拟 runTurn 接管。
+    } finally { vi.useRealTimers() }
+  })
+
+  /** 窗口内说唤醒词 → 照常进指令窗（裸唤醒词不整句当指令发出去）。
+   *  A bare wake word inside the window opens the command window as usual (it is not
+   *  sent verbatim as an instruction). */
+  it('窗口内说唤醒词 → 进指令窗', async () => {
+    vi.useFakeTimers()
+    try {
+      const sent: string[] = []
+      const transcribe = vi.fn(async () => ({ ok: true, text: '衍衡' }))
+      const { store, mod } = await setupFw({ transcribe, sent })
+      store.wakeEnabled.value = true
+      store.state.value = 'done'
+      await nextTick()
+      expect(store.state.value).toBe('followup')
+
+      await mod.handleSegment(new Blob(['x']))
+      expect(sent).toEqual([])                      // 裸唤醒词不发指令。A bare wake fires no command.
+      expect(store.statusLine.value).toContain('请说指令')
+      expect(store.state.value).toBe('recording')
+    } finally { vi.useRealTimers() }
+  })
+
+  /** 播报结束重新计满窗口（窗口 = 播报完后的 N 毫秒）。
+   *  End-of-playback re-arms a full window (the window is N ms after playback ends). */
+  it('播报结束重新武装窗口', async () => {
+    vi.useFakeTimers()
+    try {
+      const { store, speaking } = await setupFw()
+      store.wakeEnabled.value = true
+      store.state.value = 'done'
+      await nextTick()
+      expect(store.state.value).toBe('followup')
+      await vi.advanceTimersByTimeAsync(5000)       // 窗口过半。Halfway.
+      speaking.value = true
+      await nextTick()
+      speaking.value = false
+      await nextTick()
+      await vi.advanceTimersByTimeAsync(5500)       // 重新计满后仍在窗内。Re-armed: still inside.
+      expect(store.state.value).toBe('followup')
+      await vi.advanceTimersByTimeAsync(1000)
       expect(store.state.value).toBe('listening')
     } finally { vi.useRealTimers() }
   })
@@ -1033,5 +1149,71 @@ describe('useWakeWord 开启路径', () => {
 
     expect(handles.every((h) => h.stop.mock.calls.length === 1)).toBe(true)
     expect([...streams, sResume, sClick].every((s) => s.track.stop.mock.calls.length === 1)).toBe(true)
+  })
+})
+
+/** barge-in 打断播报（docs/designs/02 批3）：vad.barge_in 开 → 播报期间起能量监控，
+ *  命中即 stopSpeak('barge_in')；默认关 → 行为与旧版全同（不起监控）。
+ *
+ *  Barge-in (docs/designs/02 batch 3): with vad.barge_in on, playback starts an energy
+ *  monitor that calls stopSpeak('barge_in') on a hit; off by default → legacy behaviour
+ *  (no monitor). */
+describe('useWakeWord barge-in 打断播报', () => {
+  beforeEach(() => { vi.resetModules(); localStorage.clear() })
+
+  async function setup(opts: { bargeIn: boolean }) {
+    vi.doMock('../../../api', () => ({
+      api: {
+        wakeCheck: vi.fn(async () => ({ ok: true, hit: false, bypass: false })),
+        wakeDetect: vi.fn(async () => ({ ok: true, matched: false })),
+        transcribe: vi.fn(async () => ({ ok: true, text: '' })),
+      },
+    }))
+    vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
+    const { ref } = await import('vue')
+    const speaking = ref(false)
+    const stopSpeak = vi.fn()
+    vi.doMock('../useTts', () => ({ speaking, speakAuto: vi.fn(), stopSpeak }))
+    const startBargeInMonitor = vi.fn(() => ({ stop: vi.fn() }))
+    vi.doMock('../bargeIn', () => ({ startBargeInMonitor, BARGE_IN_DURATION_MS: 400 }))
+    const store = await import('../store')
+    store.vadConfig.barge_in = opts.bargeIn
+    await import('../useWakeWord')
+    return { speaking, stopSpeak, startBargeInMonitor }
+  }
+
+  /** 开启时：播报 → 起监控；命中 → 掐断播报。On: playback starts the monitor; a hit
+   *  cuts the playback. */
+  it('barge_in 开 → 播报起监控，命中调 stopSpeak', async () => {
+    const { speaking, stopSpeak, startBargeInMonitor } = await setup({ bargeIn: true })
+    speaking.value = true
+    await nextTick()
+    expect(startBargeInMonitor).toHaveBeenCalledTimes(1)
+    const cfg = startBargeInMonitor.mock.calls[0][0] as any
+    expect(cfg.durationMs).toBe(400)
+    cfg.onTrigger()
+    expect(stopSpeak).toHaveBeenCalledWith('barge_in')
+  })
+
+  /** 默认关：不起监控（旧版「播报期间停麦」行为原样保留）。
+   *  Default off: no monitor starts (legacy "mic off while speaking" preserved). */
+  it('barge_in 关 → 不起监控', async () => {
+    const { speaking, stopSpeak, startBargeInMonitor } = await setup({ bargeIn: false })
+    speaking.value = true
+    await nextTick()
+    expect(startBargeInMonitor).not.toHaveBeenCalled()
+    expect(stopSpeak).not.toHaveBeenCalled()
+  })
+
+  /** 播报结束（含被打断）→ 监控被收掉（独立流不得泄漏）。
+   *  Playback ends (incl. interrupted) → the monitor is released (no leaked stream). */
+  it('播报结束收掉监控', async () => {
+    const { speaking, startBargeInMonitor } = await setup({ bargeIn: true })
+    speaking.value = true
+    await nextTick()
+    const handle = (startBargeInMonitor.mock.results[0].value as { stop: ReturnType<typeof vi.fn> })
+    speaking.value = false
+    await nextTick()
+    expect(handle.stop).toHaveBeenCalledTimes(1)
   })
 })

@@ -36,14 +36,26 @@
           </UiChip>
         </div>
 
-        <!-- 服务模块：LLM / ASR / TTS（仅在 activeMenu 匹配时显示）。Service modules: LLM / ASR / TTS (shown when activeMenu matches).
+        <!-- 服务模块：LLM / ASR（仅在 activeMenu 匹配时显示）。Service modules: LLM / ASR (shown when activeMenu matches).
              必须同时等 editable 加载完成：activeMenu 初值即 'llm'，首屏若先渲染卡片会在 sec(key).profiles 上取到 undefined。
              Must also wait for editable to load: activeMenu starts as 'llm', so rendering the card first would read .profiles off undefined. -->
         <template v-for="def in sectionDefs" :key="def.key">
-          <ServiceCard v-if="s.editable.value && s.activeMenu.value === def.key" :section="def" />
+          <ServiceCard v-if="def.key !== 'tts' && s.editable.value && s.activeMenu.value === def.key" :section="def" />
         </template>
 
-        <!-- 语音模块：唤醒词 + VAD + 本地播报配置。Voice module: wake word + VAD + local speech settings. -->
+        <!-- 语音合成（两卡堆叠）：卡1 引擎选择 → 卡2 按引擎显示对应配置。
+             TTS (two stacked cards): card 1 engine picker → card 2 config per engine. -->
+        <template v-if="s.editable.value && s.activeMenu.value === 'tts'">
+          <TtsEngineCard />
+          <ServiceCard v-if="engine === 'api'" :section="ttsDef">
+            <!-- API 分支：后端 Profile / Endpoint / 音色等 + 播报偏好（徽章 / 音色覆盖 / 音量）。
+                 API branch: backend profile/endpoint/voice etc + playback prefs (badges / voice override / volume). -->
+            <TtsSettings />
+          </ServiceCard>
+          <TtsLocalCard v-else />
+        </template>
+
+        <!-- 语音模块：唤醒词 + VAD（播报设置已移入「语音合成」卡）。Voice module: wake word + VAD (playback settings moved into the TTS card). -->
         <VoiceCard v-if="s.editable.value && s.activeMenu.value === 'voice'" />
 
         <!-- 权限模块：工具权限策略（层级默认 + 规则覆盖）。Permission module: tool permission policy. -->
@@ -71,12 +83,22 @@ import ApiKeyModal from './settings/ApiKeyModal.vue'
 import PermissionsCard from './settings/PermissionsCard.vue'
 import ServiceCard from './settings/ServiceCard.vue'
 import VoiceCard from './settings/VoiceCard.vue'
+import TtsEngineCard from './settings/TtsEngineCard.vue'
+import TtsLocalCard from './settings/TtsLocalCard.vue'
+import TtsSettings from '../assistant/TtsSettings.vue'
 import { useSettings } from './settings/useSettings'
+import { useTtsEngine } from '../../composables/assistant/useTtsEngine'
 import { menuDefs, sectionDefs } from './settings/configDefs'
 import { UiButton, UiChip, UiIcon } from '../ui'
 
 /** 设置页单例状态与操作（保留对象引用以维持响应式）。Settings singleton (kept as an object to preserve reactivity). */
 const s = useSettings()
+
+/** TTS 引擎选择（与卡1 同源，决定卡2 渲染哪个分支）。Engine choice (same source as card 1; picks card 2's branch). */
+const { engine } = useTtsEngine()
+
+/** TTS section 定义（API 分支的 ServiceCard 用）。TTS section def (for the API branch's ServiceCard). */
+const ttsDef = sectionDefs.find(d => d.key === 'tts')!
 
 /**
  * 将连通性状态映射为 UI 色调。

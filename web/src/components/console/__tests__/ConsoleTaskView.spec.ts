@@ -6,7 +6,10 @@ vi.mock('../../../api', () => ({
   api: { answer: vi.fn(), stopTask: vi.fn(), callTool: vi.fn() },
   streamUtter: vi.fn(),
 }))
-vi.mock('../../../composables/assistant/useTts', () => ({ speakAuto: vi.fn() }))
+vi.mock('../../../composables/assistant/useTts', async () => {
+  const { ref } = await import('vue')
+  return { speakAuto: vi.fn(), stopSpeak: vi.fn(), speaking: ref(false) }
+})
 
 import { api, streamUtter } from '../../../api'
 import { messages, currentSessionId, pendingQuestion, state } from '../../../composables/assistant/store'

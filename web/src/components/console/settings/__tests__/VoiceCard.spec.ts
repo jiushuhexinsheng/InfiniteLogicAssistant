@@ -5,9 +5,6 @@ import { mount } from '@vue/test-utils'
 vi.mock('../../../../api', () => ({
   api: { patchConfig: vi.fn(), getConfigFull: vi.fn(), getProviders: vi.fn() },
 }))
-// TTS 面板自带 SpeechSynthesis / TTS 接线，与本卡的断言无关，替换成空组件。
-// The TTS panel carries its own speech-synthesis wiring, irrelevant to this card's assertions.
-vi.mock('../../../assistant/TtsSettings.vue', () => ({ default: { template: '<div />' } }))
 
 import { editable } from '../state'
 import VoiceCard from '../VoiceCard.vue'
@@ -29,7 +26,8 @@ function snapshot() {
     wake_word: { enabled: true, keywords: ['衍衡', '洛吉斯'], sensitivity: 0.5, model_path: '' },
     vad: {
       silence_threshold: 0.02, silence_duration_ms: 1500, max_duration_ms: 10000,
-      answer_timeout_ms: 8000, min_speech_ms: 300, upload_throttle_ms: 500,
+      answer_timeout_ms: 8000, min_speech_ms: 300, upload_throttle_ms: 500, followup_window_ms: 6000,
+      barge_in: false,
     },
   }
 }
@@ -103,5 +101,12 @@ describe('VoiceCard', () => {
     const w = mount(VoiceCard)
     expect(w.text()).toContain('云端 ASR')
     expect(w.text()).toContain('无论是否说出唤醒词')
+  })
+
+  /** 迁移回归：播报设置面板已移入「语音合成」卡，唤醒卡不得再内嵌。
+   *  Migration regression: the playback panel moved into the TTS card and must no longer be embedded here. */
+  it('不再内嵌播报设置面板', () => {
+    const w = mount(VoiceCard)
+    expect(w.find('.tts-settings').exists()).toBe(false)
   })
 })

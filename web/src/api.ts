@@ -5,7 +5,9 @@
 import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, LibraryTask, PingResponse, ProviderPreset, QuestionEvent, QuestionOption, SessionItem, SseEvent, TextResponse, ToolCallResponse, TokenUsage, ToolsResponse, TaskState, WakeResponse } from './types'
 import type { components } from './api/generated'
 import { blobToWavBase64 } from './audio'
-import { formatError } from './errors'
+// （streamUtter 断线文案已改为 resume 流程的固定提示，docs/designs/06 —— 不再内嵌底层错误。）
+// (streamUtter's disconnect wording is now a fixed resume-flow notice,
+// docs/designs/06 — the underlying error is no longer embedded.)
 
 // ─── HTTP 封装 / HTTP Wrappers ───
 
@@ -195,6 +197,11 @@ export const api = {
   // Session Management (resumable conversation threads)
   /** 创建新会话。Create new session. */
   createSession: (name?: string) => post<{ ok: boolean; session: SessionItem }>('/sessions', name ? { name } : undefined),
+  /** 分叉会话前缀为新会话（docs/designs/07；源会话只读不动）。
+   *  Fork a session prefix into a new conversation (docs/designs/07; source untouched). */
+  forkSession: (id: string, upTo: number) =>
+    post<{ ok: boolean; session: SessionItem & { messages?: unknown[] } }>(
+      `/sessions/${encodeURIComponent(id)}/fork`, { up_to: upTo }),
   /** 获取会话列表。Get session list. */
   listSessions: (archived?: boolean) => get<{ ok: boolean; sessions: SessionItem[] }>(archived ? '/sessions?archived=true' : '/sessions'),
   /** 重命名会话。Rename session. */
@@ -280,117 +287,161 @@ export async function streamUtter(
   // The assistant mode travels with the request (the backend uses it to decide whether to
   // ask and archive on completion).
   if (opts?.mode) body.mode = opts.mode
-  const MAX_RETRY = 1
 
-  /**
-   * 单次尝试：'done' = 正常/业务/中断（不重试）；'retry' = 网络错误且未收到事件（可重试）。
-   * Single attempt: 'done' = normal/business/interrupt (no retry); 'retry' = network error without events received (retryable).
-   * @returns Promise<'done' | 'retry'>
-   */
-  const runOnce = async (): Promise<'done' | 'retry'> => {
-    // 标记是否已接收到事件 / Flag indicating if any event has been received
-    let received = false
+  // ── seq 游标与断线恢复（docs/designs/06）──
+  // lastSeq：已消费的最大事件序号（服务端回放 seq≤lastSeq 的帧会被跳过 —— 重连不重复）。
+  // Last consumed event seq (frames replayed with seq ≤ lastSeq are skipped — no
+  // duplicates across reconnects).
+  let lastSeq = 0
+  let everReceived = false
+  const MAX_RETRY = 1          // 主连接零事件重试（旧语义保留）。Main-conn zero-event retry (legacy).
+  const RESUME_RETRY = 2       // resume 重试次数（退避 1s/3s）。Resume attempts (backoff 1s/3s).
+  const PING_TIMEOUT_MS = 35000 // 35s 无任何帧（含 ping）判死。No frame (incl. ping) for 35s = dead.
+  const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
+
+  /** 消费一条连接：分发事件（seq 去重 + ping 看门狗），返回结局。
+   *  'closed' = 正常/业务错误/中止（收工）；'network' = 连接断了（可 resume）。
+   *
+   *  Consume one connection: dispatch events (seq dedup + ping watchdog) and return
+   *  the outcome — 'closed' = normal/business error/abort (finished); 'network' =
+   *  connection lost (resumable). */
+  const consume = async (resp: Response): Promise<'closed' | 'network'> => {
+    const reader = resp.body!.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    let timedOut = false
+    let finished = false
     try {
-      // 发起 POST 请求到 /api/voice/utter / Initiate POST request to /api/voice/utter
-      const resp = await fetch(`${BASE}/voice/utter`, {
+      while (true) {
+        // 看门狗：超时 cancel 读取器 → read() 立刻返回 → 按断线处理。
+        // Watchdog: cancel the reader on timeout → read() returns at once → network loss.
+        const timer = setTimeout(() => {
+          timedOut = true
+          try { void reader.cancel() } catch { /* ignore */ }
+        }, PING_TIMEOUT_MS)
+        let chunk: ReadableStreamReadResult<Uint8Array>
+        try {
+          chunk = await reader.read()
+        } finally {
+          clearTimeout(timer)
+        }
+        if (chunk.done) break
+        buf += decoder.decode(chunk.value, { stream: true })
+        let idx: number
+        while ((idx = buf.indexOf('\n\n')) !== -1) {
+          const block = buf.slice(0, idx)
+          buf = buf.slice(idx + 2)
+          const line = block.split('\n').find(l => l.startsWith('data: '))
+          if (!line) continue
+          const data = line.slice(6).trim()
+          if (data === '[DONE]') continue
+          let evt: any
+          try { evt = JSON.parse(data) } catch { continue }
+          // 心跳：只重置看门狗，不进分发、无 seq（docs/designs/06）。
+          // Heartbeat: resets the watchdog only — not dispatched, carries no seq.
+          if (evt.type === 'ping') continue
+          // 回放去重：seq 在游标内（重连重发的旧帧）直接丢。
+          // Replay dedup: a seq behind the cursor (an old frame resent on reconnect) is dropped.
+          if (typeof evt.seq === 'number') {
+            if (evt.seq <= lastSeq) continue
+            lastSeq = evt.seq
+          }
+          everReceived = true
+          // 原始事件先交通配回调（块 reducer 归一），再走具体分发
+          // Raw events go to the wildcard callback (block reducer) first, then the specific dispatch
+          h.onEvent?.(evt)
+          switch (evt.type) {
+            case 'task_state':
+              if (evt.session_id) sessionId = evt.session_id
+              h.onTaskState?.(evt)
+              break
+            case 'content_delta': h.onContent?.(evt.text); break
+            case 'reasoning_delta': h.onReasoning?.(evt.text); break
+            case 'tool_start': h.onToolStart?.(evt.name, evt.args || {}); break
+            case 'tool_end': h.onToolEnd?.(evt.name, evt.status, evt.output || ''); break
+            case 'usage': h.onUsage?.(evt.usage); break
+            case 'question':
+              if (evt.session_id) sessionId = evt.session_id
+              h.onQuestion?.({ question: evt.question, session_id: evt.session_id, kind: evt.kind, options: evt.options, qid: evt.qid })
+              break
+            case 'error': h.onError?.(evt.message); finished = true; return 'closed'
+            case 'done': h.onDone?.(sessionId); finished = true; return 'closed'
+          }
+        }
+      }
+      if (timedOut) return 'network'   // 看门狗杀读 → 断线。Watchdog killed the read → network loss.
+      if (!finished) h.onDone?.(sessionId)  // 服务端正常收流但没发 done（防御）。Stream ended without done (defensive).
+      return 'closed'
+    } catch (e: any) {
+      if (e?.name === 'AbortError') { h.onAbort?.(); return 'closed' }
+      if (timedOut) return 'network'
+      return 'network'
+    }
+  }
+
+  /** 打开一条连接：utter（首连/零事件重试）或 resume。Open one connection. */
+  const open = async (mode: 'main' | 'resume'): Promise<Response> => {
+    if (mode === 'main') {
+      return fetch(`${BASE}/voice/utter`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
         signal: opts?.signal,
       })
-      // 处理 HTTP 错误响应 / Handle HTTP error responses
-      if (!resp.ok || !resp.body) {
-        let msg = `HTTP ${resp.status}`
-        try {
-          const e = await resp.json()
-          if (e?.error) msg = e.error
-        } catch { /* not JSON */ }
-        h.onError?.(msg)
-        return 'done'
-      }
-      // 获取响应流读取器 / Get response stream reader
-      const reader = resp.body.getReader()
-      const decoder = new TextDecoder()
-      let buf = ''
-      // 读取 SSE 事件流 / Read SSE event stream
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        // 解码二进制数据为文本 / Decode binary data to text
-        buf += decoder.decode(value, { stream: true })
-        let idx: number
-        // 解析 SSE 事件块（以 \n\n 分隔）/ Parse SSE event blocks (separated by \n\n)
-        while ((idx = buf.indexOf('\n\n')) !== -1) {
-          const block = buf.slice(0, idx)
-          buf = buf.slice(idx + 2)
-          // 查找 data: 行 / Find data: line
-          const line = block.split('\n').find(l => l.startsWith('data: '))
-          if (!line) continue
-          // 提取 JSON 数据 / Extract JSON data
-          const data = line.slice(6).trim()
-          if (data === '[DONE]') break
-          // 解析 JSON 事件数据 / Parse JSON event data
-          let evt: SseEvent
-          try { evt = JSON.parse(data) as SseEvent } catch { continue }
-          // 标记已接收到事件 / Mark event as received
-          received = true
-          // 原始事件先交通配回调（块 reducer 归一），再走具体分发
-          // Raw events go to the wildcard callback (block reducer) first, then the specific dispatch
-          h.onEvent?.(evt)
-          // 根据事件类型分发处理 / Dispatch handling based on event type
-          switch (evt.type) {
-            case 'task_state':
-              // 任务状态变化，更新 session_id / Task state change, update session_id
-              if (evt.session_id) sessionId = evt.session_id
-              h.onTaskState?.(evt)
-              break
-            // 内容增量事件 / Content delta event
-            case 'content_delta': h.onContent?.(evt.text); break
-            // 推理过程增量事件 / Reasoning delta event
-            case 'reasoning_delta': h.onReasoning?.(evt.text); break
-            // 工具开始执行事件 / Tool start event
-            case 'tool_start': h.onToolStart?.(evt.name, evt.args || {}); break
-            // 工具执行结束事件 / Tool end event
-            case 'tool_end': h.onToolEnd?.(evt.name, evt.status, evt.output || ''); break
-            // Token 使用量事件 / Token usage event
-            case 'usage': h.onUsage?.(evt.usage); break
-            // 问题事件（澄清/确认）/ Question event (clarification/confirmation)
-            case 'question':
-              if (evt.session_id) sessionId = evt.session_id
-              h.onQuestion?.({ question: evt.question, session_id: evt.session_id, kind: evt.kind, options: evt.options, qid: evt.qid })
-              break
-            // 错误事件，终止处理 / Error event, terminate processing
-            case 'error': h.onError?.(evt.message); return 'done'
-            // 完成事件，正常结束 / Done event, normal termination
-            case 'done': h.onDone?.(sessionId); return 'done'
-          }
-        }
-      }
-      // 正常完成 / Normal completion
-      h.onDone?.(sessionId)
-      return 'done'
-    } catch (e: any) {
-      // 用户主动中止 / User initiated abort
-      if (e?.name === 'AbortError') {
-        h.onAbort?.()
-        return 'done'
-      }
-      if (received) {
-        // 流已开始后中断：提示但不重试（避免重复执行任务）
-        // Interrupted after stream started: notify but don't retry (avoid duplicate task execution)
-        h.onError?.('连接中断：' + formatError(e))
-        return 'done'
-      }
-      // 网络错误且未收到事件，可重试 / Network error without events received, retryable
-      return 'retry'
     }
+    return fetch(`${BASE}/voice/resume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId || opts?.sessionId || '', last_seq: lastSeq }),
+      signal: opts?.signal,
+    })
   }
 
-  // 重试循环，最多 MAX_RETRY 次 / Retry loop, up to MAX_RETRY times
-  for (let i = 0; i <= MAX_RETRY; i++) {
-    const status = await runOnce()
-    if (status === 'done') break
-    if (i === MAX_RETRY) h.onError?.('网络连接失败，请重试')
+  let mainTry = 0
+  let resumeTry = 0
+  let mode: 'main' | 'resume' = 'main'
+  // 重连退避：第 1 次 1s、第 2 次 3s（docs/designs/06 §批2）。
+  const RESUME_BACKOFF = [1000, 3000]
+  for (;;) {
+    let resp: Response
+    try {
+      resp = await open(mode)
+    } catch (e: any) {
+      if (e?.name === 'AbortError') { h.onAbort?.(); return sessionId }
+      if (mode === 'main' && !everReceived && mainTry < MAX_RETRY) { mainTry++; continue }
+      if (mode === 'resume' && resumeTry < RESUME_RETRY) {
+        await sleep(RESUME_BACKOFF[Math.min(resumeTry, RESUME_BACKOFF.length - 1)])
+        resumeTry++
+        continue
+      }
+      h.onError?.(mode === 'main' ? '网络连接失败，请重试' : '连接中断：任务已在服务端继续，稍后刷新历史查看')
+      return sessionId
+    }
+    if (!resp.ok || !resp.body) {
+      let msg = `HTTP ${resp.status}`
+      try {
+        const e = await resp.json()
+        if (e?.error) msg = e.error
+      } catch { /* not JSON */ }
+      if (mode === 'main' && resp.status !== 200) { h.onError?.(msg); return sessionId }
+      if (mode === 'resume') {
+        // 404 no_run = 运行已结束/不存在 → 历史重载兜底（调用方刷新）。
+        if (resp.status === 404) { h.onError?.('连接中断，回合已结束：请刷新历史查看'); return sessionId }
+        if (resumeTry < RESUME_RETRY) { await sleep(RESUME_BACKOFF[Math.min(resumeTry, 2 - 1)]); resumeTry++; mode = 'resume'; continue }
+        h.onError?.(msg); return sessionId
+      }
+      h.onError?.(msg)
+      return sessionId
+    }
+    const outcome = await consume(resp)
+    if (outcome === 'closed') return sessionId
+    // 断线（网络错/看门狗）→ 进入 resume（服务端宽限期内任务仍在跑）。
+    // Network loss → resume (the server keeps the task alive inside its grace window).
+    if (opts?.signal?.aborted) { h.onAbort?.(); return sessionId }
+    mode = 'resume'
+    resumeTry = 0
+    if (!sessionId && !opts?.sessionId) { h.onError?.('连接中断且无会话标识，无法恢复'); return sessionId }
+    await sleep(RESUME_BACKOFF[0])
+    resumeTry = 1   // 首次重连已消费掉 1s 退避额度。The first reconnect spends the 1s slot.
   }
-  return sessionId
 }

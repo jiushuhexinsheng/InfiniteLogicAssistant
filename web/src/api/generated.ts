@@ -216,6 +216,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/voice/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Voice Resume
+         * @description 断线重连：回放 seq > last_seq 的已消费事件并挂接实况流（docs/designs/06）。
+         *
+         *     - 无运行句柄 / 已完成 → 404 `no_run`（前端走历史重载兜底）；
+         *     - 宽限期内取消看门狗、标记已连接，之后与首连同一生成器续编号。
+         *
+         *     Reconnect: replay consumed events with seq > last_seq and attach to the live
+         *     stream (docs/designs/06). No run handle / already finished → 404 `no_run` (the
+         *     frontend falls back to reloading history). Inside the grace window the watchdog
+         *     is cancelled and the run marked connected; numbering then continues through the
+         *     same generator the first connection used.
+         */
+        post: operations["voice_resume_api_voice_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/voice/answer": {
         parameters: {
             query?: never;
@@ -530,6 +559,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{sid}/fork": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sessions Fork
+         * @description 分叉会话：body {"up_to": <消息下标, 含该条>} → 复制前缀为新会话（源不动）。
+         *
+         *     - 源不存在 → 404；up_to 越界 → 400；源会话正等待回答 → 409（进行中的 run 不可分叉）。
+         *     - 编辑重发/重新生成必须先分叉（整段覆盖存储下直接改写会丢原路径，docs/designs/07）。
+         *
+         *     Fork a session: body {"up_to": <message index, inclusive>} copies the prefix into a
+         *     new conversation (the source is untouched). Missing source → 404; up_to out of
+         *     range → 400; the source is waiting for an answer → 409 (no forking a live run).
+         *     Edit-and-resend must fork first (whole-overwrite storage would destroy the
+         *     original path, docs/designs/07).
+         */
+        post: operations["sessions_fork_api_sessions__sid__fork_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions": {
         parameters: {
             query?: never;
@@ -778,9 +836,10 @@ export interface components {
         };
         /**
          * AgentConfigOut
-         * @description Agent 配置输出（递归限制、多代理、故障转移模型列表）。
+         * @description Agent 配置输出（递归限制、多代理、故障转移模型列表、确认超时、压缩阈值）。
          *
-         *     Agent config output (recursion limit, multi-agent, failover model list).
+         *     Agent config output (recursion limit, multi-agent, failover model list, confirm
+         *     timeout, condense threshold).
          */
         AgentConfigOut: {
             /**
@@ -798,6 +857,16 @@ export interface components {
              * @default []
              */
             models_failover: string[];
+            /**
+             * Confirm Timeout S
+             * @default 0
+             */
+            confirm_timeout_s: number;
+            /**
+             * Condense Threshold Chars
+             * @default 12000
+             */
+            condense_threshold_chars: number;
         };
         /**
          * ApiResponse
@@ -1006,6 +1075,7 @@ export interface components {
             permissions: components["schemas"]["PermissionsOut"];
             mcp: components["schemas"]["McpConfigOut"];
             rag: components["schemas"]["RagConfigOut"];
+            memory: components["schemas"]["MemoryConfigOut"];
             server: components["schemas"]["ServerConfigOut"];
         };
         /**
@@ -1328,6 +1398,40 @@ export interface components {
             args: string[];
         };
         /**
+         * MemoryConfigOut
+         * @description 记忆配置输出（新近度加权 / 注入预算 / 提取回看，docs/designs/04）。
+         *
+         *     Memory config output (recency weight / injection budget / extraction lookback,
+         *     docs/designs/04).
+         */
+        MemoryConfigOut: {
+            /**
+             * Recency Half Life Days
+             * @default 30
+             */
+            recency_half_life_days: number;
+            /**
+             * Recency Weight
+             * @default 0.5
+             */
+            recency_weight: number;
+            /**
+             * Inject Top K
+             * @default 5
+             */
+            inject_top_k: number;
+            /**
+             * Inject Max Chars
+             * @default 800
+             */
+            inject_max_chars: number;
+            /**
+             * Extract Recent Messages
+             * @default 2
+             */
+            extract_recent_messages: number;
+        };
+        /**
          * MemoryListResponse
          * @description 记忆列表端点响应。
          *
@@ -1625,6 +1729,21 @@ export interface components {
              * @default true
              */
             auto_index: boolean;
+            /**
+             * Rerank
+             * @default none
+             */
+            rerank: string;
+            /**
+             * Rerank Candidates
+             * @default 12
+             */
+            rerank_candidates: number;
+            /**
+             * Rerank Top K
+             * @default 5
+             */
+            rerank_top_k: number;
         };
         /**
          * ScheduleAddResponse
@@ -1947,6 +2066,16 @@ export interface components {
              * @default 10
              */
             weather_timeout: number;
+            /**
+             * Llm Max Output Chars
+             * @default 8000
+             */
+            llm_max_output_chars: number;
+            /**
+             * Lazy Groups
+             * @default []
+             */
+            lazy_groups: string[];
         };
         /**
          * ToolsResponse
@@ -2046,6 +2175,16 @@ export interface components {
              * @default 500
              */
             upload_throttle_ms: number;
+            /**
+             * Followup Window Ms
+             * @default 6000
+             */
+            followup_window_ms: number;
+            /**
+             * Barge In
+             * @default false
+             */
+            barge_in: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -2339,6 +2478,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    voice_resume_api_voice_resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiResponse"];
                 };
             };
         };
@@ -2738,6 +2897,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sessions_fork_api_sessions__sid__fork_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionCreateResponse"];
                 };
             };
             /** @description Validation Error */

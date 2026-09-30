@@ -9,10 +9,10 @@
       <UiButton variant="secondary" size="sm" @click="s.customAdding.value = null">取消</UiButton>
     </div>
     <div v-else class="cs-vendor-grid">
-      <button class="cs-vendor-chip custom" @click="s.customAdding.value = sectionKey">＋ 自定义（空白）</button>
-      <button v-for="v in s.vendorList(sectionKey)" :key="v.id" class="cs-vendor-chip" @click="s.addProfileFromVendor(sectionKey, v)">
+      <UiButton size="sm" shape="pill" class="cs-vendor-chip custom" @click="s.customAdding.value = sectionKey">＋ 自定义（空白）</UiButton>
+      <UiButton v-for="v in s.vendorList(sectionKey)" :key="v.id" size="sm" shape="pill" class="cs-vendor-chip" @click="s.addProfileFromVendor(sectionKey, v)">
         {{ v.label }}
-      </button>
+      </UiButton>
     </div>
   </div>
 </template>
@@ -39,13 +39,15 @@ const sectionKey = props.sectionKey
 }
 .cs-vendor-tip { font-size: var(--fs-2xs); color: var(--text-3); margin: 0 0 7px; }
 .cs-vendor-grid { display: flex; flex-wrap: wrap; gap: 6px; }
-.cs-vendor-chip {
+/* 覆盖 UiButton 的 .ui-btn.s-sm（双类 + 容器层级保特异性胜出），保持紧凑 mono chip 观感。
+   Overrides UiButton's .ui-btn.s-sm (container + double class keeps specificity ahead) for the compact mono chip look. */
+.cs-vendor .cs-vendor-grid .cs-vendor-chip {
   font-size: var(--fs-2xs); font-family: var(--font-mono); color: var(--text-2);
   background: rgba(15, 23, 42, .6); border: 1px solid var(--border-soft);
-  border-radius: var(--r-full); padding: 3px 10px; cursor: pointer;
+  border-radius: var(--r-full); padding: 3px 10px;
 }
-.cs-vendor-chip:hover { color: var(--brand-c2); border-color: var(--brand-c2); }
-.cs-vendor-chip.custom { border-style: dashed; color: var(--brand-c2); }
+.cs-vendor .cs-vendor-grid .cs-vendor-chip:hover { color: var(--brand-c2); border-color: var(--brand-c2); background: rgba(15, 23, 42, .6); }
+.cs-vendor .cs-vendor-grid .cs-vendor-chip.custom { border-style: dashed; color: var(--brand-c2); }
 .cs-vendor-custom { display: flex; align-items: center; gap: 8px; }
 .cs-vendor-custom :deep(.ui-input) { flex: 1; min-width: 0; }
 </style>

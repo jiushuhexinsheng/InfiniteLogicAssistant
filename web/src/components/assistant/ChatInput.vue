@@ -5,28 +5,43 @@
        (QuestionBlock in the message stream); the duplicate QuestionCard is no
        longer mounted here (converged: one system-operator dialogue module). -->
   <div class="chat-input">
+    <!-- 排队徽标（docs/designs/06 批3）：回合进行中发送的消息在此排队，点击清空。
+         Queued badge (docs/designs/06 batch 3): messages sent while a turn runs wait
+         here; click to clear. -->
+    <button v-if="queueCount > 0" type="button" class="ci-queue" @click="clearQueued()">
+      排队 {{ queueCount }} 条 · 点击清空
+    </button>
     <div class="chat-input-row">
-      <!-- 消息输入框：Enter 发送，Shift+Enter 换行。Message textarea: Enter to send, Shift+Enter for new line. -->
-      <textarea
-        ref="ta"
+      <!-- 消息输入框：Enter 发送，Shift+Enter 换行；UiTextarea 自动增高至 4 行。
+           Message textarea: Enter to send, Shift+Enter for newline; UiTextarea autosizes to 4 rows. -->
+      <UiTextarea
         v-model="text"
-        rows="1"
+        class="ci-ta"
+        :rows="1"
+        :autosize="true"
+        :max-rows="4"
         placeholder="输入消息，Enter 发送，Shift+Enter 换行"
         :disabled="disabled"
         @keydown.enter.exact.prevent="onEnter"
-        @input="autosize"
-      ></textarea>
+      />
       <!-- 发送按钮。Send button. -->
-      <button class="ci-send" :disabled="disabled || !text.trim()" @click="submit">
+      <UiIconButton
+        title="发送"
+        variant="brand"
+        circle
+        :disabled="disabled || !text.trim()"
+        @click="submit"
+      >
         <UiIcon name="send" :size="16" />
-      </button>
+      </UiIconButton>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
-import { UiIcon } from '../ui'
+import { UiIconButton, UiIcon, UiTextarea } from '../ui'
+import { outboxCount as queueCount, clearQueued } from '../../composables/assistant/useChat'
 
 /**
  * 组件属性定义。Component props definition.
@@ -43,35 +58,20 @@ const emit = defineEmits<{ send: [text: string] }>()
 /** 输入框文本内容。Textarea text content. */
 const text = ref('')
 
-/** textarea 元素引用。Textarea element reference. */
-const ta = ref<HTMLTextAreaElement>()
-
-/**
- * 自动调整 textarea 高度，最大 4 行。
- * Auto-resize textarea height, max 4 lines.
- */
-function autosize() {
-  const el = ta.value
-  if (!el) return
-  el.style.height = 'auto'
-  el.style.height = Math.min(el.scrollHeight, 4 * 20) + 'px'
-}
-
 /**
  * Enter 键触发提交。Enter key triggers submit.
  */
 function onEnter() { submit() }
 
 /**
- * 提交消息：校验非空后触发 send 事件并清空输入。
- * Submit message: emit send event after validation, then clear input.
+ * 提交消息：校验非空后触发 send 事件并清空输入（UiTextarea watch 自动收敛高度）。
+ * Submit message: emit send event after validation, then clear input (UiTextarea's watch converges the height).
  */
 function submit() {
   const v = text.value.trim()
   if (!v || props.disabled) return
   emit('send', v)
   text.value = ''
-  nextTick(autosize)
 }
 </script>
 
@@ -89,20 +89,27 @@ function submit() {
 }
 /* 输入行布局。Input row layout. */
 .chat-input-row { display: flex; align-items: flex-end; gap: 8px; }
-/* 输入框样式。Textarea styles. */
-.chat-input textarea {
-  flex: 1; resize: none; max-height: 80px; min-height: 32px; line-height: 20px;
-  background: transparent; border: none; color: var(--text-1);
-  padding: 6px 4px; font-size: var(--fs-sm); outline: none; font-family: inherit;
+/* 排队徽标（可点击清空）。Queued badge (click to clear). */
+.ci-queue {
+  align-self: flex-start;
+  border: 1px dashed rgba(251, 191, 36, .45);
+  background: rgba(251, 191, 36, .08);
+  color: var(--text-2);
+  font-size: var(--fs-2xs);
+  border-radius: 999px;
+  padding: 3px 10px;
+  cursor: pointer;
 }
-.chat-input textarea:disabled { opacity: .5; }
-.chat-input textarea::placeholder { color: var(--text-3); }
-/* 发送按钮。Send button. */
-.ci-send {
-  width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
-  background: var(--brand-grad); border: none; color: var(--text-on-brand);
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-  box-shadow: var(--glow-brand);
+.ci-queue:hover { color: var(--text-1); border-color: rgba(251, 191, 36, .8); }
+/* 输入框：融入容器（透明底无边框），保留 UiTextarea 的自动增高。
+   Input: blends into the container (transparent, borderless), keeps UiTextarea's autosize. */
+.chat-input :deep(.ci-ta) {
+  flex: 1; resize: none; background: transparent; border: none;
+  box-shadow: none; /* 清掉 UiTextarea 的凹陷阴影（容器已是透明设计）。Drop UiTextarea's inset shadow (container is transparent by design). */
+  min-height: 32px; max-height: 80px; line-height: 20px;
+  padding: 6px 4px; color: var(--text-1); font-size: var(--fs-sm);
 }
-.ci-send:disabled { opacity: .4; cursor: not-allowed; }
+.chat-input :deep(.ci-ta:hover:not(:disabled)) { border-color: transparent; box-shadow: none; }
+.chat-input :deep(.ci-ta:focus) { box-shadow: none; }
+.chat-input :deep(.ci-ta:focus-visible) { outline: var(--focus-ring); outline-offset: -1px; }
 </style>

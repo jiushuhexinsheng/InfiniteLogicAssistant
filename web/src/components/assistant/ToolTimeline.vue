@@ -7,7 +7,7 @@
         <span class="tt-rail" :class="{ last: i === steps.length - 1 }"></span>
         <!-- 步骤状态图标。Step status icon. -->
         <span class="tt-icon" :class="step.status">
-          <Icon :name="step.icon || 'wrench'" :size="12" />
+          <UiIcon :name="step.icon || 'wrench'" :size="12" />
         </span>
         <!-- 步骤名称。Step name. -->
         <span class="tt-name">{{ step.name }}</span>
@@ -16,17 +16,17 @@
         <!-- 耗时（毫秒转秒）。Duration (ms to seconds). -->
         <span v-if="step.durationMs != null" class="tt-dur">{{ (step.durationMs / 1000).toFixed(1) }}s</span>
         <!-- 重试按钮（失败时显示）。Retry button (shown when failed). -->
-        <button v-if="step.status === 'failed'" class="tt-act" title="重试" @click="emit('retry', step.id)">
-          <Icon name="play" :size="11" />
-        </button>
+        <UiIconButton v-if="step.status === 'failed'" title="重试" compact @click="emit('retry', step.id)">
+          <UiIcon name="play" :size="11" />
+        </UiIconButton>
         <!-- 停止按钮（运行中/排队时显示）。Cancel button (shown when running/queued). -->
-        <button v-if="['running', 'queued'].includes(step.status)" class="tt-act" title="停止" @click="emit('cancel', step.id)">
-          <Icon name="close" :size="11" />
-        </button>
+        <UiIconButton v-if="['running', 'queued'].includes(step.status)" title="停止" compact @click="emit('cancel', step.id)">
+          <UiIcon name="close" :size="11" />
+        </UiIconButton>
         <!-- 展开/折叠详情按钮。Expand/collapse details button. -->
-        <button class="tt-expand" title="展开详情" @click="openId = openId === step.id ? '' : step.id">
-          <Icon name="chevron-down" :size="11" :class="{ rot: openId === step.id }" />
-        </button>
+        <UiIconButton :title="openId === step.id ? '收起详情' : '展开详情'" compact @click="openId = openId === step.id ? '' : step.id">
+          <UiIcon name="chevron-down" :size="11" :class="{ rot: openId === step.id }" />
+        </UiIconButton>
       </div>
       <!-- 步骤详情（参数和结果）。Step details (arguments and result). -->
       <div v-if="openId === step.id" class="tt-detail">
@@ -44,7 +44,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import Icon from '../Icon.vue'
+import { UiIconButton, UiIcon } from '../ui'
 import type { ToolStep } from '../../types'
 
 /**
@@ -107,19 +107,8 @@ function statusText(s: ToolStep['status']) { return STATUS_TEXT[s] || s }
 .tt-step.failed .tt-status { color: #f87171; }
 /* 耗时显示。Duration display. */
 .tt-dur { font-size: 11px; color: var(--text-3); margin-left: auto; }
-/* 操作按钮（重试/停止）。Action buttons (retry/cancel). */
-.tt-act {
-  background: none; border: none; color: var(--text-2); cursor: pointer;
-  padding: 2px; display: flex;
-}
-.tt-act:hover { color: var(--brand-c2); }
-/* 展开详情按钮。Expand details button. */
-.tt-expand {
-  background: none; border: none; color: var(--text-3); cursor: pointer;
-  padding: 2px; display: flex;
-}
-.tt-expand:hover { color: var(--text-1); }
-.tt-expand .rot { transform: rotate(180deg); }
+.tt-row :deep(.ui-icon-btn:hover:not(:disabled)) { color: var(--brand-c2); background: none; }
+.tt-row :deep(.rot) { transform: rotate(180deg); transition: transform var(--dur-base); }
 /* 详情面板。Details panel. */
 .tt-detail {
   margin-top: 4px; font-size: 11px; color: var(--text-2);

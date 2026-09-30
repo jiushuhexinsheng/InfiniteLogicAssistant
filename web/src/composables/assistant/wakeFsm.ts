@@ -14,6 +14,10 @@ export type WakeEvent =
   | 'wake_detected'
   /** 唤醒功能被关闭。The wake feature was switched off. */
   | 'wake_toggled_off'
+  /** 回合结束（done/error）→ 开启续聊窗口。Turn ended → open the follow-up window. */
+  | 'followup_open'
+  /** 续聊窗口到期 → 回聆听。The follow-up window expired → back to listening. */
+  | 'followup_expire'
 
 /**
  * 唤醒状态机迁移表。
@@ -44,10 +48,13 @@ export function nextState(current: AsstState, event: WakeEvent): AsstState {
     case 'question_ready':
       // 提问已播报完 → 自动进入待答（不必再说唤醒词）。
       // 只从「助手刚说完话」的几个状态进入，避免打断正在录音/转写的流程。
+      // followup 也放行：续聊窗口内插播的新问题同样应立即可答。
       // The question has been spoken → start awaiting the answer automatically. Only from
       // states where the assistant has just finished speaking, so an in-flight recording
-      // or transcription is not interrupted.
+      // or transcription is not interrupted. followup counts too: a fresh question
+      // arriving inside the follow-up window must be answerable immediately.
       return current === 'responding' || current === 'thinking' || current === 'done'
+        || current === 'followup'
         ? 'awaiting_answer'
         : current
 
@@ -60,6 +67,17 @@ export function nextState(current: AsstState, event: WakeEvent): AsstState {
       // 待机态唤醒 → 续答本题；其余态维持既有行为（由调用方置 recording）。
       // Waking from standby resumes this question; other states keep existing behaviour.
       return current === 'standby' ? 'awaiting_answer' : current
+
+    case 'followup_open':
+      // 回合刚结束才开续聊窗口（docs/designs/03-A）；其余状态开窗会截断在途流程。
+      // The window opens only right after a turn (docs/designs/03-A); opening elsewhere
+      // would cut into an in-flight flow.
+      return current === 'done' || current === 'error' ? 'followup' : current
+
+    case 'followup_expire':
+      // 窗口到期回聆听；非窗口态的过期事件与本窗无关（陈旧定时器）。
+      // Expiry returns to listening; expiry outside the window is a stale timer.
+      return current === 'followup' ? 'listening' : current
 
     case 'speech_started':
       // 待答态检测到语音后交回既有 VAD 静音逻辑收尾，状态不变。

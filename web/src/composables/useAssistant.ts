@@ -5,7 +5,7 @@ import {
   state, messages, expanded, wakeEnabled, wakeKeywords, wakeHint, partialText, statusLine, tokenUsage,
   wakeConfig, vadConfig, clearMessages, pendingQuestion, currentSessionId,
 } from './assistant/store'
-import { sendText, retryTool, cancelTool, abortChat, sendAnswer } from './assistant/useChat'
+import { sendText, retryTool, cancelTool, abortChat, sendAnswer, forkAt, sendEdited, regenerate, outboxCount, clearQueued } from './assistant/useChat'
 import { toggleWake, stopWake } from './assistant/useWakeWord'
 
 /** 类型沿用原模块路径导出，避免改动各组件 import。Types are re-exported from the original module path to avoid changing component imports. */
@@ -74,5 +74,11 @@ export function useAssistant() {
     sendAnswer,
     retryTool,
     cancelTool,
+    // 分叉 / 编辑重发 / 重新生成 / 排队（docs/designs/06、07）
+    forkAt,
+    sendEdited,
+    regenerate,
+    outboxCount,
+    clearQueued,
   }
 }

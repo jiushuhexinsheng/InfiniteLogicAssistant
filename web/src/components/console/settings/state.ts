@@ -81,6 +81,7 @@ export function moduleBody(id: string): Record<string, any> {
       llm_client: e.llm_client,
       tools: e.tools,
       rag: e.rag,
+      memory: e.memory,
       server: { host: e.server.host, port: e.server.port, open_browser: e.server.open_browser, cors_origins: e.server.cors_origins },
       mcp: e.mcp,
     }

@@ -1,91 +1,78 @@
 <template>
-  <!-- TTS 迷你控制面板：语音唤醒和播报的快捷开关。TTS mini control panel: quick toggles for voice wake and speech. -->
+  <!-- 开始页语音设置迷你卡：引擎选择（本地/API）+ 角色选择 + 试听。
+       Start-page voice settings mini card: engine picker (local/API) + voice selection + preview. -->
   <div class="tts-mini">
+    <!-- 引擎选择（与控制台「语音合成」卡1 同一单例，改动双向同步）。
+         Engine choice (same singleton as the console TTS card 1; changes sync both ways). -->
+    <UiSegmented
+      :model-value="engine"
+      :options="ENGINE_OPTIONS"
+      aria-label="语音引擎"
+      @update:model-value="v => setEngine(v as TtsEngine)"
+    />
+    <!-- 选了 API 但后端未配置：给引导（不阻止选择，配置入口在控制台）。
+         API chosen but backend unconfigured: guidance only (config lives in the console). -->
+    <p v-if="engine === 'api' && !apiAvailable" class="tm-hint">API 语音需在控制台「语音合成」中配置</p>
+
+    <!-- 角色选择 + 试听/停止（播报中停止按钮替换试听，可打断预览与正式播报）。 -->
     <div class="tm-row">
-      <div class="tm-left">
-        <b>语音唤醒 &amp; 播报</b>
-        <span>浏览器 SpeechSynthesis · 后端 TTS 可选</span>
-      </div>
-      <!-- 开关组。Toggle group. -->
-      <div class="tm-toggles">
-        <div class="tm-toggle">
-          <!-- 语音唤醒开关。Voice wake toggle. -->
-          <UiToggle
-            :model-value="wakeEnabled"
-            @update:model-value="toggleWake()"
-            aria-label="语音唤醒开关"
-          />
-          <span>唤醒</span>
-        </div>
-        <div class="tm-toggle">
-          <!-- 语音播报开关。Speech playback toggle. -->
-          <UiToggle
-            :model-value="speakEnabled"
-            @update:model-value="toggleSpeak()"
-            aria-label="语音播报开关"
-          />
-          <span>播报</span>
-        </div>
-      </div>
+      <VoiceSelect class="tm-voice" label="角色" />
+      <UiButton
+        v-if="speaking"
+        class="tm-test"
+        variant="secondary"
+        size="sm"
+        @click="stopSpeak('ui')"
+      >
+        <UiIcon name="stop" :size="12" /> 停止
+      </UiButton>
+      <UiButton v-else class="tm-test" variant="secondary" size="sm" @click="testVoice()">
+        <UiIcon name="play" :size="12" /> 试听
+      </UiButton>
     </div>
-    <!-- 更多设置入口链接。More settings entry link. -->
-    <RouterLink class="tm-more" to="/console" aria-label="前往控制台查看更多设置">更多设置 → 控制台</RouterLink>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useAssistant } from '../../composables/useAssistant'
-import { ttsSettings, toggleSpeak } from '../../composables/assistant/useTts'
-import { UiToggle } from '../ui'
-
-/** 获取助手实例。Get assistant instance. */
-const asst = useAssistant()
-
 /**
- * 计算语音唤醒是否启用。Compute whether voice wake is enabled.
+ * 开始页语音设置迷你卡。
+ * Start-page voice settings mini card.
+ *
+ * 引擎选择复用 useTtsEngine 单例（与控制台「语音合成」卡1 同源），
+ * 角色选择复用 VoiceSelect（与 TtsSettings 同一实现）。
+ * Engine choice reuses the useTtsEngine singleton (shared with the console
+ * TTS card 1); voice selection reuses VoiceSelect (same as TtsSettings).
  */
-const wakeEnabled = computed(() => asst.wakeEnabled.value)
+import { UiSegmented, UiButton, UiIcon } from '../ui'
+import type { SegOption } from '../ui'
+import type { TtsEngine } from '../../composables/assistant/useTts'
+import VoiceSelect from './VoiceSelect.vue'
+import { speaking, stopSpeak, testVoice } from '../../composables/assistant/useTts'
+import { useTtsEngine } from '../../composables/assistant/useTtsEngine'
 
-/**
- * 计算语音播报是否启用。Compute whether speech playback is enabled.
- */
-const speakEnabled = computed(() => ttsSettings.value.speakEnabled)
+/** 引擎选项（与 UiSegmented 契约）。Engine options (UiSegmented contract). */
+const ENGINE_OPTIONS: SegOption[] = [
+  { value: 'browser', label: '本地语音' },
+  { value: 'api', label: 'API 语音' },
+]
 
-/**
- * 切换语音唤醒状态。Toggle voice wake state.
- */
-function toggleWake() {
-  void asst.toggleWake()
-}
+/** 引擎选择单例（本地 / API）。Engine choice singleton (local / API). */
+const { engine, apiAvailable, setEngine } = useTtsEngine()
 </script>
 
 <style scoped>
-/* TTS 迷你面板容器。TTS mini panel container. */
+/* 迷你卡容器。Mini card container. */
 .tts-mini { display: flex; flex-direction: column; gap: 12px; }
-/* 行布局。Row layout. */
-.tm-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-/* 左侧信息区。Left info area. */
-.tm-left { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.tm-left b { font-size: var(--fs-sm); font-weight: 600; color: var(--text-1); white-space: nowrap; }
-.tm-left span { font-size: var(--fs-xs); color: var(--text-3); }
-/* 开关组。Toggle group. */
-.tm-toggles { display: flex; gap: 16px; flex-shrink: 0; }
-/* 单个开关项。Single toggle item. */
-.tm-toggle { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.tm-toggle span { font-size: var(--fs-xs); color: var(--text-3); }
-/* 更多设置链接。More settings link. */
-.tm-more {
-  align-self: flex-end;
-  font-size: var(--fs-xs); /* 从 fs-2xs 调整到 fs-xs */
-  color: var(--brand-c2);
-  text-decoration: none;
-  letter-spacing: .02em;
-  padding: 8px 12px; /* 增加内边距 */
-  min-height: var(--min-target-size); /* 确保最小点击目标 */
-  display: inline-flex;
-  align-items: center;
-  transition: color var(--dur-fast);
+
+/* API 未配置引导。API-unconfigured guidance. */
+.tm-hint {
+  font-size: var(--fs-2xs); color: var(--text-3); line-height: 1.5; margin: 0;
+  background: rgba(251, 191, 36, .06);
+  border: 1px dashed rgba(251, 191, 36, .3);
+  border-radius: var(--r-sm); padding: 6px 8px;
 }
-.tm-more:hover { color: var(--brand-c1); }
+
+/* 角色行：左选择器右试听。Voice row: picker left, preview right. */
+.tm-row { display: flex; align-items: flex-end; gap: 8px; }
+.tm-voice { flex: 1; min-width: 0; }
 </style>

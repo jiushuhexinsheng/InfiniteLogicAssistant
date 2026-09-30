@@ -2,17 +2,26 @@
   <!-- 面板顶部栏：头像 + 名称 + 状态指示器 + 操作按钮。Panel header: avatar + name + status indicator + action buttons. -->
   <div class="panel-header">
     <!-- 助手头像。Assistant avatar. -->
-    <span class="ph-avatar"><Icon name="brain" :size="16" /></span>
+    <span class="ph-avatar"><UiIcon name="brain" :size="16" /></span>
     <span class="ph-name">衍衡</span>
+    <!-- 停止朗读：播报期间才出现（打断白名单的 UI 入口，docs/designs/02 §3.1）。
+         Stop reading: only visible during playback (the UI entry of the interrupt
+         whitelist, docs/designs/02 §3.1). -->
+    <UiIconButton
+      v-if="speaking"
+      title="停止朗读"
+      @click="stopSpeak('ui')"
+    ><UiIcon name="stop" :size="13" /></UiIconButton>
     <!-- 清空对话按钮。Clear conversation button. -->
-    <button class="ph-btn" title="清空对话" @click="emit('clear')"><Icon name="trash" :size="14" /></button>
+    <UiIconButton title="清空对话" @click="emit('clear')"><UiIcon name="trash" :size="14" /></UiIconButton>
     <!-- 关闭面板按钮。Close panel button. -->
-    <button class="ph-btn" title="关闭" @click="emit('close')"><Icon name="close" :size="14" /></button>
+    <UiIconButton title="关闭" @click="emit('close')"><UiIcon name="close" :size="14" /></UiIconButton>
   </div>
 </template>
 
 <script setup lang="ts">
-import Icon from '../Icon.vue'
+import { UiIconButton, UiIcon } from '../ui'
+import { speaking, stopSpeak } from '../../composables/assistant/useTts'
 import type { AsstState } from '../../composables/useAssistant'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
 
@@ -60,11 +69,4 @@ const emit = defineEmits<{ clear: []; close: [] }>()
 }
 /* 助手名称。Assistant name. */
 .ph-name { font-size: 14px; font-weight: 600; color: var(--text-1); white-space: nowrap; flex: 1; }
-/* 操作按钮（清空/关闭）。Action buttons (clear/close). */
-.ph-btn {
-  background: none; border: none; color: var(--text-2); cursor: pointer;
-  padding: 5px; border-radius: 8px; display: flex; flex-shrink: 0;
-  transition: color var(--dur-fast), background var(--dur-fast);
-}
-.ph-btn:hover { background: rgba(51, 65, 85, .55); color: var(--text-1); }
 </style>

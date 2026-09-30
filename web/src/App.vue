@@ -1,9 +1,15 @@
 <!-- 应用根组件模板 -->
 <!-- Application root component template -->
 <template>
-  <!-- 路由视图，渲染当前路由对应的组件 -->
-  <!-- Router view, renders component matching current route -->
-  <router-view />
+  <!-- 全站布局壳：统一导航栏 + 路由视图。Site layout shell: shared header + router view. -->
+  <div class="app-shell">
+    <AppHeader />
+    <div class="app-view">
+      <!-- 路由视图，渲染当前路由对应的组件 -->
+      <!-- Router view, renders component matching current route -->
+      <router-view />
+    </div>
+  </div>
   <!-- 悬浮球全局常驻（跨路由），Teleport 到 body -->
   <!-- Floating assistant globally persistent (cross-route), Teleported to body -->
   <FloatingAssistant :asst="asst" />
@@ -17,6 +23,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue'
 import FloatingAssistant from './components/FloatingAssistant.vue'
+import AppHeader from './components/layout/AppHeader.vue'
 import { UiToaster } from './components/ui'
 import { useConfig } from './composables/useApi'
 import { useAssistant } from './composables/useAssistant'
@@ -36,6 +43,9 @@ function teardown() {
 
 // 组件挂载时初始化 / Initialize on component mount
 onMounted(async () => {
+  // 构建标记：F12 Console 若看不到此行 = 页面还在跑旧 JS（关标签页重开，普通刷新可能拿到缓存的旧模块图）。
+  // Build marker: absent in F12 Console = the page still runs stale JS (close the tab and reopen; a plain refresh may reuse the cached old module graph).
+  console.info('%c[ILA] build 2026-09-29-r2', 'color:#22d3ee;font-weight:bold')
   // 初始化配置 / Initialize configuration
   await app.initConfig()
   // 初始化助手，传入唤醒词和 VAD 配置
@@ -56,3 +66,19 @@ onBeforeUnmount(() => {
   teardown()
 })
 </script>
+
+<style scoped>
+/* 全站布局壳：顶栏常驻，内容区独立滚动。Site shell: sticky-height header, scrolling content area. */
+.app-shell {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+.app-view {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+</style>

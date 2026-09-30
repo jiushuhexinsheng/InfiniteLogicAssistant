@@ -1,5 +1,5 @@
 <template>
-  <!-- 语音模块：唤醒词 + VAD + 本地播报配置。Voice module: wake word + VAD + local speech settings. -->
+  <!-- 语音模块：唤醒词 + VAD。Voice module: wake word + VAD. -->
   <UiCard class="cs-card">
     <div class="cs-card-head">
       <span class="cs-card-title">语音（唤醒 / 静音检测）</span>
@@ -19,13 +19,12 @@
     </SettingsField>
     <!-- 唤醒模式切换：本地（Web Speech API，零延迟）/ 云端（上传后端判定）/ 自动（优先本地） -->
     <SettingsField label="唤醒模式">
-      <div class="cs-mode-row">
-        <button
-          v-for="m in modeOptions" :key="m.value"
-          class="cs-mode-btn" :class="{ active: currentMode === m.value }"
-          @click="switchMode(m.value)"
-        >{{ m.label }}</button>
-      </div>
+      <UiSegmented
+        :model-value="currentMode"
+        :options="modeOptions"
+        aria-label="唤醒模式"
+        @update:model-value="v => switchMode(v as WakeMode)"
+      />
       <p class="cs-mode-hint">{{ modeHint }}</p>
     </SettingsField>
     <!-- 唤醒词是**列表**（命中任意一个即唤醒）：绑定 singular `keyword` 会读到 undefined
@@ -72,16 +71,23 @@
     <SettingsField v-if="s.editable.value" label="等待回答超时（ms）">
       <UiInput type="number" min="1" :model-value="s.ed().vad.answer_timeout_ms" @update:model-value="v => (s.ed().vad.answer_timeout_ms = toNum(v))" />
     </SettingsField>
-    <div class="cs-tts"><TtsSettings /></div>
+    <!-- 打断播报（barge-in，docs/designs/02 批3）：助手说话时也可直接开口打断。
+         默认关 = 播报期间停麦的旧行为。 -->
+    <SettingsField v-if="s.editable.value" label="打断播报（助手说话时可直接开口打断）" row>
+      <UiToggle :model-value="s.ed().vad.barge_in" @update:model-value="v => (s.ed().vad.barge_in = v)" />
+    </SettingsField>
+    <!-- 续聊窗口（docs/designs/03-A）：回合结束后的免唤醒接话窗口，0=关闭。 -->
+    <SettingsField v-if="s.editable.value" label="续聊窗口（ms，结束后免唤醒直接说话；0=关）">
+      <UiInput type="number" min="0" :model-value="s.ed().vad.followup_window_ms" @update:model-value="v => (s.ed().vad.followup_window_ms = toNum(v))" />
+    </SettingsField>
   </UiCard>
 </template>
 
-<!-- 语音模块卡：唤醒词 / VAD 参数 + 内嵌 TTS 设置。Voice module card: wake word / VAD params + embedded TTS settings. -->
+<!-- 语音模块卡：唤醒词 / VAD 参数。Voice module card: wake word / VAD params. -->
 <script setup lang="ts">
 import { computed } from 'vue'
-import TtsSettings from '../../assistant/TtsSettings.vue'
 import SettingsField from './SettingsField.vue'
-import { UiButton, UiCard, UiInput, UiToggle } from '../../ui'
+import { UiButton, UiCard, UiInput, UiSegmented, UiToggle } from '../../ui'
 import { useSettings } from './useSettings'
 import { notify } from '../../../composables/useToast'
 import { wakeMode, setWakeMode, type WakeMode } from '../../../composables/assistant/store'
@@ -171,18 +177,5 @@ function saveVoice() {
 }
 /* 唤醒词行：一行一个关键词 + 删除按钮。Wake-keyword row: one keyword plus a delete button. */
 .cs-kwrow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-/* 唤醒模式切换按钮组。Wake mode toggle button group. */
-.cs-mode-row { display: flex; gap: 6px; }
-.cs-mode-btn {
-  padding: 6px 16px; border-radius: var(--r-md); border: 1px solid var(--border-base);
-  background: var(--bg-2); color: var(--text-2); font-size: var(--fs-xs); cursor: pointer;
-  transition: all .15s;
-}
-.cs-mode-btn:hover { background: var(--bg-3); }
-.cs-mode-btn.active {
-  background: var(--brand-c2); color: var(--text-on-brand); border-color: var(--brand-c2);
-  font-weight: 600;
-}
 .cs-mode-hint { font-size: var(--fs-2xs); color: var(--text-3); margin: 6px 0 0; line-height: 1.5; }
-.cs-tts { margin-top: 2px; }
 </style>

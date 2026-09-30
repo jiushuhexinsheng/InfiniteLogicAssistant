@@ -33,8 +33,9 @@ describe('PermissionsCard', () => {
   /** 渲染层级下拉并反映当前配置。Renders the tier dropdowns reflecting the current config. */
   it('渲染层级下拉并反映当前配置', () => {
     const w = mount(PermissionsCard)
-    // read / write / exec 三个层级 + default_action，共 4 个下拉
-    expect(w.findAll('select').length).toBeGreaterThanOrEqual(4)
+    // read / write / exec 三个层级 + default_action，共 4 个下拉（自绘触发器）。
+    // read / write / exec tiers + default_action = 4 dropdowns (custom triggers).
+    expect(w.findAll('.ui-select').length).toBeGreaterThanOrEqual(4)
     expect(w.html()).toContain('run_shell_tool')
     expect(w.text()).toContain('工具权限')
   })
@@ -42,14 +43,17 @@ describe('PermissionsCard', () => {
   /** 改变 read 层级会写回 editable。Changing the read tier writes back to editable. */
   it('改变层级写回 editable', async () => {
     const w = mount(PermissionsCard)
-    // 按初值定位 read 层级：模板里 default_action 下拉排在层级之前，不能靠下标取；
-    // read 是唯一初值为 allow 的下拉。
-    // Locate the read tier by its initial value: the default_action select precedes the
-    // tier selects, so an index lookup would hit the wrong one; read is the only select
-    // whose initial value is "allow".
-    const readSelect = w.findAll('select')
-      .find((s) => (s.element as HTMLSelectElement).value === 'allow')!
-    await readSelect.setValue('deny')
+    // 按初值定位 read 层级：read 是唯一初值为 allow 的下拉（触发器 data-value 定位）。
+    // Locate the read tier by initial value: read is the only one whose initial value is allow
+    // (located via the trigger's data-value).
+    const trigger = w.find('.ui-select[data-value="allow"]')
+    expect(trigger.exists(), '应存在初值为 allow 的触发器').toBe(true)
+    await trigger.trigger('click')
+    // 排查：面板是否打开（items 为空时 openMenu 会直接 return）。
+    expect(trigger.attributes('aria-expanded'), '面板应展开').toBe('true')
+    const opt = document.querySelector('.ui-select-option[data-value="deny"]')
+    expect(opt, '面板应含 deny 选项').toBeTruthy()
+    ;(opt as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }))
     expect((editable.value as any).permissions.tiers.read).toBe('deny')
   })
 

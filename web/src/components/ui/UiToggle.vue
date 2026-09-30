@@ -7,6 +7,7 @@
     :aria-label="ariaLabel"
     :disabled="disabled"
     type="button"
+    v-bind="$attrs"
     @click="$emit('update:modelValue', !modelValue)"
   >
     <span class="ui-toggle-knob"></span>
@@ -29,9 +30,14 @@ defineEmits<{ 'update:modelValue': [v: boolean] }>()
   width: 44px; height: 24px; border-radius: 12px; border: none; cursor: pointer;
   background: var(--bg-3); display: flex; align-items: center; padding: 3px;
   min-height: var(--min-target-size); min-width: var(--min-target-size);
-  transition: background var(--dur-base);
+  transition: background var(--dur-base), box-shadow var(--dur-base) var(--ease-out);
 }
-.ui-toggle.on { background: var(--brand-c2); justify-content: flex-end; }
+/* 打开：品牌底 + 发光。On: brand fill + glow. */
+.ui-toggle.on {
+  background: var(--brand-c2);
+  justify-content: flex-end;
+  box-shadow: 0 0 10px rgba(34, 211, 238, .45);
+}
 .ui-toggle:disabled { opacity: .5; cursor: not-allowed; }
 .ui-toggle-knob { width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: var(--shadow-1); }
 

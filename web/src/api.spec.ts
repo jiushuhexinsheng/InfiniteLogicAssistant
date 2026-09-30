@@ -152,32 +152,35 @@ function sseStreamThenFail(reason: unknown): ReadableStream<Uint8Array> {
 }
 
 describe('streamUtter 流中断错误文案', () => {
-  // 已收到事件后中断：文案走统一格式化，且不重试
-  // Interrupted after events received: message uses the unified formatter, no retry
-  it('流已开始后中断时 onError 收到统一格式的文案', async () => {
+  // 已收到事件后中断（无 session_id 无法 resume）：给出固定恢复提示，且不盲目重试主连接。
+  // Interrupted after events received (no session_id → cannot resume): a fixed recovery
+  // notice, no blind main-connection retry.
+  it('流已开始后中断且无会话标识 → 固定恢复文案、不重连主连接', async () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, body: sseStreamThenFail(new Error('流读取失败')) })
     vi.stubGlobal('fetch', mockFetch)
     const onError = vi.fn()
     // 执行 streamUtter / Execute streamUtter
     await streamUtter('hi', { onError, onDone: vi.fn() })
-    // 已开始后中断不重试 / No retry after the stream has started
+    // 主连接只打一次（resume 因无 session 标识不发起）/ One main call (resume never starts without a session id)
     expect(mockFetch).toHaveBeenCalledTimes(1)
-    // 全角冒号 + formatError 文案 / Full-width colon + formatError message
-    expect(onError).toHaveBeenCalledWith('连接中断：流读取失败')
+    // 文案不内嵌底层错误、不渲染 "null"（docs/designs/06 固定提示）。
+    // The wording embeds neither the raw error nor a literal "null" (fixed notice, docs/designs/06).
+    expect(onError).toHaveBeenCalledWith('连接中断且无会话标识，无法恢复')
     // 清理全局模拟 / Cleanup global mocks
     vi.unstubAllGlobals()
   })
 
-  // 非 Error 的中断原因（如无参 reject）不应渲染成 "null" 字面量
-  // A non-Error reason (e.g. reject() with no argument) must not render as the literal "null"
-  it('非 Error 中断原因回退为「未知错误」而非 null 字面量', async () => {
+  // 非 Error 的中断原因（如无参 reject）走同一条固定文案路径 —— 不会渲染 "null"。
+  // A non-Error reason (e.g. reject() with no argument) takes the same fixed-notice
+  // path — never rendering "null".
+  it('非 Error 中断原因同样走固定文案（无 null 字面量）', async () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, body: sseStreamThenFail(null) })
     vi.stubGlobal('fetch', mockFetch)
     const onError = vi.fn()
     // 执行 streamUtter / Execute streamUtter
     await streamUtter('hi', { onError, onDone: vi.fn() })
     // 验证文案 / Verify the message
-    expect(onError).toHaveBeenCalledWith('连接中断：未知错误')
+    expect(onError).toHaveBeenCalledWith('连接中断且无会话标识，无法恢复')
     // 清理全局模拟 / Cleanup global mocks
     vi.unstubAllGlobals()
   })
@@ -206,6 +209,87 @@ describe('streamUtter 透传 mode', () => {
     await streamUtter('hi', { onDone: vi.fn() })
     const sent = JSON.parse(mockFetch.mock.calls[0][1].body)
     expect(sent.mode).toBeUndefined()
+    vi.unstubAllGlobals()
+  })
+})
+
+/** 断线恢复（docs/designs/06）：seq 去重、ping 不分发、resume 接管收束、404 兜底。
+ *  Disconnect resume (docs/designs/06): seq dedup, ping not dispatched, resume takes
+ *  over to completion, 404 fallback. */
+describe('streamUtter 断线恢复', () => {
+  /** 主连接：吐一帧后网络中断。Main connection: one frame then a network error. */
+  function mainStreamThenFail(): ReadableStream<Uint8Array> {
+    let sent = false
+    return new ReadableStream({
+      pull(controller) {
+        if (!sent) {
+          sent = true
+          controller.enqueue(new TextEncoder().encode(
+            'data: {"type":"task_state","state":"understanding","session_id":"s1","seq":1}\n\n'))
+          return
+        }
+        controller.error(new Error('网络断了'))
+      },
+    })
+  }
+
+  it('断线后 resume：重复 seq 被跳过、done 正常收束', async () => {
+    const resumeBody = sseStream([
+      'data: {"type":"content_delta","text":"A","seq":2}',
+      'data: {"type":"content_delta","text":"A","seq":2}',   // 回放重复帧（应被跳过）。Replay duplicate (must be dropped).
+      'data: {"type":"content_delta","text":"B","seq":3}',
+      'data: {"type":"done","session_id":"s1","seq":4}',
+    ])
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, body: mainStreamThenFail() })
+      .mockResolvedValueOnce({ ok: true, body: resumeBody })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const seqs: number[] = []
+    const texts: string[] = []
+    const onDone = vi.fn()
+    await streamUtter('hi', {
+      onEvent: (e: any) => { if (typeof e.seq === 'number') seqs.push(e.seq) },
+      onContent: (t: string) => texts.push(t),
+      onDone,
+    })
+
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+    const resumeReq = JSON.parse(mockFetch.mock.calls[1][1].body)
+    expect(mockFetch.mock.calls[1][0]).toContain('/voice/resume')
+    expect(resumeReq).toEqual({ session_id: 's1', last_seq: 1 })
+    expect(seqs).toEqual([1, 2, 3, 4])      // 重复的 seq2 只出现一次。The duplicate seq2 appears once.
+    expect(texts).toEqual(['A', 'B'])
+    expect(onDone).toHaveBeenCalledTimes(1)
+    vi.unstubAllGlobals()
+  })
+
+  it('ping 帧不进分发也不占 seq', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true, body: sseStream([
+        'data: {"type":"ping"}',
+        'data: {"type":"content_delta","text":"你好","seq":1}',
+        'data: {"type":"done","seq":2}',
+      ]),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+    const events: any[] = []
+    await streamUtter('hi', { onEvent: (e: any) => events.push(e), onDone: vi.fn() })
+    expect(events.map(e => e.type)).toEqual(['content_delta', 'done'])
+    vi.unstubAllGlobals()
+  })
+
+  it('resume 404 → 固定兜底文案（历史重载提示）', async () => {
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, body: mainStreamThenFail() })
+      .mockResolvedValueOnce({
+        ok: false, status: 404,
+        json: async () => ({ error: 'no_run' }),
+      })
+    vi.stubGlobal('fetch', mockFetch)
+    const onError = vi.fn()
+    await streamUtter('hi', { onEvent: vi.fn(), onError, onDone: vi.fn() })
+    expect(onError).toHaveBeenCalledWith('连接中断，回合已结束：请刷新历史查看')
     vi.unstubAllGlobals()
   })
 })

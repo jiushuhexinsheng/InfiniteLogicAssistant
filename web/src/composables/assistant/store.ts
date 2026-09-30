@@ -17,6 +17,12 @@ export type AsstState =
    *  Standby after the answer timeout: the engine still listens for the wake word, and
    *  waking resumes *this* question. */
   | 'standby'
+  /** 续聊窗口（docs/designs/03-A）：回合刚结束的免唤醒窗口 —— 窗口内的语音段直接
+   *  当作新指令（不必再喊唤醒词），到期回 listening。0（followup_window_ms=0）关闭。
+   *  Follow-up window (docs/designs/03-A): the wake-free window right after a turn —
+   *  segments inside it are taken as fresh instructions (no wake word needed); on
+   *  expiry it returns to listening. Disabled by followup_window_ms=0. */
+  | 'followup'
   | 'recording'
   | 'transcribing'
   | 'thinking'
@@ -152,7 +158,7 @@ export const currentSessionId = ref('')
  *  field, matching the backend api schema's default (`model_path: str = ""`). */
 export const wakeConfig: WakeWordConfig = { enabled: true, keywords: ['衍衡', '洛吉斯'], sensitivity: 0.5, model_path: '' }
 /** VAD（语音活动检测）配置。VAD (Voice Activity Detection) configuration. */
-export const vadConfig: VadConfig = { silence_threshold: 0.02, silence_duration_ms: 1500, max_duration_ms: 10000, answer_timeout_ms: 8000, min_speech_ms: 300, upload_throttle_ms: 500 }
+export const vadConfig: VadConfig = { silence_threshold: 0.02, silence_duration_ms: 1500, max_duration_ms: 10000, answer_timeout_ms: 8000, min_speech_ms: 300, upload_throttle_ms: 500, barge_in: false, followup_window_ms: 6000 }
 /** 响应式唤醒词列表（**可多个**，命中任意一个即唤醒）。Reactive wake keywords (plural; any hit wakes). */
 export const wakeKeywords = ref<string[]>([...(wakeConfig.keywords ?? [])])
 

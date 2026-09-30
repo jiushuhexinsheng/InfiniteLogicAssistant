@@ -7,9 +7,14 @@
     <div class="s-head">
       <UiIcon :name="statusIcon" :size="13" />
       <span class="s-text">{{ block.payload.summary_text || '已完成' }}</span>
-      <button class="s-toggle" :aria-expanded="open" @click="open = !open">
+      <UiIconButton
+        :title="open ? '收起回看' : '展开回看'"
+        compact
+        :aria-expanded="open"
+        @click="open = !open"
+      >
         <UiIcon name="chevron-down" :size="11" :class="{ rot: open }" />
-      </button>
+      </UiIconButton>
     </div>
     <div class="s-counts">
       <span v-for="(n, t) in (block.payload.counts || {})" :key="t" class="s-chip">
@@ -28,7 +33,7 @@
 
 <script setup lang="ts">
 import { computed, inject, ref } from 'vue'
-import { UiIcon } from '../ui'
+import { UiIconButton, UiIcon } from '../ui'
 import BlockHost from './BlockHost.vue'
 import { BLOCKS_CONTEXT } from '../../blocks/context'
 import type { Block, Skin } from '../../blocks/types'
@@ -70,10 +75,8 @@ const statusIcon = computed(() => {
 }
 .s-head { display: flex; align-items: center; gap: var(--sp-2); }
 .s-text { flex: 1; font-size: var(--fs-sm); color: var(--text-1); }
-.s-toggle {
-  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
-  background: none; border: none; cursor: pointer; color: var(--text-3);
-}
+.s-head :deep(.rot) { transform: rotate(180deg); transition: transform var(--dur-base); }
+@media (prefers-reduced-motion: reduce) { .s-head :deep(.rot) { transition: none; } }
 .s-counts { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: var(--sp-1); }
 .s-chip {
   font-size: var(--fs-xs); color: var(--text-3);
@@ -81,6 +84,4 @@ const statusIcon = computed(() => {
 }
 .s-review { margin-top: var(--sp-2); border-top: 1px solid var(--bg-2); padding-top: var(--sp-2); }
 .s-review-hint { font-size: var(--fs-xs); color: var(--text-3); }
-.rot { transform: rotate(180deg); transition: transform .2s; }
-@media (prefers-reduced-motion: reduce) { .rot { transition: none; } }
 </style>

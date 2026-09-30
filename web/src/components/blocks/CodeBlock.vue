@@ -5,9 +5,9 @@
     <div class="code-head">
       <span class="code-lang">{{ block.payload.language || 'text' }}</span>
       <span v-if="block.payload.filename" class="code-file">{{ block.payload.filename }}</span>
-      <button class="code-copy" :title="copied ? '已复制' : '复制'" @click="copy">
+      <UiIconButton :title="copied ? '已复制' : '复制'" compact @click="copy">
         <UiIcon :name="copied ? 'check' : 'copy'" :size="11" />
-      </button>
+      </UiIconButton>
     </div>
     <pre class="code-body"><code>{{ block.payload.code }}</code></pre>
   </div>
@@ -15,7 +15,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { UiIcon } from '../ui'
+import { UiIconButton, UiIcon } from '../ui'
 import type { Block, Skin } from '../../blocks/types'
 
 /**
@@ -52,12 +52,6 @@ async function copy() {
 }
 .code-lang { font-family: var(--font-mono); }
 .code-file { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.code-copy {
-  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
-  background: none; border: none; cursor: pointer; color: var(--text-3);
-  border-radius: var(--r-sm);
-}
-.code-copy:hover { background: var(--bg-3); color: var(--text-1); }
 .code-body {
   margin: 0; padding: var(--sp-2) var(--sp-3); overflow-x: auto;
   font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.55;

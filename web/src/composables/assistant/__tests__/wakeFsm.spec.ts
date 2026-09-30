@@ -57,4 +57,28 @@ describe('wakeFsm 迁移表', () => {
     expect(nextState('recording', 'question_ready')).toBe('recording')
     expect(nextState('listening', 'answer_timeout')).toBe('listening')
   })
+
+  // ── 续聊窗口（docs/designs/03-A）──
+
+  /** 只有回合结束态开窗；其余态开窗会截断在途流程（回归）。
+   *  Only turn-ended states open the window; elsewhere it would cut an in-flight flow. */
+  it('followup_open：done/error → followup，其余不动', () => {
+    expect(nextState('done', 'followup_open')).toBe('followup')
+    expect(nextState('error', 'followup_open')).toBe('followup')
+    expect(nextState('listening', 'followup_open')).toBe('listening')
+    expect(nextState('transcribing', 'followup_open')).toBe('transcribing')
+  })
+
+  /** 到期只在窗口态生效（陈旧定时器不得把别的状态踢回 listening）。
+   *  Expiry only applies inside the window (a stale timer must not kick any other state). */
+  it('followup_expire：followup → listening，其余不动', () => {
+    expect(nextState('followup', 'followup_expire')).toBe('listening')
+    expect(nextState('thinking', 'followup_expire')).toBe('thinking')
+    expect(nextState('awaiting_answer', 'followup_expire')).toBe('awaiting_answer')
+  })
+
+  /** 窗口内插播的问题立即可答。A question arriving inside the window is answerable at once. */
+  it('followup 态 question_ready → awaiting_answer', () => {
+    expect(nextState('followup', 'question_ready')).toBe('awaiting_answer')
+  })
 })

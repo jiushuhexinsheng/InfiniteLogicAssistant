@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { stripMarkdown, speechForBlocks } from '../speech'
+import { stripMarkdown, speechForBlocks, splitSentences } from '../speech'
 import { makeBlock } from '../normalize'
 import '../index'  // 注册副作用 Registration side effects
 
@@ -50,5 +50,35 @@ describe('speech 播报管线', () => {
       makeBlock('answer', { text: '上海' }),
     ])
     expect(speech).toBe('')
+  })
+})
+
+/** 句级切分（句级流式 TTS 的入队粒度）。Sentence splitting (enqueue granularity of
+ *  sentence-streaming TTS). */
+describe('splitSentences', () => {
+  /** 终结符断句 + 右引号归位 + 空输入。Delim split, closing quote kept, empty input. */
+  it('按终结符断句，空输入返回空数组', () => {
+    expect(splitSentences('')).toEqual([])
+    expect(splitSentences('   ')).toEqual([])
+    expect(splitSentences('第一句话已经说完了。明天会继续下雨吗？')).toEqual([
+      '第一句话已经说完了。', '明天会继续下雨吗？',
+    ])
+    expect(splitSentences('他说"出发吧"。然后我们就走了。')).toEqual([
+      '他说"出发吧"。', '然后我们就走了。',
+    ])
+  })
+
+  /** 超长句按逗号二分，单句不超过上限。Overlong sentences halve on commas. */
+  it('超长句二分且每句不超过上限', () => {
+    const long = ('这是一个很长的句子需要被切开，因为它实在太长了，'.repeat(6))
+    const parts = splitSentences(long)
+    expect(parts.length).toBeGreaterThan(1)
+    for (const p of parts) expect(p.length).toBeLessThanOrEqual(120)
+    expect(parts.join('')).toBe(long)
+  })
+
+  /** 尾句过短并入前句（避免孤字尾音）。Short tail merges into the previous sentence. */
+  it('短尾句并入前句', () => {
+    expect(splitSentences('第一句话已经说完了。好。')).toEqual(['第一句话已经说完了。好。'])
   })
 })

@@ -40,12 +40,28 @@
           <option value="anthropic">Anthropic（原生）</option>
           <option value="gemini">Gemini（原生）</option>
         </UiSelect>
+        <!-- 音频格式下拉：后端 TtsProfile.format 是 wav/mp3/pcm16 三值字面量，文本框能输非法值。
+             Audio format dropdown: backend TtsProfile.format is a wav/mp3/pcm16 literal; a free-text box accepts invalid values. -->
+        <UiSelect v-else-if="f === 'format'" :model-value="s.sec(section.key).profiles[s.sec(section.key).active][f]" @update:model-value="v => (s.sec(section.key).profiles[s.sec(section.key).active][f] = v)">
+          <option value="wav">wav</option>
+          <option value="mp3">mp3</option>
+          <option value="pcm16">pcm16</option>
+        </UiSelect>
         <!-- 模型 / 音色可输入下拉：支持手动输入或从列表选择。Model / voice input with datalist: manual input or pick from the list. -->
         <template v-else-if="f === 'model' || f === 'voice'">
           <UiInput :model-value="s.sec(section.key).profiles[s.sec(section.key).active][f]" @update:model-value="v => (s.sec(section.key).profiles[s.sec(section.key).active][f] = v)" :list="`dl-${section.key}-${f}`" />
           <datalist :id="`dl-${section.key}-${f}`">
             <option v-for="m in (f === 'model' ? s.modelOptions(section) : s.voiceOptions(section))" :key="m" :value="m" />
           </datalist>
+        </template>
+        <!-- 音色列表编辑器：写回 profile.voices，同时喂给上面「音色」输入框的 datalist。
+             Voice list editor: writes back profile.voices, which also feeds the datalist of the "voice" input above. -->
+        <template v-else-if="f === 'voices'">
+          <div v-for="(_, i) in (s.sec(section.key).profiles[s.sec(section.key).active].voices || [])" :key="i" class="cs-voicerow">
+            <UiInput :model-value="s.sec(section.key).profiles[s.sec(section.key).active].voices[i]" @update:model-value="v => (s.sec(section.key).profiles[s.sec(section.key).active].voices[i] = v)" placeholder="如 alloy" />
+            <UiButton variant="secondary" size="sm" hover="danger" @click="s.sec(section.key).profiles[s.sec(section.key).active].voices.splice(i, 1)">删除</UiButton>
+          </div>
+          <UiButton variant="secondary" size="sm" @click="addVoice">＋ 新增音色</UiButton>
         </template>
         <UiInput
           v-else
@@ -65,6 +81,10 @@
       <UiButton variant="secondary" size="sm" @click="s.fetchModelsFor(section)">获取模型</UiButton>
     </div>
 
+    <!-- 扩展插槽：TTS 卡在此挂载播报设置面板（引擎 / 音色 / 音量 / 试听）。
+         Extension slot: the TTS card mounts the playback settings panel here (engine / voice / volume / preview). -->
+    <slot />
+
     <div v-if="s.connResults.value[section.name]" class="cs-connline" :class="'st-' + s.connResults.value[section.name].status">
       {{ s.connResults.value[section.name].detail || s.connResults.value[section.name].status }}
       <em v-if="s.connResults.value[section.name].latency_ms != null">{{ s.connResults.value[section.name].latency_ms }}ms</em>
@@ -80,10 +100,25 @@ import { useSettings } from './useSettings'
 import { fieldLabel, isNumericField, type SectionDef } from './configDefs'
 
 /** 组件 props：服务模块定义（来自 configDefs.sectionDefs）。Component props: the service module definition (from configDefs.sectionDefs). */
-defineProps<{ section: SectionDef }>()
+const props = defineProps<{ section: SectionDef }>()
 
 /** 设置页单例状态与操作（保留对象引用以维持响应式）。Settings singleton (kept as an object to preserve reactivity). */
 const s = useSettings()
+
+/** 当前活跃 Profile（voices 列表编辑用）。The active profile (for editing the voices list). */
+function activeProfile(): any {
+  const sec = s.sec(props.section.key)
+  return sec?.profiles?.[sec.active]
+}
+
+/** 向 profile.voices 追加一个空音色行（列表不存在时先初始化）。
+ *  Append an empty voice row to profile.voices (initializing the list if missing). */
+function addVoice() {
+  const prof = activeProfile()
+  if (!prof) return
+  if (!Array.isArray(prof.voices)) prof.voices = []
+  prof.voices.push('')
+}
 </script>
 
 <style scoped>
@@ -98,6 +133,9 @@ const s = useSettings()
 /* 新增 Profile 按钮激活态（UiButton 透传 class）。Active state of the "add Profile" button (class passed through UiButton). */
 .cs-profrow :deep(.ui-btn.on) { color: var(--brand-c2); border-color: var(--brand-c2); }
 .cs-keyrow { display: flex; align-items: center; gap: 8px; }
+/* 音色列表行：一行一个音色 + 删除按钮（与唤醒词行同构）。Voice row: one voice plus a delete button (mirrors the wake-word row). */
+.cs-voicerow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.cs-voicerow :deep(.ui-input) { flex: 1; min-width: 0; }
 .cs-connline {
   font-size: var(--fs-2xs); color: var(--text-3);
   border-top: 1px dashed var(--border-soft); padding-top: 7px;

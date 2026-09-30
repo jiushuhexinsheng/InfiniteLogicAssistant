@@ -21,13 +21,14 @@
         </div>
       </div>
       <!-- 隐藏按钮。Dismiss button. -->
-      <button class="mini-close" title="隐藏" @click.stop="emit('dismiss')">×</button>
+      <UiIconButton title="隐藏" compact @click.stop="emit('dismiss')"><UiIcon name="close" :size="12" /></UiIconButton>
     </div>
   </Transition>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { UiIconButton, UiIcon } from '../ui'
 import type { AsstState, ChatMessage } from '../../composables/useAssistant'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
 
@@ -185,16 +186,4 @@ const showMini = computed(() =>
   0% { transform: translateX(0); }
   100% { transform: translateX(-100%); }
 }
-/* 隐藏按钮。Dismiss button. */
-.mini-close {
-  background: none;
-  border: none;
-  color: var(--text-3);
-  cursor: pointer;
-  font-size: 14px;
-  padding: 0 2px;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-.mini-close:hover { background: #334155; color: var(--text-1); }
 </style>

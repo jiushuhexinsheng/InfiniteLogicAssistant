@@ -20,6 +20,7 @@ export const STATE_VISUALS: Record<AsstState, StateVisual> = {
   listening:    { icon: 'ear',        label: hint => `聆听中…说${hint}`,     color: '#34d399', fx: 'fx-listening',     grad: 'rainbow' },
   awaiting_answer: { icon: 'mic',     label: '请直接说出你的回答…',        color: '#f59e0b', fx: 'fx-recording',     grad: 'rainbow' },
   standby:      { icon: 'ear',        label: hint => `待机中…说${hint}继续`, color: '#94a3b8', fx: 'fx-idle',          grad: 'brand' },
+  followup:     { icon: 'chat',       label: hint => `可直接开口，或说${hint}`, color: '#34d399', fx: 'fx-listening',  grad: 'brand' },
   recording:    { icon: 'mic',        label: '录音中…',                   color: '#f87171', fx: 'fx-recording',     grad: 'rainbow' },
   transcribing: { icon: 'sparkles',   label: '识别中…',                   color: '#c084fc', fx: 'fx-transcribing',  grad: 'brand' },
   thinking:     { icon: 'brain',      label: '思考中…',                   color: '#fb923c', fx: 'fx-thinking',      grad: 'brand' },
