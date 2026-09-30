@@ -6,6 +6,7 @@ RAG retrieval — BM25 scoring (pure Python, no external dependencies).
 全量重分词）；旧索引（无 chunk_terms 表）自动回退到读取全文现场分词。
 Prefers the precomputed chunk_terms from indexing time (loading only token results, not full text, to avoid full re-tokenization on every query); older indexes (without a chunk_terms table) automatically fall back to reading the full text and tokenizing on the fly.
 """
+import json
 import math
 import sqlite3
 
@@ -104,13 +105,119 @@ async def retrieve(query: str, top_k: int = 5) -> list[dict]:
     return out
 
 
-async def rag_context(query: str, top_k: int = 5) -> str:
-    """检索 top-k 拼接为上下文文本（注入系统提示用）。
-    Retrieves the top-k hits and joins them into a context text (for injection into the system prompt)."""
-    hits = await retrieve(query, top_k)
+def format_hits(hits: list[dict]) -> str:
+    """命中 → 编号注入文本（docs/designs/05 §3.1：`[n] 标题 (path)` 供 LLM 标注引用）。
+
+    Hits → numbered injection text (docs/designs/05 §3.1: `[n] title (path)` so the
+    LLM can cite sources).
+
+    Args:
+        hits: 检索命中（含 path/section/text）。Retrieval hits (with path/section/text).
+
+    Returns:
+        编号拼接的上下文文本（空命中为空串）。Numbered context text (empty for no hits).
+    """
     if not hits:
         return ""
     parts = []
-    for h in hits:
-        parts.append(f"[{h['section'] or h['path']}]\n{h['text']}")
+    for i, h in enumerate(hits):
+        parts.append(f"[{i + 1}] {h['section'] or h['path']} ({h['path']})\n{h['text']}")
     return "\n\n".join(parts)
+
+
+# rerank 打分工具：闭集输出 [{n, score}]，n 为候选编号（1 起），score 0-10。
+# Rerank scoring tool: closed-set output [{n, score}] with 1-based candidate numbers
+# and a 0-10 score.
+_RERANK_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "score_sources",
+        "description": "按与查询的相关度给候选资料片段打分（0-10，越高越相关）",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "scores": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "n": {"type": "integer"},
+                            "score": {"type": "number"},
+                        },
+                        "required": ["n", "score"],
+                    },
+                },
+            },
+            "required": ["scores"],
+        },
+    },
+}
+
+
+async def rerank(query: str, hits: list[dict], top_k: int) -> list[dict]:
+    """LLM 精排（docs/designs/05 §3.3，配置 `rag.rerank='llm'` 时启用）。
+
+    单次调用对候选闭集打分重排；**任何失败（超时/坏 JSON/无工具调用）静默回退
+    BM25 序**并记审计 `rag-rerank-fallback`。候选 ≤ top_k 时调用方本就不该进来，
+    这里再兜一层直接截断返回。
+
+    LLM rerank (docs/designs/05 §3.3, enabled by `rag.rerank='llm'`): one call
+    scores the candidate set and reorders it; **any failure (timeout / bad JSON /
+    missing tool call) silently falls back to the BM25 order** with an audit line
+    `rag-rerank-fallback`. Fewer candidates than top_k short-circuits to a slice.
+
+    Args:
+        query: 用户查询。The user query.
+        hits: BM25 粗排候选。BM25 candidates.
+        top_k: 精排后保留条数。Rows to keep after reranking.
+
+    Returns:
+        重排后的命中列表。Reordered hits.
+    """
+    if len(hits) <= top_k:
+        return hits[:top_k]
+    try:
+        from core import config
+        from core.llm.client import get_llm_client
+        from core.logger import audit
+
+        lines = [f"[{i + 1}] {h['section'] or h['path']}\n{h['text'][:300]}"
+                 for i, h in enumerate(hits)]
+        messages = [
+            {"role": "system", "content": "你在为检索结果精排：给每个候选片段打 0-10 分"
+                                          "（与查询的相关度）。为每个候选都给分，用 score_sources 返回。"},
+            {"role": "user", "content": f"查询：{query}\n\n候选：\n" + "\n\n".join(lines)},
+        ]
+        async for evt in get_llm_client().retry_stream_chat(
+            messages, tools=[_RERANK_TOOL], temperature=0,
+        ):
+            if evt["type"] == "done":
+                msg = evt["message"] or {}
+                tc = (msg.get("tool_calls") or [{}])[0]
+                raw = tc.get("function", {}).get("arguments") or "{}"
+                data = json.loads(raw) if isinstance(raw, str) else raw
+                scores = {int(s["n"]): float(s["score"]) for s in data.get("scores") or []}
+                if not scores:
+                    raise ValueError("rerank 无分数")
+                ranked = sorted(
+                    enumerate(hits),
+                    key=lambda iv: (scores.get(iv[0] + 1, -1.0), -iv[0]),
+                    reverse=True,
+                )
+                out = [h for _, h in ranked][:top_k]
+                audit(f"rag-rerank n={len(hits)} top={len(out)}")
+                return out
+        raise ValueError("rerank 无工具调用")
+    except Exception as e:
+        from core.logger import audit, logger
+        logger.warning("rag rerank 失败，回退 BM25 序: {}", e)
+        audit("rag-rerank-fallback")
+        return hits[:top_k]
+
+
+async def rag_context(query: str, top_k: int = 5) -> str:
+    """检索 top-k 拼接为上下文文本（注入系统提示用；编号格式见 format_hits）。
+    Retrieves the top-k hits and joins them into a numbered context text (for the
+    system prompt; see format_hits for the numbering format)."""
+    hits = await retrieve(query, top_k)
+    return format_hits(hits)

@@ -343,44 +343,202 @@ async def voice_utter(request: Request):
             except Exception:
                 pass
     controller = StopController()
+    # ── 同 id 旧运行取代（docs/designs/06）：新回合先收尾旧 runner（含其断线宽限），
+    #    否则宽限机制会让旧管线多跑 resume_grace_s 才停 —— 与前端 runTurn abort 对齐。
+    # Same-id supersede (docs/designs/06): a new turn retires the old runner first
+    # (including its disconnect grace), otherwise the grace would keep the old pipeline
+    # alive for resume_grace_s — aligned with the frontend's runTurn abort.
+    old_run = state.get_run(session.id)
+    if old_run is not None:
+        await _retire_run(old_run)
     state.register(session, controller)
     events: asyncio.Queue = asyncio.Queue()
     runner = asyncio.ensure_future(
         run_pipeline(text, session, events, controller, messages=messages, mode=mode))
+    run = state.RunHandle(
+        run_id=f"run_{session.id}", session=session, controller=controller,
+        events=events, runner=runner,
+    )
+    state.set_run(session.id, run)
 
-    async def event_stream():
-        """SSE 事件流生成器：转发队列事件，处理 runner 异常兜底并做收尾清理。
+    return StreamingResponse(_stream_run(run), media_type="text/event-stream")
 
-        SSE event stream generator: forward queued events, fall back on runner
-        exceptions, and do final cleanup.
-        """
-        getter = asyncio.ensure_future(events.get())
-        try:
-            while True:
-                done, _ = await asyncio.wait({runner, getter}, return_when=asyncio.FIRST_COMPLETED)
-                if getter in done:
-                    evt = getter.result()
-                    yield _sse(evt)
-                    if evt["type"] == "done":
-                        break
-                    getter = asyncio.ensure_future(events.get())  # 取下一个事件
-                if runner in done:
-                    # runner 提前结束（异常兜底），避免客户端永久等待
-                    if not events.empty():
-                        continue
-                    exc = runner.exception()
-                    if exc is not None:
-                        yield _sse(ErrorEvent(message=f"编排异常: {exc}").emit())
-                    yield _sse(DoneEvent().emit())
+
+# ── SSE 运行流（首连与 resume 共用）+ 断线宽限（docs/designs/06）──
+
+PING_INTERVAL_S = 15  # 空闲保活间隔（秒）。Idle keep-alive interval (seconds).
+
+
+async def _retire_run(run: state.RunHandle) -> None:
+    """收尾一次运行：停 runner、落盘、（若注册表仍是它）清注册。幂等。
+
+    Wrap up a run: stop the runner, persist, and clear the registry (when it still
+    points at this run). Idempotent.
+
+    Args:
+        run: 运行句柄。The run handle.
+    """
+    if run.closed:  # 同步护栏：事件循环单线程，检查与置位之间无 await。
+        return      # Sync guard: single-threaded event loop, no await in between.
+    run.closed = True
+    # 不 cancel 当前任务自己：宽限看门狗到期时正是它在调用本函数，
+    # 自 cancel 会让下一个 await 抛 CancelledError、cleanup 中断在半路。
+    # Never cancel the current task itself: on grace expiry the watchdog IS the caller,
+    # and self-cancellation raises CancelledError at the next await, aborting cleanup halfway.
+    if (run.grace_task is not None and not run.grace_task.done()
+            and run.grace_task is not asyncio.current_task()):
+        run.grace_task.cancel()
+    if not run.runner.done():
+        run.runner.cancel()
+    await asyncio.gather(run.runner, return_exceptions=True)
+    await state.persist(run.session, state.session_ts.get(run.session.id))
+    if state.get_run(run.session.id) is run:
+        state.cleanup(run.session.id)  # 新 run 已顶替时不碰新注册表。Never touch a successor's registry.
+
+
+def _arm_grace(run: state.RunHandle) -> None:
+    """断线进入宽限：runner 继续跑，到期仍未重连则收尾（fail-closed 落盘）。
+
+    `server.resume_grace_s=0` → 立即收尾（旧行为：断线即取消）。
+
+    On disconnect, enter the grace window: the runner keeps going; if no reconnect
+    arrives in time, wrap up (fail-closed with persistence). `server.resume_grace_s=0`
+    wraps up immediately (legacy behaviour: disconnect cancels).
+    """
+    grace = getattr(config.settings.server, "resume_grace_s", 120) or 0
+    if grace <= 0:
+        asyncio.ensure_future(_retire_run(run))
+        return
+
+    async def _watchdog() -> None:
+        await asyncio.sleep(grace)
+        run.grace_task = None  # 先摘掉自己：_retire_run 不再视其为待取消任务。
+        if run.closed or run.connected:
+            return  # 已重连或已正常收尾。Reconnected or already wrapped up.
+        logger.info("run {} 宽限期到期未重连，收尾", run.run_id)
+        await _retire_run(run)
+
+    run.grace_task = asyncio.ensure_future(_watchdog())
+
+
+async def _stream_run(run: state.RunHandle):
+    """编排事件 → SSE（唯一 seq 编号与 buffer 入口；空闲 15s 发 ping 保活）。
+
+    首连与 /voice/resume 挂接共用。断线且未完成 → 进宽限；完成 → 收尾。
+
+    Orchestration events → SSE (the single seq-numbering and buffer entry; pings
+    every 15s while idle). Shared by the first connection and the /voice/resume
+    attach. Disconnected while unfinished → grace; finished → wrap-up.
+    """
+    getter = asyncio.ensure_future(run.events.get())
+    try:
+        while True:
+            completed, _ = await asyncio.wait(
+                {run.runner, getter}, timeout=PING_INTERVAL_S,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if not completed:
+                # 保活：仅心跳，不占 seq、不进 buffer（重连只需真实事件）。
+                # Keep-alive: heartbeat only — no seq, no buffer entry (reconnect only
+                # needs real events).
+                yield _sse({"type": "ping"})
+                continue
+            if getter in completed:
+                evt = getter.result()
+                evt["seq"] = run.next_seq
+                run.next_seq += 1
+                run.buffer.append(evt)
+                yield _sse(evt)
+                if evt["type"] == "done":
+                    run.finished = True
                     break
-        finally:
-            getter.cancel()
-            runner.cancel()
-            await asyncio.gather(getter, runner, return_exceptions=True)
-            await state.persist(session, state.session_ts.get(session.id))
-            state.cleanup(session.id)  # done/error/客户端断开时不再被引用
+                getter = asyncio.ensure_future(run.events.get())
+            if run.runner in completed:
+                # runner 提前结束（异常兜底），避免客户端永久等待
+                if not run.events.empty():
+                    continue
+                exc = run.runner.exception()
+                if exc is not None:
+                    err = ErrorEvent(message=f"编排异常: {exc}").emit()
+                    err["seq"] = run.next_seq
+                    run.next_seq += 1
+                    run.buffer.append(err)
+                    yield _sse(err)
+                done_evt = DoneEvent().emit()
+                done_evt["seq"] = run.next_seq
+                run.next_seq += 1
+                run.buffer.append(done_evt)
+                yield _sse(done_evt)
+                run.finished = True
+                break
+    finally:
+        getter.cancel()
+        if run.finished:
+            await _retire_run(run)
+        else:
+            # 客户端断开且回合未完 → 进宽限（重连可续播；到期看门狗收尾）。
+            # Client gone and the turn unfinished → grace (a reconnect resumes; the
+            # watchdog wraps up on expiry).
+            run.connected = False
+            _arm_grace(run)
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+@router.post("/voice/resume", response_model=ApiResponse)
+async def voice_resume(request: Request):
+    """断线重连：回放 seq > last_seq 的已消费事件并挂接实况流（docs/designs/06）。
+
+    - 无运行句柄 / 已完成 → 404 `no_run`（前端走历史重载兜底）；
+    - 宽限期内取消看门狗、标记已连接，之后与首连同一生成器续编号。
+
+    Reconnect: replay consumed events with seq > last_seq and attach to the live
+    stream (docs/designs/06). No run handle / already finished → 404 `no_run` (the
+    frontend falls back to reloading history). Inside the grace window the watchdog
+    is cancelled and the run marked connected; numbering then continues through the
+    same generator the first connection used.
+    """
+    body = await request.body()
+    try:
+        params = json.loads(body.decode("utf-8")) if body else {}
+    except Exception:
+        return JSONResponse({"ok": False, "error": "无效 JSON"}, status_code=400)
+    session_id = str(params.get("session_id") or "")
+    try:
+        last_seq = int(params.get("last_seq") or 0)
+    except (TypeError, ValueError):
+        last_seq = 0
+    run = state.get_run(session_id)
+    if run is None or run.finished:
+        return JSONResponse({"ok": False, "error": "no_run"}, status_code=404)
+    if run.grace_task is not None and not run.grace_task.done():
+        run.grace_task.cancel()
+    run.connected = True
+    return StreamingResponse(_replay_then_live(run, last_seq), media_type="text/event-stream")
+
+
+async def _replay_then_live(run: state.RunHandle, last_seq: int):
+    """缺口回放 + 挂接实况（/voice/resume 的流体；抽成模块级便于直接驱动测试）。
+
+    Replay the gap then attach to the live stream (the body of /voice/resume,
+    extracted to module level so tests can drive it directly).
+
+    Args:
+        run: 运行句柄。The run handle.
+        last_seq: 客户端已收到的最大 seq。The largest seq the client received.
+
+    Yields:
+        SSE 帧。SSE frames.
+    """
+    # 缺口回放：首连已消费进 buffer 的事件（带定型 seq），只发游标之后的。
+    # Gap replay: events the first connection consumed into the buffer (seq fixed);
+    # only those past the cursor are sent.
+    for evt in list(run.buffer):
+        if int(evt.get("seq") or 0) > last_seq:
+            yield _sse(evt)
+    # 挂接实况：断线期间积压在队列的事件由本连接续消费、续编号。
+    # Attach live: events backloged in the queue during the outage are consumed
+    # and numbered by this connection.
+    async for chunk in _stream_run(run):
+        yield chunk
 
 
 @router.post("/voice/answer", response_model=ApiResponse)

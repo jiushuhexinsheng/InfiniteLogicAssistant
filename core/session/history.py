@@ -86,6 +86,32 @@ class HistoryStore:
         with self._conn() as conn:
             conn.execute("UPDATE conversations SET name=? WHERE id=?", (name, conv_id))
 
+    async def fork_conversation(self, src_id: str, up_to: int) -> str | None:
+        """从 src_id 分叉：把前 up_to+1 条消息复制为**新会话**，源会话只读不动
+        （docs/designs/07 §3.1；整段覆盖式存储下，编辑重发必须先分叉才不丢原路径）。
+
+        源不存在或 up_to 越界返回 None。
+
+        Fork from src_id: copy the first up_to+1 messages into a **new** conversation;
+        the source stays read-only (docs/designs/07 §3.1 — under whole-overwrite
+        storage, editing must fork first or the original path is lost). Returns None
+        when the source is missing or up_to is out of range.
+        """
+        conv = await self.get_conversation(src_id)
+        if conv is None:
+            return None
+        msgs = conv.get("messages") or []
+        if not msgs or up_to < 0 or up_to >= len(msgs):
+            return None
+        new_id = uuid.uuid4().hex[:12]
+        await self.save_conversation(
+            new_id, msgs[: up_to + 1],
+            status=conv.get("status") or "",
+            summary=conv.get("summary") or "",
+        )
+        await self.rename_conversation(new_id, f"分叉自 {conv.get('name') or src_id[:8]}")
+        return new_id
+
     async def clear_messages(self, conv_id: str) -> None:
         """清除上下文：清空会话消息（保留会话记录与 name）。
         Clears the context: empties the conversation's messages (keeping the conversation record and its name)."""

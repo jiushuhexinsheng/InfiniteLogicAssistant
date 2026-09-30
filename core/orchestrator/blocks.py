@@ -23,14 +23,44 @@ from uuid import uuid4
 
 from pydantic import BaseModel
 
-# ─── 截断口径（唯一三常量，替代散落的 500/200 魔法数）───
-# Truncation policy (the only three constants; replace scattered 500/200 magic numbers).
+# ─── 截断口径（四口径并立，替代散落的 500/200 魔法数）───
+# Truncation policy (four coexisting conventions; replace scattered 500/200 magic numbers).
 
 # SSE / 预览用截断长度。Truncation length for SSE / previews.
 PREVIEW_LEN = 500
-# 入库（tool.payload.output）截断长度；LLM 回喂保持全文。
-# Truncation length for persistence (tool.payload.output); LLM feedback stays full.
+# 入库（tool.payload.output）截断长度。
+# Truncation length for persistence (tool.payload.output).
 HISTORY_LEN = 4000
+# LLM 回喂口径：tools.llm_max_output_chars（配置热读，docs/designs/08 批1）——
+# 与展示/落库独立，超限截断并附「如何取更多」指引。
+# LLM feed convention: tools.llm_max_output_chars (hot config read, docs/designs/08
+# batch 1) — independent of display/persistence; over-limit output is truncated with
+# a "how to get more" hint.
+
+
+def llm_tool_feed(result: str) -> str:
+    """LLM 口径的工具结果（喂给模型的 tool 消息正文）。
+
+    超过 `tools.llm_max_output_chars`（0=不限）截断并附指引；展示/落库仍用原文
+    （调用方各自截 PREVIEW_LEN / HISTORY_LEN）。三口径互不影响。
+
+    The LLM-side tool result (the tool message body fed to the model). Over
+    `tools.llm_max_output_chars` (0 = unlimited) it is truncated with a hint;
+    display/persistence keep the raw text (each caller applies PREVIEW_LEN /
+    HISTORY_LEN itself). The three conventions never interfere.
+
+    Args:
+        result: 工具原始结果。The raw tool result.
+
+    Returns:
+        送给 LLM 的正文。The body sent to the LLM.
+    """
+    from core import config
+    cap = config.settings.tools.llm_max_output_chars
+    if not cap or len(result) <= cap:
+        return result
+    return (result[:cap]
+            + f"\n…(输出已截断，共 {len(result)} 字；可用 grep_file/read_file 分段获取更多)")
 
 # 块类型常量（type 字段取值；ext:<name> 为扩展块命名空间）。
 # Block type constants (values of the type field; ext:<name> is the extension namespace).
@@ -44,6 +74,11 @@ BLOCK_QUESTION = "question"
 BLOCK_ANSWER = "answer"
 BLOCK_NOTICE = "notice"
 BLOCK_SUMMARY = "summary"
+# RAG 来源块（docs/designs/05 §3.2）：payload.items = [{n, path, section, score}]，
+# 默认折叠、不播报、不进 text 投影（与 thinking 同规则）。
+# RAG sources block (docs/designs/05 §3.2): payload.items = [{n, path, section, score}];
+# collapsed by default, silent, excluded from the text projection (same rule as thinking).
+BLOCK_SOURCES = "sources"
 BLOCK_UNKNOWN = "unknown"
 
 # 各类型缺省 meta（生产方可覆盖）：thinking 默认折叠不播，text 默认播报。
@@ -60,6 +95,7 @@ DEFAULT_META: dict[str, dict[str, Any]] = {
     BLOCK_ANSWER: {"tts": "skip", "collapsed": False},
     BLOCK_NOTICE: {"tts": "auto", "collapsed": False},
     BLOCK_SUMMARY: {"tts": "full", "collapsed": False},
+    BLOCK_SOURCES: {"tts": "skip", "collapsed": True},
     BLOCK_UNKNOWN: {"tts": "skip", "collapsed": True},
 }
 

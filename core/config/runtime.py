@@ -233,6 +233,7 @@ def editable_snapshot() -> dict:
         "permissions": s.permissions.model_dump(),
         "mcp": {"servers": [m.model_dump() for m in s.mcp.servers]},
         "rag": s.rag.model_dump(),
+        "memory": s.memory.model_dump(),
         "server": {
             "host": s.server.host, "port": s.server.port, "open_browser": s.server.open_browser,
             "cors_origins": s.server.cors_origins, "api_token_set": bool(s.server.api_token),

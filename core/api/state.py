@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
-"""编排会话运行时状态 — 会话/停止控制器注册表 + TTL 清理 + 任务落盘
+"""编排会话运行时状态 — 会话/停止控制器注册表 + 运行句柄（seq/ring buffer）+ TTL 清理 + 任务落盘
 
-Orchestration session runtime state — session/stop-controller registry + TTL
-sweeping + task persistence to disk
+Orchestration session runtime state — session/stop-controller registry + run
+handles (seq / ring buffer for SSE resume) + TTL sweeping + task persistence to disk
 """
 import json
 import time
-from dataclasses import asdict
+from collections import deque
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
+from typing import Any
 
 from core import config as config
 from core.logger import logger
@@ -19,6 +21,73 @@ sessions: dict[str, Session] = {}
 controllers: dict[str, StopController] = {}
 session_ts: dict[str, float] = {}
 SESSION_TTL = 30 * 60  # 会话空闲 30 分钟回收
+
+
+@dataclass
+class RunHandle:
+    """一次编排运行的句柄（docs/designs/06）：事件队列、runner、seq 与 ring buffer。
+
+    断线恢复的全部状态都在这里：`buffer` 存已被首条连接消费掉的事件（带定型 seq），
+    `events` 队列持有断线期间流入的事件（重连后由新连接续消费、续编号）——
+    两段拼起来即完整缺口回放。
+
+    Handle for one orchestration run (docs/designs/06): event queue, runner, seq and
+    ring buffer. All state needed for resume lives here: `buffer` holds events the
+    first connection already consumed (with a fixed seq), `events` holds what flowed
+    in while disconnected (the reconnecting consumer continues numbering them) —
+    the two segments concatenate into a complete gap replay.
+    """
+
+    run_id: str
+    session: Session
+    controller: StopController
+    events: "Any"  # asyncio.Queue（延迟导入避免环）。asyncio.Queue (deferred to avoid a cycle).
+    runner: "Any"  # asyncio.Task。asyncio.Task.
+    buffer: deque = field(default_factory=lambda: deque(maxlen=500))
+    next_seq: int = 1
+    connected: bool = True
+    finished: bool = False          # done 已发出 / runner 收尾。done emitted / runner wrapped up.
+    closed: bool = False            # 收尾已执行（幂等护栏）。Wrap-up already ran (idempotence guard).
+    grace_task: "Any | None" = None  # 断线宽限看门狗。Disconnect grace watchdog.
+
+
+# 运行句柄注册表（key = session_id）。Run-handle registry (key = session_id).
+runs: dict[str, RunHandle] = {}
+
+
+def get_run(session_id: str) -> RunHandle | None:
+    """按 id 取运行句柄；不存在返回 None。Get a run handle by id, or None.
+
+    Args:
+        session_id: 会话 id。The session id.
+
+    Returns:
+        运行句柄或 None。The run handle or None.
+    """
+    return runs.get(session_id)
+
+
+def set_run(session_id: str, run: RunHandle) -> RunHandle | None:
+    """登记运行句柄；同 id 已有在跑的旧运行时先打掉（新回合取代旧回合）。
+
+    返回被取代的旧句柄（调用方负责收尾），无旧运行返回 None。
+
+    Register a run handle; when an older run for the same id is still live it is
+    dropped first (a new turn supersedes the old). Returns the superseded handle
+    (the caller wraps it up), or None when there was no older run.
+    """
+    old = runs.get(session_id)
+    runs[session_id] = run
+    return old if old is not None and old is not run and not old.finished else None
+
+
+def drop_run(session_id: str) -> RunHandle | None:
+    """从注册表摘下运行句柄（不取消 runner —— 收尾由调用方决定）。
+
+    Remove a run handle from the registry (does not cancel the runner — the caller
+    decides how to wrap it up).
+    """
+    return runs.pop(session_id, None)
 
 
 def register(session: Session, controller: StopController) -> None:
@@ -83,6 +152,7 @@ def cleanup(session_id: str) -> None:
     sessions.pop(session_id, None)
     controllers.pop(session_id, None)
     session_ts.pop(session_id, None)
+    runs.pop(session_id, None)
 
 
 def _conv_summary(messages: list[dict], task: dict | None) -> str:

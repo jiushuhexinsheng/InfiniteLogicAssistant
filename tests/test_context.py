@@ -41,3 +41,27 @@ async def test_build_context_empty_when_nothing(tmp_path, monkeypatch):
     monkeypatch.setattr(rag_mod, "INDEX_DB", tmp_path / "empty.db")
     store = FactStore(tmp_path / "facts.sqlite")
     assert await build_context("完全无关词", store=store) == ""
+
+
+@pytest.mark.asyncio
+async def test_build_context_budget_topk_and_date(tmp_path, monkeypatch):
+    """注入有界（docs/designs/04 §3.2）：top-k 条数闸 + 字符预算 + 每行带日期。"""
+    from core import config
+    monkeypatch.setattr(rag_mod, "INDEX_DB", tmp_path / "empty.db")
+    monkeypatch.setattr(config.settings.memory, "inject_top_k", 2)
+    monkeypatch.setattr(config.settings.memory, "inject_max_chars", 120)
+    store = FactStore(tmp_path / "facts.sqlite")
+    for i in range(5):
+        await store.upsert(f"主题{i}", f"注入预算内容{i} " + "填充内容" * 15)
+
+    ctx = await build_context("注入预算", store=store)
+    fact_lines = [ln for ln in ctx.splitlines() if ln.startswith("- ")]
+    assert 1 <= len(fact_lines) <= 2, "条数受 inject_top_k 约束"
+    # 日期标注（对齐 memory_get 的读口径）。Date stamp (aligned with memory_get).
+    assert any(len(ln) >= 10 and "（20" in ln for ln in fact_lines), "每行应带（YYYY-MM-DD）"
+
+    # 预算收紧到只放得下第一条：仍至少注入 1 条（宁缺勿滥）。
+    monkeypatch.setattr(config.settings.memory, "inject_max_chars", 10)
+    ctx2 = await build_context("注入预算", store=store)
+    lines2 = [ln for ln in ctx2.splitlines() if ln.startswith("- ")]
+    assert len(lines2) == 1

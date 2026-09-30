@@ -39,6 +39,7 @@ direction is constrained to "do not execute", but a genuine approval being read 
 (usability) or a negation as approval (safety) remains possible in principle.
 """
 import json
+from dataclasses import dataclass
 
 from core import config
 from core.llm.client import get_llm_client
@@ -68,6 +69,29 @@ CONFIRM_OPTIONS = [
     {"value": "yes", "label": "允许本次"},
     {"value": "no", "label": "拒绝"},
 ]
+
+
+@dataclass(frozen=True)
+class ConfirmResult:
+    """一次确认的判定结果：ok = 是否放行，reason = 拒绝理由。
+
+    reason 是给 LLM 的纠偏信号（操作者自拟理由 / 超时标记），放行时恒为空。
+    定义 __bool__ 后 `if await confirm_tool(...)` 与旧版 bool 返回语义一致，
+    未关心理由的调用方无需改动判定写法；需要理由的调用方读 `.reason`。
+
+    Outcome of one confirmation: ok is the verdict, reason is the refusal
+    rationale (a corrective signal for the LLM — an operator-authored reason or a
+    timeout marker); it is always empty on approval. ``__bool__`` keeps
+    ``if await confirm_tool(...)`` equivalent to the old bool return, so callers
+    that do not care about the reason need no change to their branching;
+    callers that do read ``.reason``.
+    """
+
+    ok: bool
+    reason: str = ""
+
+    def __bool__(self) -> bool:
+        return self.ok
 
 
 def _resolve_confirm(answer: Answer) -> bool | None:
@@ -171,43 +195,70 @@ async def _resolve_confirm_llm(text: str) -> bool:
     return False
 
 
-async def _ask_operator(session: Session, plan: str, risk: str, kind: str, source: str = "") -> bool:
-    """向操作者提问并解析回答；无确认通道/无法识别一律拒绝。
+async def _ask_operator(session: Session, plan: str, risk: str, kind: str, source: str = "") -> ConfirmResult:
+    """向操作者提问并解析回答；无确认通道/无法识别一律拒绝，拒绝时携带理由。
+
+    理由（ConfirmResult.reason）的来源优先级：通道标记（超时）> 操作者自拟文本
+    （截断 200 字防注入/超长）> 空。放行时理由恒为空。audit 记录 reason 与判定层
+    （by=choice/exact/llm/empty），可回答「为什么被拒、拒到哪一层」。
 
     source 说明本次判定的依据（形如 rule:run_* / tier:exec / default），仅用于审计，
     使日志能回答「为什么这个工具被问了 / 没被问」。
 
     Asks the operator and parses the answer; rejects by default when there is no
-    confirmation channel or the answer is unrecognizable. source records why the
-    decision was made (e.g. rule:run_* / tier:exec / default) for the audit log only.
+    confirmation channel or the answer is unrecognizable, carrying the rationale
+    when it does. The reason (ConfirmResult.reason) is sourced, in priority
+    order: a channel marker (timeout) > the operator's own text (truncated to 200
+    chars against injection/overlength) > empty; it is always empty on approval.
+    The audit records the reason and the layer that decided (by=choice/exact/
+    llm/empty), so the log answers "why was this refused, at which layer".
+    source records why the decision was made (e.g. rule:run_* / tier:exec /
+    default) for the audit log only.
     """
     if session.channel is None:
         audit(f"confirm {kind} risk={risk} plan={plan} decision=rejected reason=no_operator source={source}")
-        return False  # 无人确认（如定时无人值守）→ 默认不执行高风险
+        return ConfirmResult(False)  # 无人确认（如定时无人值守）→ 默认不执行高风险
     # auto_approve：操作者已在配置中预授权 write/exec，跳过提问直接放行
     if config.settings.agent.auto_approve:
         audit(f"confirm {kind} risk={risk} plan={plan} decision=approved reason=auto_approve")
-        return True
+        return ConfirmResult(True)
     await session.notify(f"需要确认：{plan}")
     answer = await session.ask(f"确认执行吗？{plan}", kind="choice", options=CONFIRM_OPTIONS)
     verdict = _resolve_confirm(answer)
     # 确定性层给不出结论时（自然语言答复）才调 LLM —— 精确字面量与结构化选择都不调。
-    # The LLM is consulted only when the deterministic layer cannot decide (natural-language
-    # answers); exact literals and structured choices never reach it.
+    # 空回答（定时无人值守的 _SilentChannel / 超时）直接短路拒绝：对空文本发起 LLM
+    # 判定纯属白烧一次调用，且判定方向必然也是不放行（fail-closed）。
+    # The LLM is consulted only when the deterministic layer cannot decide
+    # (natural-language answers); exact literals and structured choices never
+    # reach it. An empty answer (the scheduler's _SilentChannel, or a timeout)
+    # short-circuits to rejection: querying the LLM with an empty string would
+    # burn a call for a verdict that cannot be anything but "do not execute".
     if verdict is None:
-        verdict = await _resolve_confirm_llm(answer.text)
-        by = "llm"
+        if not answer.text.strip():
+            verdict, by = False, "empty"
+        else:
+            verdict = await _resolve_confirm_llm(answer.text)
+            by = "llm"
     else:
         by = "choice" if answer.choice is not None else "exact"
+    if verdict:
+        reason = ""
+    elif answer.reason:
+        reason = answer.reason  # 通道标记（如超时），操作者没说过话
+    elif answer.text.strip():
+        reason = answer.text.strip()[:200]  # 操作者的拒绝理由（截断防注入/超长）
+    else:
+        reason = ""
     audit(
         f"confirm {kind} risk={risk} plan={plan} "
         f"decision={'approved' if verdict else 'rejected'}"
-        f" answer={answer.text!r} choice={answer.choice!r} by={by} source={source}"
+        f" answer={answer.text!r} choice={answer.choice!r} by={by}"
+        f" reason={reason!r} source={source}"
     )
-    return verdict
+    return ConfirmResult(verdict, reason)
 
 
-async def confirm_if_needed(task: Task, plan: str, session: Session) -> bool:
+async def confirm_if_needed(task: Task, plan: str, session: Session) -> ConfirmResult:
     """任务级确认：由权限策略按任务风险层级决定放行 / 询问 / 拒绝。
 
     与工具级确认共用同一份 `permissions` 配置 —— 否则把工具级放宽了、任务级照样拦，
@@ -216,39 +267,49 @@ async def confirm_if_needed(task: Task, plan: str, session: Session) -> bool:
     `allow` 时**仍然播报计划**（可见性），只是不阻塞等待：用户依旧看得到助手要做什么，
     只是不用再点一次。想恢复「每次都问」把 `permissions.tiers` 改回 ask 即可。
 
+    返回 ConfirmResult（真值语义同旧 bool）；拒绝且问过操作者时 reason 携带理由，
+    供任务摘要向用户展示「为什么取消」。
+
     Task-level confirmation: the permission policy decides allow / ask / deny by the task's risk
     tier. It shares the `permissions` section with the tool-level gate — otherwise relaxing the
     tool level while the task level kept blocking would leave "allow by default" half-applied and
     the user still asked. On `allow` the **plan is still announced** for visibility, it just does
     not block: the user still sees what the assistant is about to do without approving each time.
-    Set `permissions.tiers` back to ask to restore per-task confirmation.
+    Set `permissions.tiers` back to ask to restore per-task confirmation. Returns a
+    ConfirmResult (truthy exactly like the old bool); when the operator was asked
+    and refused, reason carries the rationale for the task summary.
     """
     decision = decide_tier(task.risk)
     if decision.action == "allow":
         if session.channel is not None:
             await session.notify(plan)
-        return True
+        return ConfirmResult(True)
     if decision.action == "deny":
         audit(f"confirm task risk={task.risk} plan={plan} decision=rejected "
               f"reason=tier_denied source={decision.source}")
-        return False
+        return ConfirmResult(False)
     return await _ask_operator(session, plan, task.risk, "task", source=decision.source)
 
 
-async def confirm_tool(session: Session, name: str, args: dict) -> bool:
+async def confirm_tool(session: Session, name: str, args: dict) -> ConfirmResult:
     """工具级确认：由权限策略决定放行 / 询问 / 拒绝。
 
     策略默认值等价于改造前的行为（read 免询问、write/exec 询问），可在设置页调整。
+    拒绝时 ConfirmResult.reason 携带操作者理由，调用方应把它回喂给 LLM 作为纠偏信号
+    （否则模型只会看到一句干巴巴的「被拒绝」，大概率原样重试同一调用）。
 
     Tool-level confirmation: the permission policy decides allow / ask / deny. Its
     defaults match the pre-change behaviour (read auto-allowed, write/exec asked) and
-    are configurable in the settings page.
+    are configurable in the settings page. On a refusal, ConfirmResult.reason
+    carries the operator's rationale, which callers feed back to the LLM as a
+    corrective signal (without it the model only sees a bare "refused" and will
+    likely retry the same call verbatim).
     """
     decision = decide(name)
     if decision.action == "allow":
-        return True
+        return ConfirmResult(True)
     if decision.action == "deny":
         audit(f"tools policy denied name={name} source={decision.source}")
-        return False
+        return ConfirmResult(False)
     plan = f"调用工具 {name}，参数 {json.dumps(args, ensure_ascii=False)}"
     return await _ask_operator(session, plan, TOOLS.risk(name), "tool", source=decision.source)

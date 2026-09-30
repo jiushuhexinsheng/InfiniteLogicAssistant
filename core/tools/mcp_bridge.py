@@ -58,7 +58,13 @@ async def register_mcp_tools(conn: McpConnection) -> None:
     tools = await conn.list_tools()
     for t in tools:
         name = f"mcp_{conn.cfg.name}_{t.name}"
-        TOOLS.register(name, _make_mcp_func(conn, t.name), _to_schema(name, t), risk="exec")
+        # group="mcp"：渐进式 schema（tools.lazy_groups=["mcp"]）可整组降级为简介，
+        # 挂多个 MCP server 时首轮 prompt 不再随工具数膨胀（docs/designs/08 批4）。
+        # group="mcp": the progressive-schema knob (tools.lazy_groups=["mcp"]) can demote
+        # the whole bucket to stubs, so a prompt no longer swells with tool count when
+        # several MCP servers are attached (docs/designs/08 batch 4).
+        TOOLS.register(name, _make_mcp_func(conn, t.name), _to_schema(name, t),
+                       risk="exec", group="mcp")
     logger.info("MCP 注册 {} 个工具（server={}）", len(tools), conn.cfg.name)
 
 

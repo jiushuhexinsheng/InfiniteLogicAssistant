@@ -78,6 +78,16 @@ voice:
     # Silence timeout (ms) while waiting for a spoken answer; on timeout the assistant
     # enters standby (the engine still listens for the wake word).
     answer_timeout_ms: 8000
+    # 打断播报：true=助手说话时可用语音直接打断（独立回声消除流做能量检测）。
+    # false（默认）= 播报期间停麦的旧行为。
+    # Barge-in: true = speech can cut playback while the assistant talks (a separate
+    # echo-cancelled stream does energy detection). false (default) = legacy mic-off.
+    barge_in: false
+    # 续聊窗口（毫秒）：回合结束/播报完后的免唤醒窗口，窗口内直接说话即当新指令；
+    # 0=关闭（回到「结束后 3s 回聆听、必须喊唤醒词」的旧行为）。
+    # Follow-up window (ms): wake-free window after a turn ends / playback finishes —
+    # speak inside it and the words are taken as a fresh instruction; 0 = off.
+    followup_window_ms: 6000
   # 在线 ASR 语音转文字（OpenAI 兼容；endpoint/model 需自填，密钥在 config.secrets.yaml）
   asr:
     active: openai
@@ -108,6 +118,10 @@ server:
   host: "127.0.0.1"
   port: 8520
   open_browser: true
+  # SSE 断线宽限（秒）：断开后任务继续跑，期内可 /voice/resume 续播；0=断线即停（旧行为）。
+  # SSE disconnect grace (seconds): after a disconnect the task keeps running and can
+  # resume via /voice/resume inside the window; 0 = stop on disconnect (legacy).
+  resume_grace_s: 120
   # api_token 已移到 config.secrets.yaml（非 localhost 绑定时的 API 访问令牌）
   # 允许跨域的前端来源（默认空 = 禁止跨域；本地同源/开发代理不需要 CORS）
   cors_origins: []
@@ -119,17 +133,35 @@ mcp:
 # RAG 索引：启动时 index.db 缺失或源文件更新则自动重建；false 关闭自动构建
 rag:
   auto_index: true
+  # 精排（docs/designs/05）：none=纯 BM25（默认零成本）；llm=粗排候选后单次 LLM 打分，
+  # 失败自动回退 BM25 序并记审计。
+  rerank: none               # none | llm
+  rerank_candidates: 12      # 粗排候选数（rerank=llm 时先取这么多）
+  rerank_top_k: 5            # 最终注入条数
+
+# 长期记忆（docs/designs/04）：检索新近度加权 + 注入预算 + 提取回看深度
+# recency_weight=0 关闭加权（纯 bm25）；inject_* 双闸限制注入 system prompt 的记忆体量
+memory:
+  recency_half_life_days: 30   # 新近度半衰期（天）
+  recency_weight: 0.5          # 加权强度（0=关）
+  inject_top_k: 5              # 注入条数上限
+  inject_max_chars: 800        # 注入字符预算
+  extract_recent_messages: 2   # 任务后提取回看的最近对话条数（用户/助手各 N）
 
 # 任务执行：ReAct 步数上限 / 复杂任务是否转多智能体协调者（可开关）
 # models_failover：LLM 主模型故障（不存在/重试耗尽）时依次尝试的备选模型（openclaw 式 failover）
 # structured_temperature：意图/任务形成/拆解/事实提取等结构化输出阶段的温度（默认 0.2，调低提稳）
 # auto_approve：true=write/exec 高风险工具/任务自动放行、不再询问操作者（含子代理与技能；无通道无人值守仍拒绝）
+# confirm_timeout_s：操作者提问（澄清/确认）超时秒数，0=不限（无限期等待）；到期按拒绝处理（fail-closed）
+# condense_threshold_chars：ReAct 历史滚动压缩阈值（字符），超阈值折叠中间段；0=关闭
 agent:
   recursion_limit: 12
   multi_agent: false
   models_failover: []          # 例: ["gpt-4o-mini", "qwen-turbo"]
   structured_temperature: 0.2
   auto_approve: false
+  confirm_timeout_s: 0
+  condense_threshold_chars: 12000
 
 # LLM 客户端：重试 / 熔断 / 连接池
 llm_client:
@@ -143,6 +175,12 @@ llm_client:
 # 工具参数
 tools:
   search_max_results: 5
+  # LLM 口径输出截断（docs/designs/08）：喂给模型的 tool 正文上限，0=不限；
+  # 展示（SSE 预览 500）与落库（4000）口径独立不受影响。
+  llm_max_output_chars: 8000
+  # 渐进式工具 schema（docs/designs/08）：这些分组降级为一行简介（完整参数先调
+  # tools_describe）；默认 []=全量下发。例: ["mcp"]（挂多个 MCP server 时首轮 prompt 瘦身）。
+  lazy_groups: []
 
 # 工具权限策略：工具调用是否需要操作者确认（可在设置页「权限」调整）
 #   allow 直接执行 / ask 询问操作者 / deny 拒绝执行

@@ -12,7 +12,9 @@ from core import config
 from core.llm.client import get_llm_client
 from core.logger import logger
 from core.orchestrator.control import CancellationToken
-from core.orchestrator.blocks import PREVIEW_LEN
+from core.orchestrator.blocks import PREVIEW_LEN, llm_tool_feed
+from core.orchestrator.condense import maybe_condense
+from core.orchestrator.confirm import ConfirmResult
 from core.orchestrator.events import ToolEndEvent, ToolStartEvent
 from core.prompts import UNTRUSTED_DATA_NOTE
 from core.tools.base import TOOLS
@@ -45,7 +47,7 @@ async def run_subagent(
     context: str = "",
     cancel: CancellationToken | None = None,
     max_steps: int | None = None,
-    confirm: Callable[[str, dict], Awaitable[bool]] | None = None,
+    confirm: Callable[[str, dict], Awaitable[ConfirmResult | bool]] | None = None,
     events: asyncio.Queue | None = None,
     agent: str = "",
 ) -> SubAgentResult:
@@ -88,9 +90,24 @@ async def run_subagent(
     for _ in range(max_steps):
         if cancel is not None and cancel.is_cancelled:
             return SubAgentResult("stopped", "已停止", used)
+        # 滚动压缩（docs/designs/08 批2）：子代理步数更长、收益更大；失败原样返回。
+        # Rolling condenser (docs/designs/08 batch 2): sub-agents run longer steps and
+        # benefit most; failures return the input unchanged.
+        try:
+            history, omitted = await maybe_condense(
+                history,
+                threshold_chars=config.settings.agent.condense_threshold_chars,
+            )
+            if omitted:
+                logger.debug("subagent 上下文已压缩（省略 {} 条）", omitted)
+        except Exception:
+            pass
         try:
             msg = None
-            async for evt in get_llm_client().retry_stream_chat(history, tools=TOOLS.schemas()):
+            # 渐进式 schema（docs/designs/08 批4）：与主 ReAct 同口径。
+            # Progressive schemas (docs/designs/08 batch 4): same convention as the main ReAct.
+            async for evt in get_llm_client().retry_stream_chat(
+                    history, tools=TOOLS.schemas(stub_groups=config.settings.tools.lazy_groups)):
                 if evt["type"] == "done":
                     msg = evt["message"]
         except asyncio.CancelledError:
@@ -129,10 +146,19 @@ async def run_subagent(
                 result = f"Error: 操作者策略禁止调用 {name}（{decision.source}）"
             elif confirm is None:
                 result = f"Error: 工具 {name} 需要操作者确认，但当前无确认通道，已拒绝"
-            elif await confirm(name, args):
-                result = await TOOLS.acall(name, args, cancel=cancel)
             else:
-                result = f"Error: 操作者拒绝调用 {name}"
+                conf = await confirm(name, args)
+                if conf:
+                    result = await TOOLS.acall(name, args, cancel=cancel)
+                else:
+                    # 拒绝理由回喂子代理 LLM 作为纠偏信号（getattr 兼容测试桩返回裸 bool）。
+                    # The refusal rationale is fed back to the sub-agent LLM as a
+                    # corrective signal (getattr keeps plain-bool test doubles working).
+                    result = f"Error: 操作者拒绝调用 {name}"
+                    reason = getattr(conf, "reason", "") or ""
+                    if reason:
+                        result += f"（理由：{reason[:200]}）"
+                    result += "。请调整方案、换用其他工具，或先向用户说明后再请求。"
             if events is not None:
                 status = "error" if result.startswith("Error") else "ok"
                 await events.put(ToolEndEvent(
@@ -141,5 +167,10 @@ async def run_subagent(
                     truncated=len(result) > PREVIEW_LEN, output_len=len(result),
                 ).emit())
             used.append(name)
-            history.append({"role": "tool", "tool_call_id": call_id, "content": result})
+            # LLM 口径（docs/designs/08 批1）：正文按 tools.llm_max_output_chars 截断；
+            # 事件/审计仍发原文（上方 ToolEnd 已带）。
+            # LLM-side convention (docs/designs/08 batch 1): the body is capped by
+            # tools.llm_max_output_chars; events/audit still carry the raw text.
+            history.append({"role": "tool", "tool_call_id": call_id,
+                            "content": llm_tool_feed(result)})
     return SubAgentResult("failed", f"超出步数上限（{max_steps}）", used)

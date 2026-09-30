@@ -161,3 +161,67 @@ async def test_maybe_rebuild_skips_fresh(tmp_path):
     before = db.stat().st_mtime_ns
     await maybe_rebuild_index([src], index_db=db)  # 源未变 → 不应重建
     assert db.stat().st_mtime_ns == before
+
+
+# ─── 编号注入与 LLM 精排（docs/designs/05）───
+
+
+@pytest.mark.asyncio
+async def test_rag_context_numbered_format(tmp_path, monkeypatch):
+    """注入文本带编号 [n] 与 path（LLM 引用标注的依据）。Injection text is numbered
+    [n] with the path (the basis for LLM citations)."""
+    monkeypatch.setattr(rag_mod, "INDEX_DB", tmp_path / "index.db")
+    src = tmp_path / "a.md"
+    src.write_text("## 系统\n\nPython 版本 3.14", encoding="utf-8")
+    await index_sources([src])
+    ctx = await rag_context("python 版本")
+    assert "[1]" in ctx and "a.md" in ctx
+
+
+@pytest.mark.asyncio
+async def test_rerank_reorders_by_llm_score(monkeypatch):
+    """rerank=llm：按模型分数重排并截断 top_k。Rerank reorders by model score and cuts to top_k."""
+    import json as _json
+    from core.rag import retriever as rv
+
+    hits = [
+        {"path": "a.md", "section": "A", "text": "aaa", "score": 3.0},
+        {"path": "b.md", "section": "B", "text": "bbb", "score": 2.0},
+        {"path": "c.md", "section": "C", "text": "ccc", "score": 1.0},
+    ]
+
+    class _FakeLLM:
+        def retry_stream_chat(self, messages, tools=None, temperature=None):
+            async def gen():
+                yield {"type": "done", "message": {"tool_calls": [{"function": {
+                    "arguments": _json.dumps({"scores": [
+                        {"n": 1, "score": 2}, {"n": 2, "score": 9}, {"n": 3, "score": 6},
+                    ]})}}]}}
+            return gen()
+
+    monkeypatch.setattr("core.llm.client.get_llm_client", lambda: _FakeLLM())
+    out = await rv.rerank("q", hits, top_k=2)
+    assert [h["path"] for h in out] == ["b.md", "c.md"]
+
+
+@pytest.mark.asyncio
+async def test_rerank_failure_falls_back_to_bm25(monkeypatch):
+    """rerank 任何失败 → 静默回退 BM25 序（rerank 坏了不得拖垮整个回合）。
+    Any rerank failure silently falls back to the BM25 order (a broken rerank must
+    not take the turn down)."""
+    from core.rag import retriever as rv
+
+    hits = [
+        {"path": "a.md", "section": "A", "text": "aaa", "score": 3.0},
+        {"path": "b.md", "section": "B", "text": "bbb", "score": 2.0},
+        {"path": "c.md", "section": "C", "text": "ccc", "score": 1.0},
+    ]
+
+    class _Boom:
+        def retry_stream_chat(self, messages, tools=None, temperature=None):
+            raise RuntimeError("LLM down")
+            yield  # pragma: no cover —— 让它是生成器。Makes it a generator.
+
+    monkeypatch.setattr("core.llm.client.get_llm_client", lambda: _Boom())
+    out = await rv.rerank("q", hits, top_k=2)
+    assert [h["path"] for h in out] == ["a.md", "b.md"]

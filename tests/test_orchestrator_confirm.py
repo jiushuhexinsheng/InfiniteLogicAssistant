@@ -8,7 +8,9 @@ import pytest
 
 from core import config
 from core.orchestrator import confirm as confirm_mod
-from core.orchestrator.confirm import _resolve_confirm, confirm_if_needed, confirm_tool
+from core.orchestrator.confirm import (
+    ConfirmResult, _resolve_confirm, confirm_if_needed, confirm_tool,
+)
 from core.orchestrator.session import Answer, Session
 from core.orchestrator.task import Task
 
@@ -71,7 +73,7 @@ async def test_confirm_read_auto():
     """读操作自动放行。Read operations auto-approve."""
     s = Session()
     s.channel = _Channel([])
-    assert await confirm_if_needed(Task("t", "读文件", risk="read"), "读 x", s) is True
+    assert await confirm_if_needed(Task("t", "读文件", risk="read"), "读 x", s)
 
 
 @pytest.mark.asyncio
@@ -79,7 +81,7 @@ async def test_confirm_exec_yes(asking):
     """高风险操作点击「确认」后放行。Clicking "confirm" approves a high-risk operation."""
     s = Session()
     s.channel = _Channel([Answer(choice="yes")])
-    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s) is True
+    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
     assert "需要确认" in s.channel.notified[0]
 
 
@@ -88,7 +90,7 @@ async def test_confirm_write_no(asking):
     """高风险操作点击「取消」后被拒绝。Clicking "cancel" rejects a high-risk operation."""
     s = Session()
     s.channel = _Channel([Answer(choice="no")])
-    assert await confirm_if_needed(Task("t", "写文件", risk="write"), "覆盖 x", s) is False
+    assert not await confirm_if_needed(Task("t", "写文件", risk="write"), "覆盖 x", s)
 
 
 @pytest.mark.asyncio
@@ -96,7 +98,7 @@ async def test_confirm_no_channel_rejects(asking):
     """无会话通道时默认拒绝。Defaults to rejection when no channel is present."""
     s = Session()
     s.channel = None
-    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s) is False
+    assert not await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
 
 
 @pytest.mark.asyncio
@@ -191,7 +193,7 @@ async def test_confirm_negated_answer_rejected(monkeypatch, asking):
     monkeypatch.setattr(confirm_mod, "get_llm_client", lambda: _FakeLLM(decision="reject"))
     s = Session()
     s.channel = _Channel(["不是"])
-    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s) is False
+    assert not await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
 
 
 @pytest.mark.asyncio
@@ -201,7 +203,7 @@ async def test_confirm_hesitant_answer_rejected(monkeypatch, asking):
     for hesitant in ("不太确定", "我不想执行", "这个不太好吧"):
         s = Session()
         s.channel = _Channel([hesitant])
-        assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s) is False, hesitant
+        assert not await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s), hesitant
 
 
 @pytest.mark.asyncio
@@ -210,7 +212,7 @@ async def test_confirm_negated_tool_rejected(monkeypatch, asking):
     monkeypatch.setattr(confirm_mod, "get_llm_client", lambda: _FakeLLM(decision="reject"))
     s = Session()
     s.channel = _Channel(["不执行"])
-    assert await confirm_tool(s, "write_file", {"path": "x", "content": "y"}) is False
+    assert not await confirm_tool(s, "write_file", {"path": "x", "content": "y"})
 
 
 # ─── 自然语言确认：LLM 兜底层 ───
@@ -224,7 +226,7 @@ async def test_confirm_natural_language_approved_by_llm(monkeypatch):
     monkeypatch.setattr(confirm_mod, "get_llm_client", lambda: fake)
     s = Session()
     s.channel = _Channel(["是的，允许本次。"])
-    assert await confirm_if_needed(Task("t", "打开网页", risk="exec"), "打开 B 站", s) is True
+    assert await confirm_if_needed(Task("t", "打开网页", risk="exec"), "打开 B 站", s)
 
 
 @pytest.mark.asyncio
@@ -234,7 +236,7 @@ async def test_confirm_llm_unclear_rejects(monkeypatch, asking):
     monkeypatch.setattr(confirm_mod, "get_llm_client", lambda: _FakeLLM(decision="unclear"))
     s = Session()
     s.channel = _Channel(["嗯…这个嘛"])
-    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s) is False
+    assert not await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
 
 
 @pytest.mark.asyncio
@@ -245,7 +247,7 @@ async def test_confirm_llm_exception_rejects(monkeypatch, asking):
                         lambda: _FakeLLM(exc=RuntimeError("LLM 挂了")))
     s = Session()
     s.channel = _Channel(["是的，允许本次。"])
-    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s) is False
+    assert not await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
 
 
 @pytest.mark.asyncio
@@ -254,7 +256,7 @@ async def test_confirm_llm_no_tool_call_rejects(monkeypatch, asking):
     monkeypatch.setattr(confirm_mod, "get_llm_client", lambda: _FakeLLM(no_tool=True))
     s = Session()
     s.channel = _Channel(["是的，允许本次。"])
-    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s) is False
+    assert not await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
 
 
 @pytest.mark.asyncio
@@ -263,7 +265,7 @@ async def test_confirm_llm_unknown_decision_rejects(monkeypatch, asking):
     monkeypatch.setattr(confirm_mod, "get_llm_client", lambda: _FakeLLM(decision="maybe"))
     s = Session()
     s.channel = _Channel(["嗯…"])
-    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s) is False
+    assert not await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
 
 
 @pytest.mark.asyncio
@@ -274,7 +276,7 @@ async def test_exact_text_does_not_call_llm(monkeypatch):
     monkeypatch.setattr(confirm_mod, "get_llm_client", lambda: fake)
     s = Session()
     s.channel = _Channel(["确认"])
-    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s) is True
+    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
     assert fake.calls == [], "精确匹配不应触发 LLM"
 
 
@@ -285,7 +287,7 @@ async def test_structured_choice_does_not_call_llm(monkeypatch):
     monkeypatch.setattr(confirm_mod, "get_llm_client", lambda: fake)
     s = Session()
     s.channel = _Channel([Answer(choice="yes")])
-    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s) is True
+    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
     assert fake.calls == [], "结构化选择不应触发 LLM"
 
 
@@ -328,7 +330,7 @@ async def test_confirm_tool_read_auto():
     """低风险工具自动放行。Low-risk tools auto-approve."""
     s = Session()
     s.channel = _Channel([])
-    assert await confirm_tool(s, "get_datetime", {}) is True
+    assert await confirm_tool(s, "get_datetime", {})
 
 
 @pytest.mark.asyncio
@@ -336,7 +338,7 @@ async def test_confirm_tool_write_yes(asking):
     """高风险工具点击「确认」后放行。Clicking "confirm" approves a high-risk tool."""
     s = Session()
     s.channel = _Channel([Answer(choice="yes")])
-    assert await confirm_tool(s, "write_file", {"path": "x", "content": "y"}) is True
+    assert await confirm_tool(s, "write_file", {"path": "x", "content": "y"})
     assert "需要确认" in s.channel.notified[0]
 
 
@@ -345,7 +347,7 @@ async def test_confirm_tool_write_no(asking):
     """高风险工具点击「取消」后被拒。Clicking "cancel" rejects a high-risk tool."""
     s = Session()
     s.channel = _Channel([Answer(choice="no")])
-    assert await confirm_tool(s, "write_file", {"path": "x", "content": "y"}) is False
+    assert not await confirm_tool(s, "write_file", {"path": "x", "content": "y"})
 
 
 @pytest.mark.asyncio
@@ -353,7 +355,7 @@ async def test_confirm_tool_no_channel_rejects(asking):
     """无通道时工具确认默认拒绝。Tool confirmation defaults to rejection without a channel."""
     s = Session()
     s.channel = None
-    assert await confirm_tool(s, "write_file", {"path": "x", "content": "y"}) is False
+    assert not await confirm_tool(s, "write_file", {"path": "x", "content": "y"})
 
 
 # ─── 确认判定改由权限策略决定 ───
@@ -376,7 +378,7 @@ async def test_confirm_allowed_tool_skips_asking(monkeypatch):
     monkeypatch.setattr(confirm_mod, "decide", lambda name, section=None: _allow())
     s = Session()
     s.channel = _Channel([])          # 没有可用答案 → 一旦提问就会 IndexError
-    assert await confirm_tool(s, "run_shell_tool", {"command": "x"}) is True
+    assert await confirm_tool(s, "run_shell_tool", {"command": "x"})
     assert s.channel.notified == []   # 未发起任何询问
 
 
@@ -387,7 +389,7 @@ async def test_confirm_denied_tool_refused_without_asking(monkeypatch):
     monkeypatch.setattr(confirm_mod, "decide", lambda name, section=None: _deny())
     s = Session()
     s.channel = _Channel([])
-    assert await confirm_tool(s, "run_shell_tool", {"command": "x"}) is False
+    assert not await confirm_tool(s, "run_shell_tool", {"command": "x"})
     assert s.channel.notified == []
 
 
@@ -396,7 +398,7 @@ async def test_confirm_ask_tool_still_asks(asking):
     """策略 ask 的工具照旧提问（回归：默认行为不变，多数工具都是 ask）。"""
     s = Session()
     s.channel = _Channel([Answer(choice="yes")])
-    assert await confirm_tool(s, "write_file", {"path": "x", "content": "y"}) is True
+    assert await confirm_tool(s, "write_file", {"path": "x", "content": "y"})
     assert "需要确认" in s.channel.notified[0]
 
 
@@ -441,7 +443,7 @@ async def test_task_allowed_by_default_still_announces_plan(monkeypatch):
 
     s = Session()
     s.channel = _Ch([])
-    assert await confirm_if_needed(Task("t", "打开网页", risk="exec"), "执行任务：打开 B 站", s) is True
+    assert await confirm_if_needed(Task("t", "打开网页", risk="exec"), "执行任务：打开 B 站", s)
     assert asked == [], "默认放行时不应发问"
     assert s.channel.notified == ["执行任务：打开 B 站"], "放行也必须播报计划（可见性）"
 
@@ -462,7 +464,7 @@ async def test_task_denied_by_tier_is_refused(monkeypatch):
 
     s = Session()
     s.channel = _Ch([])
-    assert await confirm_if_needed(Task("t", "删库", risk="exec"), "删除", s) is False
+    assert not await confirm_if_needed(Task("t", "删库", risk="exec"), "删除", s)
     assert asked == [], "deny 不应发问"
 
 
@@ -472,7 +474,7 @@ async def test_task_allowed_without_channel_does_not_crash():
     With no channel (unattended schedule) and an allow decision, nothing may crash on the notify."""
     s = Session()
     s.channel = None
-    assert await confirm_if_needed(Task("t", "读文件", risk="read"), "读 x", s) is True
+    assert await confirm_if_needed(Task("t", "读文件", risk="read"), "读 x", s)
 
 
 # ─── auto_approve：配置开启后 write/exec 跳过提问自动放行 ───
@@ -496,7 +498,7 @@ async def test_confirm_tool_auto_approve_skips_ask(asking, monkeypatch):
     monkeypatch.setattr(config.settings.agent, "auto_approve", True)
     s = Session()
     s.channel = _Channel([])  # 空答案队列：若仍提问会触发 IndexError
-    assert await confirm_tool(s, "write_file", {"path": "x", "content": "y"}) is True
+    assert await confirm_tool(s, "write_file", {"path": "x", "content": "y"})
     assert s.channel.notified == []
 
 
@@ -509,7 +511,7 @@ async def test_confirm_if_needed_auto_approve(asking, monkeypatch):
     monkeypatch.setattr(config.settings.agent, "auto_approve", True)
     s = Session()
     s.channel = _Channel([])
-    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s) is True
+    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
     assert s.channel.notified == []
 
 
@@ -523,5 +525,139 @@ async def test_confirm_auto_approve_no_channel_still_rejects(asking, monkeypatch
     monkeypatch.setattr(config.settings.agent, "auto_approve", True)
     s = Session()
     s.channel = None
-    assert await confirm_tool(s, "write_file", {"path": "x", "content": "y"}) is False
-    assert await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s) is False
+    assert not await confirm_tool(s, "write_file", {"path": "x", "content": "y"})
+    assert not await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
+
+
+# ─── ConfirmResult：拒绝理由回传（给 LLM 的纠偏信号）───
+
+
+@pytest.mark.asyncio
+async def test_reject_with_reason_carries_text(asking):
+    """拒绝时 reason 携带操作者自拟理由，供 executor 回喂 LLM。"""
+    s = Session()
+    s.channel = _Channel([Answer(choice="no", text="里面有旧数据，先备份")])
+    res = await confirm_tool(s, "write_file", {"path": "x", "content": "y"})
+    assert not res
+    assert isinstance(res, ConfirmResult)
+    assert res.reason == "里面有旧数据，先备份"
+
+
+@pytest.mark.asyncio
+async def test_reject_without_text_has_empty_reason(asking):
+    """按钮拒绝（无文本）→ reason 为空，任务摘要文案与改造前逐字一致。"""
+    s = Session()
+    s.channel = _Channel([Answer(choice="no")])
+    res = await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
+    assert not res
+    assert res.reason == ""
+
+
+@pytest.mark.asyncio
+async def test_reject_reason_truncated_to_200(asking):
+    """理由截断 200 字：防超长/防注入，LLM 回喂有界。"""
+    s = Session()
+    s.channel = _Channel([Answer(choice="no", text="长" * 500)])
+    res = await confirm_tool(s, "write_file", {"path": "x", "content": "y"})
+    assert not res
+    assert len(res.reason) == 200
+
+
+@pytest.mark.asyncio
+async def test_approval_has_empty_reason(asking):
+    """放行时 reason 恒为空（调用方只在拒绝分支消费它）。"""
+    s = Session()
+    s.channel = _Channel([Answer(choice="yes")])
+    res = await confirm_tool(s, "write_file", {"path": "x", "content": "y"})
+    assert res
+    assert res.reason == ""
+
+
+# ─── 空回答短路：不再对空文本发起 LLM 判定 ───
+
+
+@pytest.mark.asyncio
+async def test_empty_answer_skips_llm(monkeypatch, asking):
+    """空回答（定时无人值守 _SilentChannel 等）直接拒绝，绝不调 LLM。
+
+    旧路径会把空字符串喂给 _resolve_confirm_llm 白烧一次调用，且判定方向
+    必然也是不放行。此处用「LLM 会批准」的桩证明它根本没被调用。
+    """
+    fake = _FakeLLM(decision="approve")
+    monkeypatch.setattr(confirm_mod, "get_llm_client", lambda: fake)
+    s = Session()
+    s.channel = _Channel([Answer(text="")])
+    res = await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
+    assert not res
+    assert fake.calls == [], "空回答不应触发 LLM 判定"
+
+
+@pytest.mark.asyncio
+async def test_free_text_still_reaches_llm(monkeypatch, asking):
+    """非空自由文本仍走 LLM 判定（短路只针对空文本，语音自然表达通道不回归）。"""
+    fake = _FakeLLM(decision="approve")
+    monkeypatch.setattr(confirm_mod, "get_llm_client", lambda: fake)
+    s = Session()
+    s.channel = _Channel([Answer(text="可以，执行吧")])
+    res = await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
+    assert res
+    assert len(fake.calls) == 1
+
+
+# ─── 确认超时（agent.confirm_timeout_s）：fail-closed + timeout 源 answer 事件 ───
+
+
+@pytest.mark.asyncio
+async def test_channel_timeout_fails_closed(monkeypatch):
+    """ask() 超时 → 拒绝式回答 + 前端收卡事件，队列占用状态复位。"""
+    import asyncio as aio
+
+    from core.orchestrator.pipeline import EventQueueChannel
+
+    monkeypatch.setattr(config.settings.agent, "confirm_timeout_s", 0.05)
+    events: aio.Queue = aio.Queue()
+    ch = EventQueueChannel(events, "sid")
+    ans = await ch.ask("确认执行吗？删除 x", kind="choice", options=[])
+    assert ans.choice == "no"
+    assert "超时" in ans.reason
+    assert ch.awaiting_answer is False
+    assert ch.pending_qid is None
+    frames = []
+    while not events.empty():
+        frames.append(events.get_nowait())
+    assert [f["type"] for f in frames] == ["question", "answer"]
+    assert frames[1]["source"] == "timeout"
+    assert frames[1]["qid"] == frames[0]["qid"]
+
+
+@pytest.mark.asyncio
+async def test_confirm_timeout_reason_flows_to_result(monkeypatch, asking):
+    """超时的回答经确认链 → ConfirmResult.reason 标明超时（任务摘要可见）。"""
+    import asyncio as aio
+
+    from core.orchestrator.pipeline import EventQueueChannel
+
+    monkeypatch.setattr(config.settings.agent, "confirm_timeout_s", 0.05)
+    events: aio.Queue = aio.Queue()
+    s = Session()
+    s.channel = EventQueueChannel(events, "sid")
+    res = await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
+    assert not res
+    assert "超时" in res.reason
+
+
+@pytest.mark.asyncio
+async def test_zero_timeout_keeps_wait_forever(monkeypatch, asking):
+    """confirm_timeout_s=0（默认）→ 不设超时，与改造前行为一致。"""
+    import asyncio as aio
+
+    from core.orchestrator.pipeline import EventQueueChannel
+
+    monkeypatch.setattr(config.settings.agent, "confirm_timeout_s", 0)
+    events: aio.Queue = aio.Queue()
+    ch = EventQueueChannel(events, "sid")
+    # 立即投递答案：若错误地套了 wait_for(0)（等价于立即超时），这里会拿到超时回答
+    ch.answer("确认", choice="yes")
+    ans = await ch.ask("确认执行吗？", kind="choice", options=[])
+    assert ans.choice == "yes"
+    assert ans.reason == ""

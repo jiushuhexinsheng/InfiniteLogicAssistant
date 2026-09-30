@@ -31,6 +31,12 @@ class Answer:
 
     text: str = ""
     choice: str | None = None  # "yes" | "no" | None（自由文本）
+    # 拒绝/超时标记（如「确认超时，未作答」）：由通道在特殊场景填入，
+    # 经 ConfirmResult.reason 透传给 LLM/任务摘要；操作者自拟理由走 text。
+    # Refusal/timeout marker (e.g. "confirmation timed out"): filled in by the
+    # channel for special cases and relayed to the LLM / task summary via
+    # ConfirmResult.reason; an operator-authored rationale travels in text.
+    reason: str = ""
 
 
 class SessionState(str, enum.Enum):

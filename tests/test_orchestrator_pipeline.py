@@ -226,7 +226,7 @@ async def test_background_extract_task_is_referenced(monkeypatch):
     started = asyncio.Event()
     release = asyncio.Event()
 
-    async def fake_extract(task, result, store):
+    async def fake_extract(task, result, store, session=None):
         started.set()
         await release.wait()
 

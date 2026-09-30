@@ -106,6 +106,9 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
   除明确批准外一律拒绝）。犹豫、含糊、答非所问一律不放行
 - **无应答进待机**：等待回答期间若一直没说话，超过 `vad.answer_timeout_ms`（默认 8s）进入待机；
   待机时唤醒词仍生效，说唤醒词可**回到刚才那个提问**继续作答，而不是开新一轮
+- **续聊窗口**：回合结束/播报完后的 `vad.followup_window_ms`（默认 6s）内**免唤醒**——直接开口
+  说话即当新指令（窗口内说唤醒词也兼容，照常进指令窗）；到期自动回聆听。设为 0 关闭
+  （回到「结束后必须喊唤醒词」的旧行为）。窗口内语音会走云端转写（与作答通道同成本）
 - **播报期间暂停监听**：助手说话时会停掉分段录音器并**释放麦克风轨道**，播完恢复；
   播报结束后 1.2 秒内音频整体丢弃（**回声护栏**——助手自称「衍衡」，防止它自己的声音被误唤醒）
 - 说出「停止 / 取消 / 暂停」等命令词可中断当前任务
@@ -228,11 +231,14 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 - `voice.wake_word`：唤醒词（可多个）与开关；`voice.vad`：静音切段参数；
   `voice.kws`：本地 KWS 闸门（模型目录 / 检测阈值）。
 - `agent`：`recursion_limit`（ReAct 步数上限）、`multi_agent`（复杂任务是否转多智能体协调者）、
-  `auto_approve`（write/exec 免确认开关）。
+  `auto_approve`（write/exec 免确认开关）、`confirm_timeout_s`（确认/澄清超时秒数，
+  0=不限；到期按拒绝处理，防确认链无限挂起）。
 - `llm_client`：重试 / 熔断参数。
 - `mcp.servers`：MCP server 列表（`{name, command, args}`），启动时自动连接并注册工具。
 - `server.api_token`：非 localhost 绑定时的 API 访问令牌（留空则拒绝非 localhost 启动）。
 - `server.cors_origins`：允许跨域的前端来源（默认空 = 禁止跨域）。
+- `server.resume_grace_s`：SSE 断线宽限秒数（默认 120；断开后任务继续跑、可
+  `/api/voice/resume` 续播，到期未重连才收尾落盘；0 = 断线即停的旧行为）。
 - `rag.auto_index`：启动时按需重建 RAG 索引（默认 true）。
 
 **网页设置页**：控制台「设置」tab 可切换服务商 profile、调节参数、设置密钥（不回显）、检测连接；

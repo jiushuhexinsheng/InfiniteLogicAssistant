@@ -103,6 +103,12 @@ class VadConfig(BaseModel):
     answer_timeout_ms: int = 8000
     min_speech_ms: int = 300
     upload_throttle_ms: int = 500
+    # 续聊窗口（毫秒，0=关闭）：见 config/schema.py 同名字段（两处必须同步）。
+    # Follow-up window (ms, 0 = off): see the same field in config/schema.py (keep in sync).
+    followup_window_ms: int = 6000
+    # 打断播报（barge-in）开关：见 config/schema.py 同名字段（两处必须同步）。
+    # Barge-in toggle: see the same field in config/schema.py (both must stay in sync).
+    barge_in: bool = False
 
 
 class ConfigResponse(ApiResponse):
@@ -475,13 +481,16 @@ class TtsSectionEditable(SectionEditable):
 
 
 class AgentConfigOut(BaseModel):
-    """Agent 配置输出（递归限制、多代理、故障转移模型列表）。
+    """Agent 配置输出（递归限制、多代理、故障转移模型列表、确认超时、压缩阈值）。
 
-    Agent config output (recursion limit, multi-agent, failover model list).
+    Agent config output (recursion limit, multi-agent, failover model list, confirm
+    timeout, condense threshold).
     """
     recursion_limit: int = 12
     multi_agent: bool = False
     models_failover: list[str] = []
+    confirm_timeout_s: int = 0
+    condense_threshold_chars: int = 12000
 
 
 class LlmClientConfigOut(BaseModel):
@@ -504,6 +513,8 @@ class ToolsConfigOut(BaseModel):
     """
     search_max_results: int = 5
     weather_timeout: int = 10
+    llm_max_output_chars: int = 8000
+    lazy_groups: list[str] = []
 
 
 class McpServerOut(BaseModel):
@@ -530,6 +541,22 @@ class RagConfigOut(BaseModel):
     RAG config output.
     """
     auto_index: bool = True
+    rerank: str = "none"
+    rerank_candidates: int = 12
+    rerank_top_k: int = 5
+
+
+class MemoryConfigOut(BaseModel):
+    """记忆配置输出（新近度加权 / 注入预算 / 提取回看，docs/designs/04）。
+
+    Memory config output (recency weight / injection budget / extraction lookback,
+    docs/designs/04).
+    """
+    recency_half_life_days: float = 30.0
+    recency_weight: float = 0.5
+    inject_top_k: int = 5
+    inject_max_chars: int = 800
+    extract_recent_messages: int = 2
 
 
 class ServerConfigOut(BaseModel):
@@ -580,6 +607,7 @@ class EditableSnapshot(BaseModel):
     permissions: PermissionsOut
     mcp: McpConfigOut
     rag: RagConfigOut
+    memory: MemoryConfigOut
     server: ServerConfigOut
 
 

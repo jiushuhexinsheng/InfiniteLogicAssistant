@@ -117,9 +117,11 @@ async def test_execute_uses_coordinator_for_complex(monkeypatch):
 async def test_execute_injects_context(monkeypatch):
     """上下文注入到首条用户消息。Context is injected into the first user message."""
     async def fake_build_context(query):
-        return "【相关文档/环境】\nPython 3.14"
+        # 主执行路径走 with_sources（docs/designs/05）：返回 (文本, 命中)。
+        # The main execution path uses with_sources (docs/designs/05): (text, hits).
+        return "【相关文档/环境】\nPython 3.14", []
 
-    monkeypatch.setattr("core.orchestrator.executor.build_context", fake_build_context)
+    monkeypatch.setattr("core.orchestrator.executor.build_context_with_sources", fake_build_context)
 
     class _Fake:
         def __init__(self):
@@ -385,3 +387,131 @@ async def test_auto_allowed_tools_run_concurrently(monkeypatch):
     assert r["status"] == "done"
     assert len(started) == 2
     assert max_inflight == 2, "两个工具应同时在飞（并发），而非串行"
+
+
+@pytest.mark.asyncio
+async def test_sources_block_and_cite_note_emitted(monkeypatch):
+    """RAG 命中 → sources 块直通事件流，system 提示带 [n] 引用标注尾注
+    （docs/designs/05 §3.1/§3.2）。"""
+    import asyncio
+
+    # 记录 system 提示（断言引用尾注真的进了首条 history）。
+    # Records the system prompt (asserts the citation note actually reaches history).
+
+    class _Rec:
+        def __init__(self, script):
+            self.script = script
+            self.hist: list[list[dict]] = []
+
+        def retry_stream_chat(self, history, tools=None):
+            self.hist.append(history)
+
+            async def gen():
+                for evt in self.script.pop(0):
+                    yield evt
+            return gen()
+
+    fake = _Rec([[_done(content="完成")]])
+    monkeypatch.setattr("core.orchestrator.executor.get_llm_client", lambda: fake)
+
+    hits = [{"path": "env.md", "section": "系统", "text": "Python 3.14", "score": 2.5}]
+
+    async def fake_ctx(q):
+        return "【相关文档/环境】\n[1] 系统 (env.md)\nPython 3.14", hits
+
+    import core.orchestrator.executor as ex
+    monkeypatch.setattr(ex, "build_context_with_sources", fake_ctx)
+
+    events: asyncio.Queue = asyncio.Queue()
+    s = Session()
+    s.channel = _Channel([])
+    r = await execute_task(Task("t", "查环境", risk="read"), s, CancellationToken(), events)
+    assert r["status"] == "done"
+
+    evts = []
+    while not events.empty():
+        evts.append(events.get_nowait())
+    src = next(e for e in evts if e.get("type") == "block" and e["block"].get("type") == "sources")
+    assert src["block"]["payload"]["items"][0]["n"] == 1
+    assert src["block"]["payload"]["items"][0]["path"] == "env.md"
+    assert src["block"]["meta"].get("tts") == "skip"
+
+    sys_prompt = fake.hist[0][0]["content"]
+    assert "[n]" in sys_prompt and "标注" in sys_prompt, "引用尾注必须进 system 提示"
+
+
+@pytest.mark.asyncio
+async def test_tool_output_llm_feed_capped(monkeypatch):
+    """LLM 口径截断（docs/designs/08 批1）：喂给模型的 tool 正文按
+    tools.llm_max_output_chars 截断并附指引；steps/块仍用原文（四口径独立）。
+    LLM-side cap (docs/designs/08 batch 1): the tool body fed to the model is capped
+    with a hint; steps/blocks keep the raw text (four independent conventions)."""
+    from core import config as config_mod
+    monkeypatch.setattr(config_mod.settings.tools, "llm_max_output_chars", 50)
+
+    class _Rec:
+        def __init__(self, script):
+            self.script = script
+            self.hist: list[list[dict]] = []
+
+        def retry_stream_chat(self, history, tools=None):
+            self.hist.append(history)
+
+            async def gen():
+                for evt in self.script.pop(0):
+                    yield evt
+            return gen()
+
+    fake = _Rec([
+        [_done(tool="get_datetime", args="{}")],
+        [_done(content="完成")],
+    ])
+    monkeypatch.setattr("core.orchestrator.executor.get_llm_client", lambda: fake)
+
+    import core.orchestrator.executor as ex
+
+    async def fake_acall(name, args, cancel=None, session=None):
+        return "长" * 5000
+
+    monkeypatch.setattr(ex.TOOLS, "acall", fake_acall)
+
+    s = Session()
+    s.channel = _Channel([])
+    r = await execute_task(Task("t", "查时间", risk="read"), s, CancellationToken())
+    assert r["status"] == "done"
+
+    # LLM 口径：第二次调用的 history 里 tool 正文 = 50 字 + 截断指引。
+    # LLM-side convention: the tool body in the second call's history = 50 chars + hint.
+    tool_msg = next(m for m in fake.hist[1] if m.get("role") == "tool")
+    assert len(tool_msg["content"]) < 200
+    assert tool_msg["content"].startswith("长" * 50)
+    assert "输出已截断" in tool_msg["content"] and "共 5000 字" in tool_msg["content"]
+
+    # 展示/落库口径用原文（full_len = 原始长度）。Display/persistence keep the raw text.
+    tool_blocks = [b for m in s.messages for b in m.get("blocks", []) if b.get("type") == "tool"]
+    assert tool_blocks, "工具必须以 tool 块入会话"
+    p = tool_blocks[-1]["payload"]
+    assert p["full_len"] == 5000
+    assert len(p["output"]) == 4000   # HISTORY_LEN 口径。HISTORY_LEN convention.
+
+
+@pytest.mark.asyncio
+async def test_tool_rejection_feeds_reason_to_llm(monkeypatch, asking_policy):
+    """操作者拒绝并附理由 → 回喂 LLM 的 tool 消息携带理由与纠偏指引。
+
+    没有理由回传时，模型只看到一句干巴巴的「被拒绝」，大概率把同一调用原样重试；
+    理由 + 指引让它能换方案（OpenAI Agents SDK 的 rejection-reason 模式）。
+    """
+    fake = _FakeLLM([
+        [_done(tool="write_file", args=json.dumps({"path": "a.txt", "content": "x"}))],
+        [_done(content="完成")],
+    ])
+    monkeypatch.setattr("core.orchestrator.executor.get_llm_client", lambda: fake)
+    s = Session()
+    s.channel = _Channel([Answer(choice="no", text="这个文件不能动")])
+    r = await execute_task(Task("t", "写文件", risk="write"), s, CancellationToken())
+    assert r["status"] == "done"
+    result = r["steps"][0]["result"]
+    assert result.startswith("Error: 操作者拒绝调用 write_file")
+    assert "这个文件不能动" in result, "拒绝理由必须回喂给 LLM"
+    assert "请调整方案" in result, "应包含纠偏指引，防止原样重试"

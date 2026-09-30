@@ -12,6 +12,7 @@ event until /api/voice/answer delivers the answer (human in the loop).
 import asyncio
 from uuid import uuid4
 
+from core import config
 from core.llm.client import get_llm_client
 from core.logger import logger
 from core.memory.context import get_facts_store
@@ -148,7 +149,25 @@ class EventQueueChannel(OperatorChannel):
             )
             self.awaiting_answer = True
             try:
-                return await self.answers.get()
+                # 确认/澄清超时（agent.confirm_timeout_s，0=不限，与旧行为一致）：
+                # 到期按「拒绝」回流（fail-closed），并下发 timeout 源的 answer 事件
+                # 让前端当场收起问题卡，而不是让 question 悬在那里等回合结束。
+                # Confirmation/clarify timeout (agent.confirm_timeout_s; 0 = no limit,
+                # identical to the old behaviour): on expiry the answer flows back as
+                # a rejection (fail-closed) and a timeout-sourced answer event is
+                # emitted so the frontend folds the question card immediately instead
+                # of leaving it dangling until the turn ends.
+                timeout = config.settings.agent.confirm_timeout_s or None
+                if timeout is None:
+                    return await self.answers.get()
+                try:
+                    return await asyncio.wait_for(self.answers.get(), timeout)
+                except asyncio.TimeoutError:
+                    ans = Answer(text="", choice="no", reason="确认超时，未作答")
+                    self.events.put_nowait(
+                        AnswerEvent(qid=qid, text="", choice="no", source="timeout").emit()
+                    )
+                    return ans
             finally:
                 self.awaiting_answer = False
                 self.pending_qid = None
@@ -282,17 +301,26 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
         task.params = await run_clarify(session, task)
 
     session.set_state(SessionState.CONFIRMING)
-    ok = await confirm_if_needed(task, f"执行任务：{task.goal}", session)
-    if not ok:
-        await events.put(TaskStateEvent(state="done", status="cancelled", summary="操作者未确认，任务取消").emit())
+    conf = await confirm_if_needed(task, f"执行任务：{task.goal}", session)
+    if not conf:
+        # 拒绝理由（操作者自拟文本 / 超时标记）带进摘要，用户能看见「为什么取消」；
+        # 策略 deny 与无通道路径 reason 为空 → 摘要与改造前逐字一致。
+        # The refusal rationale (operator text / timeout marker) goes into the
+        # summary so the user sees *why* the task was cancelled; policy-deny and
+        # no-channel paths leave reason empty, so that summary is byte-identical
+        # to the pre-change wording.
+        detail = f"（{conf.reason}）" if conf.reason else ""
+        await events.put(TaskStateEvent(state="done", status="cancelled",
+                                        summary=f"操作者未确认{detail}，任务取消").emit())
         await events.put(DoneEvent().emit())
         return
 
     session.set_state(SessionState.EXECUTING)
     result = await execute_task(task, session, controller.token, events)
-    # 任务后异步提取事实写长期记忆（不阻塞回复，失败静默）
+    # 任务后异步提取事实写长期记忆（不阻塞回复，失败静默）；
+    # session 供提取看最近对话（解指代）并写溯源 origin（docs/designs/04）。
     if result.get("status") in ("done", "failed"):
-        _spawn_bg(extract_and_store(task, result, get_facts_store()))
+        _spawn_bg(extract_and_store(task, result, get_facts_store(), session=session))
     # 任务模式：完成后询问「完成了吗」，答「完成了」才存档（需求：只记录成功的任务）。
     # Task mode: ask whether the task is done and archive only on "completed" — the
     # requirement is to record successful tasks only.

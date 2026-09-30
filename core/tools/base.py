@@ -25,25 +25,72 @@ class _ToolRegistry:
         """初始化空工具注册表。Initialize an empty tool registry."""
         self._tools: dict[str, dict[str, Any]] = {}
 
-    def register(self, name: str, func: ToolFunc, schema: dict[str, Any], risk: str = "read") -> None:
-        """注册工具及其 schema 与风险等级。Register a tool with its schema and risk level.
+    def register(self, name: str, func: ToolFunc, schema: dict[str, Any], risk: str = "read",
+                 group: str = "core") -> None:
+        """注册工具及其 schema、风险等级与分组。Register a tool with its schema, risk level and group.
 
         Args:
             name: 工具名称。Tool name.
             func: 工具函数。Tool function.
             schema: OpenAI 函数 schema。OpenAI function schema.
             risk: 风险等级（read/write/exec）。Risk level (read/write/exec).
+            group: 分组（渐进式 schema 用，docs/designs/08 批4；内置=core、MCP=mcp）。
+                Group (for progressive schemas, docs/designs/08 batch 4; built-in = core, MCP = mcp).
         """
-        self._tools[name] = {"func": func, "schema": schema, "risk": risk}
+        self._tools[name] = {"func": func, "schema": schema, "risk": risk, "group": group}
 
-    def schemas(self) -> list[dict[str, Any]]:
-        """返回发给 LLM 的干净 schema 列表（不含 risk）。Return clean schemas for the LLM (risk omitted).
+    def schemas(self, stub_groups: list[str] | None = None) -> list[dict[str, Any]]:
+        """返回发给 LLM 的干净 schema 列表（不含 risk）。
+
+        渐进式加载（docs/designs/08 批4）：`stub_groups` 里的组降级为一行简介
+        （parameters 置空对象 + 描述标注需先调 tools_describe），其余组完整下发。
+        缺省（None/空）= 全量下发，现状零变化。
+
+        Return clean schemas for the LLM (risk omitted). Progressive loading
+        (docs/designs/08 batch 4): groups in `stub_groups` degrade to one-line stubs
+        (empty parameters + a note to call tools_describe first); all other groups are
+        sent in full. Default (None/empty) = full schemas, today's behaviour unchanged.
+
+        Args:
+            stub_groups: 降级为简介的分组列表。Groups degraded to stubs.
 
         Returns:
             OpenAI 函数 schema 列表。List of OpenAI function schemas.
         """
-        # 发给 LLM 的干净 schema（不含 risk，避免部分 provider 拒绝未知字段）
-        return [t["schema"] for t in self._tools.values()]
+        stub = set(stub_groups or [])
+        out: list[dict[str, Any]] = []
+        for name, t in self._tools.items():
+            schema = t["schema"]
+            fn = schema.get("function", {})
+            if t.get("group", "core") in stub:
+                # 一行简介：无参数细节，提示按需取（tools_describe 是唯一取全量的入口）。
+                # One-line stub: no parameter detail; fetch on demand (tools_describe is
+                # the only way to the full schema).
+                out.append({
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "description": f"{fn.get('description', name)}"
+                                       "（参数 schema 已折叠：先调用 tools_describe 获取后再调用本工具）",
+                        "parameters": {"type": "object", "properties": {}},
+                    },
+                })
+            else:
+                out.append(schema)
+        return out
+
+    def full_schemas(self, names: list[str]) -> dict[str, dict[str, Any]]:
+        """按名称取**完整** schema（tools_describe 用，无视 stub 分组）。
+
+        Fetch **full** schemas by name (for tools_describe; stub groups do not apply).
+
+        Args:
+            names: 工具名列表。Tool names.
+
+        Returns:
+            {name: schema}（未注册的忽略）。{name: schema} (unknown names ignored).
+        """
+        return {n: self._tools[n]["schema"] for n in names if n in self._tools}
 
     def meta(self) -> list[dict[str, Any]]:
         """工具元信息（含 risk），供确认层 / 控制台展示。Tool metadata (including risk) for the confirmation layer / console display.
@@ -260,17 +307,22 @@ def _build_schema(func: ToolFunc, description: str) -> dict[str, Any]:
     }
 
 
-def tool(description: str | None = None, *, risk: str = "read") -> Callable[[ToolFunc], ToolFunc]:
+def tool(description: str | None = None, *, risk: str = "read",
+         group: str = "core") -> Callable[[ToolFunc], ToolFunc]:
     """注册工具。risk: "read"(只读) / "write"(写) / "exec"(执行任意命令)。
 
     risk 不进 LLM schema，通过 TOOLS.risk(name) / TOOLS.meta() 暴露给确认层。
+    group 是渐进式 schema 的分组键（docs/designs/08 批4，tools.lazy_groups 按组降级）。
 
-    Register a tool. risk: "read" (read-only) / "write" (write) / "exec" (execute arbitrary commands).
-    risk is excluded from the LLM schema and is exposed to the confirmation layer via TOOLS.risk(name) / TOOLS.meta().
+    Register a tool. risk: "read" (read-only) / "write" (write) / "exec" (execute arbitrary
+    commands). risk is excluded from the LLM schema and exposed to the confirmation layer
+    via TOOLS.risk(name) / TOOLS.meta(). group is the progressive-schema bucket key
+    (docs/designs/08 batch 4; tools.lazy_groups demotes whole groups to stubs).
 
     Args:
         description: 工具描述；缺省时取函数 docstring 首行。Tool description; defaults to the first line of the function docstring.
         risk: 风险等级。Risk level.
+        group: 分组（默认 core）。Group (defaults to core).
 
     Returns:
         装饰器。The decorator.
@@ -280,6 +332,6 @@ def tool(description: str | None = None, *, risk: str = "read") -> Callable[[Too
         if desc is None:
             doc = (func.__doc__ or "").strip()
             desc = doc.splitlines()[0] if doc else func.__name__
-        TOOLS.register(func.__name__, func, _build_schema(func, desc), risk)
+        TOOLS.register(func.__name__, func, _build_schema(func, desc), risk, group=group)
         return func
     return decorator

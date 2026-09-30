@@ -43,10 +43,13 @@ async def run_skill(skill: Skill, params: dict, session: Session | None = None, 
     if skill.dangerous:
         if session is None:
             return f"Error: 技能 {skill.name} 危险且无确认通道"
-        ok = await confirm_if_needed(Task("skill", skill.name, risk="exec"),
-                                     f"执行技能 {skill.name}：{skill.description}", session)
-        if not ok:
-            return f"Error: 操作者拒绝执行技能 {skill.name}"
+        conf = await confirm_if_needed(Task("skill", skill.name, risk="exec"),
+                                       f"执行技能 {skill.name}：{skill.description}", session)
+        if not conf:
+            msg = f"Error: 操作者拒绝执行技能 {skill.name}"
+            if conf.reason:
+                msg += f"（理由：{conf.reason[:200]}）"
+            return msg
     out: list[str] = []
     for step in skill.steps:
         if cancel is not None and cancel.is_cancelled:

@@ -216,6 +216,14 @@ class VadConfig(BaseModel):
     # enters standby (the engine still listens for the wake word). It lives here rather
     # than in a new section because it shares the family with max_duration_ms.
     answer_timeout_ms: int = Field(8000, gt=0)
+    # 续聊窗口（docs/designs/03-A）：回合结束（done/error 且播报完）后的免唤醒窗口毫秒数，
+    # 窗口内的语音段直接转写为新指令（不必喊唤醒词）；0=关闭（回到「done 后 3s 回聆听」旧行为）。
+    # 放 vad 段因它与收听时序同族，且 editable_snapshot 只暴露 vad/wake_word 两个语音子段。
+    # Follow-up window (docs/designs/03-A): wake-free window (ms) after a turn ends (done/
+    # error, playback finished); segments inside are transcribed as fresh instructions (no
+    # wake word). 0 disables (back to the legacy "3s after done → listening"). Lives in the
+    # vad section (listening-timing family; editable_snapshot only exposes vad/wake_word).
+    followup_window_ms: int = Field(6000, ge=0)
     # 唤醒上传的两道成本闸（子项目 1）：短于此长度的片段不上传（滤掉咳嗽/关门等爆音），
     # 两次上传之间的最小间隔（避免连续误触发时刷接口）。
     # Two cost gates for wake uploads: clips shorter than min_speech_ms are never uploaded
@@ -223,6 +231,18 @@ class VadConfig(BaseModel):
     # gap between uploads so a burst of false triggers cannot hammer the endpoint.
     min_speech_ms: int = Field(300, ge=0)
     upload_throttle_ms: int = Field(500, ge=0)
+    # 打断播报（barge-in，docs/designs/02 批3）：助手播报期间不再整体静默，而是用一条
+    # 独立的回声消除流做能量检测，连续超阈即掐断播报转入作答/指令分流。默认关 ——
+    # 关闭时行为与旧版完全一致（播报期间停麦）。放在 vad 段是因为它与收听时序同族，
+    # 且 editable_snapshot 只暴露 vad/wake_word 两个语音子段（放 voice 顶层前端收不到）。
+    # Barge-in (docs/designs/02 batch 3): during playback the mic is not silenced
+    # wholesale; a separate echo-cancelled stream runs energy detection and cuts the
+    # playback on sustained speech, flowing into answer/command routing. Off by
+    # default — when off, behaviour is identical to the old play-only-when-silent mode.
+    # Lives in the vad section because it shares the listening-timing family and
+    # editable_snapshot only exposes vad/wake_word (a voice-level key never reaches
+    # the frontend).
+    barge_in: bool = False  # default off: identical to the legacy listen-after-playback behaviour
 
 
 class KwsConfig(BaseModel):
@@ -284,6 +304,18 @@ class AgentSection(BaseModel):
     structured_temperature: float = Field(0.2, ge=0.0, le=2.0)
     # True=write/exec 高风险工具/任务不再询问操作者，自动放行（含子代理与技能；无人值守通道仍默认拒绝）
     auto_approve: bool = False  # True=auto-approve write/exec tools/tasks without asking the operator (incl. sub-agents & skills; channel-less runs still reject)
+    # 操作者提问（澄清/确认）超时秒数：0=不限（无限期等待，旧行为）；>0 到期按拒绝处理
+    # （fail-closed），前端问题卡随 timeout 源 answer 事件收起。
+    # Timeout in seconds for operator questions (clarify/confirm): 0 = no limit (the old
+    # wait-forever behaviour); on expiry the answer counts as a rejection (fail-closed)
+    # and the frontend folds the question card via the timeout-sourced answer event.
+    confirm_timeout_s: int = Field(0, ge=0)  # 0 = no limit (seconds); expiry counts as rejection (fail-closed)
+    # 滚动压缩阈值（docs/designs/08 批2）：ReAct 历史估算字符超过此值时折叠中间段为摘要
+    # （只动本轮 LLM 视角，不改会话持久化）；0=关闭。
+    # Rolling-condense threshold (docs/designs/08 batch 2): fold the middle of the ReAct
+    # history into a summary once the estimated characters exceed this (LLM view only,
+    # never the persisted session); 0 = off.
+    condense_threshold_chars: int = Field(12000, ge=0)
 
 
 class LlmClientSection(BaseModel):
@@ -303,15 +335,28 @@ class LlmClientSection(BaseModel):
 
 
 class ToolsSection(BaseModel):
-    """工具段配置：搜索与天气等外部工具参数。
+    """工具段配置：搜索/天气参数 + LLM 口径输出截断 + 渐进式 schema 分组。
 
-    Tools section config: parameters for external tools such as search and weather.
+    Tools section config: search/weather parameters + LLM-side output cap +
+    progressive schema grouping.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     search_max_results: int = Field(5, gt=0)
     weather_timeout: int = Field(10, gt=0)
+    # LLM 口径输出截断（docs/designs/08 批2）：喂给模型的 tool 消息上限，超出截断并附
+    # 「如何取更多」指引；0=不限。与展示口径（PREVIEW_LEN）/落库口径（HISTORY_LEN）独立。
+    # LLM-side output cap (docs/designs/08 batch 2): limit for tool messages fed to the
+    # model, truncated with a "how to get more" hint; 0 = unlimited. Independent of the
+    # display (PREVIEW_LEN) and persistence (HISTORY_LEN) conventions.
+    llm_max_output_chars: int = Field(8000, ge=0)
+    # 渐进式工具 schema（docs/designs/08 批4）：这些组降级为一行简介（完整参数需先调
+    # tools_describe）；默认空 = 全量下发（现状零变化）。例: ["mcp"]。
+    # Progressive tool schemas (docs/designs/08 batch 4): groups in this list degrade to
+    # one-line stubs (full parameters via tools_describe first); empty = full schemas
+    # (today's behaviour unchanged). E.g. ["mcp"].
+    lazy_groups: list[str] = Field(default_factory=list)
 
 
 class PermissionRule(BaseModel):
@@ -392,14 +437,22 @@ class McpSection(BaseModel):
 
 
 class RagSection(BaseModel):
-    """RAG 段配置：自动索引开关。
+    """RAG 段配置：自动索引与精排档位（docs/designs/05）。
 
-    RAG section config: auto-index toggle.
+    RAG section config: auto-index and rerank tier (docs/designs/05).
     """
 
     model_config = ConfigDict(extra="forbid")
 
     auto_index: bool = True
+    # 精排档位：none=纯 BM25（默认，零成本）；llm=BM25 粗排候选后单次 LLM 打分精排，
+    # 任何失败静默回退 BM25 序（retriever.rerank 内 catch）。
+    # Rerank tier: none = pure BM25 (default, zero cost); llm = one LLM scoring pass
+    # over BM25 candidates, any failure silently falls back to BM25 order (caught
+    # inside retriever.rerank).
+    rerank: Literal["none", "llm"] = "none"
+    rerank_candidates: int = Field(12, gt=0)   # 粗排候选数。BM25 candidate count.
+    rerank_top_k: int = Field(5, gt=0)         # 精排后注入数（= none 档的 top-k）。Rows injected after rerank (= top-k in the none tier).
 
 
 class ServerSection(BaseModel):
@@ -415,6 +468,36 @@ class ServerSection(BaseModel):
     open_browser: bool = True
     api_token: str = ""  # 由 loader 从 secrets/环境注入
     cors_origins: list[str] = Field(default_factory=list)
+    # SSE 断线宽限（docs/designs/06）：断开后 runner 继续跑的秒数，期内可 /voice/resume
+    # 续播；0=断线即收尾（旧行为）。仅配置文件可改（与 kws 段同为 config-file-only）。
+    # SSE disconnect grace (docs/designs/06): seconds the runner keeps alive after a
+    # disconnect, resumable via /voice/resume inside the window; 0 = wrap up on
+    # disconnect (legacy behaviour). Config-file only (same as the kws section).
+    resume_grace_s: int = Field(120, ge=0)
+
+
+class MemorySection(BaseModel):
+    """长期记忆段配置（docs/designs/04）：新近度加权、注入预算、提取回看深度。
+
+    Long-term memory section config (docs/designs/04): recency weighting, injection
+    budget, extraction lookback depth.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # 检索新近度加权：score' = bm25 × (1 + w × 0.5^(age_days/τ))；w=0 关闭（纯 bm25）。
+    # Search recency weight: score' = bm25 × (1 + w × 0.5^(age_days/τ)); 0 disables.
+    recency_half_life_days: float = Field(30.0, gt=0)
+    recency_weight: float = Field(0.5, ge=0.0, le=5.0)
+    # 注入预算：top-k 条数 + 字符上限（双闸，system prompt 不随命中数膨胀）。
+    # Injection budget: top-k rows + character cap (two gates; the system prompt
+    # cannot swell with hit count).
+    inject_top_k: int = Field(5, gt=0)
+    inject_max_chars: int = Field(800, gt=0)
+    # 任务后提取回看的最近对话条数（用户/助手各 n；解「他/那里」类指代）。
+    # Recent dialog lines the post-task extraction sees (n of each role; resolves
+    # "he/there"-style references).
+    extract_recent_messages: int = Field(2, ge=0)
 
 
 class Settings(BaseModel):
@@ -431,6 +514,7 @@ class Settings(BaseModel):
     server: ServerSection = Field(default_factory=lambda: ServerSection())
     mcp: McpSection = Field(default_factory=lambda: McpSection())
     rag: RagSection = Field(default_factory=lambda: RagSection())
+    memory: MemorySection = Field(default_factory=lambda: MemorySection())
     agent: AgentSection = Field(default_factory=lambda: AgentSection())
     llm_client: LlmClientSection = Field(default_factory=lambda: LlmClientSection())
     tools: ToolsSection = Field(default_factory=lambda: ToolsSection())

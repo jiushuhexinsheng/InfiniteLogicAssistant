@@ -343,7 +343,10 @@ def test_voice_utter_chit_chat(client, monkeypatch):
     resp = client.post("/api/voice/utter", json={"text": "你好"})
     assert resp.status_code == 200
     assert "content_delta" in resp.text and "你好" in resp.text
-    assert resp.text.strip().endswith('data: {"type": "done"}')
+    # 末帧必须是 done（seq 由 SSE 层追加，docs/designs/06 —— 不再断言精确 JSON 全文）。
+    # The last frame must be done (seq is appended by the SSE layer, docs/designs/06 —
+    # no longer asserting the exact JSON verbatim).
+    assert resp.text.strip().split("\n\n")[-1].startswith('data: {"type": "done"')
 
 
 def test_voice_utter_forwards_messages(client, monkeypatch):
@@ -374,7 +377,7 @@ def test_voice_utter_task_done(client, monkeypatch):
     async def fake_execute(task, session, cancel, events=None):
         return {"status": "done", "summary": "= 2", "steps": []}
 
-    async def fake_extract(task, result, store):
+    async def fake_extract(task, result, store, session=None):
         pass  # 避免真实 LLM 提取
 
     monkeypatch.setattr(pipeline_mod, "judge_intent", fake_judge)
@@ -384,7 +387,10 @@ def test_voice_utter_task_done(client, monkeypatch):
     resp = client.post("/api/voice/utter", json={"text": "算 1+1"})
     assert resp.status_code == 200
     assert "task_state" in resp.text and "= 2" in resp.text
-    assert resp.text.strip().endswith('data: {"type": "done"}')
+    # 末帧必须是 done（seq 由 SSE 层追加，docs/designs/06 —— 不再断言精确 JSON 全文）。
+    # The last frame must be done (seq is appended by the SSE layer, docs/designs/06 —
+    # no longer asserting the exact JSON verbatim).
+    assert resp.text.strip().split("\n\n")[-1].startswith('data: {"type": "done"')
 
 
 def test_env_endpoint(client):
@@ -1196,6 +1202,9 @@ _NON_UPLOAD_VOICE_ENDPOINTS = {
                          "Text/choice handed to the orchestrator's channel.answer; no ASR, no HTTP.",
     "/api/voice/wake/check": "本地 KWS 快检：音频只到本机判定（sherpa-onnx），不调云端 ASR。"
                              "Local KWS quick check: audio is judged on-box (sherpa-onnx), no cloud ASR.",
+    "/api/voice/resume": "断线重连只回放缓冲区里的 SSE 事件，请求体只有 session_id/last_seq，"
+                         "无音频、无 ASR。Reconnect replays buffered SSE events only; the body is "
+                         "session_id/last_seq — no audio, no ASR.",
 }
 
 
