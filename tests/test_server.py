@@ -1076,16 +1076,17 @@ def test_voice_wake_writes_audit(client, monkeypatch, tmp_path):
     """每次唤醒上传都写审计 —— 这是统计上传量与成本的依据。
     Every wake upload is audited: that record is the basis for measuring upload volume and cost.
 
-    ⚠️ patch 目标是 `core.api.voice.audit`，**不是** `core.logger.audit`：voice.py 用
-    `from core.logger import audit` 顶层导入，名字绑定进了本模块命名空间，改源头那个不影响它。
-    Patch `core.api.voice.audit`, not `core.logger.audit`: voice.py imports the name at module
-    level, so it is bound into this module's namespace and patching the source has no effect.
+    ⚠️ patch 目标是 `core.api.voice.wake.audit`，**不是** `core.logger.audit`：voice/wake.py 用
+    `from core.logger import audit` 顶层导入，名字绑定进了该子模块命名空间，改源头那个不影响它。
+    Patch `core.api.voice.wake.audit`, not `core.logger.audit`: voice/wake.py imports the name at
+    module level, so it is bound into that submodule's namespace and patching the source has no
+    effect.
     """
     import core.voice as voice_pkg
-    import core.api.voice as voice_api
+    import core.api.voice.wake as voice_wake
 
     lines: list[str] = []
-    monkeypatch.setattr(voice_api, "audit", lambda msg: lines.append(msg))
+    monkeypatch.setattr(voice_wake, "audit", lambda msg: lines.append(msg))
 
     class _Asr:
         def available(self): return True
@@ -1168,10 +1169,10 @@ def test_voice_transcribe_writes_audit(client, monkeypatch):
     break "count audit lines = count uploads" and make cost estimates **far too low**.
     """
     import core.voice as voice_pkg
-    import core.api.voice as voice_api
+    import core.api.voice.wake as voice_wake
 
     lines: list[str] = []
-    monkeypatch.setattr(voice_api, "audit", lambda msg: lines.append(msg))
+    monkeypatch.setattr(voice_wake, "audit", lambda msg: lines.append(msg))
 
     class _Asr:
         def available(self): return True
@@ -1237,7 +1238,7 @@ def test_audio_upload_audit_prefix_is_shared(client, monkeypatch):
     judgement has to be made and written down.
     """
     import core.voice as voice_pkg
-    import core.api.voice as voice_api
+    import core.api.voice.wake as voice_wake
 
     # ① 分类完备：/api/voice/ 下的 POST 端点集合必须被上面两张表完全覆盖。
     # Classification is total: the POST endpoints under /api/voice/ must be fully covered by the
@@ -1267,7 +1268,7 @@ def test_audio_upload_audit_prefix_is_shared(client, monkeypatch):
     )
 
     lines: list[str] = []
-    monkeypatch.setattr(voice_api, "audit", lambda msg: lines.append(msg))
+    monkeypatch.setattr(voice_wake, "audit", lambda msg: lines.append(msg))
 
     class _Asr:
         def available(self): return True

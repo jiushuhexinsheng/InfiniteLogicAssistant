@@ -181,7 +181,10 @@ async def test_ping_keepalive_frame(monkeypatch):
     """空闲期发 ping 保活帧（type=ping、不占 seq）——前端 watchdog 的重置信号。
     An idle period emits a ping frame (type=ping, no seq) — the frontend watchdog's
     reset signal."""
-    monkeypatch.setattr(voice_api, "PING_INTERVAL_S", 0.05)
+    # _stream_run 读的是 run 模块全局的 PING_INTERVAL_S（voice 包级副本改了不生效）。
+    # _stream_run reads PING_INTERVAL_S from the run module's globals (the package-level
+    # copy would have no effect).
+    monkeypatch.setattr("core.api.voice.run.PING_INTERVAL_S", 0.05)
     events: asyncio.Queue = asyncio.Queue()
     runner = asyncio.ensure_future(asyncio.sleep(60))
     run = state.RunHandle(run_id="rp", session=Session(), controller=StopController(),

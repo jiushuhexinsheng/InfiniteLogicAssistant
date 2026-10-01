@@ -1,19 +1,16 @@
 # -*- coding: utf-8 -*-
-"""core/llm/stream.py — SSE 解析与 payload/工具调用累积
-core/llm/stream.py - SSE parsing and payload/tool-call accumulation
+"""SSE 解析与 payload/工具调用累积（core/llm/stream.py + core/llm/protocols/）
+SSE parsing and payload/tool-call accumulation (core/llm/stream.py + core/llm/protocols/)
 """
 import json
 
 import httpx
 import pytest
 
-from core.llm.stream import (
-    _accumulate_tool_calls,
-    _build_payload,
-    _to_anthropic_messages,
-    _to_gemini_contents,
-    stream_chat,
-)
+from core.llm.protocols.anthropic import _to_anthropic_messages
+from core.llm.protocols.gemini import _to_gemini_contents
+from core.llm.protocols.openai import _accumulate_tool_calls, _build_payload
+from core.llm.stream import stream_chat
 
 
 def _sse(chunks) -> bytes:

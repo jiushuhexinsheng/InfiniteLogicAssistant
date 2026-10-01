@@ -149,7 +149,7 @@
 - 命中且带指令（「衍衡，帮我查天气」）→ 直接起一轮，省掉提示音与二次转写；只命中唤醒词
   → 提示音后把**下一段**当指令；不命中 → 丢弃。
 - 实现点：`web/src/composables/assistant/useWakeWord.ts`（链路）、`useSegmentRecorder.ts`（VAD + 分段）、
-  `core/voice/wake.py`（同音字容错 + 指令切分）、`core/api/voice.py` 的 `/voice/wake`。
+  `core/voice/wake.py`（同音字容错 + 指令切分）、`core/api/voice/wake.py` 的 `/voice/wake`。
 - ~~浏览器端 Vosk WASM 引擎（`public/lib/vosk.js` + `wake-word.js` + 模型树）~~：**已删除**
   （2026-09-13 唤醒链路重构）。旧唤醒词「小逻小逻」一并废弃，现为「衍衡」「洛吉斯」。
 - ~~桌面常驻监听（本地 Vosk 后台常驻麦克风）~~：设计目标之一，**已暂停开发并移除**（代码在 `desktop-ball` 分支）。
@@ -338,7 +338,7 @@ agent 每次规划时把 `environment.md`（或其相关段）注入上下文，
 
 | 现有代码 | 复用方式 |
 |----------|----------|
-| `core/llm/stream.py` + `client.py` | 直接复用（SSE 解析/重试/熔断） |
+| `core/llm/stream.py` + `core/llm/protocols/` + `client.py` | 直接复用（SSE 解析/重试/熔断） |
 | `core/tools/base.py` `@tool` 注册中心 | 扩展为统一工具入口（含 MCP 桥） |
 | `core/config/` 包（pydantic 强类型 + 双文件密钥分离） | 分片：schema（模型）/ loader（YAML+密钥注入）/ runtime（单例+热重载） |
 | `core/orchestrator/executor.py` ReAct 执行循环 | 简单任务走 ReAct；复杂任务转多智能体协调者 |
