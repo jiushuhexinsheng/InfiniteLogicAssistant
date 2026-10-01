@@ -75,7 +75,7 @@
 
 - `sherpaKwsProvider.ts`：纯占位——`isAvailable()` 恒 false（`wasmReady` 从未置真）、`detect()` 恒 miss、`init()` 打日志 TODO（`sherpaKwsProvider.ts:49-84`，接入步骤注释在 26-38 行）。
 - `wakeChain.getChain('auto')` 里 sherpa 排第一，但因 `isAvailable()===false` 实际不参与（`wakeChain.ts:67-98`）。
-- 后端已有同款闸门：`core/voice/kws.py`（sherpa-onnx zipformer-wenetspeech 3.3M，模型在 `models/`，**不入库**），`POST /api/voice/wake/check` 毫秒级本地快检、零云端调用。
+- 后端已有同款闸门：`core/voice/kws.py`（sherpa-onnx zipformer-wenetspeech 3.3M，模型在 `models/`，**随仓库入库**），`POST /api/voice/wake/check` 毫秒级本地快检、零云端调用。
 - 段录音器输出 `audio/webm` blob（`useSegmentRecorder.ts:101-131`），KWS 需要 16kHz PCM 帧——**接口错配是占位未落地的根因之一**。
 
 ### 2. 增量价值（诚实口径）

@@ -25,8 +25,8 @@
   「衍衡」写成任何同音字都命中；前后端语义由共享测试向量（tests/data/wake_vectors.json）
   在 pytest 与 vitest 双端钉住
 - **本地 KWS 前置闸门**（sherpa-onnx zipformer-wenetspeech 3.3M）：未命中（背景声/
-  闲聊）直接丢弃、不出本机不上云；命中才调云端 ASR。模型不入 git，下载见
-  requirements.txt 注释（缺模型自动旁路回退云端判定）
+  闲聊）直接丢弃、不出本机不上云；命中才调云端 ASR。模型已随仓库入库（models/，
+  缺模型自动旁路回退云端判定）
 - **判定与提取分离（快检快速通道）**：`POST /api/voice/wake/check` 本地毫秒级判定，
   命中立即提示音 + 进入等指令窗口（提示音延迟 3~6s → ~1.7s）；一句话场景的指令由
   后台提取（音频判定优先于文本判定）

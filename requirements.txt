@@ -21,16 +21,15 @@ pyautogui==0.9.54
 pygetwindow==0.0.9
 pillow==12.3.0
 # 语音唤醒（本地 KWS 前置闸门 + 拼音级判定）：
-# sherpa-onnx 关键词检测引擎；3.3M 模型不入 git（models/ 已 gitignore），下载解压到
-# models/：https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/
+# sherpa-onnx 关键词检测引擎；3.3M 模型已随仓库入库（models/），来源：
+# https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/
 # sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01.tar.bz2 （缺模型时闸门自动旁路，
 # 回退云端判定，不阻塞唤醒）。sentencepiece 是 sherpa text2token 生成关键词文件的依赖；
 # pypinyin 提供无声调拼音。
 # Voice wake (local KWS pre-gate + pinyin-level matching): sherpa-onnx keyword
-# spotting; the 3.3M model is NOT committed (models/ is gitignored) — download and
-# extract into models/ from the github release above (missing model auto-bypasses the
-# gate to cloud judging, never blocking wake). sentencepiece backs sherpa's
-# text2token; pypinyin provides toneless pinyin.
+# spotting; the 3.3M model ships in-repo under models/ (source: the github release
+# above; a missing model auto-bypasses the gate to cloud judging, never blocking
+# wake). sentencepiece backs sherpa's text2token; pypinyin provides toneless pinyin.
 sherpa-onnx==1.13.8
 sentencepiece==0.2.2
 pypinyin==0.55.0

@@ -44,10 +44,7 @@ pip install -r requirements.txt
 # 或双击 install_deps.bat — 在线优先，失败自动回退 scripts/libs/ 离线 wheel
 #   （离线包按 Python 3.14 / win_amd64 打包，见 requirements.txt 顶部说明）
 
-# 2. （可选，推荐）下载本地 KWS 唤醒模型 —— 3.3MB，缺它时唤醒自动回退云端判定
-#    下载地址见 requirements.txt 中 sherpa-onnx 段注释，解压到 models/ 下
-
-# 3. 配置（非敏感配置与密钥分离）
+# 2. 配置（非敏感配置与密钥分离）
 cp config.yaml.example config.yaml
 cp config.secrets.yaml.example config.secrets.yaml
 # 编辑 config.yaml（endpoint/model/多 profile 等非敏感项）与 config.secrets.yaml（密钥，不入库）。
@@ -57,11 +54,12 @@ cp config.secrets.yaml.example config.secrets.yaml
 #   set TTS_API_KEY=sk-...      # 后端 TTS（可选；默认浏览器本地语音播报）
 # 配置也可在网页控制台「设置」页编辑（切换模型/调参/设密钥/检测连接，大部分即时生效）。
 
-# 4. 启动（一键：前端 + 后端）
+# 3. 启动（一键：前端 + 后端）
 python main.py serve                  # 浏览器自动打开 http://127.0.0.1:8520
 ```
 
 `python main.py serve` 同时提供前端页面（`web/dist`）与 `/api/*` 接口，打开一个端口即可使用。
+本地 KWS 唤醒模型已随仓库入库（`models/`），无需单独下载；万一缺失，闸门自动旁路回退云端判定。
 
 **一键启动脚本**（Windows，含 LLM/ASR 连通性检查）：
 
@@ -308,7 +306,7 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 ├── config.secrets.yaml.example 密钥存储模板（复制为 config.secrets.yaml，不入库）
 ├── requirements.txt           Python 依赖（在线 / 离线 scripts/libs/ 双路）
 ├── mypy.ini                   后端静态类型检查配置
-├── models/                    KWS 唤醒模型（不入库，下载见 requirements.txt；缺失自动旁路）
+├── models/                    KWS 唤醒模型（随仓库入库；缺失时自动旁路）
 ├── core/
 │   ├── config/                配置包：schema（pydantic 模型）/ loader（YAML+密钥注入）/ runtime（单例+热重载）
 │   ├── logger.py              loguru 日志 + 审计（data/audit.log）
