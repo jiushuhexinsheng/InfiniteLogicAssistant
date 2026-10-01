@@ -8,9 +8,71 @@ Confirmation semantics must not depend on the developer's local config.yaml (e.g
 locally-enabled auto_approve), so the whole suite runs under the safe default unless an
 individual test explicitly opts in by setting auto_approve to True.
 """
+import re
+from importlib import metadata
+from pathlib import Path
+
 import pytest
 
 from core import config
+
+
+def _parse_pins(text: str) -> list[tuple[str, str]]:
+    """从 requirements 文本提取 ``name==ver`` 钉版对。
+
+    Extract ``(name, version)`` pins from requirements text. Lines that are blank,
+    comments, or pip options (``-r``/``--find-links``/``-e``) are skipped; env
+    markers (``; marker``) are stripped before matching; extras (``pkg[standard]``)
+    are accepted but not returned. Unpinned lines are ignored — this parser only
+    serves the drift check, which needs exact pins to compare against.
+    """
+    pins: list[tuple[str, str]] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith(("#", "-")):
+            continue
+        line = line.split(";", 1)[0].strip()
+        m = re.match(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[[^\]]*\])?\s*==\s*([^\s;#]+)", line)
+        if m:
+            pins.append((m.group(1), m.group(2)))
+    return pins
+
+
+def _check_requirements() -> None:
+    """收集前预检:requirements 里钉死的包必须已装且版本一致(环境漂移主动拦截)。
+
+    Preflight before collection: every pinned package in requirements*.txt must be
+    installed at the exact pinned version, so local environment drift fails fast
+    with an actionable message instead of surfacing as a confusing import error
+    (or, worse, silently different behavior) mid-suite.
+
+    只检查发行版名(importlib.metadata),不做 import —— Pillow→PIL 这类导入名与
+    发行名不一致的情况不会误报。
+    """
+    root = Path(__file__).resolve().parent.parent
+    problems: list[str] = []
+    for req_file in ("requirements.txt", "requirements-dev.txt"):
+        req_path = root / req_file
+        if not req_path.is_file():
+            continue
+        for name, want in _parse_pins(req_path.read_text(encoding="utf-8")):
+            try:
+                have = metadata.version(name)
+            except metadata.PackageNotFoundError:
+                problems.append(f"{name}=={want}  未安装 (not installed)")
+                continue
+            if have != want:
+                problems.append(f"{name}=={want}  本地 {have} (version drift)")
+    if problems:
+        raise RuntimeError(
+            "环境漂移 — requirements 与本机不一致 (environment drift):\n  "
+            + "\n  ".join(problems)
+            + "\n修复 (fix): pip install --find-links=scripts/libs "
+            "-r requirements.txt -r requirements-dev.txt"
+        )
+
+
+_check_requirements()
 
 
 @pytest.fixture(autouse=True)
