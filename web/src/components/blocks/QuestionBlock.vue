@@ -85,7 +85,16 @@ function choose(value: string) {
 }
 .q-title { font-size: var(--fs-xs); color: var(--text-3); margin-bottom: var(--sp-1); }
 .q-text { margin: 0 0 var(--sp-2); font-size: var(--fs-sm); color: var(--text-1); line-height: 1.5; }
-.q-row { display: flex; gap: var(--sp-2); margin-top: var(--sp-2); }
+/* 窄容器自适应：悬浮面板仅 368px，多个长选项一行排不下 —— 允许换行逐行排，
+   否则行溢出被父级 overflow:hidden 裁切、相邻按钮文字互相压盖（修「悬浮窗的问题
+   选择栏布局混乱没有适应小窗口」）。按钮保持 nowrap 的完整 label（语音精确匹配接口）。
+   Narrow-container adaptation: the float panel is only 368px wide and several long
+   options cannot fit one row — allow wrapping so they lay out line by line; otherwise
+   the row overflows, gets clipped by the parent's overflow:hidden, and adjacent
+   button labels overwrite each other (fixes "the float window's question option bar
+   is scrambled on small windows"). Buttons keep their nowrap full labels (the
+   exact-match speech interface). */
+.q-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
 /* 输入框占满剩余行宽。Input fills the remaining row width. */
 .q-row :deep(.q-input) { flex: 1; min-width: 0; }
 .q-answered .q-label { color: var(--text-3); font-size: var(--fs-sm); }
