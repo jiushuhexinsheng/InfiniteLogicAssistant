@@ -3,6 +3,8 @@
  *
  * content_delta / reasoning_delta 追加或合并进 streaming 块；tool_start/end 按
  * call_id 配对；question / answer / notice / summary / block 直通离散块。
+ * 离散块入列即分段（closeStreaming）：后续增量另起新块按时间序排布，作答恢复后
+ * 的续写不会倒灌到问题卡上方。
  * 页面与组件不解析事件，只渲染块 —— 这是「不被前端页面束缚」的数据层保证。
  *
  * The single reducer from events to block-stream changes. All mutation rules of
@@ -62,6 +64,28 @@ function findStreaming(blocks: Block[], type: string): Block | undefined {
 }
 
 /**
+ * 关闭仍在流式的块（离散块分段）。question / tool / notice 等离散块入列即宣告
+ * 此前的流式段结束，后续 content/reasoning 增量另起新块 —— 否则操作者作答后
+ * 后端续发的 content_delta 会倒灌进问题前的旧 text 块，续写文本渲染到问题卡
+ * **上方**、问答被钉在消息末尾（时序倒置，修「回答问题弹出的组件文字和布局错乱」）。
+ *
+ * Close still-streaming blocks (discrete-block segmentation). A discrete block
+ * (question / tool / notice …) entering the list ends the current streaming
+ * segment, so later content/reasoning deltas start a new block — otherwise the
+ * content_delta the backend resumes with after the operator answers folds into
+ * the pre-question text block, rendering the continuation ABOVE the question card
+ * with Q/A pinned to the end (time-inverted; fixes "the question popup's text
+ * and layout are scrambled").
+ *
+ * @param blocks - 目标块列表。Target block list.
+ */
+function closeStreaming(blocks: Block[]): void {
+  for (const b of blocks) {
+    if (b.meta?.streaming) b.meta.streaming = false
+  }
+}
+
+/**
  * 把作答挂进块列表（原地变更）。SSE answer 事件与 sendAnswer 本地投递共用，
  * 按 qid 幂等去重 —— 两条路径总有一条先到，后到的直接跳过。
  *
@@ -97,11 +121,12 @@ export function attachAnswer(
     : undefined
   if (q) {
     q.payload.status = 'answered'
-    if (e.source === 'timeout') return
+    if (e.source === 'timeout') return   // 只翻态不入块 → 不分段（无块入列）。
     const label = e.text
       || (e.choice
         ? (q.payload.options?.find((o: { value?: string }) => o.value === e.choice)?.label || e.choice)
         : '')
+    closeStreaming(target)   // 答案块入列分段。
     target.splice(target.indexOf(q) + 1, 0, makeBlock('answer', {
       qid: e.qid ?? null,
       text: label,
@@ -110,6 +135,7 @@ export function attachAnswer(
     }))
     return
   }
+  closeStreaming(target)   // 独立答案块入列分段（无配对兜底）。
   target.push(makeBlock('answer', {
     qid: e.qid ?? null,
     text: e.text || '',
@@ -147,6 +173,7 @@ export function applyEvent(ev: SseEvent, target: Block[]): void {
     }
     case 'tool_start': {
       const e = ev as ToolStartEvent
+      closeStreaming(target)   // 工具入列分段：其后的文本另起块，不倒灌到工具上方。
       target.push(makeBlock('tool', {
         call_id: e.call_id,
         name: e.name,
@@ -175,6 +202,7 @@ export function applyEvent(ev: SseEvent, target: Block[]): void {
     }
     case 'question': {
       const e = ev as QuestionEvent
+      closeStreaming(target)   // 问题入列分段：作答恢复后的续写另起块，不倒灌到问题上方。
       const b = makeBlock('question', {
         qid: e.qid,
         question: e.question,
@@ -191,8 +219,10 @@ export function applyEvent(ev: SseEvent, target: Block[]): void {
     }
     case 'task_state': {
       if (ev.state === 'notify' && ev.text) {
+        closeStreaming(target)
         target.push(makeBlock('notice', { level: 'info', text: ev.text }))
       } else if (ev.state === 'done') {
+        closeStreaming(target)
         // 回合汇总卡：聚合本轮块 + 语音播报统一出口
         // Turn summary card: aggregate this turn's blocks + unified speech exit.
         const counts: Record<string, number> = {}
@@ -208,13 +238,17 @@ export function applyEvent(ev: SseEvent, target: Block[]): void {
       break
     }
     case 'error': {
+      closeStreaming(target)
       target.push(makeBlock('notice', { level: 'error', text: ev.message }))
       break
     }
     case 'block': {
       // 离散块直通（image/file/ext:* 即插即用）
       const e = ev as BlockEvent
-      if (e.block && typeof e.block === 'object') target.push(e.block as Block)
+      if (e.block && typeof e.block === 'object') {
+        closeStreaming(target)
+        target.push(e.block as Block)
+      }
       break
     }
     case 'usage':

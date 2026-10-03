@@ -145,4 +145,40 @@ describe('normalize 事件归一', () => {
     finalizeBlocks(blocks)
     expect(blocks[0].meta?.streaming).toBe(false)
   })
+
+  /** 离散块分段（修「回答问题弹出的组件文字和布局错乱」）：question 入列即关闭
+   *  此前流式的 text/thinking。后端在操作者作答后还会继续发 content_delta（confirm/
+   *  clarify 解除阻塞 → executor 续跑发射），若倒灌进问题前的旧 text 块，续写文本
+   *  会渲染到问题卡**上方**、问答被钉在消息末尾 —— 时序倒置。后续增量另起新块。
+   *
+   *  Discrete-block segmentation (fixes "the question popup's text and layout are
+   *  scrambled"): a question entering the list closes the still-streaming text/
+   *  thinking block. The backend keeps emitting content_delta after the operator
+   *  answers (confirm/clarify unblock → executor resumes), and folding it into the
+   *  pre-question text block renders the continuation ABOVE the question card with
+   *  Q/A pinned to the end — time-inverted. Later deltas start a new block. */
+  it('question 分段：作答后的续写另起文本块（不倒灌到问题上方）', () => {
+    const blocks: Block[] = []
+    applyEvent(ev({ type: 'content_delta', text: '我先检查磁盘' }), blocks)
+    applyEvent(ev({ type: 'question', question: '要清理吗？', session_id: 's', kind: 'text', options: [], qid: 'q1' }), blocks)
+    applyEvent(ev({ type: 'answer', qid: 'q1', text: '清理', source: 'typed' }), blocks)
+    applyEvent(ev({ type: 'content_delta', text: '，已释放 3.2GB' }), blocks)
+    expect(blocks.map(b => b.type)).toEqual(['text', 'question', 'answer', 'text'])
+    expect(blocks[0].payload.md).toBe('我先检查磁盘')
+    expect(blocks[0].meta?.streaming).toBe(false)   // question 入列即分段关闭
+    expect(blocks[3].payload.md).toBe('，已释放 3.2GB')
+    expect(blocks[3].meta?.streaming).toBe(true)
+  })
+
+  /** 同一规则适用于 tool_start：工具后的文本不再倒灌到工具上方。
+   *  Same rule for tool_start: post-tool text no longer folds above the tool. */
+  it('tool_start 分段：工具后的文本另起块', () => {
+    const blocks: Block[] = []
+    applyEvent(ev({ type: 'content_delta', text: '查一下' }), blocks)
+    applyEvent(ev({ type: 'tool_start', name: 'weather', args: {}, call_id: 'c1' }), blocks)
+    applyEvent(ev({ type: 'content_delta', text: '晴，25度' }), blocks)
+    expect(blocks.map(b => b.type)).toEqual(['text', 'tool', 'text'])
+    expect(blocks[0].payload.md).toBe('查一下')
+    expect(blocks[2].payload.md).toBe('晴，25度')
+  })
 })
