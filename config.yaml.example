@@ -4,7 +4,7 @@
 # 多厂商配置：建议在设置页「设置 → 新增 Profile」从内置厂商目录选择（自动预填 endpoint/model/音色），
 # 本文件仅手填兜底。profile 字段说明：
 #   provider    : 协议 openai（OpenAI 兼容）/ anthropic（Claude 原生）/ gemini（Gemini 原生）
-#   vendor      : 厂商目录 ID（UI 元数据，来自 core/providers.py 或下方 vendor_presets）
+#   vendor      : 厂商目录 ID（UI 元数据，来自 core/vendors.py 或下方 vendor_presets）
 #   api_key_env : 本 profile 专用环境变量名（优先级最高，如 DEEPSEEK_API_KEY）
 #   models      : 可用模型列表（设置页「获取模型」自动拉取，也可手写）
 #   compat      : 兼容开关 {stream_options: true/false, max_tokens_field: max_tokens|max_completion_tokens}
@@ -192,14 +192,14 @@ tools:
 # Order: unregistered→deny > any deny rule (monotonic) > first matching rule
 #        > tier default > default_action.
 permissions:
-  default_action: ask          # 未命中任何规则时的兜底
+  default_action: allow        # 未命中任何规则时的兜底（默认也放行）
   tiers:
-    read: allow                # 只读工具免询问（与改造前行为一致）
-    write: ask
-    exec: ask
-  rules: []                    # 形如 - {match: "web_search", action: allow}
+    read: allow                # 三档默认全放行（2026-09-13，与 schema 默认一致）；改 ask 恢复询问
+    write: allow
+    exec: allow
+  rules: []                    # 形如 - {match: "run_*", action: deny}；deny 单调短路、不可翻案
 
-# 厂商目录扩展（可选）：追加/覆盖 core/providers.py 内置预设，设置页「新增 Profile」可见。
+# 厂商目录扩展（可选）：追加/覆盖 core/vendors.py 内置预设，设置页「新增 Profile」可见。
 # 同 ID 覆盖内置；endpoint 为基座不含 /v1，chat_path 与基座配对。
 # vendor_presets:
 #   my-gateway:

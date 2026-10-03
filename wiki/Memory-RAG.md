@@ -24,6 +24,23 @@
 - 注入：执行器构建上下文时把 RAG 片段 + 相关记忆拼进系统提示（`core/memory/context.py::build_context`，失败不影响执行）。
 - 重建：`server` 启动时按需（`index.db` 缺失或源更新）；`rag.auto_index` 可关闭。
 
+## 任务知识库
+
+任务模式下答「完成了」的成功任务存档在 `memory/tasks.sqlite`（`core/tasks/store.py`），
+**只增不改**；下次相似任务按**用户原话**做字符 trigram Jaccard 相似检索，预填历史参数、
+减少重复询问。不用 FTS5 的原因：库规模几百条全表扫描可忽略，而 bm25 分数量纲依赖数据规模、
+当「相似度阈值」不稳。控制台「任务库」可浏览/删除（`/api/library`）。
+
+## 落盘存储一览
+
+| 存储 | 内容 | 位置 |
+|------|------|------|
+| 事实记忆 | 长期事实（FTS5 全文检索） | `memory/facts.sqlite` |
+| RAG 索引 | 文档分块（BM25） | `rag/index.db` |
+| 任务知识库 | 成功任务存档 + 相似检索 | `memory/tasks.sqlite`（`core/tasks/`） |
+| 会话历史 | 每轮对话（对话线续接/改名/删除） | `data/history.db`（`core/session/`） |
+| 任务回放 | 完成的会话/任务快照（审计/回放） | `data/tasks/<id>.json`（`core/api/state.py`） |
+
 ## 环境感知
 
 `core/detection/environment.py` 采集系统信息写入 `environment.md`（人可读），

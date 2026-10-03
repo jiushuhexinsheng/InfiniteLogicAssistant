@@ -13,8 +13,9 @@
 # 1. 安装依赖（Python 3.14+）
 pip install -r requirements.txt      # 或双击 install_deps.bat（在线→离线 wheel 兜底）
 
-# 2. 配置
-cp config.yaml.example config.yaml   # 填入 LLM/ASR 凭据（支持 ${ENV_VAR}）
+# 2. 配置（非敏感 / 密钥分离）
+cp config.yaml.example config.yaml                  # endpoint / model / 多 profile 等非敏感项
+cp config.secrets.yaml.example config.secrets.yaml  # 密钥（不入库；环境变量优先，支持 ${ENV_VAR}）
 
 # 3. 启动（一键前端+后端）
 python main.py serve                 # 浏览器自动打开 http://127.0.0.1:8520
@@ -31,8 +32,9 @@ Windows 一键脚本：`start.bat`（含 LLM/ASR 连通性测试）。
 | 语音输入/播报 | OpenAI 兼容 ASR 转写；浏览器 SpeechSynthesis / 后端 TTS 播报 |
 | 任务编排 | 意图判断 → 任务形成 → 澄清 → 操作确认（**默认已放行**，见 [安全](Security)）→ 执行 → 汇报（SSE 实时） |
 | 多智能体 | 复杂任务拆解：规划/执行/检索/批评 子代理并发协作（含实时进度事件） |
-| 工具执行 | 26+ 内置工具，`@tool` 注册中心，read 级并发执行 |
+| 工具执行 | 29 个内置工具，`@tool` 注册中心，read 级并发执行 |
 | 记忆/RAG | SQLite FTS5 全文记忆 + BM25 检索上下文注入 |
+| 会话/任务库 | 会话历史与分叉编辑；任务完成存档，相似任务按用户原话检索预填 |
 | MCP / Skills | 外部 MCP server 桥接；YAML 技能包热加载 |
 | 定时任务 | cron 5 段，无人值守执行 |
 | 安全 | 非 localhost 绑定强制 API Token；工具执行与确认决策写入审计日志 |

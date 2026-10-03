@@ -22,13 +22,19 @@
 
 ## 目录即架构
 
+- `main.py` → `cli/` — 入口 CLI 分派（argparse 子命令 `serve` / `check`）
 - `server.py` — FastAPI 装配（lifespan / 认证中间件 / CORS / 静态托管 / 挂载路由）
+- `core/container.py` — 应用上下文容器（AppContext）：scheduler / MCP / LLM 连接池的生命周期统一启停
 - `core/config/` — 配置包：schema（pydantic 模型）/ loader（YAML+密钥注入）/ runtime（单例+热重载+profile 解析）
-- `core/api/` — **API 路由**：`voice`（编排 SSE 入口 + 唤醒检测/快检/转写）/ `tools` / `memory` / `schedule` / `history` / `settings`（配置热重载）/ `providers`（厂商目录）/ `state`（会话注册表）
+- `core/prompts.py` — 系统提示词集中管理（编排各模块单一来源）；`core/vendors.py` — 厂商目录（LLM/ASR/TTS 预设）
+- `core/api/` — **API 路由**：`voice`（子包：编排 SSE 入口 + 唤醒检测/快检/转写/TTS）/ `tools` / `memory` / `schedule` / `history`（会话历史）/ `library`（任务知识库）/ `sessions`（列表/改名/清空/分叉）/ `settings`（配置热重载）/ `providers`（厂商目录）/ `state`（会话注册表）；`schemas/` 分域 pydantic 响应模型（openapi 单一事实来源）
 - `core/voice/` — ASR / TTS + 唤醒判定：`wake.py`（拼音级文本判定）/ `pinyin.py` / `kws.py`（sherpa-onnx 本地 KWS 闸门）
-- `core/orchestrator/` — **编排层**：blocks（消息块协议）/ events（SSE 契约）/ session / intent / task / clarify / confirm / executor / control / pipeline
+- `core/llm/` — 客户端（`client.py` 重试+熔断+连接池 / `stream.py` SSE 解析 / `protocols/`：openai · anthropic · gemini）
+- `core/orchestrator/` — **编排层**：blocks（消息块协议）/ events（SSE 契约）/ session（状态机）/ intent / task / clarify / confirm / executor / condense（ReAct 历史滚动压缩）/ control / pipeline
+- `core/session/` — 会话历史存储（SQLite `data/history.db`，对话线创建/改名/覆盖/删除）
+- `core/tasks/` — 任务知识库（成功任务存档 + trigram 相似检索，减少重复询问）
 - `core/agent/` — 多智能体：base 子代理基座 + coordinator 协调者
-- `core/tools/` — @tool 注册中心 + 内置工具
+- `core/tools/` — @tool 注册中心 + 内置工具（29 个；`policy.py` 权限求值 / `describe.py` 元工具）
 - `core/memory/` — 长期事实记忆（FTS5）+ 任务后提取 + 上下文注入
 - `core/rag/` — 索引分块 + BM25 检索
 - `core/detection/` — 检测域：environment（环境感知）/ validator（配置校验）/ connectivity（LLM/ASR/TTS 连通性）
@@ -44,9 +50,12 @@
 1. **意图判断** `judge_intent`：规则（记忆类陈述）+ LLM 结构化输出 → 闲聊 或 任务
 2. **任务形成** `form_task`：LLM 提取 `{goal, params, missing, risk}`
 3. **澄清** `run_clarify`：把 `missing` 转问题问操作者，回答后回填，循环至信息足够（上限 3 轮）
-4. **确认** `confirm_if_needed`：`risk=read` 自动放行；`write/exec` 需明确确认（无人值守默认拒绝）
-5. **执行** `execute_task`：复杂任务转多智能体协调者；简单任务走 ReAct 循环（read 工具并发）
-6. **汇报**：SSE `task_state(done)` 带 summary/steps；任务后异步提取事实写长期记忆
+4. **确认** `confirm_if_needed`：由 `permissions` 策略决定——**三档默认全放行**（2026-09-13 起，
+   设置页「权限」或 `config.yaml` 可改回 `ask`/`deny`）；无人值守无确认通道时高风险一律拒绝
+5. **执行** `execute_task`：复杂任务转多智能体协调者；简单任务走 ReAct 循环（read 工具并发）；
+   历史超 `agent.condense_threshold_chars` 阈值时滚动压缩（`condense.py`，fail-open 不丢任务）
+6. **汇报**：SSE `task_state(done)` 带 summary/steps；任务后异步提取事实写长期记忆；
+   任务模式答「完成了」才存档任务知识库（`core/tasks/`）
 
 > 所有层横切 **CancellationToken**（停止）与**审计日志**。
 

@@ -3,19 +3,21 @@
 ## @tool 注册中心
 
 工具由后端 `@tool` 注册中心管理（`core/tools/`），前端只负责展示工具时间轴。
-工具分三类风险等级：`read`（自动执行）/ `write` / `exec`（需确认，审计日志记录）。
+工具分三类风险等级：`read` / `write` / `exec` —— **三档默认均免确认**（2026-09-13 起，
+见[安全模型](Security.md)）；是否询问由 `permissions` 策略决定，执行无条件写审计日志。
 
-### 内置工具
+### 内置工具（29 个）
 
 | 类别 | 工具 |
 |------|------|
 | 基础 | `grep_file` `find_files` `read_file` `write_file` `parse_doc` `list_dir` `stat_path` `system_probe` |
 | 执行 | `run_shell_tool` `run_python_tool`（超时/流式/可 kill，独立子进程） |
-| 检索 | `web_search`（duckduckgo）`get_weather`（wttr.in 免 key）`get_datetime` `calculate`（AST 白名单求值） |
-| 记忆 | `memory_get` `memory_put` |
+| 检索 | `web_search`（ddgs）`get_weather`（wttr.in 免 key）`get_datetime` `calculate`（AST 白名单求值） |
+| 记忆 | `memory_get` `memory_put` `memory_search` `memory_delete` |
 | 定时 | `register_schedule` `list_schedules` `remove_schedule` |
 | 技能 | `list_skills` `run_skill_tool` |
 | GUI | `gui_activate_tool` `list_windows_tool` `gui_click_tool` `gui_type_tool` `gui_screenshot_tool` |
+| 元 | `tools_describe`（按名取完整参数 schema，配合 `tools.lazy_groups` 渐进式加载） |
 | MCP | 动态注册 `mcp_<server>_<tool>` |
 
 ### 新增一个工具（三步）
@@ -32,7 +34,8 @@ async def get_weather(city: str) -> str:
 2. 在 `core/tools/__init__.py` `import` 该模块触发注册。
 3. 重启服务，LLM 会自动发现并调用。
 
-> `read` 级工具并发执行；`write/exec` 串行且逐个人工确认。
+> `read` 级工具并发执行；`write/exec` 串行。确认与否由 `permissions` 策略决定
+> （默认放行，可改回 `ask` / 加 `deny` 规则），审计日志无条件记录。
 
 ## Skills 技能包
 

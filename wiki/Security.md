@@ -76,5 +76,6 @@ permissions:
 
 ## 数据卫生
 
-- `config.yaml`（含 API Key）与 `environment.md`（含本机信息）不入仓库。
+- 密钥零落库：`config.yaml` 不含密钥（模板 `config.yaml.example` 入库）；
+  `config.secrets.yaml`（密钥）与 `environment.md`（含本机信息）不入仓库。
 - 会话完成落盘 `data/tasks/<id>.json`，可审计/回放。

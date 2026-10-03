@@ -36,7 +36,7 @@ llm:
       compat: {}                   # 兼容开关：stream_options / max_tokens_field
 ```
 
-内置厂商目录（`core/providers.py`）：deepseek / openai / qwen / glm / kimi / doubao / qianfan /
+内置厂商目录（`core/vendors.py`）：deepseek / openai / qwen / glm / kimi / doubao / qianfan /
 xinghuo / minimax / siliconflow / openrouter / ollama / lmstudio / anthropic / gemini / xiaomi-mimo。
 设置页「新增 Profile」可从目录一键预填；`config.yaml` 的 `vendor_presets` 可追加 / 覆盖自定义厂商。
 
@@ -59,6 +59,7 @@ voice:
     min_speech_ms: 300          # 短于此长度的段直接丢弃（滤爆音）
     upload_throttle_ms: 500     # 两次唤醒判定的最小间隔
     answer_timeout_ms: 8000     # 待答窗口：提问后一直没说话就进待机；唤醒后可回到本题续答
+    followup_window_ms: 6000    # 续聊窗口：回合结束/播报完后免唤醒直接说话即新指令；0=关闭
   kws:                          # 本地 KWS 唤醒闸门（sherpa-onnx；见下「语音隐私边界」）
     enabled: true               # false = 关闭本地判定，每次人声段直接上云（最大召回）
     model_dir: "models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
@@ -108,6 +109,7 @@ server:
   port: 8520
   open_browser: true
   cors_origins: []              # 允许跨域来源（默认空 = 禁止跨域）
+  resume_grace_s: 120           # SSE 断线宽限：断开后任务继续跑，/api/voice/resume 续播；0=断线即停
   # api_token 已移到 config.secrets.yaml（非 localhost 绑定时必须设置，否则拒绝启动）
 ```
 
@@ -127,6 +129,17 @@ rag:
   auto_index: true              # 启动时 index.db 缺失或源更新则自动重建；false 关闭
 ```
 
+## memory — 长期记忆注入
+
+```yaml
+memory:
+  recency_half_life_days: 30    # 新近度半衰期（天）
+  recency_weight: 0.5           # 加权强度（0=关）
+  inject_top_k: 5               # 注入条数上限
+  inject_max_chars: 800         # 注入字符预算
+  extract_recent_messages: 2    # 任务后提取回看的最近对话条数（用户/助手各 N）
+```
+
 ## agent — 编排
 
 ```yaml
@@ -134,6 +147,10 @@ agent:
   recursion_limit: 12           # ReAct 步数上限
   multi_agent: false            # 复杂任务是否转多智能体协调者
   models_failover: []           # 主模型故障时依次尝试的备选模型（例: ["gpt-4o-mini", "qwen-turbo"]）
+  structured_temperature: 0.2   # 意图/任务形成/提取等结构化输出阶段的温度
+  auto_approve: false           # true=write/exec 自动放行不再询问（含子代理与技能；无人值守仍拒绝）
+  confirm_timeout_s: 0          # 澄清/确认超时秒数，0=不限；到期按拒绝处理（fail-closed）
+  condense_threshold_chars: 12000  # ReAct 历史滚动压缩阈值（字符），0=关闭
 ```
 
 ## llm_client — 重试 / 熔断
@@ -154,11 +171,28 @@ llm_client:
 tools:
   search_max_results: 5         # web_search 最大结果数
   weather_timeout: 10
+  llm_max_output_chars: 8000    # 喂给模型的工具正文截断（展示/落库口径独立不受影响）；0=不限
+  lazy_groups: []               # 渐进式工具 schema：分组降级为一行简介（如 ["mcp"]），完整参数先调 tools_describe
 ```
+
+## permissions — 工具权限策略
+
+```yaml
+permissions:
+  default_action: allow         # 未命中任何规则时的兜底（默认也放行）
+  tiers:
+    read: allow                 # 三档默认全放行（2026-09-13 起）；改 ask 即恢复询问
+    write: allow
+    exec: allow
+  rules: []                     # 形如 - {match: "run_*", action: deny}；deny 单调短路不可翻案
+```
+
+求值顺序：未注册工具 → 拒绝 > 任一 `deny` 规则短路 > 首条匹配规则 > 档位默认 > `default_action`。
+与计划级确认共用同一份策略；设置页「设置 → 权限」可改，详见[安全模型](Security.md)。
 
 ## vendor_presets — 厂商目录扩展
 
-`core/providers.py` 内置目录之外，可在 `config.yaml` 追加 / 覆盖预设（设置页「新增 Profile」可见，
+`core/vendors.py` 内置目录之外，可在 `config.yaml` 追加 / 覆盖预设（设置页「新增 Profile」可见，
 同 ID 覆盖内置）。endpoint 为基座 URL（不含 /v1），chat_path 与基座配对。
 
 ```yaml

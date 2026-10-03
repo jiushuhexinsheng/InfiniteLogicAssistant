@@ -24,7 +24,7 @@
 | 任务编排 | 意图判断（闲聊/任务）→ 任务形成 → 澄清缺失信息 → 操作确认（**默认已放行**，见「安全」节）→ 执行 → 汇报（SSE 实时） |
 | 消息块协议 | 对话内容模块化：思考 / 工具 / 正文（代码/文档/图片）/ 提问作答 / 回合汇总卡等独立块渲染，注册协议可扩展（ext:*），思考过程可折叠查看 |
 | 多智能体 | 复杂任务自动拆解：规划 / 执行 / 检索 / 批评 子代理并发协作（可开关） |
-| 工具执行 | 27 个内置工具：搜索/天气/计算/文件/Shell/Python/GUI/记忆/定时/技能，@tool 自动注册 |
+| 工具执行 | 29 个内置工具：搜索/天气/计算/文件/Shell/Python/GUI/记忆/定时/技能/元工具，@tool 自动注册 |
 | 长期记忆 | 事实记忆（SQLite FTS5 全文检索）+ 任务后 LLM 自动提取 + RAG（BM25）检索注入上下文 |
 | 任务知识库 | 任务模式下完成时询问「完成了吗」，答「完成了」才存档成功任务；下次相似任务按**用户原话**检索历史参数预填、减少重复询问（控制台「任务库」可浏览/删除） |
 | MCP 桥接 | 启动时连接外部 MCP server，工具动态注册进注册中心（mcp_<server>_<tool>） |
@@ -167,16 +167,21 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 | PATCH | `/api/config` | 更新配置并热重载 |
 | PUT | `/api/config/secrets` | 设置密钥（不回显） |
 | GET | `/api/detection` | 聚合检测（环境/配置/连通性） |
+| GET | `/api/env` | 环境感知快照 |
 | POST | `/api/voice/wake/check` | 本地 KWS 快检（毫秒级、零云端调用） |
 | POST | `/api/voice/wake` | 唤醒检测（转写 + 判定 + 切指令） |
 | POST | `/api/voice/transcribe` | 纯转写（指令/作答段） |
 | POST | `/api/voice/utter` | **编排入口**（SSE 事件流，`mode`: chat/task） |
 | POST | `/api/voice/answer` | 投递提问回答（可带 qid 配对） |
+| POST | `/api/voice/resume` | SSE 断线后续播（`server.resume_grace_s` 宽限期内任务不丢） |
 | POST | `/api/tts` | 后端 TTS 合成（可选） |
-| GET/POST | `/api/tools` `/api/tools/call` | 工具列表 / 执行（高风险需 confirm） |
+| GET/POST | `/api/tools` `/api/tools/call` | 工具列表 / 执行（是否询问由 `permissions` 策略决定） |
 | GET/DELETE | `/api/memory` | 长期记忆读取 / 删除 |
 | GET/POST/DELETE | `/api/schedules` 等 | 定时任务管理 |
-| GET/POST/PATCH/DELETE | `/api/sessions` 等 | 会话管理（历史/归档/重命名） |
+| GET/DELETE | `/api/history` `/api/history/{conv_id}` | 会话历史列表 / 详情 / 删除 |
+| GET/DELETE | `/api/library` `/api/library/{task_id}` | 任务知识库浏览 / 详情 / 删除 |
+| GET/POST/PATCH/DELETE | `/api/sessions` 等 | 会话管理（列表/改名/清空 `clear`/分叉 `fork`） |
+| GET/POST | `/api/providers` `/api/providers/fetch-models` | 厂商目录 / 拉取可用模型列表 |
 | POST | `/api/task/{session_id}/stop` | 停止整个任务 |
 
 完整 schema 见 `GET /openapi.json`（`web/src/api/generated.ts` 由其生成）。
@@ -192,11 +197,15 @@ python main.py check        聚合检测（环境 / 配置 / LLM·ASR·TTS 连�
 ## 测试
 
 ```
+pip install -r requirements-dev.txt   # 测试/检查依赖（pytest + pytest-asyncio + mypy）
 python -m pytest tests/ -q      # 后端单元测试（编排 / 工具 / 记忆 / RAG / MCP / Skills / 定时 / API）
 python -m mypy core/ server.py  # 后端静态类型检查
 cd web && npm run build         # 前端类型检查（vue-tsc）+ 生产构建
 cd web && npm test              # 前端单元测试（Vitest）
 ```
+
+CI（`.github/workflows/ci.yml`）跑同款检查：后端 mypy + pytest + `gen:api` 同步校验
+（`generated.ts` 与 openapi 不一致即失败），前端 vue-tsc 构建 + Vitest。
 
 唤醒判定的前后端语义由共享测试向量（`tests/data/wake_vectors.json`）在 pytest 与 vitest
 双端共同钉住——改任一侧匹配规则，两侧测试必须同时变绿。
@@ -221,16 +230,25 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 
 配置采用 **pydantic 强类型校验 + 双文件分离**（非敏感配置 / 密钥独立存储），保留多 profile YAML 结构：
 
-- `config.yaml`：非敏感结构（llm / voice / server / mcp / rag / agent / llm_client / tools），
-  **不含任何密钥**。加载时经 pydantic 模型校验（写错启动即报错）。多 profile（deepseek /
-  openai / qwen / xiaomi-mimo…）改 `active` 切换。
+- `config.yaml`：非敏感结构（llm / voice / server / mcp / rag / memory / agent / llm_client /
+  tools / permissions / vendor_presets），**不含任何密钥**。加载时经 pydantic 模型校验
+  （写错启动即报错）。多 profile（deepseek / openai / qwen / xiaomi-mimo…）改 `active` 切换。
 - `config.secrets.yaml`：密钥独立存储（`llm/asr/tts.api_key`、`server.api_token`），不入库；
   环境变量优先级更高。
 - `voice.wake_word`：唤醒词（可多个）与开关；`voice.vad`：静音切段参数；
   `voice.kws`：本地 KWS 闸门（模型目录 / 检测阈值）。
 - `agent`：`recursion_limit`（ReAct 步数上限）、`multi_agent`（复杂任务是否转多智能体协调者）、
   `auto_approve`（write/exec 免确认开关）、`confirm_timeout_s`（确认/澄清超时秒数，
-  0=不限；到期按拒绝处理，防确认链无限挂起）。
+  0=不限；到期按拒绝处理，防确认链无限挂起）、`models_failover`（主模型故障备选序列）、
+  `structured_temperature`（结构化输出阶段温度）、`condense_threshold_chars`
+  （ReAct 历史滚动压缩阈值，0=关）。
+- `permissions`：工具权限策略——三档默认与兜底**全放行**，`rules` 按工具名 glob（deny 短路），
+  求值顺序见「安全」节；与计划级确认共用同一份策略。
+- `memory`：长期记忆注入参数（新近度半衰期/权重、`inject_top_k`、`inject_max_chars`、
+  `extract_recent_messages` 任务后提取回看条数）。
+- `tools`：`llm_max_output_chars`（喂给模型的工具正文截断）与 `lazy_groups`
+  （渐进式工具 schema：分组降级为一行简介，模型按需先调 `tools_describe` 取全量）。
+- `vendor_presets`：厂商目录扩展（内置目录见 `core/vendors.py`，同 ID 覆盖内置）。
 - `llm_client`：重试 / 熔断参数。
 - `mcp.servers`：MCP server 列表（`{name, command, args}`），启动时自动连接并注册工具。
 - `server.api_token`：非 localhost 绑定时的 API 访问令牌（留空则拒绝非 localhost 启动）。
@@ -283,10 +301,11 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 | 基础 | `grep_file` `find_files` `read_file` `write_file` `parse_doc` `list_dir` `stat_path` `system_probe` |
 | 执行 | `run_shell_tool` `run_python_tool`（超时/流式/可 kill，独立子进程） |
 | 检索 | `web_search`（ddgs）`get_weather`（wttr.in 免 key）`get_datetime` `calculate`（AST 白名单求值） |
-| 记忆 | `memory_get` `memory_put` |
+| 记忆 | `memory_get` `memory_put` `memory_search` `memory_delete` |
 | 定时 | `register_schedule` `list_schedules` `remove_schedule` |
 | 技能 | `list_skills` `run_skill_tool` |
 | GUI | `gui_activate_tool` `list_windows_tool` `gui_click_tool` `gui_type_tool` `gui_screenshot_tool`（懒加载优雅降级） |
+| 元 | `tools_describe`（按名取完整参数 schema，配合 `tools.lazy_groups` 渐进式加载） |
 | MCP | 动态注册 `mcp_<server>_<tool>`（需配置 `mcp.servers`） |
 
 新增一个工具只需三步：
@@ -300,24 +319,36 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 
 ```
 无限逻辑-语音全控智能体/
-├── main.py / server.py        入口 + FastAPI 装配（lifespan + 认证 + 静态托管 + 挂载路由）
+├── main.py / cli/             入口 CLI 分派（argparse 子命令：serve / check）
+├── server.py                  FastAPI 装配（lifespan + 认证 + 静态托管 + 挂载路由）
 ├── start.bat / install_deps.bat / package_deploy.bat
 ├── config.yaml.example        非敏感配置模板（不含密钥）
 ├── config.secrets.yaml.example 密钥存储模板（复制为 config.secrets.yaml，不入库）
 ├── requirements.txt           Python 依赖（在线 / 离线 scripts/libs/ 双路）
+├── requirements-dev.txt       测试/检查依赖（pytest + pytest-asyncio + mypy）
 ├── mypy.ini                   后端静态类型检查配置
 ├── models/                    KWS 唤醒模型（随仓库入库；缺失时自动旁路）
 ├── core/
 │   ├── config/                配置包：schema（pydantic 模型）/ loader（YAML+密钥注入）/ runtime（单例+热重载）
+│   ├── container.py           应用上下文容器（AppContext：scheduler / MCP / LLM 连接池统一启停）
 │   ├── logger.py              loguru 日志 + 审计（data/audit.log）
+│   ├── prompts.py             系统提示词集中管理（编排层单一来源）
+│   ├── vendors.py             厂商目录（LLM/ASR/TTS 预设 + config.yaml vendor_presets 扩展）
 │   ├── detection/             检测域：environment / validator / connectivity
-│   ├── api/                   API 路由（voice / tools / memory / schedule / settings / sessions / state）
-│   ├── llm/                   LLM 客户端（stream.py SSE 解析 / client.py 重试+熔断+连接池）
+│   ├── api/                   API 路由（voice / tools / memory / schedule / history / library /
+│   │                          sessions / settings / providers / state）
+│   │   ├── schemas/           pydantic 响应模型分域包（openapi → 前端类型单一事实来源）
+│   │   └── voice/             语音域子包：run（编排入口）/ wake / tts / meta
+│   ├── llm/                   LLM 客户端（stream.py SSE 解析 / client.py 重试+熔断+连接池 /
+│   │                          protocols/：openai · anthropic · gemini 三协议实现）
 │   ├── voice/                 ASR / TTS + 唤醒：wake.py（拼音级判定）/ pinyin.py / kws.py（本地 KWS 闸门）
-│   ├── orchestrator/          编排层：blocks（消息块协议）/ events（SSE 契约）/ session / intent /
-│   │                          task / clarify / confirm / executor / control / pipeline
+│   ├── orchestrator/          编排层：blocks（消息块协议）/ events（SSE 契约）/ session（状态机）/
+│   │                          intent / task / clarify / confirm / executor / condense（历史滚动压缩）/
+│   │                          control / pipeline
+│   ├── session/               会话历史存储（SQLite data/history.db，对话线创建/改名/覆盖/删除）
+│   ├── tasks/                 任务知识库（成功任务存档 + trigram 相似检索，减少重复询问）
 │   ├── agent/                 base 子代理基座 + coordinator 多智能体协调者
-│   ├── tools/                 @tool 注册中心 + 内置工具
+│   ├── tools/                 @tool 注册中心 + 内置工具（policy.py 权限求值 / describe.py 元工具）
 │   ├── execution/             shell（可 kill 进程树）/ python（独立进程）/ fs / gui
 │   ├── memory/                长期事实记忆（FTS5）+ 任务后提取 + 上下文注入
 │   ├── rag/                   索引（分块）+ 检索（BM25）
@@ -327,16 +358,21 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 ├── skills/                    技能定义（YAML，文件名 = 技能名）
 ├── tests/                     pytest 单元测试（+ data/wake_vectors.json 唤醒共享测试向量）
 ├── docs/
-│   └── updates.md             更新历史与验收清单（人工验收 / 语音验收台 / 成本实测）
+│   ├── updates.md             更新历史与验收清单（人工验收 / 语音验收台 / 成本实测）
+│   ├── architecture/ designs/ 架构文档与改进设计集（分批落地记录）
+│   └── superpowers/           规格与执行计划（specs / plans）
+├── wiki/                      项目 Wiki 源文件（首页 / 架构 / API / 配置 / 安全 / 开发 …）
 ├── web/                       Vue3 + Vite + TS 前端
 │   ├── scripts/               辅助脚本（verify-voice.mjs 语音验收台 / screenshot.mjs）
 │   └── src/
 │       ├── blocks/            消息块协议：types / registry / normalize（事件→块流）/ speech（TTS 管线）
 │       ├── components/blocks/ 块组件（Thinking/Tool/Text/Code/Question/Answer/Notice/Summary/…）
-│       ├── components/        FloatingAssistant（悬浮球）+ assistant/ + console/ + ui/
-│       ├── composables/       store / useChat / useTts / useWakeWord
-│       │   └── wake/          唤醒编排：wakeOrchestrator / wakeChain / cloudAsrProvider /
+│       ├── components/        FloatingAssistant（悬浮球）+ assistant/ + console/ + ui/ + layout/
+│       ├── composables/       assistant/（store · useChat · useTts · useWakeWord）
+│       │   └── assistant/wake/ 唤醒编排：wakeOrchestrator / wakeChain / cloudAsrProvider /
 │       │                      sherpaKwsProvider / webSpeechProvider
+│       ├── api/               openapi-typescript 生成类型（generated.ts，gen:api 同步）
 │       └── views/             StartPage.vue / ConsolePage.vue
-└── data/                      运行时数据（agent.log / audit.log / schedules.json / tasks/，gitignore）
+└── data/                      运行时数据（agent.log / audit.log / history.db / schedules.json /
+                               tasks/，gitignore；另有 memory/、rag/ 运行时库同样不入库）
 ```
