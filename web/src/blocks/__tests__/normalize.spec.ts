@@ -46,17 +46,53 @@ describe('normalize 事件归一', () => {
     expect(b.payload.full_len).toBe(900)
   })
 
-  /** question/answer 配对：问题在本流时 answer 只翻已答态（作答记录由 sendAnswer
-   *  以用户消息入流，不重复推块）；问题不在本流时 answer 独立入块。
-   *  question/answer pair: when the question is in this stream the answer only flips
-   *  its status (the answer record enters as a user message via sendAnswer, no
-   *  duplicate block); otherwise the answer enters as a standalone block. */
-  it('question/answer 配对（问题在本流只翻状态）', () => {
+  /** question/answer 配对（截图 bug #1 修复）：answer 贴到问题块**后一位**入块、
+   *  翻已答态；choice 展示选项 label；同一 qid 重复事件幂等。
+   *  此前 answer 只翻状态、记录由 sendAnswer 落独立用户气泡 —— 问答被卡片边界
+   *  拆散、作答气泡还排在卡片后续事件之下（时序倒置）。
+   *
+   *  question/answer pairing (screenshot bug #1 fix): the answer enters as a block
+   *  right AFTER its question, flipping the answered state; a choice displays the
+   *  option label; duplicate events for the same qid are idempotent. Previously the
+   *  answer only flipped status and the record went to a detached user bubble,
+   *  splitting Q from A across the card boundary. */
+  it('question/answer 配对：答案紧贴问题入块（修「问题和回答分离」）', () => {
+    const blocks: Block[] = []
+    applyEvent(ev({ type: 'question', question: '确认执行吗？', session_id: 's', kind: 'choice',
+                    options: [{ value: 'yes', label: '确认' }], qid: 'q1' }), blocks)
+    applyEvent(ev({ type: 'answer', qid: 'q1', choice: 'yes', source: 'button' }), blocks)
+    expect(blocks).toHaveLength(2)
+    expect(blocks[0].type).toBe('question')
+    expect(blocks[0].payload.status).toBe('answered')
+    expect(blocks[1].type).toBe('answer')
+    expect(blocks[1].payload.qid).toBe('q1')
+    expect(blocks[1].payload.text).toBe('确认')   // choice → 选项 label（非机器值）
+    // 幂等：SSE 回声 / sendAnswer 本地入块谁先到，后者不再重复推
+    // Idempotent: whichever of the SSE echo / sendAnswer local insert arrives second
+    // does not push a duplicate.
+    applyEvent(ev({ type: 'answer', qid: 'q1', text: '', choice: 'yes', source: 'button' }), blocks)
+    expect(blocks).toHaveLength(2)
+  })
+
+  /** 文本作答：原文入块、紧贴问题。Text answer: verbatim, right after the question. */
+  it('文本作答贴问题后，原文入块', () => {
     const blocks: Block[] = []
     applyEvent(ev({ type: 'question', question: '哪个城市？', session_id: 's', kind: 'text', options: [], qid: 'q1' }), blocks)
     applyEvent(ev({ type: 'answer', qid: 'q1', text: '上海', source: 'voice' }), blocks)
-    expect(blocks).toHaveLength(1)  // 不重复推块
-    expect(blocks[0].type).toBe('question')
+    expect(blocks).toHaveLength(2)
+    expect(blocks[1].type).toBe('answer')
+    expect(blocks[1].payload.text).toBe('上海')
+    expect(blocks[1].payload.source).toBe('voice')
+    expect(blocks[0].payload.status).toBe('answered')
+  })
+
+  /** timeout 作答只翻已答态（收起问题卡），无作答文本可展示 → 不入答案块。 */
+  it('timeout 作答只翻态不入答案块', () => {
+    const blocks: Block[] = []
+    applyEvent(ev({ type: 'question', question: '确认执行吗？', session_id: 's', kind: 'choice',
+                    options: [{ value: 'yes', label: '确认' }], qid: 'q1' }), blocks)
+    applyEvent(ev({ type: 'answer', qid: 'q1', text: '', choice: 'no', source: 'timeout' }), blocks)
+    expect(blocks).toHaveLength(1)
     expect(blocks[0].payload.status).toBe('answered')
   })
 

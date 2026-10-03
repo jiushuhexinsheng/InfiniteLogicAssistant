@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 
 import httpx
 
-from .common import _split_system
+from .common import _raise_for_status_read, _split_system
 
 # ─────────────────────────── Google Gemini ───────────────────────────
 
@@ -157,7 +157,7 @@ async def _stream_gemini(
         client = own
     try:
         async with client.stream("POST", url, headers=headers, json=payload) as resp:
-            resp.raise_for_status()
+            await _raise_for_status_read(resp)
             async for line in resp.aiter_lines():
                 if not line or not line.startswith("data: "):
                     continue

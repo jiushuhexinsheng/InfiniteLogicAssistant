@@ -62,6 +62,63 @@ function findStreaming(blocks: Block[], type: string): Block | undefined {
 }
 
 /**
+ * 把作答挂进块列表（原地变更）。SSE answer 事件与 sendAnswer 本地投递共用，
+ * 按 qid 幂等去重 —— 两条路径总有一条先到，后到的直接跳过。
+ *
+ * Attach an answer into the block list (in-place). Shared by the SSE answer event
+ * and sendAnswer's local delivery, deduplicated by qid — one path always arrives
+ * first; the later one is skipped.
+ *
+ * 规则（修截图 bug #1「问题和回答分离」）：
+ * Rules (fixes screenshot bug #1, Q/A split apart):
+ * 1. 已有同 qid 的 answer 块 → 幂等跳过。Same qid already answered → idempotent skip.
+ * 2. 配对到 question → 翻 answered，并把答案块插到问题块紧后（问答同卡相邻，
+ *    不再落尾部用户气泡拆散卡片）。Paired question → mark answered and splice the
+ *    answer right after it (Q and A stay adjacent in the same card, instead of a
+ *    trailing user bubble splitting the card apart).
+ * 3. source=timeout 的超时作答只翻态、不入块（与旧行为一致，超时答案无文本价值）。
+ *    timeout answers only flip status (same as before; no text value to record).
+ * 4. choice 展示为选项 label（不写机器值）。choice renders as the option label,
+ *    not the machine value.
+ * 5. 无配对问题 → 兜底独立入块（保留原行为，如历史回放 / 流已死）。
+ *    No paired question → push standalone (original behavior kept: history replay /
+ *    dead stream).
+ *
+ * @param target - 目标块列表。Target block list.
+ * @param e - 作答事件（qid/text/choice/source）。The answer event (qid/text/choice/source).
+ */
+export function attachAnswer(
+  target: Block[],
+  e: { qid?: string | null; text?: string; choice?: string | null; source?: string | null },
+): void {
+  if (e.qid && target.some(x => x.type === 'answer' && x.payload.qid === e.qid)) return
+  const q = e.qid
+    ? target.find(x => x.type === 'question' && x.payload.qid === e.qid)
+    : undefined
+  if (q) {
+    q.payload.status = 'answered'
+    if (e.source === 'timeout') return
+    const label = e.text
+      || (e.choice
+        ? (q.payload.options?.find((o: { value?: string }) => o.value === e.choice)?.label || e.choice)
+        : '')
+    target.splice(target.indexOf(q) + 1, 0, makeBlock('answer', {
+      qid: e.qid ?? null,
+      text: label,
+      choice: e.choice ?? null,
+      source: e.source || 'typed',
+    }))
+    return
+  }
+  target.push(makeBlock('answer', {
+    qid: e.qid ?? null,
+    text: e.text || '',
+    choice: e.choice ?? null,
+    source: e.source || 'typed',
+  }))
+}
+
+/**
  * 把一个 SSE 事件应用到块列表（原地变更，供响应式数组触发更新）。
  * Apply one SSE event to the block list (in-place, so reactive arrays update).
  *
@@ -129,25 +186,7 @@ export function applyEvent(ev: SseEvent, target: Block[]): void {
       break
     }
     case 'answer': {
-      const e = ev as AnswerEvent
-      // 配对的 question 块标记已答（作答记录由 sendAnswer 以用户消息入流，
-      // 这里不重复推块 —— 去重规则：问题在本流则只翻状态，不在才独立入块）。
-      // Mark the paired question answered (the answer record enters as a user
-      // message via sendAnswer; no duplicate block here — dedup rule: when the
-      // question is in this stream, only flip its status; otherwise push standalone).
-      const q = e.qid
-        ? target.find(x => x.type === 'question' && x.payload.qid === e.qid)
-        : undefined
-      if (q) {
-        q.payload.status = 'answered'
-      } else {
-        target.push(makeBlock('answer', {
-          qid: e.qid,
-          text: e.text,
-          choice: e.choice ?? null,
-          source: e.source || 'typed',
-        }))
-      }
+      attachAnswer(target, ev as AnswerEvent)
       break
     }
     case 'task_state': {

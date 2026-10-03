@@ -101,6 +101,39 @@ async def test_stream_chat_http_error_raises():
 
 
 @pytest.mark.asyncio
+async def test_stream_chat_http_error_body_readable():
+    """回归（截图 bug #2）：流式错误响应的实体在 HTTPStatusError 抛出后必须可读。
+
+    此前 raise_for_status 在 client.stream() 上下文内直接抛出，response 是未读的
+    流式响应 —— 下游 _is_model_missing 读 .text 当场抛 ResponseNotRead
+    （“Attempted to access streaming response content...”），真实 400/404 正文被吞。
+
+    Regression (screenshot bug #2): the entity of a streaming error response must be
+    readable after HTTPStatusError escapes. Previously raise_for_status fired inside
+    the client.stream() context with an unread response, so the downstream
+    _is_model_missing hit ResponseNotRead and the real 400/404 body was lost.
+    """
+    async def agen(data: bytes):
+        yield data
+
+    def handler(request):
+        return httpx.Response(
+            400,
+            content=agen(b'{"error": {"message": "The model `nope` does not exist"}}'),
+            headers={"Content-Type": "application/json"},
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        with pytest.raises(httpx.HTTPStatusError) as ei:
+            async for _ in stream_chat([], client=client):
+                pass
+        assert "does not exist" in ei.value.response.text
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_stream_chat_emits_usage():
     """测试末尾的 usage-only chunk 会发出用量事件。Tests that a trailing usage-only chunk emits a usage event."""
     # usage 在末尾的 usage-only chunk（无 choices），不应被跳过

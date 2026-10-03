@@ -4,7 +4,7 @@ import { formatError } from '../../errors'
 import { state, messages, tokenUsage, partialText, genId, addMessage, addBlocks, buildHistory, MAX_MESSAGES, pendingQuestion, currentSessionId, assistantMode, textProjection } from './store'
 import { speakAuto, stopSpeak } from './useTts'
 import { matchOption } from './answerMatch'
-import { applyEvent, finalizeBlocks, makeBlock } from '../../blocks/normalize'
+import { applyEvent, attachAnswer, finalizeBlocks, makeBlock } from '../../blocks/normalize'
 import { speechForBlocks } from '../../blocks/speech'
 import type { Block } from '../../blocks/types'
 import type { ChatMessage } from './store'
@@ -237,7 +237,19 @@ export async function sendAnswer(text: string, choice?: string, source: string =
     await api.answer(currentSessionId.value, t, choice, { qid, source })
     // 仅在投递成功后写记录，避免记录与后端状态不一致。
     // Record only after a successful delivery, so the record cannot disagree with the backend.
-    addBlocks('user', [makeBlock('answer', { qid, text: label, choice: choice ?? null, source })])
+    // 配对问题在某条消息里 → 答案贴进该卡片（问题块紧后，修「问题和回答分离」）；
+    // 找不到（无 qid / 流已死）才落独立用户气泡兜底。
+    // Paired question lives in a message → attach the answer into that card right
+    // after the question block (fixes Q/A split apart); fall back to a standalone
+    // user bubble only when no holder exists (no qid / dead stream).
+    const holder = qid
+      ? messages.value.find(m => m.blocks?.some(b => b.type === 'question' && b.payload.qid === qid))
+      : undefined
+    if (qid && holder?.blocks) {
+      attachAnswer(holder.blocks, { qid, text: label, choice: choice ?? null, source })
+    } else {
+      addBlocks('user', [makeBlock('answer', { qid, text: label, choice: choice ?? null, source })])
+    }
     pendingQuestion.value = null
     // 已作答：问题还在被朗读的话就停掉（用户已经用行动回答了，不必念完）。
     // Answered: stop the question reading if it is still going (the user already

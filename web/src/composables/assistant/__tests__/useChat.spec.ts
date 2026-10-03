@@ -15,6 +15,7 @@ vi.mock('../useTts', async () => {
 
 import { api, streamUtter } from '../../../api'
 import { currentSessionId, messages, pendingQuestion, state, tokenUsage } from '../store'
+import { makeBlock } from '../../../blocks/normalize'
 import { runTurn, sendAnswer, sendText, outboxCount, clearQueued, forkAt, sendEdited, regenerate } from '../useChat'
 
 /** useChat 回答投递的错误文案。Error text for useChat's answer delivery. */
@@ -130,6 +131,35 @@ describe('useChat 问答入聊天记录', () => {
     const last = messages.value[messages.value.length - 1]
     expect(last?.role).toBe('user')
     expect(last?.text).toBe('桌面')
+  })
+
+  /** 回归（截图 bug #1 修复）：问题块在消息里（带 qid）→ 作答贴进**问题所在卡片**、
+   *  紧跟问题块之后，不再生成独立用户气泡。
+   *  此前作答恒落尾部用户消息：问答被卡片边界拆散，且卡片后续事件（09:40 的
+   *  「执行失败」）渲染在 09:39 作答气泡之上 —— 视觉时序倒置。
+   *
+   *  Regression (screenshot bug #1 fix): when the question block lives in a message
+   *  (with a qid), the answer attaches INSIDE that card right after the question —
+   *  no detached user bubble. Previously answers always became trailing user
+   *  messages, splitting Q from A and inverting the visual order against later card
+   *  events. */
+  it('有配对问题时作答入问题所在卡片、不新增用户消息', async () => {
+    currentSessionId.value = 's1'
+    const q = makeBlock('question', {
+      qid: 'q_1', question: '目标位置？', kind: 'text', options: [], status: 'pending',
+    })
+    messages.value = [
+      { id: 'm1', role: 'user', text: '做事', blocks: [], timestamp: Date.now() },
+      { id: 'm2', role: 'assistant', text: '', blocks: [q], timestamp: Date.now() },
+    ]
+    pendingQuestion.value = { text: '目标位置？', kind: 'text', options: [], qid: 'q_1' }
+    await sendAnswer('桌面')
+    expect(messages.value).toHaveLength(2)            // 不新增用户消息
+    const blocks = messages.value[1].blocks!
+    expect(blocks.map((b) => b.type)).toEqual(['question', 'answer'])
+    expect(blocks[0].payload.status).toBe('answered')
+    expect(blocks[1].payload).toMatchObject({ qid: 'q_1', text: '桌面', source: 'typed' })
+    expect(pendingQuestion.value).toBeNull()
   })
 
   /** 投递失败时不写回答记录（避免记录与后端状态不一致）。 */

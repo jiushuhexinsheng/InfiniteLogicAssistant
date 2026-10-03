@@ -8,6 +8,8 @@ from collections.abc import AsyncIterator
 
 import httpx
 
+from .common import _raise_for_status_read
+
 # ─────────────────────────── OpenAI 兼容 ───────────────────────────
 
 def _build_payload(profile: dict, messages: list, tools=None) -> dict:
@@ -103,7 +105,7 @@ async def _stream_openai(
         client = own
     try:
         async with client.stream("POST", url, headers=_headers(profile), json=payload) as resp:
-            resp.raise_for_status()
+            await _raise_for_status_read(resp)
             async for line in resp.aiter_lines():
                 if not line or not line.startswith("data: "):
                     continue

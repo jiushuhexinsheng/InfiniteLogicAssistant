@@ -103,9 +103,20 @@ class _SwitchModel(Exception):
 
 
 def _is_model_missing(exc: Exception) -> bool:
-    """启发式判断「模型不存在/不可用」：4xx 且响应文本含 model → 应切备选而非重试。Heuristic for "model missing/unavailable": 4xx with 'model' in the response text → switch fallback instead of retrying."""
+    """启发式判断「模型不存在/不可用」：4xx 且响应文本含 model → 应切备选而非重试。Heuristic for "model missing/unavailable": 4xx with 'model' in the response text → switch fallback instead of retrying.
+
+    流式响应实体未读时 .text 会抛 ResponseNotRead —— 视为「读不出正文」返回 False，
+    绝不在 except 内二次抛出顶掉原异常（截图 bug #2）。
+    When the streaming entity is unread, .text throws ResponseNotRead — treat it as
+    "body unreadable" and return False; never re-raise inside the except and mask the
+    original error (screenshot bug #2).
+    """
     if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (400, 404):
-        return "model" in (exc.response.text or "").lower()
+        try:
+            body = exc.response.text
+        except httpx.ResponseNotRead:
+            return False
+        return "model" in (body or "").lower()
     return False
 
 
@@ -268,6 +279,15 @@ class LlmClient:
                         await self._breaker.record_success()
                         return
             except Exception as exc:
+                if isinstance(exc, httpx.HTTPStatusError):
+                    # 真实上游错误（400/404 正文）此前被 ResponseNotRead 顶掉、日志无痕 —— 落一条便于追因。
+                    # The real upstream body (400/404) used to be masked by ResponseNotRead and never
+                    # reached the log — record it so failures can be diagnosed (screenshot bug #2).
+                    try:
+                        body = (exc.response.text or "").strip().replace("\n", " ")[:300]
+                    except httpx.ResponseNotRead:
+                        body = "（实体未读 body unread）"
+                    logger.warning("LLM HTTP {}: {} | {}", exc.response.status_code, exc.request.url, body)
                 if emitted:
                     # 已发出部分内容 → 不重试、不切模型（避免重复执行任务）
                     await self._breaker.record_failure()

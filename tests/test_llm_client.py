@@ -14,6 +14,7 @@ from core.llm.client import (
     LlmClient,
     RetryExhaustedError,
     _backoff,
+    _is_model_missing,
     _is_retryable,
 )
 
@@ -22,6 +23,17 @@ def _sse(chunks) -> bytes:
     lines = [f"data: {json.dumps(c, ensure_ascii=False)}" for c in chunks]
     lines.append("data: [DONE]")
     return ("\n\n".join(lines) + "\n\n").encode("utf-8")
+
+
+def _unread_response(status: int, body: bytes) -> httpx.Response:
+    """构造**未读**的流式错误响应（content=同步迭代器 → .text 抛 ResponseNotRead），
+    与 client.stream() 网络路径的语义一致 —— bytes 直构的响应实体已读，复现不了 bug。
+
+    Build an UNREAD streaming error response (content as a sync iterator → .text raises
+    ResponseNotRead), matching the client.stream() network path; a bytes-backed
+    Response has its entity pre-read and cannot reproduce the bug.
+    """
+    return httpx.Response(status, content=iter([body]))
 
 
 # ─── 熔断器状态机 ───
@@ -85,6 +97,46 @@ def test_is_retryable_classifies_status():
     assert _is_retryable(httpx.TimeoutException("t")) is True
     assert _is_retryable(httpx.ConnectError("c")) is True
     assert _is_retryable(ValueError("other")) is False
+
+
+# ─── 模型缺失判定（截图 bug #2：ResponseNotRead 吞错）───
+
+def test_is_model_missing_unread_body_returns_false():
+    """回归（截图 bug #2）：未读流式 400 响应下 _is_model_missing 返回 False 而非抛异常。
+
+    此前读 .text 当场抛 ResponseNotRead，原始 400/404 在 except 里被顶掉 ——
+    failover 启发式失效、真因消失、executor 只看到裸的流式读取错误。
+
+    Regression (screenshot bug #2): with an unread streaming 400 response,
+    _is_model_missing returns False instead of raising. Previously the .text read
+    threw ResponseNotRead inside the except block, replacing the original 400/404
+    and killing the failover heuristic.
+    """
+    exc = httpx.HTTPStatusError(
+        "boom", request=httpx.Request("POST", "http://t"),
+        response=_unread_response(400, b'{"error": {"message": "bad request"}}'),
+    )
+    assert _is_model_missing(exc) is False   # 现状：抛 ResponseNotRead → FAIL
+
+
+def test_is_model_missing_read_body_detects_model():
+    """已读 400/404 实体含 model → 判模型缺失（启发式回归护栏）。"""
+    exc = httpx.HTTPStatusError(
+        "boom", request=httpx.Request("POST", "http://t"),
+        response=httpx.Response(400, text='{"error": {"message": "model not found"}}'),
+    )
+    assert _is_model_missing(exc) is True
+    exc404 = httpx.HTTPStatusError(
+        "boom", request=httpx.Request("POST", "http://t"),
+        response=httpx.Response(404, text='{"error": {"message": "no such model"}}'),
+    )
+    assert _is_model_missing(exc404) is True
+    # 非 400/404 不读实体、直接 False
+    exc401 = httpx.HTTPStatusError(
+        "boom", request=httpx.Request("POST", "http://t"),
+        response=httpx.Response(401, text="unauthorized"),
+    )
+    assert _is_model_missing(exc401) is False
 
 
 def test_backoff_increases_and_capped():
@@ -313,5 +365,104 @@ async def test_failover_does_not_switch_after_partial_output(monkeypatch):
             async for _ in client.retry_stream_chat([], profile=profile):
                 pass
         assert calls["n"] == 1  # 部分输出 → 不切模型
+    finally:
+        await client._http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_failover_model_missing_via_streaming_404(monkeypatch):
+    """回归（截图 bug #2 端到端）：真协议路径的流式 404 实体判「模型不存在」→ 切备选。
+
+    此前未读实体使 _is_model_missing 抛 ResponseNotRead（裸消息直接到 executor
+    的「执行失败」），failover 永远走不到 —— 与 2026-10-01/10-03 两次线上报错一致。
+
+    Regression (screenshot bug #2, end-to-end): a streaming 404 body on the real
+    protocol path must trigger model-missing → switch. Previously the unread body
+    made _is_model_missing throw ResponseNotRead (the bare message surfaced as the
+    executor's 「执行失败」), so failover never engaged — matching the two live
+    failures on 2026-10-01 and 2026-10-03.
+    """
+    monkeypatch.setattr("core.llm.client.config.settings.agent.models_failover", ["model-b"], raising=False)
+    monkeypatch.setattr("core.llm.client._backoff", lambda attempt: 0)
+    calls = {"n": 0}
+
+    async def agen(data: bytes):
+        yield data
+
+    def handler(request):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            # 未读流式 404（与网络路径同语义）—— bytes 直构会预读、复现不了
+            # Unread streaming 404 (same semantics as the network path; bytes-backed
+            # responses are pre-read and cannot reproduce the bug).
+            return httpx.Response(
+                404,
+                content=agen(b'{"error": {"message": "The model `model-a` does not exist"}}'),
+                headers={"Content-Type": "application/json"},
+            )
+        return httpx.Response(200, content=_sse([
+            {"choices": [{"delta": {"content": "ok"}}]},
+        ]), headers={"Content-Type": "text/event-stream"})
+
+    profile = {"model": "model-a", "provider": "openai", "endpoint": "https://x", "api_key": "k"}
+    client = LlmClient()
+    client._http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        events = [e async for e in client.retry_stream_chat([], profile=profile)]
+        assert events[-1]["type"] == "done"
+        assert calls["n"] == 2          # 404 → 切 model-b 重打一次
+        assert events[0]["type"] == "content_delta"
+    finally:
+        await client._http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_permanent_http_error_logs_body(monkeypatch):
+    """回归（截图 bug #2 诊断面）：永久性 HTTP 错误落日志（状态码 + 实体摘要）。
+
+    此前 400/404 的上游正文从未进过任何日志 —— 报错被 ResponseNotRead 顶掉后
+    连真因都无从查起。修复后 executor 之外，agent.log 里必须能看到上游原话。
+
+    Regression (screenshot bug #2, diagnostics): a permanent HTTP error logs status
+    + entity snippet. Previously the 400/404 upstream body never reached any log,
+    so the true cause was untraceable.
+    """
+    logged: list[str] = []
+
+    class _CapLogger:
+        def warning(self, msg, *args):
+            logged.append(msg.format(*args) if args else str(msg))
+
+        def info(self, *args, **kwargs):
+            pass
+
+        def error(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr("core.llm.client.logger", _CapLogger())
+    monkeypatch.setattr("core.llm.client._backoff", lambda attempt: 0)
+
+    async def agen(data: bytes):
+        yield data
+
+    def handler(request):
+        # 正文不含 "model"（避免命中 failover 启发式），走永久错误直抛路径
+        # Body deliberately lacks "model" so the permanent-error path is taken.
+        return httpx.Response(
+            400,
+            content=agen(b'{"error": {"message": "Invalid request: messages field is malformed"}}'),
+            headers={"Content-Type": "application/json"},
+        )
+
+    profile = {"model": "m", "provider": "openai", "endpoint": "https://x", "api_key": "k"}
+    client = LlmClient()
+    client._http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        with pytest.raises(httpx.HTTPStatusError):
+            async for _ in client.retry_stream_chat([], profile=profile):
+                pass
+        joined = "\n".join(logged)
+        assert "400" in joined                     # 状态码在日志里
+        assert "messages field is malformed" in joined   # 上游真因实体在日志里
     finally:
         await client._http.aclose()
