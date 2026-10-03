@@ -12,6 +12,41 @@ from .common import _raise_for_status_read
 
 # ─────────────────────────── OpenAI 兼容 ───────────────────────────
 
+def _backfill_reasoning(messages: list) -> list:
+    """给缺 reasoning_content 键的 assistant 消息补空串（不改调用方原始 dict）。
+
+    思考模式契约（DeepSeek 实测复现 2026-10-03）：请求历史以 tool 结尾（ReAct 续跑）
+    时，每个 assistant 消息必须带 reasoning_content 键——缺任何一个即
+    HTTP 400 "The reasoning_content in the thinking mode must be passed back to the
+    API"；空串视为合法回传（mimo 同样接受）。尾随 user 会掩盖该强制，所以不能
+    依赖「没报错」推断不需要。
+
+    Backfill an empty reasoning_content onto assistant messages that lack the key
+    (never mutating the caller's dicts).
+
+    Thinking-mode contract (live-reproduced against DeepSeek on 2026-10-03): when the
+    history ends with a tool message (ReAct continuation), every assistant message must
+    carry reasoning_content — a missing key on any assistant → HTTP 400 "The
+    reasoning_content in the thinking mode must be passed back to the API"; an empty
+    string is an accepted passback (mimo accepts it too). A trailing user message masks
+    the enforcement, so "no error so far" must not be taken as "not required".
+
+    Args:
+        messages: 对话消息列表（原样保留，返回新列表）。Conversation messages (input
+            left untouched; a new list is returned).
+
+    Returns:
+        补齐后的消息列表。The list with the key backfilled.
+    """
+    out: list = []
+    for m in messages:
+        if isinstance(m, dict) and m.get("role") == "assistant" and "reasoning_content" not in m:
+            out.append({**m, "reasoning_content": ""})
+        else:
+            out.append(m)
+    return out
+
+
 def _build_payload(profile: dict, messages: list, tools=None) -> dict:
     """构建 OpenAI 兼容请求体（含 stream_options / max_tokens 字段兼容开关）。Build an OpenAI-compatible request payload (with stream_options / max_tokens field compatibility toggles).
 
@@ -26,7 +61,7 @@ def _build_payload(profile: dict, messages: list, tools=None) -> dict:
     compat = profile.get("compat") or {}
     payload: dict = {
         "model": profile.get("model", ""),
-        "messages": messages,
+        "messages": _backfill_reasoning(messages),
         "temperature": profile.get("temperature", 0.7),
         "stream": True,
     }

@@ -46,6 +46,46 @@ def test_build_payload_no_tools():
     assert "tool_choice" not in payload
 
 
+def test_build_payload_backfills_missing_reasoning_content():
+    """思考模式契约（DeepSeek 实测复现）：请求历史以 tool 结尾（ReAct 续跑）时，
+    每个 assistant 消息必须带 reasoning_content 键（无思考时为空串），缺任何一个 →
+    HTTP 400 "The reasoning_content in the thinking mode must be passed back to the API"。
+
+    Verifies the thinking-mode contract (reproduced live against DeepSeek): when the
+    message history ends with a tool message (ReAct continuation), every assistant
+    message must carry a reasoning_content key (empty string when there is none);
+    a missing key on any assistant → HTTP 400.
+    """
+    msgs = [
+        {"role": "system", "content": "s"},
+        {"role": "user", "content": "u"},
+        {"role": "assistant", "content": "", "tool_calls": [
+            {"id": "c0", "type": "function", "function": {"name": "t", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c0", "content": "ok"},
+    ]
+    payload = _build_payload({"model": "m"}, msgs)
+    assistants = [m for m in payload["messages"] if m.get("role") == "assistant"]
+    assert assistants and all("reasoning_content" in m for m in assistants)
+    assert assistants[0]["reasoning_content"] == ""
+
+
+def test_build_payload_backfill_keeps_existing_and_no_mutation():
+    """已有 reasoning_content 的原值保留；回填不修改调用方的原始消息 dict。
+    Verifies an existing reasoning_content value is preserved and the backfill does not
+    mutate the caller's original message dicts."""
+    msgs = [
+        {"role": "assistant", "content": "hi", "reasoning_content": "think"},
+        {"role": "user", "content": "u"},
+    ]
+    payload = _build_payload({"model": "m"}, msgs)
+    assert payload["messages"][0]["reasoning_content"] == "think"
+    assert msgs[0]["reasoning_content"] == "think"  # 原值不动
+
+    bare = [{"role": "assistant", "content": "hi"}]
+    _build_payload({"model": "m"}, bare)
+    assert "reasoning_content" not in bare[0]
+
+
 def test_accumulate_tool_calls_merges_deltas():
     """测试工具调用增量按索引合并名称与参数。Tests that tool-call deltas are merged by index for name and arguments."""
     buf = {}
