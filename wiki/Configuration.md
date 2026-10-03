@@ -9,10 +9,13 @@
 |---|---|---|
 | `config.yaml` | 非敏感结构（llm / voice / server / mcp / rag / agent / llm_client / tools / vendor_presets） | 由 `config.yaml.example` 复制；经 pydantic 校验，类型 / 范围 / 枚举写错启动即报错 |
 | `config.secrets.yaml` | 密钥（`llm/asr/tts.api_key`、`server.api_token`、`profiles.<name>` 每 profile 密钥） | 由 `config.secrets.yaml.example` 复制；**gitignored，不入库** |
-| 环境变量 | `LLM_API_KEY` / `ASR_API_KEY` / `TTS_API_KEY` / `SERVER_API_TOKEN` | 优先级最高，覆盖 secrets 文件 |
+| 环境变量 | `LLM_API_KEY` / `ASR_API_KEY` / `TTS_API_KEY` / `SERVER_API_TOKEN` | 段级优先级最高，覆盖 secrets 段默认（profile 级密钥见下） |
 
-**单 profile 密钥解析优先级**：`profile.api_key_env` 指向的环境变量 > 段全局环境变量 >
-`secrets.profiles[name]` > secrets 段默认 `api_key` > 旧 `config.yaml` 内联 `api_key`（弃用，仅迁移）。
+**单 profile 密钥解析优先级**：`profile.api_key_env` 指向的环境变量 > `secrets.profiles[name]`
+（profile 级密钥）> 段全局环境变量 > secrets 段默认 `api_key` > 旧 `config.yaml` 内联 `api_key`（弃用，仅迁移）。
+
+> profile 级密钥必须高于段级环境变量：段级 `LLM_API_KEY` 属于另一个服务商的 key，
+> 若先命中会遮蔽本 profile 在 `config.secrets.yaml` 的真 key → 401 Invalid API Key。
 
 > API 永不回显密钥值：设置页只报「已设置 / 未设置」；密钥写 `config.secrets.yaml` 或环境变量。
 

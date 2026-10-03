@@ -25,6 +25,22 @@ def test_profile_api_key_env_priority(monkeypatch):
     assert c._profile_api_key("llm", "deepseek", secrets, _mk_profile()) == "global"
 
 
+def test_profile_secrets_outrank_section_env(monkeypatch):
+    """profile 级 secrets 条目优先于段级全局环境变量（防回归：LLM_API_KEY 段级 env 曾
+    遮蔽 config.secrets.yaml 里 xiaomi-mimo-llm 的真 key，拿 deepseek key 打 mimo → 401）。
+    Verifies a profile-level secrets entry outranks the section-wide env var (regression:
+    LLM_API_KEY once shadowed the real xiaomi-mimo-llm key in config.secrets.yaml, sending
+    the deepseek key to mimo → 401).
+    """
+    monkeypatch.setenv("LLM_API_KEY", "deepseek-section-key")
+    monkeypatch.delenv("MIMO_API_KEY", raising=False)
+    secrets = {"llm": {"api_key": "sec_default", "profiles": {"xiaomi-mimo-llm": "mimo-profile-key"}}}
+    # 有 profile 级 secrets → 用它，不被段级 env 遮蔽
+    assert c._profile_api_key("llm", "xiaomi-mimo-llm", secrets, _mk_profile(api_key_env="MIMO_API_KEY")) == "mimo-profile-key"
+    # 无 profile 级 secrets 的 profile 仍走段级 env（deepseek 惯例：api_key_env='' → LLM_API_KEY）
+    assert c._profile_api_key("llm", "deepseek", secrets, _mk_profile(api_key_env="")) == "deepseek-section-key"
+
+
 def test_profile_api_key_secrets_fallback(monkeypatch):
     """验证无环境变量时按 secrets.profiles 再到段默认值回退。Verifies the fallback from secrets.profiles to the section default when no env var is set."""
     monkeypatch.delenv("LLM_API_KEY", raising=False)

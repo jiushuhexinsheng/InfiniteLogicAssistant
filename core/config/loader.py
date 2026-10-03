@@ -115,12 +115,20 @@ def _load_secrets() -> dict:
 
 def _profile_api_key(section: str, name: str, secrets: dict, profile: dict) -> str:
     """单个 profile 的 api_key 解析优先级：
-    profile.api_key_env 指向的 env > 段全局 env > secrets.profiles[name] > secrets 段默认
+    profile.api_key_env 指向的 env > secrets.profiles[name] > 段全局 env > secrets 段默认
     > 旧 config.yaml profile.api_key（弃用，仅迁移）
 
+    profile 级 secrets 必须排在段级 env 之前：段级 LLM_API_KEY 属于另一个 profile 的
+    key（如 deepseek），若先命中会遮蔽本 profile 在 config.secrets.yaml 的真 key，
+    导致拿错 key 打目标服务 → 401 Invalid API Key。
+
     Resolve one profile's api_key by priority: env pointed to by profile.api_key_env >
-    section-wide env > secrets.profiles[name] > section default in secrets > legacy
+    secrets.profiles[name] > section-wide env > section default in secrets > legacy
     config.yaml profile.api_key (deprecated, migration only).
+
+    Profile-level secrets must outrank the section-wide env: LLM_API_KEY belongs to a
+    different profile (e.g. deepseek); hitting it first shadows this profile's real key
+    in config.secrets.yaml and sends the wrong key to the target service → 401.
 
     Args:
         section: 段名（llm / asr / tts）。
@@ -139,12 +147,12 @@ def _profile_api_key(section: str, name: str, secrets: dict, profile: dict) -> s
     env_name = (profile.get("api_key_env") or "").strip()
     if env_name and os.environ.get(env_name):
         return os.environ[env_name]
-    env_val = os.environ.get(_ENV_KEY_MAP[section], "")
-    if env_val:
-        return env_val
     sec = secrets[section]
     if name in sec["profiles"]:
         return sec["profiles"][name]
+    env_val = os.environ.get(_ENV_KEY_MAP[section], "")
+    if env_val:
+        return env_val
     if sec["api_key"]:
         return sec["api_key"]
     legacy = profile.get("api_key")
