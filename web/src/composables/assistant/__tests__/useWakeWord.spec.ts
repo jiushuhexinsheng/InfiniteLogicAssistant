@@ -335,7 +335,55 @@ describe('handleSegment 分流', () => {
 
     expect(vi.mocked(api.wakeCheck)).not.toHaveBeenCalled()
     expect(vi.mocked(api.wakeDetect)).not.toHaveBeenCalled()
-    expect(vi.mocked(sendAnswer)).toHaveBeenCalledWith('', 'yes', 'voice')   // label 精确命中 → 回传 value（source=voice 供审计）
+    // label 精确命中 → 回传 value（source=voice 供审计）；第4参为段落捕获的问题快照。
+    expect(vi.mocked(sendAnswer)).toHaveBeenCalledWith(
+      '', 'yes', 'voice', expect.objectContaining({ text: '确认执行吗？' }),
+    )
+  })
+
+  /**
+   * **作答绑定段落捕获的问题快照**（修「回答和问题分开」）：云端转写要等数秒，期间
+   * pendingQuestion 可能被清（流错误/中止竞态）。段落入口已捕获 pq —— 转写完成后
+   * 必须把快照传给 sendAnswer，让 qid 与贴块以捕获时的问题为准；若让 sendAnswer
+   * 重读 store，清空后 qid 丢失 → 投递无 qid + 走独立用户气泡兜底 → 问答分开。
+   *
+   * The answer binds to the question snapshot captured at segment entry (fixes "the
+   * answer and the question are split apart"): cloud ASR takes seconds and
+   * pendingQuestion may be cleared meanwhile (stream error / abort race). The entry
+   * point already captured pq — after transcription it must hand that snapshot to
+   * sendAnswer so the qid and attach target the question as captured. If sendAnswer
+   * re-read the store instead, a cleared store loses the qid → a qid-less POST plus
+   * the standalone-user-bubble fallback → Q and A split apart. */
+  it('转写期间 pendingQuestion 被清，作答仍带捕获快照的 qid', async () => {
+    const hooks: { clear?: () => void } = {}
+    vi.doMock('../../../api', () => ({
+      api: {
+        wakeCheck: vi.fn(async () => ({ ok: true, hit: true, bypass: false })),
+        wakeDetect: vi.fn(async () => ({ ok: true, matched: false, command: '', text: '' })),
+        transcribe: vi.fn(async () => {
+          hooks.clear?.()   // 转写窗口内：流错误清空 pendingQuestion（竞态注入）。
+          return { ok: true, text: '允许本次' }
+        }),
+      },
+    }))
+    vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
+    const { sendAnswer } = await import('../useChat')
+    const store = await import('../store')
+    store.state.value = 'awaiting_answer'
+    store.pendingQuestion.value = {
+      text: '确认执行吗？', kind: 'choice',
+      options: [{ value: 'yes', label: '允许本次' }, { value: 'no', label: '拒绝' }],
+      qid: 'q_snap',
+    }
+    hooks.clear = () => { store.pendingQuestion.value = null }
+    const { handleSegment } = await import('../useWakeWord')
+    await handleSegment(new Blob(['x']))
+
+    expect(vi.mocked(sendAnswer)).toHaveBeenCalledWith(
+      '', 'yes', 'voice',
+      expect.objectContaining({ qid: 'q_snap', options: expect.any(Array) }),
+    )
   })
 })
 
@@ -851,7 +899,9 @@ describe('useWakeWord 等待窗口与收尾', () => {
       // to awaiting_answer and this segment is delivered as the answer.
       await mod.handleSegment(new Blob(['x']))
       expect(store.state.value).toBe('awaiting_answer')
-      expect(sendAnswer).toHaveBeenCalledWith('', 'yes', 'voice')
+      expect(sendAnswer).toHaveBeenCalledWith(
+        '', 'yes', 'voice', expect.objectContaining({ text: '确认执行吗？' }),
+      )
     } finally { vi.useRealTimers() }
   })
 

@@ -23,7 +23,7 @@ import {
   state, partialText, statusLine, wakeEnabled, vadConfig,
   pendingQuestion, failWake, wakeKeywords, wakeMode,
 } from '../store'
-import type { AsstState } from '../store'
+import type { AsstState, PendingQuestion } from '../store'
 import { createSegmentRecorder, type SegmentRecorder } from '../useSegmentRecorder'
 import { matchOption } from '../answerMatch'
 import { detectWake, enterWakeCooldown, isWakeCooldown } from '../wakeMatch'
@@ -45,7 +45,7 @@ interface OrchestratorApi {
 interface OrchestratorDeps {
   api: OrchestratorApi
   sendText: (text: string) => void
-  sendAnswer: (text: string, choice?: string, source?: string) => Promise<void> | void
+  sendAnswer: (text: string, choice?: string, source?: string, question?: PendingQuestion | null) => Promise<void> | void
   speaking: Ref<boolean>
   /** 停止播报（barge-in 命中时掐断 TTS；由 useTts 注入，缺省无操作）。
    *  Stop playback (cut the TTS on a barge-in hit; injected by useTts, no-op if absent). */
@@ -325,7 +325,12 @@ async function processSegment(blob: Blob) {
     failures = 0
     const hit = matchOption(text, pq.options)
     clearAnswerTimer()          // 已作答：作废陈旧超时，免得 8 秒后把状态踢进待机
-    await deps.sendAnswer(hit ? '' : text, hit?.value, 'voice')
+    // 传段落捕获的问题快照：云端转写数秒内 pendingQuestion 可能被清（流错误竞态），
+    // sendAnswer 内部不得重读 store（read-after-await 会让 qid 丢失 → 问答分开）。
+    // Pass the question snapshot captured at segment start: during the multi-second
+    // ASR await pendingQuestion may be cleared (stream-error race), and sendAnswer
+    // must not re-read the store (that read-after-await loses the qid → Q/A split).
+    await deps.sendAnswer(hit ? '' : text, hit?.value, 'voice', pq)
     return
   }
 
@@ -541,7 +546,8 @@ export function handleLocalResult(text: string) {
     if (state.value === 'awaiting_answer') armAnswerTimer()
     const hit = matchOption(trimmed, pq.options)
     clearAnswerTimer()
-    deps.sendAnswer(hit ? '' : trimmed, hit?.value, 'voice')
+    // 同步路径也传快照（与云端转写路径一致的绑定语义）。Snapshot on the sync path too (same binding semantics as the ASR path).
+    deps.sendAnswer(hit ? '' : trimmed, hit?.value, 'voice', pq)
     return
   }
 

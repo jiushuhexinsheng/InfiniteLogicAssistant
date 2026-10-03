@@ -170,6 +170,41 @@ describe('useChat 问答入聊天记录', () => {
     await sendAnswer('桌面')
     expect(messages.value.some((m) => m.text === '桌面')).toBe(false)
   })
+
+  /** 语音作答快照绑定（修「回答和问题分开」）：云端转写要等数秒，期间 pendingQuestion
+   *  可能被清（流错误/中止/切会话）—— 作答必须绑定段落捕获时的问题快照：qid 照常投递、
+   *  答案照常贴进问题卡，不得因 store 已空而走独立用户气泡兜底（那正是「问答分开」）。
+   *
+   *  Voice-answer snapshot binding (fixes "the answer and the question are split
+   *  apart"): cloud ASR takes seconds, and pendingQuestion may be cleared meanwhile
+   *  (stream error / abort / session switch). The answer must bind to the question
+   *  snapshot captured when the segment started: the qid is still delivered and the
+   *  answer still attaches inside the question's card — an empty store must not send
+   *  it down the standalone-user-bubble fallback (which is exactly the Q/A split). */
+  it('携带问题快照时即使 pendingQuestion 已清也投递 qid 并贴块', async () => {
+    currentSessionId.value = 's1'
+    const q = makeBlock('question', {
+      qid: 'q_1', question: '目标位置？', kind: 'text', options: [], status: 'pending',
+    })
+    messages.value = [
+      { id: 'm1', role: 'user', text: '做事', blocks: [], timestamp: Date.now() },
+      { id: 'm2', role: 'assistant', text: '', blocks: [q], timestamp: Date.now() },
+    ]
+    // 段落捕获快照之后、转写期间流错误清空了 pendingQuestion（read-after-await 竞态）。
+    // Between snapshot capture and ASR completion, a stream error cleared pendingQuestion.
+    pendingQuestion.value = null
+    await sendAnswer('桌面', undefined, 'voice', {
+      text: '目标位置？', kind: 'text', options: [], qid: 'q_1',
+    })
+    expect(api.answer).toHaveBeenCalledWith(
+      's1', '桌面', undefined, expect.objectContaining({ qid: 'q_1', source: 'voice' }),
+    )
+    expect(messages.value).toHaveLength(2)            // 不新增用户消息（不分开）
+    const blocks = messages.value[1].blocks!
+    expect(blocks.map((b) => b.type)).toEqual(['question', 'answer'])
+    expect(blocks[1].payload).toMatchObject({ qid: 'q_1', text: '桌面', source: 'voice' })
+    expect(pendingQuestion.value).toBeNull()
+  })
 })
 
 /** 消息排队与作答转发（docs/designs/06 批3）：回合中再发入队、收束连发、
