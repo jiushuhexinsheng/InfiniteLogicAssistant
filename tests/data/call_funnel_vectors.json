@@ -1,0 +1,27 @@
+{
+  "quick_screen": {
+    "positives": [
+      { "text": "帮我打开记事本", "expect": null },
+      { "text": "今天天气怎么样", "expect": null },
+      { "text": "查一下明天的航班", "expect": null },
+      { "text": "你真棒", "expect": null },
+      { "text": "把音量调到五十", "expect": null },
+      { "text": "what time is it", "expect": null }
+    ],
+    "negatives": [
+      { "text": "", "expect": "empty" },
+      { "text": "。", "expect": "empty" },
+      { "text": "嗯", "expect": "filler" },
+      { "text": "啊", "expect": "filler" },
+      { "text": "那个", "expect": "filler" },
+      { "text": "呃", "expect": "filler" },
+      { "text": "a", "expect": "too_short" }
+    ]
+  },
+  "routing": [
+    { "text": "帮我打开记事本", "hit": true },
+    { "text": "今天天气怎么样", "hit": true },
+    { "text": "他明天就到", "hit": false },
+    { "text": "嗯", "hit": false }
+  ]
+}

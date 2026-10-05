@@ -61,3 +61,29 @@ def screen_l0(meta: SegmentMeta, *, duration_s: float, rms: float,
     if not meta.tab_focused and not meta.in_open_window:
         return "unfocused"
     return None
+
+
+# 语气词/填充词白噪：命中即丢（对 AI 说不会以它们独立成句）。
+# Filler words: dropped outright (nobody addresses an assistant with these alone).
+_FILLERS = {"嗯", "啊", "呃", "哦", "额", "嗯嗯", "哦哦", "啊啊", "那个", "这个", "呃呃", "呵呵", "哈哈"}
+
+
+def quick_screen(text: str) -> str | None:
+    """L1 文本快筛（本地转写之后、上云之前）：返回丢弃原因，`None` = 放行。
+
+    刻意保守：只杀空转写/纯标点/填充词/单字符——「是不是对助手说的」语义判断归 L2，
+    L1 越权会误杀正常指令（漏报比误传贵）。
+
+    L1 text screen (after local transcription, before any cloud call): drop reason or
+    ``None``. Deliberately conservative — only empty/punctuation/filler/single-char.
+    "Is this addressed to the assistant" is L2's job; over-eaching here drops real
+    commands (a miss costs more than an extra cloud call).
+    """
+    t = text.strip().strip("。！？!?，,、 ").strip()
+    if not t:
+        return "empty"
+    if t in _FILLERS:
+        return "filler"
+    if len(t) < 2:
+        return "too_short"
+    return None
