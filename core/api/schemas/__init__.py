@@ -95,6 +95,8 @@ from .tools import (
 )
 from .voice import (
     CallConfig,
+    CallSegmentResponse,
+    CallSessionResponse,
     ConfigResponse,
     VadConfig,
     WakeCheckResponse,
@@ -107,6 +109,8 @@ __all__ = [
     "AgentConfigOut",
     "ApiResponse",
     "CallConfig",
+    "CallSegmentResponse",
+    "CallSessionResponse",
     "CatalogResponse",
     "ConfigFullResponse",
     "ConfigHealthOut",

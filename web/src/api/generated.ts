@@ -290,6 +290,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/voice/call/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Call Start
+         * @description 进入通话模式：建立会话（后续段落才有资格进漏斗）。Enter call mode.
+         */
+        post: operations["call_start_api_voice_call_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/call/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Call Stop
+         * @description 退出通话模式。Exit call mode.
+         */
+        post: operations["call_stop_api_voice_call_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/call/segment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Call Segment
+         * @description 段落进漏斗：L0 规则 → L1 本地 → L2 云端精判；hit 才由前端送编排。
+         *
+         *     Segment into the funnel; only a hit is sent to the orchestrator by the frontend.
+         */
+        post: operations["call_segment_api_voice_call_segment_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tools": {
         parameters: {
             query?: never;
@@ -923,6 +985,59 @@ export interface components {
              * @default models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
              */
             local_asr_model: string;
+        };
+        /**
+         * CallSegmentResponse
+         * @description 通话段落漏斗响应。Call segment funnel response.
+         *
+         *     hit=True 才把 text 当指令送编排；stage/reason 供 audit 对照（前端不读）。
+         */
+        CallSegmentResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Hit
+             * @default false
+             */
+            hit: boolean;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+            /**
+             * Stage
+             * @default
+             */
+            stage: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+        };
+        /**
+         * CallSessionResponse
+         * @description 通话会话 start/stop 响应。Call session start/stop response.
+         */
+        CallSessionResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Open Window S
+             * @default 0
+             */
+            open_window_s: number;
         };
         /**
          * CatalogResponse
@@ -2591,6 +2706,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    call_start_api_voice_call_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallSessionResponse"];
+                };
+            };
+        };
+    };
+    call_stop_api_voice_call_stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallSessionResponse"];
+                };
+            };
+        };
+    };
+    call_segment_api_voice_call_segment_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CallSegmentResponse"];
                 };
             };
         };

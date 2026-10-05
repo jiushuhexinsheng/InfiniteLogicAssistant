@@ -1192,6 +1192,7 @@ def test_voice_transcribe_writes_audit(client, monkeypatch):
 _AUDIO_UPLOAD_ENDPOINTS = {
     "/api/voice/wake": "wake",
     "/api/voice/transcribe": "transcribe",
+    "/api/voice/call/segment": "call-segment",
 }
 
 # 明确**不**携带音频、因而不记上传审计的 `/api/voice/*` 端点。逐条附理由，免得日后被当成漏网。
@@ -1206,6 +1207,10 @@ _NON_UPLOAD_VOICE_ENDPOINTS = {
     "/api/voice/resume": "断线重连只回放缓冲区里的 SSE 事件，请求体只有 session_id/last_seq，"
                          "无音频、无 ASR。Reconnect replays buffered SSE events only; the body is "
                          "session_id/last_seq — no audio, no ASR.",
+    "/api/voice/call/start": "只建/刷新通话会话态（内存 dataclass），请求体为空、无音频、无 ASR。"
+                             "Only creates/refreshes the in-memory call session; empty body, no audio, no ASR.",
+    "/api/voice/call/stop": "只清通话会话态，请求体为空、无音频、无 ASR。"
+                            "Only clears the call session; empty body, no audio, no ASR.",
 }
 
 
@@ -1276,10 +1281,32 @@ def test_audio_upload_audit_prefix_is_shared(client, monkeypatch):
 
     monkeypatch.setattr(voice_pkg, "get_asr", lambda: _Asr())
 
+    # call/segment 的审计命名空间在 core.api.voice.call（不在 wake），且它要过 L0
+    # （会话 + 焦点/窗口）才会上云 —— 把审计收进 lines、执行件换成零网络假件、开会话。
+    import core.api.voice.call as voice_call
+    monkeypatch.setattr(voice_call, "audit", lambda msg: lines.append(msg))
+    monkeypatch.setattr(voice_call, "_local_transcribe", None)  # 跳过 L1（本地模型/Smart Turn）
+
+    async def _fake_judge(t, r, relax):
+        return "command"
+    monkeypatch.setattr(voice_call, "_judge", _fake_judge)
+
     # ② 每个上传端点恰好一行。Exactly one line per upload endpoint.
+    # call/segment 服务端校验 wav（时长/RMS）且要求焦点，单独给它合法音频体。
+    import base64, io, math, struct, wave
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
+        w.writeframes(b"".join(struct.pack("<h", int(8000 * math.sin(2 * math.pi * 220 * i / 16000)))
+                               for i in range(16000)))
+    wav_b64 = base64.b64encode(buf.getvalue()).decode()
+    assert client.post("/api/voice/call/start").json()["ok"] is True  # 开会话：段落才进漏斗
     for path in _AUDIO_UPLOAD_ENDPOINTS:
-        resp = client.post(path, json={"audio_base64": "AAAA"})
+        body = ({"audio_base64": wav_b64, "tab_focused": True}
+                if path == "/api/voice/call/segment" else {"audio_base64": "AAAA"})
+        resp = client.post(path, json=body)
         assert resp.status_code == 200 and resp.json()["ok"] is True, (path, resp.text)
+    voice_call.reset_session_state()
 
     uploads = [l for l in lines if l.startswith("audio-upload via=")]
     assert len(uploads) == len(_AUDIO_UPLOAD_ENDPOINTS), uploads

@@ -108,6 +108,23 @@ class ConfigResponse(ApiResponse):
     vad: VadConfig
     call: CallConfig
 
+class CallSessionResponse(ApiResponse):
+    """通话会话 start/stop 响应。Call session start/stop response."""
+
+    open_window_s: float = 0.0
+
+
+class CallSegmentResponse(ApiResponse):
+    """通话段落漏斗响应。Call segment funnel response.
+
+    hit=True 才把 text 当指令送编排；stage/reason 供 audit 对照（前端不读）。
+    """
+
+    hit: bool = False
+    text: str = ""
+    stage: str = ""
+    reason: str = ""
+
 class WakeResponse(ApiResponse):
     """唤醒检测响应。
 
