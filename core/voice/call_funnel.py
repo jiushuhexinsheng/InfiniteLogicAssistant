@@ -1,18 +1,24 @@
 # -*- coding: utf-8 -*-
-"""通话模式判定漏斗 — L0 确定性粗筛（本级零模型、零云端）。
+"""通话模式判定漏斗 — L0 确定性粗筛（零模型、零云端）+ L2 云端意图闸门。
 
 L0 是纯规则：会话态、回声、能量/时长、焦点/开放窗口。任一命中即给出丢弃原因
-（reason 字符串，直接进 audit 行），`None` 表示放行进 L1。本模块不 import config
-也不做 IO —— 配置值与依赖全部由调用方注入，便于逐条测试。
+（reason 字符串，直接进 audit 行），`None` 表示放行进 L1；L1 文本快筛同为纯规则。
+模块级不 import config、不做 IO —— 配置值与依赖由调用方注入，便于逐条测试。
+L2 的 ``judge_call_intent`` 是唯一的云端调用：config/LLM 仅在函数内取，
+``llm`` 可注入假件，任何失败兜底 ``"unsure"``（宁可漏一判，不可断链路）。
 
 Stage 0 of the call-mode judgement funnel (deterministic screen, zero models, zero
 cloud). Pure rules: session state, echo, energy/duration, focus/open-window. A hit
 returns the drop reason (goes straight into the audit line); ``None`` means proceed
-to L1. No config imports, no IO — callers inject everything, so every rule is unit
-testable.
+to L1; L1 text screen is pure rules too. The module level imports no config and does
+no IO — callers inject everything, so every rule is unit testable. L2's
+``judge_call_intent`` is the only cloud call here: config/LLM are taken inside the
+function, ``llm`` is injectable for tests, and any failure falls back to
+``"unsure"`` (better a missed verdict than a broken pipeline).
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 
@@ -87,3 +93,61 @@ def quick_screen(text: str) -> str | None:
     if len(t) < 2:
         return "too_short"
     return None
+
+
+# ── L2 云端意图闸门（四分类）/ L2 cloud intent gate (four-way) ──
+_CALL_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "judge",
+        "description": "判断转写文本是否是对语音助手说的",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "verdict": {"type": "string",
+                            "enum": ["command", "chitchat", "bystander", "unsure"]},
+                "note": {"type": "string", "description": "一句话理由"},
+            },
+            "required": ["verdict", "note"],
+        },
+    },
+}
+
+_VALID_VERDICTS = ("command", "chitchat", "bystander", "unsure")
+
+
+async def judge_call_intent(text: str, recent: str, *, relax: bool,
+                            llm: Callable | None = None) -> str:
+    """L2 意图闸门：四分类判定「是否对助手说」。llm 注入便于测试；失败兜底 unsure。
+
+    L2 addressee gate (four-way). ``llm`` is injectable for tests; any failure falls
+    back to "unsure" (a miss that the relax re-run can still rescue).
+    """
+    from core import config
+    from core.llm.client import get_llm_client
+    from core.logger import logger
+    from core.prompts import CALL_GATE_RELAX_NOTE, CALL_GATE_SYSTEM
+
+    system = CALL_GATE_SYSTEM + (CALL_GATE_RELAX_NOTE if relax else "")
+    user = f"转写：{text}"
+    if recent:
+        user += f"\n最近片段：{recent}"
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    call = llm or get_llm_client().retry_stream_chat
+    try:
+        async for evt in call(messages, tools=[_CALL_TOOL],
+                              temperature=config.settings.agent.structured_temperature):
+            if evt["type"] == "done":
+                msg = evt["message"]
+                tc = (msg.get("tool_calls") or [{}])[0]
+                raw = tc.get("function", {}).get("arguments") or "{}"
+                import json as _json
+                data = _json.loads(raw) if isinstance(raw, str) else raw
+                v = data.get("verdict")
+                v = v if v in _VALID_VERDICTS else "unsure"
+                logger.info("call-gate: {} → {}{}", text[:40], v, " (relax)" if relax else "")
+                return v
+        return "unsure"
+    except Exception as e:
+        logger.warning("call-gate 失败兜底 unsure: {}", e)
+        return "unsure"
