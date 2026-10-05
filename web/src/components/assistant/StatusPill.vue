@@ -1,7 +1,7 @@
 <template>
-  <!-- 状态胶囊：贴在悬浮球内侧，把「双击唤醒 / 聆听中…」这类状态带到球边上。
+  <!-- 状态胶囊：贴在悬浮球内侧，把「双击开通话 / 通话聆听中」这类状态带到球边上。
        Status pill: sits on the ball's inner side, carrying copy such as
-       "双击唤醒" / "聆听中…" right next to the ball. -->
+       "双击开通话" / "通话聆听中" right next to the ball. -->
   <div
     class="status-pill"
     :class="[`tail-${side}`, { hidden: !visible }]"
@@ -28,6 +28,7 @@
 import { computed } from 'vue'
 import Icon from '../Icon.vue'
 import { resolveStateLabel } from '../../composables/useAssistantVisuals'
+import { callActive } from '../../composables/assistant/store'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
 import type { AsstState } from '../../composables/useAssistant'
 
@@ -56,8 +57,15 @@ const LABEL_FALLBACK: Partial<Record<AsstState, string>> = { responding: '回复
 /** 需要声波条的状态：正在收音的三种。States that show sound bars (the mic is live). */
 const EQ_STATES: AsstState[] = ['listening', 'recording', 'awaiting_answer']
 
-/** 胶囊文案。Pill copy. */
-const label = computed(() => resolveStateLabel(props.visual, props.wakeHint) || LABEL_FALLBACK[props.state] || '')
+/** 胶囊文案。Pill copy.
+ *  通话激活时聆听态改说「通话聆听中」（R2）：这时不再需要唤醒词提示，且 spec/T14 验收
+ *  按这句断言通话场景。
+ *  With a call active the listening state reads 「通话聆听中」 (R2): the wake hint is
+ *  irrelevant then, and both the spec copy and T14's acceptance assert on this exact phrase. */
+const label = computed(() => {
+  if (callActive.value && props.state === 'listening') return '通话聆听中'
+  return resolveStateLabel(props.visual, props.wakeHint) || LABEL_FALLBACK[props.state] || ''
+})
 
 /** 是否显示声波条。Whether the sound bars are shown. */
 const showEq = computed(() => EQ_STATES.includes(props.state))

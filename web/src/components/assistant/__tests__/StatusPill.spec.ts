@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils'
 import type { VueWrapper } from '@vue/test-utils'
 import StatusPill from '../StatusPill.vue'
 import { STATE_VISUALS } from '../../../composables/useAssistantVisuals'
+import { callActive } from '../../../composables/assistant/store'
 import type { AsstState } from '../../../composables/useAssistant'
 
 const WAKE_HINT = '「衍衡」或「洛吉斯」'
@@ -39,14 +40,34 @@ function pillOf(w: VueWrapper) {
  * The pill exists to say what the user can do right now, so every state must render copy.
  */
 describe('StatusPill 状态文案', () => {
-  it('待机显示「双击唤醒」', () => {
-    expect(mountPill('idle').text()).toContain('双击唤醒')
+  it('待机显示「双击开通话」', () => {
+    expect(mountPill('idle').text()).toContain('双击开通话')
   })
 
   it('聆听显示状态与唤醒词', () => {
     const text = mountPill('listening').text()
     expect(text).toContain('聆听中')
     expect(text).toContain(WAKE_HINT)
+  })
+
+  /**
+   * R2（计划缺口补充，台账裁决）：通话激活时 listening 胶囊必须显示「通话聆听中」——
+   * spec 文案要求，且 T14 验收断言依赖它（缺了 verify:voice 通话场景恒 INCONCLUSIVE）。
+   * callActive 是 store 单例，与 callMode.spec 同模式直接注入、finally 复位防泄漏。
+   *
+   * R2 (plan-gap supplement, ledger ruling): with a call active the listening pill must read
+   * 「通话聆听中」 — required by the spec copy and relied on by T14's acceptance assertion
+   * (without it verify:voice's call scenario is INCONCLUSIVE forever). `callActive` is the
+   * store singleton, injected directly in the callMode.spec style and reset in `finally`
+   * so it cannot leak into sibling cases.
+   */
+  it('通话激活时聆听态胶囊显示「通话聆听中」', () => {
+    callActive.value = true
+    try {
+      expect(mountPill('listening').text()).toContain('通话聆听中')
+    } finally {
+      callActive.value = false
+    }
   })
 
   /**

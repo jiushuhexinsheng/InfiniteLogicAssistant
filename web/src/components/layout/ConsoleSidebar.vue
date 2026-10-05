@@ -25,8 +25,8 @@
         <UiStatusDot :color="wakeEnabled ? '#34d399' : '#64748b'" :size="7" :glow="wakeEnabled ? 8 : 0" />
         <div class="sb-foot-txt">
           <b>{{ wakeEnabled ? '语音唤醒已开启' : '语音唤醒未开启' }}</b>
-          <!-- 双击悬浮球切换语音唤醒。Double-click the floating ball to toggle voice wake. -->
-          <span class="mono">双击悬浮球切换</span>
+          <!-- 双击悬浮球开通话（唤醒入口在球上的 mic 徽章）。Double-click the floating ball to start a call (wake stays on the ball's mic badge). -->
+          <span class="mono">双击悬浮球开通话</span>
         </div>
       </div>
       <UiButton variant="secondary" size="sm" hover="danger" block @click="emit('clear')">清空对话</UiButton>

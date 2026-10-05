@@ -19,8 +19,8 @@
         @dismiss="miniDismiss = true"
       />
 
-      <!-- 状态胶囊：把「双击唤醒 / 聆听中…」带到球边上，面板展开时淡出让位。
-           Status pill: carries copy such as "双击唤醒 / 聆听中…" beside the ball, fading out
+      <!-- 状态胶囊：把「双击开通话 / 通话聆听中」带到球边上，面板展开时淡出让位。
+           Status pill: carries copy such as "双击开通话 / 通话聆听中" beside the ball, fading out
            while the panel is expanded. -->
       <StatusPill
         :visual="asst.visual.value"
@@ -150,9 +150,9 @@ function onBallClick() {
   messageDot.value = false
 }
 
-/** 双击悬浮球：切换语音唤醒。Double-click float ball: toggle voice wake. */
+/** 双击悬浮球：切换通话模式（免唤醒持续聆听）。Double-click float ball: toggle call mode. */
 function onBallDblClick() {
-  props.asst.toggleWake()
+  props.asst.toggleCall()
   messageDot.value = false
 }
 

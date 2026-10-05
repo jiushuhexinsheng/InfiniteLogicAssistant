@@ -7,6 +7,7 @@ import {
 } from './assistant/store'
 import { sendText, retryTool, cancelTool, abortChat, sendAnswer, forkAt, sendEdited, regenerate, outboxCount, clearQueued } from './assistant/useChat'
 import { toggleWake, stopWake } from './assistant/useWakeWord'
+import { toggleCall } from './assistant/callMode'
 
 /** 类型沿用原模块路径导出，避免改动各组件 import。Types are re-exported from the original module path to avoid changing component imports. */
 export type { AsstState, ToolCall, ChatMessage } from './assistant/store'
@@ -70,6 +71,9 @@ export function useAssistant() {
     init,
     destroy,
     toggleWake,
+    // 双击悬浮球入口：通话开关（唤醒仍走徽章 toggleWake，R7）。
+    // Double-click float-ball entry: call toggle (wake stays on the badge's toggleWake, R7).
+    toggleCall,
     clearMessages,
     sendText,
     sendAnswer,

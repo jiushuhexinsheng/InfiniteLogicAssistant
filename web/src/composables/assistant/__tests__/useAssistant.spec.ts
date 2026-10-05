@@ -47,3 +47,21 @@ describe('useAssistant init 透传配置', () => {
     expect(callConfig.smart_turn_enabled).toBe(true)
   })
 })
+
+/** Task 11 接线：双击悬浮球改走通话开关 —— useAssistant 必须把 toggleCall 暴露给
+ *  FloatingAssistant（与 toggleWake 同模式；徽章仍走 toggleWake = R7）。
+ *  Task 11 wiring: the double-click now toggles call — useAssistant must expose toggleCall
+ *  to FloatingAssistant (same pattern as toggleWake; the badge keeps toggleWake = R7). */
+describe('useAssistant 通话入口接线', () => {
+  beforeEach(() => { vi.resetModules() })
+
+  it('返回对象暴露 toggleCall（双击悬浮球入口）', async () => {
+    const { useAssistant } = await import('../../useAssistant')
+    expect(typeof useAssistant().toggleCall).toBe('function')
+  })
+
+  it('唤醒入口仍在：toggleWake 照常暴露（R7 徽章接线不动）', async () => {
+    const { useAssistant } = await import('../../useAssistant')
+    expect(typeof useAssistant().toggleWake).toBe('function')
+  })
+})
