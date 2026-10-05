@@ -347,18 +347,25 @@ async function processSegment(blob: Blob) {
   // Call mode: after the answer branch, ahead of every wake semantic. The segment goes
   // straight into the funnel; only a hit claims the token and sends to the orchestrator,
   // misses are dropped silently (the backend audits).
-  if (callActive.value && deps.api.callSegment) {
-    const token = turnToken
-    const r = await deps.api.callSegment(blob, {
-      tabFocused: typeof document !== 'undefined' && document.hasFocus(),
-      inOpenWindow: inOpenWindow(),
-    }).catch((): { ok?: boolean; hit?: boolean; text?: string; stage?: string; reason?: string } => ({ ok: false }))
-    if (token !== turnToken) return   // await 期间有更新交互认领 → 本段作废
-    if (r?.ok && r.hit && r.text) {
-      turnToken++
-      markTurnEnded()
-      if (state.value === 'recording') state.value = 'listening'
-      deps.sendText(r.text)
+  if (callActive.value) {
+    // 终审 M1：通话态无论 callSegment 缺不缺成员都不落唤醒分支。生产里成员恒在 ——
+    // 缺成员只可能来自测试假件，旧写法 `callActive && callSegment` 会把段落掩蔽进唤醒链
+    // （假件掩蔽路由语义）。Final-review M1: inside a call never fall into the wake branch,
+    // member or no member. The member is always present in production; absence is
+    // test-double territory, and `callActive && callSegment` let a double route into wake.
+    if (deps.api.callSegment) {
+      const token = turnToken
+      const r = await deps.api.callSegment(blob, {
+        tabFocused: typeof document !== 'undefined' && document.hasFocus(),
+        inOpenWindow: inOpenWindow(),
+      }).catch((): { ok?: boolean; hit?: boolean; text?: string; stage?: string; reason?: string } => ({ ok: false }))
+      if (token !== turnToken) return   // await 期间有更新交互认领 → 本段作废
+      if (r?.ok && r.hit && r.text) {
+        turnToken++
+        markTurnEnded()
+        if (state.value === 'recording') state.value = 'listening'
+        deps.sendText(r.text)
+      }
     }
     return
   }
@@ -618,6 +625,15 @@ export function handleLocalResult(text: string) {
     return
   }
 
+  // 终审 Important #1（守卫半）：通话态 KWS 闸门暂停（spec）——不判唤醒词。
+  // webspeech 分支在通话期不被 acquireAndStart 选择，此处钉住即便有迟到的 final result
+  // 也不会触发 detectWake；作答/指令/续聊通道在其上不受影响。
+  // Final-review Important #1 (guard half): the KWS gate pauses during a call (spec) — no
+  // wake judging. acquireAndStart no longer selects the webspeech branch mid-call; this
+  // pins that even a late final result cannot reach detectWake. The answer/command/
+  // followup channels above are unaffected.
+  if (callActive.value) return
+
   const r = detectWake(trimmed, wakeKeywords.value)
   if (!r.matched) return
   if (r.command) { turnToken++; enterWakeCooldown(); deps.sendText(r.command); return }
@@ -673,7 +689,17 @@ type AcquireOutcome = 'ok' | 'mic-error' | 'aborted'
 async function acquireAndStart(): Promise<AcquireOutcome> {
   const mode = wakeMode.value
 
-  if (mode === 'webspeech') {
+  // 终审 Important #1：webspeech 分支只在非通话态选路。通话期强制 segmenter —— 否则
+  // WebSpeech 的 final result 只进 handleLocalResult，永不产生 call/segment，免唤醒说话
+  // 被静默丢弃（且 detectWake 照常执行，违反「通话激活时 KWS 闸门暂停」）。segmenter 路
+  // 不依赖 KWS 模型（漏斗判在后端），webspeech 用户可用；退出通话自然回落 webspeech。
+  // Final-review Important #1: the webspeech branch is selected only outside a call. During
+  // a call the segmenter path is forced — otherwise a WebSpeech final result only reaches
+  // handleLocalResult, never produces call/segment, and wake-free speech is silently lost
+  // (detectWake also keeps running, violating "the KWS gate pauses while a call is active").
+  // The segmenter path needs no KWS model (the funnel judges server-side), so it works for
+  // webspeech users; exiting the call falls back to webspeech naturally.
+  if (mode === 'webspeech' && !callActive.value) {
     const wsp = getWebSpeechProvider()
     if (wsp.isRunning()) return 'ok'
     if (!wsp.isAvailable()) {

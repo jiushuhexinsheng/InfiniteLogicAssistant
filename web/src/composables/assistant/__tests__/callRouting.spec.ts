@@ -83,4 +83,18 @@ describe('通话段路由', () => {
     expect(wakeCheck).not.toHaveBeenCalled()
     expect(callSegment).toHaveBeenCalled()
   })
+
+  it('M1：callActive 且缺 callSegment → 仍不落唤醒链（静默丢段）', async () => {
+    // 生产里 callSegment 恒在；缺成员只可能来自测试假件 —— 旧写法 `callActive && callSegment`
+    // 会让假件把段落掩蔽进唤醒分支。修后通话态无论缺不缺成员都不走唤醒分支。
+    const wakeCheck = vi.fn(async () => ({ ok: true, hit: true, bypass: false }))
+    const { vadConfig, wakeMode } = await import('../store')
+    vadConfig.upload_throttle_ms = 0   // 去掉节流：若真落唤醒链必达 wakeCheck（断言才有效）
+    wakeMode.value = 'auto'
+    wire({ callSegment: undefined, wakeCheck })
+    await handleSegment(new Blob([new Uint8Array([1])]))
+    expect(callSegment).not.toHaveBeenCalled()   // 成员缺 → 不调
+    expect(wakeCheck).not.toHaveBeenCalled()     // 但也绝不落唤醒分支
+    expect(sendText).not.toHaveBeenCalled()
+  })
 })

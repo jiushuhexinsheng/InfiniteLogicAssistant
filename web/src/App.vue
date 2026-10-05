@@ -48,8 +48,8 @@ onMounted(async () => {
   console.info('%c[ILA] build 2026-09-29-r2', 'color:#22d3ee;font-weight:bold')
   // 初始化配置 / Initialize configuration
   await app.initConfig()
-  // 初始化助手，传入唤醒词和 VAD 配置
-  // Initialize assistant, pass wake word and VAD config
+  // 初始化助手，传入唤醒词、VAD 和通话模式配置
+  // Initialize assistant, pass wake word, VAD and call-mode config
   asst.init({
     wake: app.config.value?.wake_word,
     vad: app.config.value?.vad,

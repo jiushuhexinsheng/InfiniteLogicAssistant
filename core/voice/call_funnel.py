@@ -5,7 +5,8 @@ L0 是纯规则：会话态、回声、能量/时长、焦点/开放窗口。任
 （reason 字符串，直接进 audit 行），`None` 表示放行进 L1；L1 文本快筛同为纯规则。
 模块级不 import config —— 配置值与依赖由调用方注入，便于逐条测试；唯一的 IO 是
 逐级决策的 audit 行（``core.logger.audit``）。
-L2 的 ``judge_call_intent`` 是唯一的云端调用：config/LLM 仅在函数内取，
+本模块有两处云端调用：run_funnel 的 ``cloud_transcribe``（云端精转写）与 L2 的
+``judge_call_intent``（意图闸门）。judge 的 config/LLM 仅在函数内取，
 ``llm`` 可注入假件，任何失败兜底 ``"unsure"``（宁可漏一判，不可断链路）。
 
 Stage 0 of the call-mode judgement funnel (deterministic screen, zero models, zero
@@ -13,10 +14,11 @@ cloud). Pure rules: session state, echo, energy/duration, focus/open-window. A h
 returns the drop reason (goes straight into the audit line); ``None`` means proceed
 to L1; L1 text screen is pure rules too. The module level imports no config —
 callers inject everything, so every rule is unit testable; the only IO is the
-per-stage audit line (``core.logger.audit``). L2's ``judge_call_intent`` is the
-only cloud call here: config/LLM are taken inside the function, ``llm`` is
-injectable for tests, and any failure falls back to ``"unsure"`` (better a missed
-verdict than a broken pipeline).
+per-stage audit line (``core.logger.audit``). This module makes two cloud calls:
+``cloud_transcribe`` in ``run_funnel`` (cloud transcription) and L2's
+``judge_call_intent`` (the addressee gate). The judge takes config/LLM inside the
+function, ``llm`` is injectable for tests, and any failure falls back to ``"unsure"``
+(better a missed verdict than a broken pipeline).
 """
 from __future__ import annotations
 
@@ -187,12 +189,14 @@ async def run_funnel(wav: bytes, meta: SegmentMeta, deps: FunnelDeps,
                      recent: str, relax: bool, rms: float, duration_s: float) -> FunnelResult:
     """三级漏斗执行：L0 规则 → L1 本地转写/快筛/轮次 → L2 云端精转 + 意图闸门。
 
-    L1 整级可缺（local_transcribe=None）→ 直上 L2；L2 云转写失败按 unsure 收敛
-    （judge 收到空文本仍返回四分类，失败兜底 unsure）。audit 行：每一级决策都留痕。
+    L1 整级可缺（local_transcribe=None）→ 直上 L2；L2 云转写失败回落本地文本
+    （final_text = 云端文本 or 本地文本），judge 本身失败才兜底 ``"unsure"``。
+    audit 行：每一级决策都留痕。
 
     Three-stage funnel. L1 may be absent entirely (local_transcribe=None) → straight to
-    L2; a failed cloud transcription flows into the judge as empty text (its own
-    failure fallback is "unsure"). Every stage decision is audited.
+    L2; a failed cloud transcription falls back to the local transcript
+    (``final_text = cloud or local``); only a judge failure itself falls back to
+    "unsure". Every stage decision is audited.
     """
     # ── L0 ──
     reason = screen_l0(meta, duration_s=duration_s, rms=rms,

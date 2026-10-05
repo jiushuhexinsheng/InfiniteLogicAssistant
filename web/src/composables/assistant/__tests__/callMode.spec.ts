@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const startListening = vi.fn(async () => 'ok' as const)
 const stopListening = vi.fn()
 const toggleWake = vi.fn(async () => {})
 const wakeEnabled = { value: false }
+// 桩复刻真实 startListening 的语义：成功即把 wakeEnabled 置 true（wakeOrchestrator.ts:784）——
+// 这正是退出不回收时泄漏的来源；桩不复刻该置位就测不出泄漏（终审 Important #2）。
+// The stub mirrors real startListening: success sets wakeEnabled=true (wakeOrchestrator.ts:784) —
+// the very source of the leak when exit fails to restore it; without this the leak is untestable.
+const startListening = vi.fn(async () => { wakeEnabled.value = true; return 'ok' as const })
 
 vi.mock('../wake/wakeOrchestrator', () => ({
   startListening, stopListening, toggleWake,
@@ -68,5 +72,27 @@ describe('通话 FSM', () => {
     expect(inOpenWindow()).toBe(false)
     markTurnEnded()
     expect(inOpenWindow()).toBe(true)
+  })
+
+  // ── 终审 Important #2：退出通话必须回收 wakeEnabled（否则唤醒被静默武装）──
+  // 机制：入口 startListening 把 wakeEnabled 置 true，退出分支不恢复 → 下一次 TTS 播报结束
+  // （wakeOrchestrator.ts:910）`if (wakeEnabled.value) void ensureListening()` 复活录音器。
+  // Final-review Important #2: exiting a call must restore wakeEnabled, or wake is silently armed.
+
+  it('唤醒关的用户：进入→退出后 wakeEnabled 仍为 false（不被通话监听置位泄漏）', async () => {
+    const { toggleCall } = await import('../callMode')
+    wakeEnabled.value = false
+    await toggleCall()   // 进入：startListening 桩按真实语义把 wakeEnabled 置 true
+    expect(wakeEnabled.value).toBe(true)
+    await toggleCall()   // 退出
+    expect(wakeEnabled.value).toBe(false)   // 退出必须回收进入前的开关
+  })
+
+  it('唤醒开的用户：通话往返后 wakeEnabled 仍为 true', async () => {
+    const { toggleCall } = await import('../callMode')
+    wakeEnabled.value = true
+    await toggleCall()
+    await toggleCall()
+    expect(wakeEnabled.value).toBe(true)
   })
 })
