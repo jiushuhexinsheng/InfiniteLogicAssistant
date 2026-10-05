@@ -133,6 +133,19 @@ export const api = {
     return post<WakeResponse>('/voice/wake', { audio_base64: base64Wav, ...(opts?.mode ? { mode: opts.mode } : {}) })
   },
 
+  // ── 通话模式（免唤醒三级漏斗）──
+  /** 进入通话模式（建会话）。Enter call mode (open a session). */
+  callStart: async (): Promise<{ ok?: boolean; open_window_s?: number; error?: string }> =>
+    post('/voice/call/start'),
+  /** 退出通话模式。Exit call mode. */
+  callStop: async (): Promise<{ ok?: boolean; error?: string }> =>
+    post('/voice/call/stop'),
+  /** 段落进漏斗：hit 才把 text 送编排。Segment into the funnel; on hit the text goes to the orchestrator. */
+  callSegment: async (blob: Blob, meta: { tabFocused: boolean; inOpenWindow: boolean }): Promise<{ ok?: boolean; hit?: boolean; text?: string; stage?: string; reason?: string }> => {
+    const audio_base64 = await blobToWavBase64(blob)
+    return post('/voice/call/segment', { audio_base64, tab_focused: meta.tabFocused, in_open_window: meta.inOpenWindow })
+  },
+
   // 单工具执行（前端"重试失败工具"走后端真实重跑；高风险工具需 confirm: true 显式确认）
   // Single tool execution (frontend "retry failed tool" runs backend real retry; high-risk tools need confirm: true explicit confirmation)
   /** 调用单个工具。Call a single tool. */
