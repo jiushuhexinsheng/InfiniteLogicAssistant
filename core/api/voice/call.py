@@ -143,8 +143,8 @@ async def call_segment(request: Request):
     cfg = config.settings.voice.call
     relax = False
     if _session is not None and _alive():
-        # 开放窗口两处来源并取：前端刚播报完（meta.in_open_window，本段上报）或
-        # 后端自记的窗口（命中后开的 open_until）。两者都在才允许 relax 复判放宽。
+        # 开放窗口两处来源取或：前端刚播报完（meta.in_open_window，本段上报）或
+        # 后端自记的窗口（命中后开的 open_until）。任一成立即算在窗口内，允许 relax 复判放宽。
         in_open = meta.in_open_window or time.monotonic() < _session.open_until
         relax = in_open and _session.consecutive_misses >= _RELAX_AFTER
     recent = "; ".join(_session.recent[-3:]) if _session else ""
