@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from core.voice.call_funnel import SegmentMeta, judge_call_intent, screen_l0
+from core.voice.call_funnel import FunnelDeps, SegmentMeta, judge_call_intent, run_funnel, screen_l0
 
 _VECTORS = json.loads((Path(__file__).parent / "data" / "call_funnel_vectors.json").read_text(encoding="utf-8"))
 
@@ -108,3 +108,141 @@ def test_judge_client_construction_failure_falls_back_unsure(monkeypatch):
         raise RuntimeError("client construct fail")
     monkeypatch.setattr("core.llm.client.get_llm_client", boom)
     assert asyncio.run(judge_call_intent("x", "", relax=False)) == "unsure"
+
+
+# ── run_funnel 三级漏斗集成 / run_funnel three-stage integration ──
+
+WAV = b"RIFFfake"  # 假件不解码 wav，仅作透传标记
+
+
+def _deps(**over):
+    base = dict(
+        local_transcribe=lambda w: "帮我打开记事本",
+        cloud_transcribe=None,          # 下面统一给 async
+        smart_turn=None,
+        judge=None,
+        min_seconds=0.5, min_rms=0.02, smart_turn_enabled=False,
+    )
+    base.update(over)
+    if base["cloud_transcribe"] is None:
+        async def cloud(w): return "云端精转"
+        base["cloud_transcribe"] = cloud
+    if base["judge"] is None:
+        async def judge(t, r, relax): return "command"
+        base["judge"] = judge
+    return FunnelDeps(**base)
+
+
+def _meta(**kw):
+    kw.setdefault("tab_focused", True)
+    return SegmentMeta(**kw)
+
+
+def test_funnel_l0_drop_skips_all():
+    seen = {"cloud": 0, "judge": 0}
+    async def cloud(w):
+        seen["cloud"] += 1
+        return "x"
+    async def judge(t, r, relax):
+        seen["judge"] += 1
+        return "command"
+    r = asyncio.run(run_funnel(WAV, _meta(session_active=False),
+                                _deps(cloud_transcribe=cloud, judge=judge),
+                                recent="", relax=False, rms=0.1, duration_s=2.0))
+    assert r.verdict == "dropped" and r.stage == "l0" and not r.hit
+    assert seen == {"cloud": 0, "judge": 0}
+
+
+def test_funnel_l1_quick_screen_drop():
+    r = asyncio.run(run_funnel(WAV, _meta(), _deps(local_transcribe=lambda w: "嗯"),
+                                recent="", relax=False, rms=0.1, duration_s=2.0))
+    assert r.verdict == "dropped" and r.stage == "l1" and r.reason == "filler"
+
+
+def test_funnel_smart_turn_incomplete_drops():
+    async def st(w): return False
+    r = asyncio.run(run_funnel(WAV, _meta(), _deps(smart_turn=st, smart_turn_enabled=True),
+                                recent="", relax=False, rms=0.1, duration_s=2.0))
+    assert r.verdict == "incomplete" and r.stage == "l1"
+
+
+def test_funnel_full_path_hit_and_miss():
+    r = asyncio.run(run_funnel(WAV, _meta(), _deps(), recent="", relax=False,
+                                rms=0.1, duration_s=2.0))
+    assert r.verdict == "command" and r.hit and r.stage == "l2"
+    async def judge_chit(t, r_, relax): return "chitchat"
+    r2 = asyncio.run(run_funnel(WAV, _meta(), _deps(judge=judge_chit), recent="",
+                                relax=False, rms=0.1, duration_s=2.0))
+    assert r2.hit is True and r2.verdict == "chitchat"
+    async def judge_by(t, r_, relax): return "bystander"
+    r3 = asyncio.run(run_funnel(WAV, _meta(), _deps(judge=judge_by), recent="",
+                                relax=False, rms=0.1, duration_s=2.0))
+    assert r3.hit is False and r3.stage == "l2"
+
+
+def test_funnel_relax_lifts_unsure():
+    async def judge_u(t, r_, relax): return "unsure"
+    r = asyncio.run(run_funnel(WAV, _meta(), _deps(judge=judge_u), recent="",
+                                relax=True, rms=0.1, duration_s=2.0))
+    assert r.hit is True   # relax：unsure 提升为命中
+
+
+def test_funnel_degrades_without_local_asr():
+    """Review Focus #4：本地转写不可用 → 跳过 L1（含 quick_screen/Smart Turn），直上 L2。"""
+    r = asyncio.run(run_funnel(WAV, _meta(), _deps(local_transcribe=None, smart_turn=None),
+                               recent="", relax=False, rms=0.1, duration_s=2.0))
+    assert r.hit is True and r.stage == "l2"
+
+
+def test_funnel_cloud_transcribe_audits_upload():
+    """Review Focus #5：云转写假件必须带 audio-upload 审计（Task 8 的 call.py 注入时同款前缀）。
+
+    审计发生在 cloud_transcribe 内部（本模块不打审计行），本测试用会记账的桩钉住
+    「每一次云端精转写都有且仅有一条 audio-upload 行」的契约。
+    """
+    calls = []
+
+    async def cloud_audited(w):
+        from core.logger import audit
+        audit(f"audio-upload via=call-segment chars=4 text='云端'")
+        calls.append("audio-upload via=call-segment")
+        return "云端精转"
+
+    r = asyncio.run(run_funnel(WAV, _meta(), _deps(local_transcribe=None,
+                                                    cloud_transcribe=cloud_audited),
+                               recent="", relax=False, rms=0.1, duration_s=2.0))
+    assert r.hit and r.verdict == "command"
+    assert len(calls) == 1
+    assert calls[0] == "audio-upload via=call-segment"
+
+
+def test_funnel_cloud_failure_degrades_to_judge():
+    """L2 云转写失败静默收敛：异常不上抛、链路不断，judge 兜底收 L1 本地文本。"""
+    async def cloud_boom(w):
+        raise RuntimeError("cloud down")
+    seen: dict = {}
+
+    async def judge_keep(t, r, relax):
+        seen["text"] = t
+        return "command"
+
+    r = asyncio.run(run_funnel(WAV, _meta(), _deps(cloud_transcribe=cloud_boom,
+                                                    judge=judge_keep),
+                               recent="", relax=False, rms=0.1, duration_s=2.0))
+    assert r.hit and r.verdict == "command" and r.stage == "l2"
+    assert seen["text"] == "帮我打开记事本"  # 云文本缺位 → L1 本地文本兜底
+
+
+def test_funnel_judge_relax_passed_positionally():
+    """裁决 R3：FunnelDeps.judge 契约是位置参数 relax——run_funnel 必须按位置传
+    （位置-only 形参收到关键字传法会 TypeError，把契约漂移钉在测试里）。"""
+    seen: dict = {}
+
+    async def judge_pos(t, r, relax, /):
+        seen["relax"] = relax
+        return "unsure"
+
+    r = asyncio.run(run_funnel(WAV, _meta(), _deps(judge=judge_pos), recent="",
+                               relax=True, rms=0.1, duration_s=2.0))
+    assert seen["relax"] is True
+    assert r.hit is True  # relax 提升 unsure

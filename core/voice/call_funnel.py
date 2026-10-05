@@ -3,23 +3,27 @@
 
 L0 是纯规则：会话态、回声、能量/时长、焦点/开放窗口。任一命中即给出丢弃原因
 （reason 字符串，直接进 audit 行），`None` 表示放行进 L1；L1 文本快筛同为纯规则。
-模块级不 import config、不做 IO —— 配置值与依赖由调用方注入，便于逐条测试。
+模块级不 import config —— 配置值与依赖由调用方注入，便于逐条测试；唯一的 IO 是
+逐级决策的 audit 行（``core.logger.audit``）。
 L2 的 ``judge_call_intent`` 是唯一的云端调用：config/LLM 仅在函数内取，
 ``llm`` 可注入假件，任何失败兜底 ``"unsure"``（宁可漏一判，不可断链路）。
 
 Stage 0 of the call-mode judgement funnel (deterministic screen, zero models, zero
 cloud). Pure rules: session state, echo, energy/duration, focus/open-window. A hit
 returns the drop reason (goes straight into the audit line); ``None`` means proceed
-to L1; L1 text screen is pure rules too. The module level imports no config and does
-no IO — callers inject everything, so every rule is unit testable. L2's
-``judge_call_intent`` is the only cloud call here: config/LLM are taken inside the
-function, ``llm`` is injectable for tests, and any failure falls back to
-``"unsure"`` (better a missed verdict than a broken pipeline).
+to L1; L1 text screen is pure rules too. The module level imports no config —
+callers inject everything, so every rule is unit testable; the only IO is the
+per-stage audit line (``core.logger.audit``). L2's ``judge_call_intent`` is the
+only cloud call here: config/LLM are taken inside the function, ``llm`` is
+injectable for tests, and any failure falls back to ``"unsure"`` (better a missed
+verdict than a broken pipeline).
 """
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+
+from core.logger import audit
 
 
 @dataclass(frozen=True)
@@ -153,3 +157,75 @@ async def judge_call_intent(text: str, recent: str, *, relax: bool,
     except Exception as e:
         logger.warning("call-gate 失败兜底 unsure: {}", e)
         return "unsure"
+
+
+# ── run_funnel：三级漏斗编排 / run_funnel: three-stage orchestration ──
+
+
+@dataclass(frozen=True)
+class FunnelDeps:
+    """run_funnel 的全部外部依赖（测试全量注入）。All external deps of run_funnel (fully
+    injectable).
+
+    ``judge`` 契约是**位置参数** relax（裁决 R3）：``judge_call_intent`` 本体是
+    ``*, relax`` 关键字位，调用方注入时须用包装函数适配，禁止直接塞入本体。
+    The ``judge`` contract takes ``relax`` positionally (Ruling R3): adapt
+    ``judge_call_intent`` (keyword-only ``relax``) with a wrapper at the injection
+    site; never inject the raw function.
+    """
+
+    cloud_transcribe: Callable[[bytes], Awaitable[str]]
+    judge: Callable[[str, str, bool], Awaitable[str]]
+    local_transcribe: Callable[[bytes], str] | None = None
+    smart_turn: Callable[[bytes], Awaitable[bool]] | None = None
+    min_seconds: float = 0.5
+    min_rms: float = 0.02
+    smart_turn_enabled: bool = False
+
+
+async def run_funnel(wav: bytes, meta: SegmentMeta, deps: FunnelDeps,
+                     recent: str, relax: bool, rms: float, duration_s: float) -> FunnelResult:
+    """三级漏斗执行：L0 规则 → L1 本地转写/快筛/轮次 → L2 云端精转 + 意图闸门。
+
+    L1 整级可缺（local_transcribe=None）→ 直上 L2；L2 云转写失败按 unsure 收敛
+    （judge 收到空文本仍返回四分类，失败兜底 unsure）。audit 行：每一级决策都留痕。
+
+    Three-stage funnel. L1 may be absent entirely (local_transcribe=None) → straight to
+    L2; a failed cloud transcription flows into the judge as empty text (its own
+    failure fallback is "unsure"). Every stage decision is audited.
+    """
+    # ── L0 ──
+    reason = screen_l0(meta, duration_s=duration_s, rms=rms,
+                       min_seconds=deps.min_seconds, min_rms=deps.min_rms)
+    if reason is not None:
+        audit(f"call-funnel drop stage=l0 reason={reason}")
+        return FunnelResult(verdict="dropped", hit=False, stage="l0", reason=reason)
+
+    # ── L1：本地转写（可用才走；不可用整体跳过本级）──
+    text = ""
+    if deps.local_transcribe is not None:
+        text = deps.local_transcribe(wav) or ""
+        if text:
+            q = quick_screen(text)
+            if q is not None:
+                audit(f"call-funnel drop stage=l1 reason={q} text={text[:40]!r}")
+                return FunnelResult(verdict="dropped", hit=False, stage="l1",
+                                    text=text, reason=q)
+            if deps.smart_turn_enabled and deps.smart_turn is not None:
+                if not await deps.smart_turn(wav):
+                    audit(f"call-funnel drop stage=l1 reason=incomplete text={text[:40]!r}")
+                    return FunnelResult(verdict="incomplete", hit=False, stage="l1",
+                                        text=text, reason="incomplete")
+
+    # ── L2：云端精转写（审计在注入的 cloud_transcribe 里）+ 意图闸门 ──
+    try:
+        cloud_text = await deps.cloud_transcribe(wav)
+    except Exception:
+        cloud_text = ""
+    final_text = cloud_text or text
+    verdict = await deps.judge(final_text, recent, relax)  # relax 位置传（R3 契约）
+    hit = verdict in ("command", "chitchat") or (relax and verdict == "unsure")
+    audit(f"call-funnel verdict={verdict} hit={int(hit)} stage=l2 relax={int(relax)} "
+          f"text={final_text[:60]!r}")
+    return FunnelResult(verdict=verdict, hit=hit, stage="l2", text=final_text,
+                        reason=verdict)
