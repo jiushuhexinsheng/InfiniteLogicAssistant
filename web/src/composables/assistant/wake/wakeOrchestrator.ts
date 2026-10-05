@@ -22,6 +22,7 @@ import { nextState } from '../wakeFsm'
 import {
   state, partialText, statusLine, wakeEnabled, vadConfig,
   pendingQuestion, failWake, wakeKeywords, wakeMode,
+  callActive, inOpenWindow, markTurnEnded,
 } from '../store'
 import type { AsstState, PendingQuestion } from '../store'
 import { createSegmentRecorder, type SegmentRecorder } from '../useSegmentRecorder'
@@ -338,6 +339,27 @@ async function processSegment(blob: Blob) {
     // ASR await pendingQuestion may be cleared (stream-error race), and sendAnswer
     // must not re-read the store (that read-after-await loses the qid → Q/A split).
     await deps.sendAnswer(hit ? '' : text, hit?.value, 'voice', pq)
+    return
+  }
+
+  // ── 通话模式（spec 2026-10-05）：作答分支之后优先于一切唤醒语义 ──
+  // 段落直接进三级漏斗；命中才认领令牌送编排，未命中静默丢（audit 在后端）。
+  // Call mode: after the answer branch, ahead of every wake semantic. The segment goes
+  // straight into the funnel; only a hit claims the token and sends to the orchestrator,
+  // misses are dropped silently (the backend audits).
+  if (callActive.value && deps.api.callSegment) {
+    const token = turnToken
+    const r = await deps.api.callSegment(blob, {
+      tabFocused: typeof document !== 'undefined' && document.hasFocus(),
+      inOpenWindow: inOpenWindow(),
+    }).catch((): { ok?: boolean; hit?: boolean; text?: string; stage?: string; reason?: string } => ({ ok: false }))
+    if (token !== turnToken) return   // await 期间有更新交互认领 → 本段作废
+    if (r?.ok && r.hit && r.text) {
+      turnToken++
+      markTurnEnded()
+      if (state.value === 'recording') state.value = 'listening'
+      deps.sendText(r.text)
+    }
     return
   }
 
