@@ -31,6 +31,11 @@ import { getChain, detectInChain, getWebSpeechProvider, peekWebSpeechProvider, d
 import type { WakeProvider } from './types'
 import { startBargeInMonitor, BARGE_IN_DURATION_MS, type BargeInMonitor } from '../bargeIn'
 
+// R6：callMode 从本模块取 wakeEnabled（与 startListening/stopListening 同源，测试可整体替换本模块）。
+// R6: callMode reads wakeEnabled from this module (same source as startListening/stopListening;
+// tests can replace this module wholesale).
+export { wakeEnabled }
+
 // ── 可注入依赖（由 useWakeWord.ts 注入）──
 
 /** API 客户端（wakeCheck + wakeDetect + transcribe）。API client (wakeCheck + wakeDetect + transcribe). */
@@ -729,6 +734,40 @@ export function describeMicError(e: any): string {
 
 // ── 开启/关闭唤醒 ──
 
+/** 启动被打断（取流途中被停）的提示文案：startListening 的 aborted 分支与 toggleWake
+ *  共用一份 —— toggleWake 靠它把良性竞态（原样提示、不进错误态）与真实失败（failWake）
+ *  按提取前的行为分开。
+ *  Message shown when startup is aborted (the stream was stopped mid-acquisition):
+ *  startListening's aborted branch and toggleWake share this one string — toggleWake uses
+ *  it to tell a benign race (status line only, no error state) from a real failure
+ *  (failWake), exactly as before the extraction. */
+const START_ABORTED_MSG = '唤醒启动被打断，请再点一次'
+
+/** 启动监听序列（toggleWake 的 enable 分支体）。返回 'ok' | 'aborted' | 错误文案。 */
+export async function startListening(): Promise<'ok' | 'aborted' | string> {
+  statusLine.value = '正在启动唤醒...'
+  try {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const mics = devices.filter((d) => d.kind === 'audioinput')
+      if (mics.length === 0) {
+        console.warn('[wake] no audioinput device found')
+        return '系统未检测到麦克风设备，请连接/启用麦克风后重试'
+      }
+    } catch (e) {
+      console.warn('[wake] enumerateDevices fail:', e)
+    }
+    const outcome = await acquireAndStart()
+    if (outcome !== 'ok') return outcome === 'aborted' ? START_ABORTED_MSG : (statusLine.value || '麦克风启动失败，请检查系统/浏览器麦克风权限')
+    wakeEnabled.value = true
+    state.value = 'listening'
+    statusLine.value = ''
+    return 'ok'
+  } finally {
+    startingWake = false
+  }
+}
+
 export async function toggleWake() {
   console.log('[wake] toggleWake called, current state:', state.value)
   statusLine.value = ''
@@ -745,34 +784,14 @@ export async function toggleWake() {
       console.log('[wake] enable already in flight, ignoring')
       return
     }
-    startingWake = true
-    try {
-      statusLine.value = '正在启动唤醒...'
-
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices()
-        const mics = devices.filter((d) => d.kind === 'audioinput')
-        if (mics.length === 0) {
-          console.warn('[wake] no audioinput device found')
-          failWake('系统未检测到麦克风设备，请连接/启用麦克风后重试')
-          return
-        }
-      } catch (e) {
-        console.warn('[wake] enumerateDevices fail:', e)
-      }
-
-      const outcome = await acquireAndStart()
-      if (outcome !== 'ok') {
-        if (outcome === 'aborted') statusLine.value = '唤醒启动被打断，请再点一次'
-        else failWake(statusLine.value || '麦克风启动失败，请检查系统/浏览器麦克风权限')
-        return
-      }
-      wakeEnabled.value = true
-      state.value = 'listening'
-      statusLine.value = ''
+    startingWake = true   // 置位留在 toggleWake；startListening 的 finally 只负责清位。
+    const r = await startListening()
+    if (r === 'ok') {
       console.log('[wake] listening started!')
-    } finally {
-      startingWake = false
+    } else if (r === START_ABORTED_MSG) {
+      statusLine.value = r   // 打断是良性竞态：原样提示，不进错误态（行为同提取前）。
+    } else {
+      failWake(r)
     }
   } else {
     console.log('[wake] stopping...')

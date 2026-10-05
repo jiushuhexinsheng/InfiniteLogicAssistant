@@ -163,6 +163,19 @@ export const vadConfig: VadConfig = { silence_threshold: 0.02, silence_duration_
 export const callConfig: CallConfig = { enabled: true, open_window_s: 8, l0_min_rms: 0.02, l0_min_seconds: 0.5, smart_turn_enabled: true, local_asr_model: '' }
 /** 通话激活标志：唯一事实来源（store 级，避免 wakeOrchestrator ↔ callMode 循环导入）。Call-active flag: store-level single source of truth (avoids a wakeOrchestrator ↔ callMode import cycle). */
 export const callActive = ref(false)
+/** 通话开放窗口截止时刻（毫秒时间戳；0 = 不在窗口内）。Call-open-window deadline (ms timestamp; 0 = outside the window). */
+export const callWindowUntil = ref(0)
+
+/** 是否在开放窗口内（回答播报结束后 open_window_s 秒，段落 meta.in_open_window 由路由读取上报）。Whether inside the open window (open_window_s seconds after playback ends; the segment router reads this into meta.in_open_window). */
+export function inOpenWindow(): boolean {
+  return Date.now() < callWindowUntil.value
+}
+
+/** 回答播报结束时调用：开开放窗口。Called when playback ends: opens the window. */
+export function markTurnEnded(): void {
+  callWindowUntil.value = Date.now() + callConfig.open_window_s * 1000
+}
+
 /** 响应式唤醒词列表（**可多个**，命中任意一个即唤醒）。Reactive wake keywords (plural; any hit wakes). */
 export const wakeKeywords = ref<string[]>([...(wakeConfig.keywords ?? [])])
 
