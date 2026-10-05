@@ -99,3 +99,12 @@ def test_judge_error_falls_back_unsure():
         raise RuntimeError("net down")
         yield  # pragma: no cover
     assert asyncio.run(judge_call_intent("x", "", relax=False, llm=boom)) == "unsure"
+
+
+def test_judge_client_construction_failure_falls_back_unsure(monkeypatch):
+    """裁决 R13：client 构造路径（惰性 import + get_llm_client()）在 try 内——
+    构造本身抛出也必须静默兜底 unsure，不得把异常抛给调用方。"""
+    def boom():
+        raise RuntimeError("client construct fail")
+    monkeypatch.setattr("core.llm.client.get_llm_client", boom)
+    assert asyncio.run(judge_call_intent("x", "", relax=False)) == "unsure"

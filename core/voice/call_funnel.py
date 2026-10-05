@@ -123,18 +123,20 @@ async def judge_call_intent(text: str, recent: str, *, relax: bool,
     L2 addressee gate (four-way). ``llm`` is injectable for tests; any failure falls
     back to "unsure" (a miss that the relax re-run can still rescue).
     """
-    from core import config
-    from core.llm.client import get_llm_client
-    from core.logger import logger
-    from core.prompts import CALL_GATE_RELAX_NOTE, CALL_GATE_SYSTEM
-
-    system = CALL_GATE_SYSTEM + (CALL_GATE_RELAX_NOTE if relax else "")
-    user = f"转写：{text}"
-    if recent:
-        user += f"\n最近片段：{recent}"
-    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-    call = llm or get_llm_client().retry_stream_chat
     try:
+        # 裁决 R13：惰性 import + client 构造整段在 try 内——构造路径抛出也静默兜底。
+        # logger 置于首位，保证 except 分支必有绑定。
+        from core.logger import logger
+        from core import config
+        from core.llm.client import get_llm_client
+        from core.prompts import CALL_GATE_RELAX_NOTE, CALL_GATE_SYSTEM
+
+        call = llm or get_llm_client().retry_stream_chat
+        system = CALL_GATE_SYSTEM + (CALL_GATE_RELAX_NOTE if relax else "")
+        user = f"转写：{text}"
+        if recent:
+            user += f"\n最近片段：{recent}"
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         async for evt in call(messages, tools=[_CALL_TOOL],
                               temperature=config.settings.agent.structured_temperature):
             if evt["type"] == "done":
