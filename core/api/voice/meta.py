@@ -41,4 +41,5 @@ async def config_endpoint():
         "tts_model": config.resolve_tts_profile()[1].get("model", ""),
         "wake_word": config.settings.voice.wake_word.model_dump(),
         "vad": config.settings.voice.vad.model_dump(),
+        "call": config.settings.voice.call.model_dump(),
     }

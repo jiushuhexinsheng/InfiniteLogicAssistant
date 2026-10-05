@@ -24,6 +24,8 @@ export type WakeResponse = components['schemas']['WakeResponse']
 export type WakeWordConfig = components['schemas']['WakeWordConfig']
 /** VAD 配置类型。VAD config type. */
 export type VadConfig = components['schemas']['VadConfig']
+/** 通话模式配置类型。Call-mode config type. */
+export type CallConfig = components['schemas']['CallConfig']
 /** 工具 Schema 类型。Tool schema type. */
 export type ToolSchema = components['schemas']['ToolSchema']
 /** 工具列表响应类型。Tools list response type. */

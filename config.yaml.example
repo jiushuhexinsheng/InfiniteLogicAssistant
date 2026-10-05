@@ -88,6 +88,15 @@ voice:
     # Follow-up window (ms): wake-free window after a turn ends / playback finishes —
     # speak inside it and the words are taken as a fresh instruction; 0 = off.
     followup_window_ms: 6000
+  # 通话模式（双击悬浮球进入，免唤醒持续聆听）：段落过三级漏斗
+  # L0 规则 → L1 本地转写 → L2 云端精判，详见 docs/superpowers/specs/2026-10-05-call-mode-funnel-design.md
+  call:
+    enabled: true
+    open_window_s: 8        # 回答后免焦点追问窗口（秒）；0 关闭
+    l0_min_rms: 0.02        # 段落能量低于此视为非人声（实现期可用真音频标定）
+    l0_min_seconds: 0.5     # 短于此的段本机丢弃
+    smart_turn_enabled: true
+    local_asr_model: "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
   # 在线 ASR 语音转文字（OpenAI 兼容；endpoint/model 需自填，密钥在 config.secrets.yaml）
   asr:
     active: openai

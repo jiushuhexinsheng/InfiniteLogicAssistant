@@ -884,6 +884,47 @@ export interface components {
             error?: string | null;
         };
         /**
+         * CallConfig
+         * @description 通话模式配置（`core/config/schema.py` 里 CallConfig 的**手工副本**，两处必须同步，
+         *     理由同 WakeWordConfig/VadConfig：response_model 会静默过滤未声明字段）。
+         *
+         *     Call-mode configuration (hand-maintained duplicate of CallConfig in
+         *     `core/config/schema.py`; the two must stay in sync — response_model silently drops
+         *     undeclared fields, same trap as WakeWordConfig/VadConfig).
+         */
+        CallConfig: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Open Window S
+             * @default 8
+             */
+            open_window_s: number;
+            /**
+             * L0 Min Rms
+             * @default 0.02
+             */
+            l0_min_rms: number;
+            /**
+             * L0 Min Seconds
+             * @default 0.5
+             */
+            l0_min_seconds: number;
+            /**
+             * Smart Turn Enabled
+             * @default true
+             */
+            smart_turn_enabled: boolean;
+            /**
+             * Local Asr Model
+             * @default models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
+             */
+            local_asr_model: string;
+        };
+        /**
          * CatalogResponse
          * @description 厂商目录端点响应。
          *
@@ -986,6 +1027,7 @@ export interface components {
             tts_model?: string | null;
             wake_word: components["schemas"]["WakeWordConfig"];
             vad: components["schemas"]["VadConfig"];
+            call: components["schemas"]["CallConfig"];
         };
         /**
          * ConnectivityResult

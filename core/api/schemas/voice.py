@@ -76,6 +76,21 @@ class VadConfig(BaseModel):
     # Barge-in toggle: see the same field in config/schema.py (both must stay in sync).
     barge_in: bool = False
 
+class CallConfig(BaseModel):
+    """通话模式配置（`core/config/schema.py` 里 CallConfig 的**手工副本**，两处必须同步，
+    理由同 WakeWordConfig/VadConfig：response_model 会静默过滤未声明字段）。
+
+    Call-mode configuration (hand-maintained duplicate of CallConfig in
+    `core/config/schema.py`; the two must stay in sync — response_model silently drops
+    undeclared fields, same trap as WakeWordConfig/VadConfig).
+    """
+    enabled: bool = True
+    open_window_s: float = 8.0
+    l0_min_rms: float = 0.02
+    l0_min_seconds: float = 0.5
+    smart_turn_enabled: bool = True
+    local_asr_model: str = "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
+
 class ConfigResponse(ApiResponse):
     """配置状态端点响应（LLM/ASR/TTS 可用性、唤醒词、VAD）。
 
@@ -91,6 +106,7 @@ class ConfigResponse(ApiResponse):
     tts_model: str | None = None
     wake_word: WakeWordConfig
     vad: VadConfig
+    call: CallConfig
 
 class WakeResponse(ApiResponse):
     """唤醒检测响应。

@@ -383,6 +383,7 @@ def test_wake_and_vad_duplicates_in_api_schemas_stay_in_sync():
     pairs = [
         ("VadConfig", cfg_schema.VadConfig, api_schemas.VadConfig),
         ("WakeWordConfig", cfg_schema.WakeWordConfig, api_schemas.WakeWordConfig),
+        ("CallConfig", cfg_schema.CallConfig, api_schemas.CallConfig),
     ]
     for name, cfg_model, api_model in pairs:
         assert set(_field_signature(cfg_model)) == set(_field_signature(api_model)), (
@@ -391,3 +392,20 @@ def test_wake_and_vad_duplicates_in_api_schemas_stay_in_sync():
         assert _field_signature(cfg_model) == _field_signature(api_model), (
             f"{name}: 注解或默认值漂移（annotation / default / default_factory drift）"
         )
+
+
+def test_call_config_defaults():
+    """通话模式配置默认值：开、8s 开放窗口、0.5s/0.02 能量底线、Smart Turn 开。"""
+    from core.config.schema import CallConfig
+    c = CallConfig()
+    assert c.enabled is True
+    assert c.open_window_s == 8.0
+    assert c.l0_min_rms == 0.02
+    assert c.l0_min_seconds == 0.5
+    assert c.smart_turn_enabled is True
+    assert c.local_asr_model.endswith("bilingual-zh-en-2023-02-20")
+
+
+def test_voice_section_has_call():
+    from core.config.schema import VoiceSection
+    assert hasattr(VoiceSection(), "call")

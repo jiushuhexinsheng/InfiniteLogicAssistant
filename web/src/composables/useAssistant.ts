@@ -1,9 +1,9 @@
 import { computed } from 'vue'
 import { STATE_VISUALS, resolveStateLabel, type StateVisual } from './useAssistantVisuals'
-import type { WakeWordConfig, VadConfig } from '../types'
+import type { WakeWordConfig, VadConfig, CallConfig } from '../types'
 import {
   state, messages, expanded, wakeEnabled, wakeKeywords, wakeHint, partialText, statusLine, tokenUsage,
-  wakeConfig, vadConfig, clearMessages, pendingQuestion, currentSessionId,
+  wakeConfig, vadConfig, callConfig, clearMessages, pendingQuestion, currentSessionId,
 } from './assistant/store'
 import { sendText, retryTool, cancelTool, abortChat, sendAnswer, forkAt, sendEdited, regenerate, outboxCount, clearQueued } from './assistant/useChat'
 import { toggleWake, stopWake } from './assistant/useWakeWord'
@@ -17,7 +17,7 @@ let initialized = false
 /** 初始化（幂等：根组件只调用一次，防路由重挂/热更新重复预热）。
  *  Initialization (idempotent: only called once by root component, prevents duplicate warm-up from route remount/hot update).
  *  @param config - 可选的唤醒词和 VAD 配置。Optional wake word and VAD configuration. */
-function init(config?: { wake?: Partial<WakeWordConfig>; vad?: Partial<VadConfig> }) {
+function init(config?: { wake?: Partial<WakeWordConfig>; vad?: Partial<VadConfig>; call?: Partial<CallConfig> }) {
   if (initialized) return
   initialized = true
   if (config?.wake) {
@@ -28,6 +28,7 @@ function init(config?: { wake?: Partial<WakeWordConfig>; vad?: Partial<VadConfig
     if (wakeConfig.keywords?.length) wakeKeywords.value = [...wakeConfig.keywords]
   }
   if (config?.vad) Object.assign(vadConfig, config.vad)
+  if (config?.call) Object.assign(callConfig, config.call)
   state.value = 'idle'
   // 唤醒链路已改走云端判定（VAD 分段 → POST /api/voice/wake），前端不再加载本地模型，
   // 因此既没有引擎探测也没有模型预热。

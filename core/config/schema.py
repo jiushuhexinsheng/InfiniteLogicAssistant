@@ -274,6 +274,34 @@ class KwsConfig(BaseModel):
     keywords_score: float = Field(1.0, ge=0.0)
 
 
+class CallConfig(BaseModel):
+    """通话模式（免唤醒持续流转）配置：双击悬浮球进入，段落过三级判定漏斗。
+
+    Call mode (wake-free continuous flow) config: entered by double-clicking the float
+    ball; each VAD segment runs the three-stage judgement funnel (L0 rules → L1 local
+    transcription/turn → L2 cloud gate). `local_asr_model` missing/unloadable degrades
+    the funnel to L0+L2 (never blocks the mode); `smart_turn_enabled=False` degrades to
+    VAD-cut-as-turn-boundary (the legacy behaviour).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    # 开放窗口（秒）：回答完成后免焦点追问的时限；0 关闭。
+    # Open window (seconds): focus-free follow-up window after a reply; 0 disables.
+    open_window_s: float = Field(8.0, ge=0.0)
+    # L0 能量与时长底线：低于此的段视为非人声/清嗓，本机丢弃。
+    # L0 energy/duration floor: segments below are non-speech (cleared throat), dropped locally.
+    l0_min_rms: float = Field(0.02, ge=0.0, le=1.0)
+    l0_min_seconds: float = Field(0.5, ge=0.0)
+    # Smart Turn（说完没复核）开关：关=以浏览器 VAD 静音切段为回合边界（旧行为）。
+    # Smart Turn switch: off = browser VAD cut is the turn boundary (legacy behaviour).
+    smart_turn_enabled: bool = True
+    # 本地流式转写模型目录；缺失时跳过 L1，只走 L0+L2。
+    # Local streaming ASR model dir; when missing, skip L1 and run L0+L2 only.
+    local_asr_model: str = "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
+
+
 class VoiceSection(BaseModel):
     """语音段配置：唤醒词、VAD、KWS、ASR 与 TTS 子配置。
 
@@ -285,6 +313,7 @@ class VoiceSection(BaseModel):
     wake_word: WakeWordConfig = Field(default_factory=lambda: WakeWordConfig())
     vad: VadConfig = Field(default_factory=lambda: VadConfig())
     kws: KwsConfig = Field(default_factory=lambda: KwsConfig())
+    call: CallConfig = Field(default_factory=lambda: CallConfig())
     asr: AsrSection = Field(default_factory=lambda: AsrSection())
     tts: TtsSection = Field(default_factory=lambda: TtsSection())
 
