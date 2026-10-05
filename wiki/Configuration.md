@@ -68,6 +68,13 @@ voice:
     model_dir: "models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
     keywords_threshold: 0.25    # 检测阈值：越低越灵敏（漏报少、误报多）
     keywords_score: 1.0         # 关键词得分加成：越高越易命中
+  call:                         # 通话模式（双击悬浮球进入，段落过三级判定漏斗）
+    enabled: true
+    open_window_s: 8            # 回答后免焦点追问窗口（秒）；0 关闭
+    l0_min_rms: 0.02            # 段落能量低于此视为非人声（L0 粗筛）
+    l0_min_seconds: 0.5         # 短于此的段本机丢弃（L0 粗筛）
+    smart_turn_enabled: true    # Smart Turn v3「说完没」复核（L1）开关
+    local_asr_model: "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
   asr:                          # 在线 ASR（OpenAI 兼容；密钥在 config.secrets.yaml / 环境变量）
     active: openai              # KWS 命中后抬取指令文本；cloud 模式下兼做唤醒判定
     profiles:
@@ -103,6 +110,29 @@ voice:
 - 降低调用量的其余旋钮：调大 `vad.min_speech_ms` 与 `vad.upload_throttle_ms`、调高
   `vad.silence_threshold`。代价是漏触发变多，反之亦然。
 - 完整边界说明见 [Security.md](Security.md) 的「语音隐私边界」。
+
+### call — 通话模式（三级判定漏斗）
+
+双击悬浮球进入/退出通话模式：段落免唤醒直接过服务端三级漏斗（L0 规则 → L1 本地转写 →
+L2 云端精判），命中进现有编排。字段：
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `enabled` | `true` | 通话模式总开关 |
+| `open_window_s` | `8` | 回答完成后的开放追问窗口（秒）：窗口内段落免 tab 焦点、漏斗放宽；`0` 关闭 |
+| `l0_min_rms` | `0.02` | L0 能量底线：段落 RMS 低于此视为非人声，直接丢弃（可用真音频标定） |
+| `l0_min_seconds` | `0.5` | L0 时长底线：短于此秒数的段直接丢弃 |
+| `smart_turn_enabled` | `true` | L1 的 Smart Turn v3「说完没」复核开关（`pipecat-ai==1.12.0` 只用这一个组件） |
+| `local_asr_model` | `models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20` | L1 本地转写模型目录；**模型不入库**，用 `python scripts/fetch_local_asr_model.py` 幂等拉取 |
+
+**降级语义**（每一级「坏得静默、链路不断」）：
+
+- **本地转写模型缺失/加载失败** → 跳过 L1，只走 L0+L2（功能可用、成本略升），记 warn
+- **Smart Turn 加载失败** → 以浏览器 VAD 静音切段为回合边界（现状手感），记 warn
+- **L2 云端 ASR/LLM 失败** → 该段按未命中静默丢弃 + audit 记 `call-funnel error`，不断链不弹错
+- **漏斗误杀**：开放窗口内连续 miss 达阈值时对最后一段重跑 L2 且置 `relax`（宁可误报不可漏报）
+- **审计口径**：命中走 `/api/voice/utter`；每级丢弃记 audit `call-funnel` 行；云端转写共用
+  `audio-upload via=` 前缀（成本口径不变）
 
 ## server — 服务
 

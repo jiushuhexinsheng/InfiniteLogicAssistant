@@ -7,6 +7,39 @@
 
 ## 更新历史
 
+### 2026-10-05 通话模式（免唤醒持续流转 + 三级判定漏斗）
+
+**设计与计划**：spec `docs/superpowers/specs/2026-10-05-call-mode-funnel-design.md`；
+实施计划 `docs/superpowers/plans/2026-10-05-call-mode-funnel.md`（15 个 TDD 任务）。
+计划头部对 spec 有一处修订：唤醒词入口**保留在悬浮球 `.ball-mic` 徽章**（不挪面板），
+双击改为通话开关。
+
+**落点（Task 1-14）**：
+
+- **T1 配置**：`voice.call` 六字段（pydantic schema + API 副本 + 前端镜像 +
+  `config.yaml.example`）
+- **T2/T3 漏斗骨架**：L0 确定性粗筛（会话/回声/能量/焦点四道规则）+ L1 词表快筛
+  （保守策略：只杀白噪）+ 双端共享向量 `tests/data/call_funnel_vectors.json`
+  （pytest 与 vitest 双端钉住）
+- **T4 本地转写**：sherpa-onnx streaming zipformer 中英双语单例（`core/voice/local_asr.py`，
+  缺模型静默降级）+ 模型获取脚本 `python scripts/fetch_local_asr_model.py`
+  （约 173MB 模型**不入库**，超 GitHub 单文件限，走 fetch 脚本引导）
+- **T5 Smart Turn**：v3「说完没」复核（`pipecat-ai==1.12.0` 只按件采购这一个组件，
+  失败降级放行）
+- **T6/T7 L2 云端精判**：LLM 意图闸门四分类（command/chitchat/bystander/unsure，
+  relax 宁可误报不可漏报、失败兜底 unsure）+ `run_funnel` 三级集成（L1 可缺降级、逐级审计）
+- **T8 三端点**：`POST /api/voice/call/{start,stop,segment}`——会话 TTL、漏斗编排、
+  relax 复判、审计
+- **T9-T12 前端**：API 封装；通话 FSM（双击进入/唤醒互斥/开放窗口计时）；
+  双击语义改通话开关（唤醒入口保留徽章、状态胶囊「通话聆听中」）；
+  `processSegment` 通话分支（待答作答优先、命中送编排）
+- **T13 打断**：通话态强制 barge-in + 播报结束自动开窗（非通话态行为零变化）
+- **T14 验收台**：`npm run verify:voice` 加通话场景——免唤醒三证据
+  （segment 请求 / utter 命中 / 无 wake 请求），无证据不 PASS
+
+**口径**：命中走 `/api/voice/utter` 进现有编排（澄清/确认/执行/SSE 全复用）；漏斗 miss 记
+audit `call-funnel` 行；云端转写共用 `audio-upload via=` 前缀，成本统计口径不变。
+
 ### 2026-09-26 对话系统模块化 + 唤醒链路大修
 
 **对话系统模块化（消息块协议）**：
@@ -73,6 +106,7 @@ spec 音频实测用的是 SAPI 合成音——云端对合成音识别好**不�
 | 6 | 双击悬浮球手动触发仍可用（回归） | **待人工验收** |
 | 7 | 回答提问后立刻说话 → 不得被回声误唤醒/代答（回声护栏） | **待人工验收** |
 | 8 | 指令执行完听回答 → 问题正常显示、可作答、不出现重复执行 | **待人工验收** |
+| 9 | 通话模式：双击进入、免唤醒指令命中、barger 打断、开放窗口追问、旁人说话不触发（对照 audit `call-funnel` 行） | **待人工验收** |
 
 ### 成本实测（待做）
 

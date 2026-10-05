@@ -59,6 +59,40 @@
 
 > 所有层横切 **CancellationToken**（停止）与**审计日志**。
 
+## 通话模式：三级判定漏斗
+
+双击悬浮球进入通话模式后，段落**不走 KWS 唤醒链**，改过服务端三级漏斗——每一级都
+「坏得静默、链路不断」。框图照 spec「三级判定漏斗」图（来源：
+`docs/superpowers/specs/2026-10-05-call-mode-funnel-design.md`）：
+
+```
+段落 POST /api/voice/call/segment (base64 wav)
+  │
+  ├─ L0 确定性粗筛（规则，零成本，预计丢弃 80%+ 段落）
+  │    · 通话会话未激活 → 丢
+  │    · TTS 播报期 / 回声护栏窗口内 → 丢（复用 ECHO_GUARD_MS=1200 语义）
+  │    · tab 无焦点（前端随段上报）且不在开放窗口期 → 丢
+  │    · 段落 RMS 能量过低 / 时长 < 0.5s → 丢
+  │
+  ├─ L1 本地粗转写（sherpa-onnx streaming zipformer，CPU，零云端）
+  │    · 转写文本过词表/规则快筛（空转写/填充词/过短 → 丢，刻意保守）
+  │    · Smart Turn v3 复核「说完没」——区分真说完与思考长停顿
+  │
+  └─ L2 云端精判（只为疑似命中的少数段付费）
+       · 云端 ASR 精转写：复用 /api/voice/transcribe（审计 audio-upload 口径不变）
+       · LLM 意图闸门四分类：command / chitchat / bystander / unsure
+         （relax 模式宁可误报不可漏报）
+       · command/chitchat → 进 /api/voice/utter 编排 pipeline（零改动复用）
+       · 其余 → 静默丢弃 + audit 记 call-funnel miss
+```
+
+- **降级**：本地模型缺失跳过 L1（L0+L2 照跑）；Smart Turn 失败退回 VAD 切段即回合边界；
+  L2 云端失败按未命中静默丢弃 + audit `call-funnel error`。
+- **开放窗口**：回答完成后 `voice.call.open_window_s`（默认 8s）内漏斗放宽（免 tab 焦点），
+  鼓励连续追问；窗口过期回到严格粗筛。
+- **互斥**：通话激活时 KWS 闸门暂停，`call/stop` 后恢复；唤醒入口保留在悬浮球 `.ball-mic` 徽章。
+- 实施计划：`docs/superpowers/plans/2026-10-05-call-mode-funnel.md`。
+
 ## 数据流
 
 - **下行**：交互层文本 → 编排层 → 智能体层 → 能力层 → 执行层
