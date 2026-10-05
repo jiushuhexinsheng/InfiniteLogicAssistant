@@ -9,6 +9,7 @@
     @touchmove.prevent="onTouchMove"
     @touchend="onTouchEnd"
     @click="onClick"
+    @dblclick="onDblClick"
   >
     <!-- 状态环层：recording 时 conic 进度环；聆听时品牌色环。Status ring: conic progress during recording; brand-color ring during listening. -->
     <span class="ball-status-ring" :class="state" :style="ringStyle"></span>
@@ -20,6 +21,7 @@
       :class="{ on: wakeEnabled }"
       title="语音开关"
       @click.stop="emit('toggleWake')"
+      @dblclick.stop
     >
       <Icon name="mic" :size="10" />
     </button>
@@ -87,12 +89,15 @@ function onDragStart(e: PointerEvent) {
 }
 
 /**
- * Pointer 移动时更新位置，超过 3px 阈值视为拖拽。Update position on pointer move; treat as drag if moved > 3px.
+ * Pointer 移动时更新位置，超过 6px 阈值视为拖拽。Update position on pointer move; treat as drag if moved > 6px.
+ * 阈值 6px（高于 Windows 系统拖拽阈值 4px）：双击时鼠标微抖常有 3-5px，旧 3px 会把手抖
+ * 的双击误判成拖拽而吞掉点击。Threshold is 6px (above Windows' 4px drag threshold):
+ * 3-5px of jitter while double-clicking is common, and the old 3px swallowed it as a drag.
  * @param e - PointerEvent
  */
 function onDragMove(e: PointerEvent) {
-  if (Math.abs(e.clientX - dragOffset.value.x - props.pos.x) > 3 ||
-      Math.abs(e.clientY - dragOffset.value.y - props.pos.y) > 3) dragging.value = true
+  if (Math.abs(e.clientX - dragOffset.value.x - props.pos.x) > 6 ||
+      Math.abs(e.clientY - dragOffset.value.y - props.pos.y) > 6) dragging.value = true
   emit('update:pos', {
     x: Math.max(0, Math.min(window.innerWidth - 56, e.clientX - dragOffset.value.x)),
     y: Math.max(0, Math.min(window.innerHeight - 56, e.clientY - dragOffset.value.y)),
@@ -128,8 +133,8 @@ function onTouchStart(e: TouchEvent) {
 function onTouchMove(e: TouchEvent) {
   if (e.touches.length === 1) {
     const t = e.touches[0]
-    if (Math.abs(t.clientX - dragOffset.value.x - props.pos.x) > 3 ||
-        Math.abs(t.clientY - dragOffset.value.y - props.pos.y) > 3) dragging.value = true
+    if (Math.abs(t.clientX - dragOffset.value.x - props.pos.x) > 6 ||
+        Math.abs(t.clientY - dragOffset.value.y - props.pos.y) > 6) dragging.value = true
     emit('update:pos', {
       x: Math.max(0, Math.min(window.innerWidth - 56, t.clientX - dragOffset.value.x)),
       y: Math.max(0, Math.min(window.innerHeight - 56, t.clientY - dragOffset.value.y)),
@@ -141,32 +146,60 @@ function onTouchMove(e: TouchEvent) {
 function onTouchEnd() { /* 单击由 click 事件处理 */ }
 
 /**
- * 点击事件：用定时器区分单击与双击。
- * 单击 250ms 后触发 click（展开面板）；期间再点一次则取消单击、触发 dblclick（切换语音）。
- * Click handler: timer-based single/double click disambiguation.
- * Single click fires after 250ms (toggle panel); a second click within that window cancels it
- * and fires dblclick (toggle voice wake).
+ * 单击：立即触发（开合面板）。双击：由原生 dblclick 判定 —— 浏览器跟随系统双击速度
+ * （Windows 默认约 500ms），不再自设时间窗。
+ *
+ * ⚠️ 旧实现用 250ms 定时器仲裁单/双击：窗口低于系统默认双击速度，自然手速的双击被拆成
+ * 两次单击，dblclick 永不发出 →「双击开通话」静默失败（2026-10-05 根因复盘：audit 中
+ * 用户 22:23:30 手速快成功进通话，22:45 后自然双击全程零 call-start，报「无法触发」）。
+ * 双击时两次单击也照常各触发一次 —— 调用方各自 toggle，净效果中性（面板开又关）。
+ *
+ * Single click fires immediately (panel toggle). The double click is the native dblclick —
+ * the browser follows the OS double-click speed (~500ms on Windows) instead of a
+ * hand-rolled window.
+ *
+ * WHY: the old 250ms timer arbitration sat below the OS default double-click speed, so a
+ * natural-speed double click got split into two single clicks and dblclick never fired —
+ * double-click-to-call failed silently (2026-10-05 root-cause review: the audit shows the
+ * user entered a call at 22:23:30 on a fast click, then every natural double click from
+ * 22:45 on produced zero call-starts — reported as "无法触发").
+ * On a double click both single clicks still fire — each caller toggles, so the net effect
+ * is neutral (panel opens then closes).
  */
-let clickTimer: ReturnType<typeof setTimeout> | null = null
 function onClick() {
-  if (dragging.value) { dragging.value = false; return }
-  if (clickTimer) {
-    clearTimeout(clickTimer)
-    clickTimer = null
-    emit('dblclick')
-  } else {
-    clickTimer = setTimeout(() => {
-      clickTimer = null
-      emit('click')
-    }, 250)
+  if (dragging.value) {
+    dragging.value = false
+    prevClickDragged = clickDragged
+    clickDragged = true
+    return
   }
+  prevClickDragged = clickDragged
+  clickDragged = false
+  emit('click')
+}
+
+/** 上一击 / 本击是否被拖拽吞掉（双击的任一击是拖拽 → 整次双击作废）。 */
+let prevClickDragged = false
+let clickDragged = false
+
+/**
+ * 原生双击：触发 dblclick（开通话/退出通话）。任一构成击被拖拽吞掉则作废 ——
+ * 拖球手势不得顺带开通话。Native double click: emits dblclick (enter/exit call mode).
+ * If either constituent click was swallowed as a drag, the double click is void — dragging
+ * the ball must not also start a call.
+ */
+function onDblClick() {
+  const dragged = prevClickDragged || clickDragged
+  prevClickDragged = false
+  clickDragged = false
+  if (dragged) return
+  emit('dblclick')
 }
 
 /** 组件卸载时清理全局事件监听和进度定时器。Clean up global listeners and progress timer on unmount. */
 onUnmounted(() => {
   document.removeEventListener('pointermove', onDragMove)
   document.removeEventListener('pointerup', onDragEnd)
-  if (clickTimer) { clearTimeout(clickTimer); clickTimer = null }
   stopProgress()
 })
 
