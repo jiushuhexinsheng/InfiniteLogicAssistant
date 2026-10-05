@@ -29,6 +29,7 @@
  *   cd web && npm run verify:voice                  # 默认 http://127.0.0.1:8520
  *   npm run verify:voice -- --url http://127.0.0.1:5173
  *   npm run verify:voice -- --skip 4                # 跳过某项
+ *   npm run verify:voice -- --skip 5                # 跳过通话模式项
  *
  * 前置 / Prerequisites:
  *   - 后端已启动且前端已构建（python main.py serve），或 vite dev server 在跑
@@ -496,6 +497,7 @@ async function main() {
   } else {
     say('\n✓ 唤醒引擎已启动（state = listening）')
     await runChecks({ page, reqs, keyword, answerTimeout, speakOn })
+    await runCallCheck(page, reqs)
   }
 
   await browser.close()
@@ -683,6 +685,66 @@ async function runChecks({ page, reqs, keyword, answerTimeout, speakOn }) {
     say('─'.repeat(72))
     await runSelfTriggerCheck({ page, keyword, reqs })
   }
+}
+
+/**
+ * 通话模式验收：双击进入 → 真人直接说一句指令（不喊唤醒词）→ 客观证据三件套：
+ * (1) /api/voice/call/segment 有请求 (2) /api/voice/utter 出现（命中送编排）
+ * (3) 全程无 /api/voice/wake* 请求。采不到证据一律 INCONCLUSIVE，绝不 PASS。
+ *
+ * Call-mode acceptance: double-click to enter → the human speaks a command directly
+ * (no wake word) → three pieces of objective evidence: (1) call/segment requests,
+ * (2) an utter request (a hit reached the orchestrator), (3) zero voice/wake* requests.
+ * No evidence = INCONCLUSIVE, never PASS.
+ */
+async function runCallCheck(page, reqs) {
+  if (ARGS.skip.includes('5')) {
+    record(5, '通话模式免唤醒指令', 'SKIP', '命令行指定跳过')
+    return
+  }
+  say('▶ 第 5 项：通话模式（免唤醒）')
+  const t0 = Date.now()
+  try {
+    await page.locator('.float-trigger').dblclick({ timeout: 5000 })
+  } catch (e) {
+    record(5, '通话模式免唤醒指令', 'INCONCLUSIVE', `双击悬浮球失败：${e.message}`)
+    return
+  }
+  await sleep(1200)
+  const listening = await page.locator('text=通话聆听中').count().catch(() => 0)
+  if (!listening) {
+    record(5, '通话模式免唤醒指令', 'INCONCLUSIVE', '状态胶囊未显示「通话聆听中」（未进入通话态）')
+    return
+  }
+  await say('    5 秒后请**直接**说一句完整指令（例如「今天几号」），不要喊唤醒词')
+  await countdown(5, '请开口')
+  const deadline = Date.now() + 30000
+  let utter = []
+  while (Date.now() < deadline) {
+    utter = reqs.since(t0, /^\/api\/voice\/utter$/)
+    if (utter.length) break
+    await sleep(500)
+  }
+  const segs = reqs.since(t0, /^\/api\/voice\/call\/segment$/)
+  const wakes = reqs.since(t0, /^\/api\/voice\/wake/)
+  const evidence = `segment=${segs.length} utter=${utter.length} wake=${wakes.length}` +
+    (utter[0] ? ` utter_body=${utter[0].body.slice(0, 160)}` : '')
+  // 退出通话（复位，不影响后续人工检查）
+  try { await page.locator('.float-trigger').dblclick({ timeout: 3000 }) } catch { /* ignore */ }
+
+  if (!segs.length) {
+    record(5, '通话模式免唤醒指令', 'INCONCLUSIVE', '未见 call/segment 请求（录音/会话链路没跑起来）', evidence)
+    return
+  }
+  if (!utter.length) {
+    record(5, '通话模式免唤醒指令', 'INCONCLUSIVE', 'segment 有、utter 无（漏斗未命中或闸门误杀——人工核对 audit.log call-funnel 行）', evidence)
+    return
+  }
+  if (wakes.length) {
+    record(5, '通话模式免唤醒指令', 'FAIL', `通话期出现了 ${wakes.length} 次唤醒判定请求（链路串了）`, evidence)
+    return
+  }
+  record(5, '通话模式免唤醒指令', 'PASS', '免唤醒段落进漏斗并命中送编排，全程无唤醒判定', evidence)
 }
 
 /**
