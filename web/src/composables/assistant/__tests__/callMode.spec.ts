@@ -53,4 +53,20 @@ describe('通话 FSM', () => {
     expect(inOpenWindow()).toBe(false)
     expect(callConfig.open_window_s).toBe(8)
   })
+
+  it('通话态播报期强制 barge-in（不依赖 vad.barge_in 配置）', async () => {
+    const { callBargeInEnabled } = await import('../store')
+    expect(callBargeInEnabled(false, true)).toBe(true)    // 配置关、通话开 → 仍启用
+    expect(callBargeInEnabled(true, false)).toBe(true)    // 配置开、通话关 → 照配置
+    expect(callBargeInEnabled(false, false)).toBe(false)  // 双关 → 不启用（非通话态零变化）
+  })
+
+  it('播报结束开窗（markTurnEnded 后 inOpenWindow=true）', async () => {
+    // 归属：Task 10 把 markTurnEnded/inOpenWindow 放在 store（避免 wakeOrchestrator↔callMode 循环导入）。
+    const { markTurnEnded, inOpenWindow, callWindowUntil } = await import('../store')
+    callWindowUntil.value = 0
+    expect(inOpenWindow()).toBe(false)
+    markTurnEnded()
+    expect(inOpenWindow()).toBe(true)
+  })
 })

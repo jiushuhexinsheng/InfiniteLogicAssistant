@@ -22,7 +22,7 @@ import { nextState } from '../wakeFsm'
 import {
   state, partialText, statusLine, wakeEnabled, vadConfig,
   pendingQuestion, failWake, wakeKeywords, wakeMode,
-  callActive, inOpenWindow, markTurnEnded,
+  callActive, inOpenWindow, markTurnEnded, callBargeInEnabled,
 } from '../store'
 import type { AsstState, PendingQuestion } from '../store'
 import { createSegmentRecorder, type SegmentRecorder } from '../useSegmentRecorder'
@@ -871,7 +871,7 @@ export function registerWatches() {
       // degrades silently to plain mic-off — unavailable never breaks.
       stopBargeIn()
       stopListening()
-      if (bargeInEnabled() && deps?.stopSpeak) {
+      if (callBargeInEnabled(bargeInEnabled()) && deps?.stopSpeak) {
         const stopSpeak = deps.stopSpeak
         bargeMonitor = startBargeInMonitor({
           threshold: Math.max(0.02, ((vadConfig.silence_threshold ?? 0.02) * 2)),
@@ -892,6 +892,7 @@ export function registerWatches() {
     // wake nor answer; a barge-in's residual audio is caught by the same 1.2s).
     stopBargeIn()
     echoGuardUntil = Date.now() + ECHO_GUARD_MS
+    if (callActive.value) markTurnEnded()   // 通话态：播报真正结束 → 开放窗口起点
     // 续聊窗口从「播报真正结束」起重新计满（docs/designs/03-A：窗口 = 播报完后的 N 毫秒，
     // 而不是 done 事件到达时）；回声护栏 1.2s 仍在前面挡尾音。
     // Re-arm the follow-up window from actual end-of-playback (docs/designs/03-A: the

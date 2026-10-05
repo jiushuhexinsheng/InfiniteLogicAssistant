@@ -176,6 +176,11 @@ export function markTurnEnded(): void {
   callWindowUntil.value = Date.now() + callConfig.open_window_s * 1000
 }
 
+/** 通话态是否应开 barge-in 监控：通话激活时强制开（spec：通话模式播报期开监控而非停麦）。 */
+export function callBargeInEnabled(configFlag: boolean, active: boolean = callActive.value): boolean {
+  return active || configFlag
+}
+
 /** 响应式唤醒词列表（**可多个**，命中任意一个即唤醒）。Reactive wake keywords (plural; any hit wakes). */
 export const wakeKeywords = ref<string[]>([...(wakeConfig.keywords ?? [])])
 
