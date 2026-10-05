@@ -12,6 +12,7 @@ unavailable state degrades to available()=False / is_complete()=True — i.e. th
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from core import config
@@ -19,6 +20,26 @@ from core.config import add_reload_hook
 from core.logger import logger
 
 _instance: "SmartTurn | None" = None
+
+# 分析器是共享单例，clear/append→await 分析→clear 的临界区必须串行化（裁决 R12）：
+# 段 A 的 ONNX 推理在途时 barge-in 触发段 B 上传，会把 A 的缓冲清掉/换掉，两个调用
+# 都拿到静默错误的判定。锁按事件循环各配一把、挂在 loop 对象上：asyncio.Lock 会绑定
+# 首个争用它的 loop，模块级单把锁跨 loop 复用（测试每次 asyncio.run 都是新 loop）会在
+# 争用时报 "bound to a different event loop"；而放模块字典里锁会在争用后反向强引用
+# loop，弱键退化成滞留已关闭 loop 的强键。挂 loop 属性则各 loop 各锁、随 loop 一起被
+# GC 回收；loop 恒在单线程内跑，创建无竞态。同 loop 内所有并发 is_complete 共用该
+# loop 那把锁 → 串行；生产是单一 uvicorn loop，全覆盖。
+_LOCK_ATTR = "_smart_turn_lock"
+
+
+def _lock_for_running_loop() -> asyncio.Lock:
+    """取当前事件循环专属的分析锁。Per-event-loop critical-section lock."""
+    loop = asyncio.get_running_loop()
+    lock = getattr(loop, _LOCK_ATTR, None)
+    if lock is None:
+        lock = asyncio.Lock()
+        setattr(loop, _LOCK_ATTR, lock)
+    return lock
 
 
 class SmartTurn:
@@ -53,17 +74,19 @@ class SmartTurn:
         if not self.available() or not pcm16:
             return True
         try:
-            a = self._analyzer
-            if a is None:
-                return True  # 双保险 / belt and braces
-            if sample_rate != a.sample_rate:
-                a.set_sample_rate(sample_rate)
-            a.clear()
-            a.append_audio(pcm16, True)
-            state, _ = await a.analyze_end_of_turn()
-            a.clear()
-            from pipecat.audio.turn.base_turn_analyzer import EndOfTurnState
-            return state == EndOfTurnState.COMPLETE
+            # 临界区整体持锁（含 await 分析与前后 clear），并发调用按 loop 串行（R12）。
+            async with _lock_for_running_loop():
+                a = self._analyzer
+                if a is None:
+                    return True  # 双保险 / belt and braces
+                if sample_rate != a.sample_rate:
+                    a.set_sample_rate(sample_rate)
+                a.clear()
+                a.append_audio(pcm16, True)
+                state, _ = await a.analyze_end_of_turn()
+                a.clear()
+                from pipecat.audio.turn.base_turn_analyzer import EndOfTurnState
+                return state == EndOfTurnState.COMPLETE
         except Exception as e:
             logger.warning("Smart Turn 判定失败（放行）: {}", e)
             return True
