@@ -46,6 +46,7 @@ async def build_context_with_sources(query: str, store: FactStore | None = None)
         (注入文本, RAG 命中)。(injection text, RAG hits).
     """
     from core import config
+    from core.rag import cache as rag_cache
     from core.rag.retriever import format_hits, rerank as rerank_fn, retrieve
 
     if store is None:
@@ -56,11 +57,17 @@ async def build_context_with_sources(query: str, store: FactStore | None = None)
         ragcfg = config.settings.rag
         want_rerank = ragcfg.rerank == "llm"
         fetch_n = ragcfg.rerank_candidates if want_rerank else ragcfg.rerank_top_k
-        hits = await retrieve(query, top_k=fetch_n)
-        if hits and want_rerank:
-            hits = await rerank_fn(query, hits, ragcfg.rerank_top_k)
-        else:
-            hits = hits[:ragcfg.rerank_top_k]
+        # 结果缓存（P2-5）：精排后的最终 hits 入缓存——重复查询省掉 BM25 重算与
+        # rerank LLM 花费；miss（None）才检索，命中的空列表照常复用。
+        cache_key = rag_cache.make_rag_key(query, fetch_n, ragcfg.rerank_top_k)
+        hits: list[dict] | None = rag_cache.get(cache_key)
+        if hits is None:
+            hits = await retrieve(query, top_k=fetch_n)
+            if hits and want_rerank:
+                hits = await rerank_fn(query, hits, ragcfg.rerank_top_k)
+            else:
+                hits = hits[:ragcfg.rerank_top_k]
+            rag_cache.set(cache_key, hits)
         ctx = format_hits(hits)
         if ctx:
             parts.append("【相关文档/环境】\n" + ctx)

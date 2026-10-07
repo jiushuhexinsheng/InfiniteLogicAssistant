@@ -65,3 +65,86 @@ async def test_build_context_budget_topk_and_date(tmp_path, monkeypatch):
     ctx2 = await build_context("注入预算", store=store)
     lines2 = [ln for ln in ctx2.splitlines() if ln.startswith("- ")]
     assert len(lines2) == 1
+
+
+# ── RAG 结果缓存接线（P2-5：rerank=llm 每查都花钱，重复查询须命中缓存）──
+
+@pytest.mark.asyncio
+async def test_build_context_rag_hits_cache_on_repeat_query(tmp_path, monkeypatch):
+    """同一查询第二次构建不再调 retrieve/rerank（LLM 精排费只花一次）。
+    A repeated query skips retrieve/rerank (the LLM rerank charge happens once)."""
+    from core import config
+    from core.memory import context as ctx_mod
+    from core.rag import retriever
+    monkeypatch.setattr(rag_mod, "INDEX_DB", tmp_path / "index.db")
+    src = tmp_path / "env.md"
+    src.write_text("## 系统\n\nPython 3.14", encoding="utf-8")
+    await index_sources([src])
+    monkeypatch.setattr(config.settings.rag, "rerank", "none")
+
+    calls = {"retrieve": 0, "rerank": 0}
+    real_retrieve = retriever.retrieve
+    async def spy_retrieve(q, top_k=5):
+        calls["retrieve"] += 1
+        return await real_retrieve(q, top_k)
+    async def spy_rerank(q, hits, top_k):
+        calls["rerank"] += 1
+        return hits[:top_k]
+    monkeypatch.setattr(retriever, "retrieve", spy_retrieve)
+    monkeypatch.setattr(retriever, "rerank", spy_rerank)
+
+    store = FactStore(tmp_path / "facts.sqlite")
+    ctx1 = await ctx_mod.build_context("python", store=store)
+    ctx2 = await ctx_mod.build_context("python", store=store)
+    assert "Python" in ctx1 and ctx2 == ctx1
+    assert calls["retrieve"] == 1, f"第二次该命中缓存，实测 retrieve 调了 {calls['retrieve']} 次"
+
+    # 不同查询不受影响（各自建键）。A different query still retrieves.
+    await ctx_mod.build_context("磁盘", store=store)
+    assert calls["retrieve"] == 2
+
+
+@pytest.mark.asyncio
+async def test_build_context_rag_cache_with_llm_rerank(tmp_path, monkeypatch):
+    """rerank=llm 档：第二次同查询连 rerank LLM 调用都省掉。
+    With rerank='llm', the second identical query skips the rerank LLM call too."""
+    from core import config
+    from core.memory import context as ctx_mod
+    from core.rag import retriever
+    monkeypatch.setattr(rag_mod, "INDEX_DB", tmp_path / "index.db")
+    src = tmp_path / "env.md"
+    src.write_text("## 系统\n\nPython 3.14 与磁盘 236GB", encoding="utf-8")
+    await index_sources([src])
+    monkeypatch.setattr(config.settings.rag, "rerank", "llm")
+
+    calls = {"rerank": 0}
+    async def spy_rerank(q, hits, top_k):
+        calls["rerank"] += 1
+        return hits[:top_k]
+    monkeypatch.setattr(retriever, "rerank", spy_rerank)
+
+    store = FactStore(tmp_path / "facts.sqlite")
+    await ctx_mod.build_context("python 磁盘", store=store)
+    await ctx_mod.build_context("python 磁盘", store=store)
+    assert calls["rerank"] == 1, f"第二次该命中缓存，实测 rerank 调了 {calls['rerank']} 次"
+
+
+@pytest.mark.asyncio
+async def test_index_rebuild_invalidates_cache(tmp_path, monkeypatch):
+    """索引重建清空缓存——重建后的新增内容必须立刻可检索到。
+    Index rebuild clears the cache — newly indexed content is immediately findable."""
+    from core import config
+    from core.memory import context as ctx_mod
+    monkeypatch.setattr(rag_mod, "INDEX_DB", tmp_path / "index.db")
+    src = tmp_path / "env.md"
+    src.write_text("## 系统\n\nPython 3.14", encoding="utf-8")
+    await index_sources([src])
+    monkeypatch.setattr(config.settings.rag, "rerank", "none")
+    store = FactStore(tmp_path / "facts.sqlite")
+
+    assert "Python" in await ctx_mod.build_context("python", store=store)
+    # 重建：加入新内容、删掉旧的。Rebuild with new content replacing the old.
+    src.write_text("## 系统\n\nRust 工具链", encoding="utf-8")
+    await index_sources([src])
+    ctx = await ctx_mod.build_context("python", store=store)
+    assert "Python" not in ctx, "重建后仍返回旧缓存 = 失效没接上"

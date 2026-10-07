@@ -91,4 +91,9 @@ async def index_sources(sources: list[Path], index_db: Path | None = None) -> in
                     conn.execute("INSERT INTO chunk_terms (chunk_id, terms) VALUES (?,?)",
                                  (cur.lastrowid, terms))
                     count += 1
+    # 索引变了 → 检索/精排结果缓存整表作废（TTL 是兜底，这里是主失效点）。
+    # Index changed → drop the retrieval/rerank cache wholesale (TTL is the backstop;
+    # this is the primary invalidation point).
+    from core.rag.cache import clear as clear_cache
+    clear_cache()
     return count
