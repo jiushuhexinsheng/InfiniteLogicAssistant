@@ -72,14 +72,18 @@ const isMiniActive = computed(() => ACTIVE_STATES.includes(props.state))
 const lastMsg = computed<ChatMessage | null>(() => props.messages[props.messages.length - 1] || null)
 
 /**
- * 计算迷你播放器显示文本：优先显示录音中的部分文本，否则显示最后一条消息。
- * Compute mini player display text: prioritize partial text during recording, otherwise show last message.
+ * 计算迷你播放器显示文本：录音中的部分文本 > 状态行（通话漏斗 miss 反馈等）> 最后一条消息。
+ * statusLine 插在历史消息之前（2026-10-07 修复：原顺序让有历史时 miss 反馈永不可见）。
+ * Compute mini player display text: partial text > status line (funnel-miss feedback etc.)
+ * > last message. statusLine sits before history — with the old order, miss feedback was
+ * invisible whenever any history existed (2026-10-07 fix).
  */
 const miniText = computed(() => {
   const p = props.partialText
   if (p && ['recording', 'listening', 'awaiting_answer'].includes(props.state)) return p
+  if (props.statusLine) return props.statusLine
   if (lastMsg.value) return lastMsg.value.text
-  return props.statusLine || ''
+  return ''
 })
 
 /**

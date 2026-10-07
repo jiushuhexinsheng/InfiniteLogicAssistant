@@ -9,7 +9,7 @@ const VECTORS = JSON.parse(readFileSync(resolve(__dirname, '../../../../../tests
 // （R5：入口名以 wakeOrchestrator 实际导出为准 —— 实际导出即 handleSegment /
 //  configureOrchestrator，与 brief 样例一致；断言语义不变。）
 import { configureOrchestrator, handleSegment } from '../wake/wakeOrchestrator'
-import { callActive, callWindowUntil, pendingQuestion } from '../store'
+import { callActive, callWindowUntil, pendingQuestion, statusLine } from '../store'
 
 const sendText = vi.fn()
 const sendAnswer = vi.fn()
@@ -35,6 +35,7 @@ describe('通话段路由', () => {
     callActive.value = true
     callWindowUntil.value = 0
     pendingQuestion.value = null
+    statusLine.value = ''
   })
 
   it('Review Focus #6：待答问题优先于通话分支（段走作答）', async () => {
@@ -46,7 +47,7 @@ describe('通话段路由', () => {
     expect(sendText).not.toHaveBeenCalled()
   })
 
-  it('命中 → sendText 送编排；未命中 → 静默丢', async () => {
+  it('命中 → sendText 送编排；未命中 → 不送编排（反馈走 statusLine）', async () => {
     wire()
     await handleSegment(new Blob([new Uint8Array([1])]))
     expect(sendText).toHaveBeenCalledWith('打开记事本')
@@ -54,6 +55,47 @@ describe('通话段路由', () => {
     callSegment.mockResolvedValueOnce({ ok: true, hit: false, text: '', reason: 'bystander' })
     await handleSegment(new Blob([new Uint8Array([1])]))
     expect(sendText).toHaveBeenCalledTimes(1)   // miss 不送
+  })
+
+  // 2026-10-07「我说话没有反应」根因：漏斗 miss 前端零反馈——响应契约已带 stage/reason
+  // （CallSegmentResponse docstring 写明「前端不读」），通话分支只处理 hit，用户整场
+  // 发言被静默丢弃且毫无可见反应。修法：miss 按 stage/reason 映射文案写入 statusLine。
+  // Root cause of "I speak and nothing happens": funnel misses gave zero frontend feedback.
+  it('miss → statusLine 可见反馈（l2 bystander：旁人误杀也要出提示）', async () => {
+    wire()
+    callSegment.mockResolvedValueOnce({ ok: true, hit: false, text: '', stage: 'l2', reason: 'bystander' })
+    await handleSegment(new Blob([new Uint8Array([1])]))
+    expect(statusLine.value).toBe('未识别为指令（旁人/背景）')
+  })
+
+  it('miss → statusLine 可见反馈（l0 unfocused / low_rms）', async () => {
+    wire()
+    callSegment.mockResolvedValueOnce({ ok: true, hit: false, text: '', stage: 'l0', reason: 'unfocused' })
+    await handleSegment(new Blob([new Uint8Array([1])]))
+    expect(statusLine.value).toBe('窗口未聚焦，语音未处理')
+
+    callSegment.mockResolvedValueOnce({ ok: true, hit: false, text: '', stage: 'l0', reason: 'low_rms' })
+    await handleSegment(new Blob([new Uint8Array([1])]))
+    expect(statusLine.value).toBe('声音太小，没听清')
+  })
+
+  it('miss → statusLine 可见反馈（判定出错 / 上传失败）', async () => {
+    wire()
+    callSegment.mockResolvedValueOnce({ ok: true, hit: false, text: '', stage: '', reason: 'error' })
+    await handleSegment(new Blob([new Uint8Array([1])]))
+    expect(statusLine.value).toBe('语音判定出错，请重试')
+
+    callSegment.mockResolvedValueOnce({ ok: false })
+    await handleSegment(new Blob([new Uint8Array([1])]))
+    expect(statusLine.value).toBe('语音上传失败，请重试')
+  })
+
+  it('hit → statusLine 清空（不残留上一条 miss 提示）', async () => {
+    wire()
+    statusLine.value = '旧提示'
+    await handleSegment(new Blob([new Uint8Array([1])]))
+    expect(sendText).toHaveBeenCalledWith('打开记事本')
+    expect(statusLine.value).toBe('')
   })
 
   it('向量驱动：routing 用例的 hit 语义与前端动作一一对应', async () => {

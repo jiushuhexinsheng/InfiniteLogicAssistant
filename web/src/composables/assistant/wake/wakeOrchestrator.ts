@@ -323,6 +323,37 @@ export function handleSegment(blob: Blob): Promise<void> {
   return segmentChain
 }
 
+// ── 通话漏斗 miss 的可见反馈（2026-10-07「我说话没有反应」根因修复）──
+// 响应契约本就带 stage/reason（CallSegmentResponse 注释写明「供 audit 对照」），此前
+// 前端刻意不读 → 漏斗 miss 全程静默，用户整场发言无任何反应。现在按 stage/reason
+// 映射文案写入 statusLine（MiniPlayer 迷你条渲染）。
+//
+// Visible feedback for funnel misses (root-cause fix for 2026-10-07 "I speak and nothing
+// happens"): the response contract already carries stage/reason, but the frontend
+// deliberately ignored it — misses were fully silent. Map stage/reason to copy into
+// statusLine (rendered by the MiniPlayer mini bar).
+const MISS_STATUS: Record<string, string> = {
+  'l0/no_session': '通话会话已过期，请重新双击进入',
+  'l0/echo': '助手播报中，语音已忽略',
+  'l0/too_short': '说话太短，未识别',
+  'l0/low_rms': '声音太小，没听清',
+  'l0/unfocused': '窗口未聚焦，语音未处理',
+  'l1/empty': '没听清内容，请再说一次',
+  'l1/too_short': '说话太短，未识别',
+  'l1/filler': '只有语气词，未识别',
+  'l1/incomplete': '似乎没说完，未识别',
+  'l2/bystander': '未识别为指令（旁人/背景）',
+  'l2/unsure': '没听懂这段话，请再说一次',
+  error: '语音判定出错，请重试',
+}
+
+/** 按 stage/reason 得到 miss 文案；未知组合给中性兜底。Miss copy from stage/reason. */
+function missStatusLine(stage?: string, reason?: string): string {
+  if (!reason) return '未识别'
+  const key = stage ? `${stage}/${reason}` : reason
+  return MISS_STATUS[key] ?? MISS_STATUS[reason] ?? '未识别'
+}
+
 async function processSegment(blob: Blob) {
   if (!deps) return
 
@@ -403,7 +434,14 @@ async function processSegment(blob: Blob) {
         turnToken++
         markTurnEnded()
         if (state.value === 'recording') state.value = 'listening'
+        statusLine.value = ''   // 清掉上一条 miss 提示，不残留
         deps.sendText(r.text)
+      } else {
+        // miss / 传输失败：给可见反馈（根因修复——此前静默丢弃，用户「说话没反应」）。
+        // Feedback on miss/transport failure: silence was the root cause of "no reaction".
+        statusLine.value = r?.ok
+          ? missStatusLine(r.stage, r.reason)
+          : '语音上传失败，请重试'
       }
     }
     return
