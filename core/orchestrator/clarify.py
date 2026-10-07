@@ -6,18 +6,22 @@ operator, refills the answers, and loops until enough information is gathered.
 """
 from core.logger import logger
 from core.orchestrator.intent import IntentResult
-from core.orchestrator.session import Answer, Session
+from core.orchestrator.session import ABANDON_REASON, Answer, Session
 from core.orchestrator.task import MissingItem, Task, form_task
 
 MAX_CLARIFY_ROUNDS = 3
 
 
-async def run_clarify(session: Session, task: Task) -> dict:
+async def run_clarify(session: Session, task: Task) -> dict | None:
     """逐条把 task.missing 问给操作者，用回答重新形成任务，直到 missing 为空或轮次/重复上限。
 
     每条缺失信息自带作答方式（MissingItem.type/options）：text 走自由文本，
     choice/composite 走结构化选择。选择类回答回填 **option 的 label**（人类可读，
     便于模型理解），value 在选项中找不到时回退为原始值。
+
+    操作者弃题（`reason == ABANDON_REASON`，待答说唤醒词 / stop 端点）→ 立即返回
+    **None**：调用方据此走取消分支。绝不能当作空文本 break —— 那会带着残缺参数
+    继续 form_task / 执行。
 
     Asks the operator each item in task.missing one by one, re-forming the task with the
     answers until missing is empty or the round/repetition limit is hit. Each missing item
@@ -25,6 +29,11 @@ async def run_clarify(session: Session, task: Task) -> dict:
     while choice/composite use a structured choice. A choice answer backfills the option's
     **label** (human-readable, for the model to understand), falling back to the raw value
     when it is not among the options.
+
+    When the operator abandons the question (`reason == ABANDON_REASON` — a wake word
+    spoken while awaiting, or the stop endpoint) this returns **None** immediately, and
+    the caller takes the cancelled branch. It must never be treated as an empty answer
+    (break), which would continue re-forming / executing with partial params.
     """
     asked: set[str] = set()
     answered: dict[str, str] = {}
@@ -37,6 +46,8 @@ async def run_clarify(session: Session, task: Task) -> dict:
             break
         asked.add(item.question)
         answer = await session.ask(item.question, kind=item.type, options=item.options)
+        if answer.reason == ABANDON_REASON:
+            return None
         text = _answer_text(answer, item)
         if not text:
             break

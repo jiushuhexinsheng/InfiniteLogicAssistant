@@ -277,6 +277,68 @@ async def test_channel_awaiting_answer_flag_tracks_ask():
     assert ch.awaiting_answer is False
 
 
+@pytest.mark.asyncio
+async def test_channel_abandon_resolves_pending_ask():
+    """abandon() 解除阻塞的 ask：返回弃题毒丸（reason 标记），且不发 AnswerEvent
+    —— 前端已自行清题，不该再冒出答案块。
+    abandon() unblocks a pending ask() with a poison-pill Answer carrying the abandon
+    reason, and emits no AnswerEvent (the frontend already cleared its card, so no
+    answer block should appear)."""
+    from core.orchestrator.session import ABANDON_REASON
+
+    events: asyncio.Queue = asyncio.Queue()
+    ch = EventQueueChannel(events, session_id="s1")
+
+    async def do_ask():
+        return await ch.ask("确认执行吗？")
+
+    t = asyncio.ensure_future(do_ask())
+    await _next_event(events)  # question 事件已入队
+    assert ch.abandon() is True
+    ans = await asyncio.wait_for(t, timeout=1.0)
+    assert ans == Answer(text="", choice=None, reason=ABANDON_REASON)
+    assert events.empty(), "弃题不该发 AnswerEvent（前端已清题）"
+
+
+@pytest.mark.asyncio
+async def test_channel_abandon_without_pending_ask_is_noop():
+    """不在等待回答时 abandon 是 no-op —— 毒丸绝不残留给下一个 ask。
+    abandon() is a no-op when no ask is pending, so the poison pill can never leak
+    into the next ask()."""
+    events: asyncio.Queue = asyncio.Queue()
+    ch = EventQueueChannel(events, session_id="s1")
+    assert ch.abandon() is False
+
+    # 队列无残留：下一个 ask 照常阻塞、靠真回答解除
+    t = asyncio.ensure_future(ch.ask("问题?"))
+    await _next_event(events)
+    assert not t.done()
+    ch.answer("回答")
+    assert await asyncio.wait_for(t, timeout=1.0) == Answer(text="回答")
+
+
+@pytest.mark.asyncio
+async def test_ask_real_answer_wins_and_racing_poison_is_discarded():
+    """真回答与弃题毒丸抢在同一轮（answer 先入队、abandon 后到）：ask 取真回答，
+    毒丸必须被丢弃 —— 残留进下一个 ask 会让下一问开场即被取消。
+    When a real answer lands before a racing abandon, ask() takes the real answer and
+    the poison pill is discarded: a leaked pill would cancel the next question at birth."""
+    events: asyncio.Queue = asyncio.Queue()
+    ch = EventQueueChannel(events, session_id="s1")
+    t = asyncio.ensure_future(ch.ask("第一问?"))
+    await _next_event(events)
+    ch.answer("真回答")
+    # ask 尚未恢复运行（尚未 await），awaiting_answer 仍为 True → abandon 照常投毒
+    assert ch.abandon() is True
+    assert await asyncio.wait_for(t, timeout=1.0) == Answer(text="真回答")
+
+    t2 = asyncio.ensure_future(ch.ask("第二问?"))
+    await _next_event(events)
+    assert not t2.done(), "弃题毒丸残留进了下一个 ask"
+    ch.answer("第二答")
+    assert await asyncio.wait_for(t2, timeout=1.0) == Answer(text="第二答")
+
+
 # ─── 流水线测试助手 ───
 # 注意：流水线里 judge_intent / form_task / execute_task / run_clarify / extract_and_store
 # 都是被 await 的，桩必须写成 async def —— 用同步 lambda 会报
@@ -397,6 +459,57 @@ async def test_pipeline_skips_prefill_when_no_similar(monkeypatch):
     events: asyncio.Queue = asyncio.Queue()
     await pl.run_pipeline("导出报表", s, events, StopController())
     assert calls == [None], "无相似历史时不应二次调用 form_task"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_clarify_abandon_emits_cancelled(monkeypatch):
+    """澄清期间弃题（stop 端点投的毒丸）→ 管线立即取消：done(cancelled)、不执行任务。
+    Abandoning during clarification cancels the pipeline at once: a cancelled done is
+    emitted and the task never executes."""
+    from core.orchestrator import pipeline as pl
+    from core.orchestrator.control import StopController
+    from core.orchestrator.session import ABANDON_REASON, Answer, Session
+    from core.orchestrator.task import MissingItem, Task
+
+    class _AbandonChannel:
+        """返回弃题毒丸的通道（stop 端点投递后 ask() 的返回值）。"""
+
+        async def ask(self, q, *, kind="text", options=None):
+            return Answer(text="", choice=None, reason=ABANDON_REASON)
+
+        async def notify(self, text):
+            pass
+
+    executed = {"n": 0}
+
+    async def fake_execute(*a, **k):
+        executed["n"] += 1
+        return _done_result()
+
+    async def fake_form(intent, confirmed=None):
+        return Task(id="t1", goal="复制文件", params={},
+                    missing=[MissingItem(question="目标位置？")], risk="read")
+
+    async def fake_find(goal, **kw):
+        return None
+
+    monkeypatch.setattr(pl, "judge_intent", _fake_judge)
+    monkeypatch.setattr(pl, "form_task", fake_form)
+    monkeypatch.setattr(pl, "find_similar", fake_find)
+    monkeypatch.setattr(pl, "execute_task", fake_execute)
+    monkeypatch.setattr(pl, "extract_and_store", _noop)
+    monkeypatch.setattr(pl, "get_facts_store", lambda: object())
+
+    s = Session()
+    events: asyncio.Queue = asyncio.Queue()
+    # channel 必须经参数传入：run_pipeline 缺省会自建 EventQueueChannel 覆盖 session.channel
+    await pl.run_pipeline("复制文件", s, events, StopController(), channel=_AbandonChannel())
+
+    assert executed["n"] == 0, "弃题后绝不执行任务"
+    states = [e for e in _drain(events) if e.get("type") == "task_state"]
+    cancelled = [e for e in states if e.get("status") == "cancelled"]
+    assert cancelled, f"应发 done(cancelled)，实际事件: {states}"
+    assert "放弃" in (cancelled[-1].get("summary") or ""), "取消摘要应说明是操作者放弃"
 
 
 # ─── 完成确认 + 存档（mode="task"）───

@@ -940,6 +940,34 @@ def test_voice_utter_allowed_when_session_not_awaiting(client):
         state.cleanup("idle-sess")
 
 
+def test_task_stop_abandons_pending_answer(client):
+    """POST /task/{sid}/stop 顺带向通道投弃题毒丸，解除阻塞的 ask —— 否则会话永久
+    占用，新指令全撞 utter 409。
+    The stop endpoint also delivers the abandon pill to the channel, unblocking a
+    pending ask; otherwise the session stays busy forever and every follow-up utter
+    hits 409."""
+    import asyncio
+    from core.api import state
+    from core.orchestrator.control import StopController
+    from core.orchestrator.pipeline import EventQueueChannel
+    from core.orchestrator.session import ABANDON_REASON, Answer, Session
+
+    session = Session(session_id="stop-abandon")
+    ch = EventQueueChannel(asyncio.Queue(), "stop-abandon")
+    ch.awaiting_answer = True
+    session.channel = ch
+    ctrl = StopController()
+    state.register(session, ctrl)
+    try:
+        r = client.post("/api/task/stop-abandon/stop")
+        assert r.status_code == 200
+        assert ctrl.token.is_cancelled  # 原有停止行为保持
+        ans = ch.answers.get_nowait()   # 毒丸已入队 → ask() 得以解除
+        assert ans == Answer(text="", choice=None, reason=ABANDON_REASON)
+    finally:
+        state.cleanup("stop-abandon")
+
+
 def test_library_list_and_delete(client, tmp_path, monkeypatch):
     """任务库列表与删除端点。The task-library list and delete endpoints."""
     import asyncio

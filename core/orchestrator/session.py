@@ -39,6 +39,19 @@ class Answer:
     reason: str = ""
 
 
+# 弃题标记（操作者在待答期间放弃本题：待答说唤醒词、stop 端点）：通道投
+# `Answer(text="", choice=None, reason=ABANDON_REASON)` 毒丸。confirm 侧按空文本
+# 拒绝天然消化（reason 透传进任务摘要）；clarify 侧凭此标记退出追问（返回 None →
+# 管线走取消分支，绝不带残缺参数继续执行）。
+# Abandon marker (the operator abandons the pending question — a wake word spoken
+# while awaiting, or the stop endpoint): the channel delivers an
+# `Answer(text="", choice=None, reason=ABANDON_REASON)` poison pill. The confirm
+# layer consumes it naturally as an empty-text rejection (the reason travels into
+# the task summary); the clarify loop exits on this marker (returns None → the
+# pipeline takes the cancelled branch, never executing with partial params).
+ABANDON_REASON = "用户放弃本题"
+
+
 class SessionState(str, enum.Enum):
     """会话状态机枚举：idle → understanding →（chit_chat | forming_task）→ … → idle，可 stopped。
 

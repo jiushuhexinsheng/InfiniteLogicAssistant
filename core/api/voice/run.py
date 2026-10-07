@@ -332,11 +332,19 @@ async def voice_answer(request: Request):
 
 @router.post("/task/{session_id}/stop", response_model=AckResponse)
 async def task_stop(session_id: str):
-    """停止该会话的整个任务（CancellationToken → executor/子进程中止）。
+    """停止该会话的整个任务（CancellationToken → executor/子进程中止），
+    并弃掉正等待的回答（解除 ask() 阻塞 —— 否则会话永久占用、新指令撞 utter 409）。
 
-    Stop the whole task of the session (CancellationToken → executor/subprocess abort).
+    Stop the whole task of the session (CancellationToken → executor/subprocess abort)
+    and abandon any pending question (unblocks ask(); otherwise the session stays busy
+    and the next utter hits 409).
     """
     ctrl = state.get_controller(session_id)
     if ctrl:
         ctrl.stop_task()
+    session = state.get_session(session_id)
+    channel = getattr(session, "channel", None) if session else None
+    abandon = getattr(channel, "abandon", None)
+    if callable(abandon):
+        abandon()
     return {"ok": True, "ack": "stop"}

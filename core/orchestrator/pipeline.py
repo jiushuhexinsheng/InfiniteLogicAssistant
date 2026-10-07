@@ -26,7 +26,7 @@ from core.orchestrator.events import (
 )
 from core.orchestrator.executor import execute_task
 from core.orchestrator.intent import judge_intent
-from core.orchestrator.session import Answer, OperatorChannel, Session, SessionState
+from core.orchestrator.session import ABANDON_REASON, Answer, OperatorChannel, Session, SessionState
 from core.orchestrator.task import Task, form_task
 from core.prompts import CHIT_CHAT_SYSTEM
 from core.tasks.store import TaskStore
@@ -171,6 +171,32 @@ class EventQueueChannel(OperatorChannel):
             finally:
                 self.awaiting_answer = False
                 self.pending_qid = None
+                # 清掉可能残留的迟到作答/弃题毒丸：ask 已返回，此刻队列里的任何东西
+                # 都属于已结束的问题（answer 与 abandon 抢在同一轮时，毒丸会落在
+                # 真回答后面没被消费），留给下一个 ask 只会开场即被吃掉。
+                while not self.answers.empty():
+                    self.answers.get_nowait()
+
+    def abandon(self) -> bool:
+        """弃题：正等待回答时向回答队列投弃题毒丸，解除 ask() 阻塞。
+
+        不发 AnswerEvent —— 发起弃题的前端已自行清题，再发只会冒出一个怪答案块；
+        不在等待回答时是 no-op，毒丸绝不残留给下一个 ask。
+
+        Abandon the pending question: while an ask() is pending, put a poison-pill
+        Answer into the queue to unblock it. No AnswerEvent is emitted (the frontend
+        that initiated the abandonment already cleared its card; emitting one would
+        only surface a stray answer block). A no-op when nothing is pending, so the
+        pill can never leak into the next ask().
+
+        Returns:
+            是否真的投了毒丸（即正有提问在等待回答）。Whether a pill was actually
+            delivered (i.e. a question was pending).
+        """
+        if not self.awaiting_answer:
+            return False
+        self.answers.put_nowait(Answer(text="", choice=None, reason=ABANDON_REASON))
+        return True
 
     def answer(self, text: str, choice: str | None = None, *,
                qid: str | None = None, source: str | None = None) -> bool:
@@ -298,7 +324,15 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
             task.params = {**hist["params"], **task.params}
     if task.missing:
         session.set_state(SessionState.CLARIFYING)
-        task.params = await run_clarify(session, task)
+        clarified = await run_clarify(session, task)
+        if clarified is None:
+            # 操作者弃题（放弃本题）：与确认拒绝同一收束（done cancelled），
+            # 绝不带着残缺参数往下执行。
+            await events.put(TaskStateEvent(state="done", status="cancelled",
+                                            summary="操作者放弃本题，任务取消").emit())
+            await events.put(DoneEvent().emit())
+            return
+        task.params = clarified
 
     session.set_state(SessionState.CONFIRMING)
     conf = await confirm_if_needed(task, f"执行任务：{task.goal}", session)

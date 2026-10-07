@@ -97,6 +97,34 @@ async def test_run_clarify_asks_operator(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_run_clarify_abandon_returns_none(monkeypatch):
+    """弃题（ABANDON_REASON 毒丸）→ run_clarify 返回 None 退出，
+    绝不带着残缺参数继续重新 form_task / 执行。
+    The abandon pill makes run_clarify return None instead of carrying partial params
+    forward into re-forming the task / execution."""
+    from core.orchestrator.session import ABANDON_REASON
+    from core.orchestrator.task import MissingItem
+
+    class _Channel:
+        async def ask(self, q, *, kind="text", options=None):
+            return Answer(text="", choice=None, reason=ABANDON_REASON)
+
+        async def notify(self, text):
+            pass
+
+    async def fake_form(*a, **k):
+        raise AssertionError("弃题后不该再重新 form_task")
+
+    monkeypatch.setattr("core.orchestrator.clarify.form_task", fake_form)
+
+    s = Session()
+    s.channel = _Channel()
+    task = Task("t", "复制文件", {"src": "a"}, [MissingItem(question="目标位置？")], "write")
+    params = await run_clarify(s, task)
+    assert params is None
+
+
+@pytest.mark.asyncio
 async def test_run_clarify_choice_answer_backfills_label(monkeypatch):
     """选择类缺失信息按 type 提问，回填 option 的 label（人类可读，供模型理解）。
     A choice-type missing item is asked as a choice question and backfills the option's

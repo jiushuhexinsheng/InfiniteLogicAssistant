@@ -544,6 +544,20 @@ async def test_reject_with_reason_carries_text(asking):
 
 
 @pytest.mark.asyncio
+async def test_confirm_abandon_pill_rejects_with_reason(asking):
+    """弃题毒丸（stop 端点投递）→ 确认层直接拒绝、reason 带弃题标记，不烧 LLM。
+    The abandon pill is rejected by the confirm layer with the abandon reason, without
+    burning an LLM call."""
+    from core.orchestrator.session import ABANDON_REASON
+
+    s = Session()
+    s.channel = _Channel([Answer(text="", choice=None, reason=ABANDON_REASON)])
+    res = await confirm_if_needed(Task("t", "删文件", risk="exec"), "删除 x", s)
+    assert not res
+    assert res.reason == ABANDON_REASON
+
+
+@pytest.mark.asyncio
 async def test_reject_without_text_has_empty_reason(asking):
     """按钮拒绝（无文本）→ reason 为空，任务摘要文案与改造前逐字一致。"""
     s = Session()
