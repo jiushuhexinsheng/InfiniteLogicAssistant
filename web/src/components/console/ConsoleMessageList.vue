@@ -4,7 +4,7 @@
     <div class="welcome">
       <span class="w-avatar"><UiIcon name="brain" :size="13" /></span>
       <span class="w-name">衍衡</span>
-      <span class="mono w-state">在线 · 说{{ wakeHint }}唤醒</span>
+      <span class="mono w-state">{{ banner }}</span>
     </div>
     <div v-if="!messages.length" class="console-empty">
       还没有对话 —— 点右下角悬浮球，或输入文字开始。
@@ -30,10 +30,12 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import MessageItem from '../assistant/MessageItem.vue'
 import { UiIcon } from '../ui'
 import type { ChatMessage } from '../../composables/useAssistant'
+import { wakeEnabled } from '../../composables/assistant/store'
+import { consoleBanner } from '../../composables/assistant/hints'
 
 /** 组件 props：消息列表、唤醒词、消息级动作开关（回合空闲且有会话）。
  *  Component props: message list, wake keyword, message-level action switch. */
@@ -49,6 +51,9 @@ const emit = defineEmits<{
   edit: [index: number, text: string]
   regen: [index: number]
 }>()
+
+/** 横幅状态段：随唤醒开关走（唤醒关时不再叫人喊唤醒词）。Banner status segment: wake-switch aware (no shout-the-wake-word advice when wake is off). */
+const banner = computed(() => consoleBanner(wakeEnabled.value, props.wakeHint))
 
 /** 滚动容器 DOM 引用。Scroll container DOM reference. */
 const scrollEl = ref<HTMLElement | null>(null)

@@ -10,6 +10,9 @@ vi.mock('../../../composables/assistant/store', () => ({
   // ConsoleConversation's canAct computed reads both (docs/designs/07).
   state: { value: 'done' },
   currentSessionId: { value: 's1' },
+  // ConsoleMessageList 横幅读唤醒开关（hints.ts，2026-10-07 遗留审计）。
+  // ConsoleMessageList's banner reads the wake switch (hints.ts, 2026-10-07 leftover audit).
+  wakeEnabled: { value: false },
 }))
 vi.mock('../../../composables/useAssistant', () => ({
   useAssistant: () => ({

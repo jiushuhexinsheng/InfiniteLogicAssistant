@@ -45,7 +45,7 @@ function teardown() {
 onMounted(async () => {
   // 构建标记：F12 Console 若看不到此行 = 页面还在跑旧 JS（关标签页重开，普通刷新可能拿到缓存的旧模块图）。
   // Build marker: absent in F12 Console = the page still runs stale JS (close the tab and reopen; a plain refresh may reuse the cached old module graph).
-  console.info('%c[ILA] build 2026-09-29-r2', 'color:#22d3ee;font-weight:bold')
+  console.info('%c[ILA] build 2026-10-07-r1', 'color:#22d3ee;font-weight:bold')
   // 初始化配置 / Initialize configuration
   await app.initConfig()
   // 初始化助手，传入唤醒词、VAD 和通话模式配置

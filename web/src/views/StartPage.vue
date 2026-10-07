@@ -14,7 +14,7 @@
 
       <!-- 标题 -->
       <h1 class="title">无限逻辑</h1>
-      <p class="subtitle">说{{ asst.wakeHint.value }}唤醒 · 或直接输入文字开聊</p>
+      <p class="subtitle">{{ subtitle }}</p>
 
       <!-- 操作按钮 -->
       <div class="actions">
@@ -92,6 +92,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAssistant } from '../composables/useAssistant'
 import { useConfig } from '../composables/useApi'
+import { startSubtitle } from '../composables/assistant/hints'
 import { api } from '../api'
 import { UiButton, UiIcon } from '../components/ui'
 import TtsMini from '../components/assistant/TtsMini.vue'
@@ -101,6 +102,8 @@ import { activeMenu } from '../components/console/settings/state'
 const asst = useAssistant()
 const app = useConfig()
 const cfg = computed(() => app.config.value)
+/** 副标题：随唤醒开关走 + 露出双击通话入口（hints.ts 单一事实源）。Subtitle: wake-switch aware, exposes the double-click call entry (single source in hints.ts). */
+const subtitle = computed(() => startSubtitle(asst.wakeEnabled.value, asst.wakeHint.value))
 const pingOk = ref(false)
 const pingMs = ref<number | null>(null)
 const router = useRouter()

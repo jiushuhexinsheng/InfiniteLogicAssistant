@@ -1,11 +1,11 @@
 <template>
   <!-- 简约对话历史区域。Compact conversation history area. -->
   <div ref="scrollEl" class="mini-history">
-    <!-- 空态：简洁提示。Empty state: simple prompt. -->
+    <!-- 空态：简洁提示（随唤醒开关走，见 hints.ts）。Empty state: simple prompt (wake-switch aware, see hints.ts). -->
     <div v-if="!turns.length" class="mini-empty">
       <div class="empty-text">
         <b>开始对话</b>
-        <span>输入文字，或说{{ wakeHint }}唤醒</span>
+        <span>{{ emptyText }}</span>
       </div>
     </div>
 
@@ -44,6 +44,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import type { AsstState, ChatMessage } from '../../composables/useAssistant'
+import { wakeEnabled } from '../../composables/assistant/store'
+import { emptyHint } from '../../composables/assistant/hints'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
 import { summarizeBlock } from '../../blocks'
 
@@ -60,6 +62,9 @@ const props = defineProps<{
   visual: StateVisual
   wakeHint: string
 }>()
+
+/** 空态提示：随唤醒开关走（唤醒关时不再叫人喊唤醒词）。Empty-state hint: wake-switch aware (no shout-the-wake-word advice when wake is off). */
+const emptyText = computed(() => emptyHint(wakeEnabled.value, props.wakeHint))
 
 /**
  * 组件事件定义。Component events definition.

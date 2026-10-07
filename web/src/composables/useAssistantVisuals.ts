@@ -1,4 +1,18 @@
 import type { AsstState } from './useAssistant'
+import { callActive } from './assistant/store'
+
+/*
+ * 通话态文案特判落在映射表层（spec 2026-10-05-call-mode-funnel R2 授权的编辑位）。
+ * 2026-10-07 遗留审计：当初特判只写进 StatusPill 组件 —— 共享 stateLabel 的表面
+ * （导航胶囊 / StartPage 徽章 / ConsoleStatus）通话中仍显示「聆听中…说「衍衡」」，
+ * 免唤醒通话里叫人喊唤醒词。写在映射表 = 一处改、全表面生效。
+ *
+ * The call-state special case lives in the mapping table (the edit site the spec authorized).
+ * 2026-10-07 leftover audit: the original special case sat inside StatusPill only, so every
+ * surface sharing stateLabel (nav pill / StartPage badge / ConsoleStatus) still showed
+ * "聆听中…说「衍衡」" during a wake-free call — telling the user to shout a wake word.
+ * In the table, one edit reaches every surface.
+ */
 
 /** 状态视觉配置接口。State visual configuration interface. */
 export interface StateVisual {
@@ -17,10 +31,10 @@ export interface StateVisual {
 /** 状态视觉映射表，为每个助手状态定义视觉配置。State visual mapping table, defines visual configuration for each assistant state. */
 export const STATE_VISUALS: Record<AsstState, StateVisual> = {
   idle:         { icon: 'wave',       label: '双击开通话',                color: '#6b7280', fx: 'fx-idle',          grad: 'brand' },
-  listening:    { icon: 'ear',        label: hint => `聆听中…说${hint}`,     color: '#34d399', fx: 'fx-listening',     grad: 'rainbow' },
+  listening:    { icon: 'ear',        label: hint => callActive.value ? '通话聆听中' : `聆听中…说${hint}`, color: '#34d399', fx: 'fx-listening', grad: 'rainbow' },
   awaiting_answer: { icon: 'mic',     label: '请直接说出你的回答…',        color: '#f59e0b', fx: 'fx-recording',     grad: 'rainbow' },
-  standby:      { icon: 'ear',        label: hint => `待机中…说${hint}继续`, color: '#94a3b8', fx: 'fx-idle',          grad: 'brand' },
-  followup:     { icon: 'chat',       label: hint => `可直接开口，或说${hint}`, color: '#34d399', fx: 'fx-listening',  grad: 'brand' },
+  standby:      { icon: 'ear',        label: hint => callActive.value ? '通话待命中…直接开口' : `待机中…说${hint}继续`, color: '#94a3b8', fx: 'fx-idle', grad: 'brand' },
+  followup:     { icon: 'chat',       label: hint => callActive.value ? '可直接开口' : `可直接开口，或说${hint}`, color: '#34d399', fx: 'fx-listening', grad: 'brand' },
   recording:    { icon: 'mic',        label: '录音中…',                   color: '#f87171', fx: 'fx-recording',     grad: 'rainbow' },
   transcribing: { icon: 'sparkles',   label: '识别中…',                   color: '#c084fc', fx: 'fx-transcribing',  grad: 'brand' },
   thinking:     { icon: 'brain',      label: '思考中…',                   color: '#fb923c', fx: 'fx-thinking',      grad: 'brand' },

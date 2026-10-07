@@ -28,7 +28,6 @@
 import { computed } from 'vue'
 import Icon from '../Icon.vue'
 import { resolveStateLabel } from '../../composables/useAssistantVisuals'
-import { callActive } from '../../composables/assistant/store'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
 import type { AsstState } from '../../composables/useAssistant'
 
@@ -58,12 +57,14 @@ const LABEL_FALLBACK: Partial<Record<AsstState, string>> = { responding: '回复
 const EQ_STATES: AsstState[] = ['listening', 'recording', 'awaiting_answer']
 
 /** 胶囊文案。Pill copy.
- *  通话激活时聆听态改说「通话聆听中」（R2）：这时不再需要唤醒词提示，且 spec/T14 验收
- *  按这句断言通话场景。
- *  With a call active the listening state reads 「通话聆听中」 (R2): the wake hint is
- *  irrelevant then, and both the spec copy and T14's acceptance assert on this exact phrase. */
+ *  通话态特判已下沉共享映射表（useAssistantVisuals，2026-10-07 遗留审计：原特判只在本
+ *  组件，导航胶囊/StartPage 徽章等共享 stateLabel 的表面通话中仍喊唤醒词）。这里直连
+ *  resolveStateLabel，与所有表面同源。
+ *  The call-state special case now lives in the shared mapping table (useAssistantVisuals;
+ *  2026-10-07 leftover audit: it used to sit here only, so surfaces sharing stateLabel —
+ *  nav pill, StartPage badge — still told users to shout the wake word during a call).
+ *  This pill reads resolveStateLabel like every other surface: one source. */
 const label = computed(() => {
-  if (callActive.value && props.state === 'listening') return '通话聆听中'
   return resolveStateLabel(props.visual, props.wakeHint) || LABEL_FALLBACK[props.state] || ''
 })
 
