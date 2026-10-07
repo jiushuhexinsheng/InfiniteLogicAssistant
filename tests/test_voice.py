@@ -176,3 +176,38 @@ async def test_asr_does_not_retry_client_errors(monkeypatch):
     with pytest.raises(ValueError):
         await client.transcribe_base64("QUJD", "wav")
     assert flaky.calls == 1  # 一次都不重试。Not one retry.
+
+
+@pytest.mark.asyncio
+async def test_asr_chat_audio_merges_system_and_audio(monkeypatch):
+    """chat_audio：单次请求同时带 system 指令 + 文本引导 + input_audio，返回 content。
+    One request carries system instruction + text prompt + input_audio; returns content."""
+    prof = {
+        "provider": "openai", "endpoint": "https://api.example.com", "api_key": "k",
+        "model": "mimo-v2.5-asr", "chat_path": "/v1/chat/completions",
+    }
+    client, fake = _client_with_profile(monkeypatch, prof)
+    out = await client.chat_audio("你是入口闸门", "转写并判定，只输出 JSON", "QUJD", "wav")
+    assert out == "你好"
+    body = fake.captured["json"]
+    msgs = body["messages"]
+    assert msgs[0] == {"role": "system", "content": "你是入口闸门"}
+    parts = msgs[1]["content"]
+    assert parts[0] == {"type": "text", "text": "转写并判定，只输出 JSON"}
+    assert parts[1]["input_audio"]["data"] == "QUJD"  # 默认无 data URL 前缀
+    assert parts[1]["input_audio"]["format"] == "wav"
+
+
+@pytest.mark.asyncio
+async def test_asr_chat_audio_respects_data_url_compat(monkeypatch):
+    """compat.audio_data_url 同样作用于 chat_audio 的音频 part。
+    The compat data-URL switch applies to chat_audio's audio part too."""
+    prof = {
+        "provider": "openai", "endpoint": "https://api.example.com", "api_key": "k",
+        "model": "m", "chat_path": "/v1/chat/completions",
+        "compat": {"audio_data_url": True},
+    }
+    client, fake = _client_with_profile(monkeypatch, prof)
+    await client.chat_audio("s", "u", "QUJD", "mp3")
+    audio = fake.captured["json"]["messages"][1]["content"][1]["input_audio"]
+    assert audio["data"] == "data:audio/mpeg;base64,QUJD"

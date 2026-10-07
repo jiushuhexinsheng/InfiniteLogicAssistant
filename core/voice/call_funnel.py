@@ -22,6 +22,7 @@ function, ``llm`` is injectable for tests, and any failure falls back to ``"unsu
 """
 from __future__ import annotations
 
+import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
@@ -161,6 +162,36 @@ async def judge_call_intent(text: str, recent: str, *, relax: bool,
         return "unsure"
 
 
+def parse_merged_content(content: str) -> tuple[str, str | None]:
+    """解析合并调用的单次输出：JSON（可带 ``` 围栏）→ (text, verdict)；非 JSON → 原文
+    当转写、verdict None；verdict 越界也置 None（交回两步补判，不许瞎猜）。
+
+    Parse a merged-call response: JSON (fences allowed) yields ``(text, verdict)``;
+    non-JSON becomes the raw transcript with ``verdict=None``; an out-of-range verdict
+    is also ``None`` (the two-step path re-judges rather than guess).
+    """
+    raw = (content or "").strip()
+    if not raw:
+        return "", None
+    candidate = raw
+    if candidate.startswith("```"):
+        parts = candidate.split("```")
+        if len(parts) >= 2:
+            inner = parts[1]
+            if inner.startswith("json"):
+                inner = inner[len("json"):]
+            candidate = inner.strip()
+    try:
+        data = json.loads(candidate)
+    except Exception:
+        return raw, None
+    if not isinstance(data, dict):
+        return raw, None
+    text = str(data.get("text") or "")
+    v = data.get("verdict")
+    return text, (v if v in _VALID_VERDICTS else None)
+
+
 # ── run_funnel：三级漏斗编排 / run_funnel: three-stage orchestration ──
 
 
@@ -174,10 +205,19 @@ class FunnelDeps:
     The ``judge`` contract takes ``relax`` positionally (Ruling R3): adapt
     ``judge_call_intent`` (keyword-only ``relax``) with a wrapper at the injection
     site; never inject the raw function.
+
+    ``merged`` 是 L2 合并调用（单次云端 chat 同时精转写+四分类），relax 同为**位置
+    参数**；返回 ``(text, verdict)``，verdict 可为 ``None``（只拿到转写）。``None``
+    或抛异常都回落既有两步路径 —— 合并是增量优化，不是替换。
+    ``merged`` is the L2 merged call (one cloud chat does ASR + four-way judge in a
+    single request), ``relax`` positional as well; returns ``(text, verdict)`` with
+    ``verdict=None`` when only the transcript came back. ``None`` or an exception
+    falls back to the legacy two-step path — the merge is additive, not a replacement.
     """
 
     cloud_transcribe: Callable[[bytes], Awaitable[str]]
     judge: Callable[[str, str, bool], Awaitable[str]]
+    merged: Callable[[bytes, str, bool], Awaitable[tuple[str, str | None]]] | None = None
     local_transcribe: Callable[[bytes], str] | None = None
     smart_turn: Callable[[bytes], Awaitable[bool]] | None = None
     min_seconds: float = 0.5
@@ -221,13 +261,30 @@ async def run_funnel(wav: bytes, meta: SegmentMeta, deps: FunnelDeps,
                     return FunnelResult(verdict="incomplete", hit=False, stage="l1",
                                         text=text, reason="incomplete")
 
-    # ── L2：云端精转写（审计在注入的 cloud_transcribe 里）+ 意图闸门 ──
-    try:
-        cloud_text = await deps.cloud_transcribe(wav)
-    except Exception:
-        cloud_text = ""
-    final_text = cloud_text or text
-    verdict = await deps.judge(final_text, recent, relax)  # relax 位置传（R3 契约）
+    # ── L2：合并调用优先（一次云端同时转写+判定），三重降级到既有两步 ──
+    # 1) merged 给了 verdict → 直接用（不再上传、不再 judge）；
+    # 2) 只给了文本 → 该文本已是云端级转写，补判即可（不许二次上传音频）；
+    # 3) merged 缺席/失败/空 → 完整两步 cloud_transcribe + judge（现状成本）。
+    mtext, mverdict = "", None
+    if deps.merged is not None:
+        try:
+            mtext, mverdict = await deps.merged(wav, recent, relax)  # relax 位置传（R3）
+        except Exception:
+            mtext, mverdict = "", None
+    if mverdict is not None:
+        final_text = mtext or text
+        verdict = mverdict
+    elif mtext:
+        final_text = mtext
+        verdict = await deps.judge(mtext, recent, relax)  # relax 位置传（R3 契约）
+    else:
+        # 两步旧路径：云端精转写（审计在注入的 cloud_transcribe 里）+ 意图闸门。
+        try:
+            cloud_text = await deps.cloud_transcribe(wav)
+        except Exception:
+            cloud_text = ""
+        final_text = cloud_text or text
+        verdict = await deps.judge(final_text, recent, relax)  # relax 位置传（R3 契约）
     hit = verdict in ("command", "chitchat") or (relax and verdict == "unsure")
     audit(f"call-funnel verdict={verdict} hit={int(hit)} stage=l2 relax={int(relax)} "
           f"text={final_text[:60]!r}")

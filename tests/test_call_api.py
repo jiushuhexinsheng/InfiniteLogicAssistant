@@ -149,3 +149,62 @@ def _async_const(v):
     async def f(*a, **k):
         return v
     return f
+
+
+def test_call_segment_merged_single_upload(client, monkeypatch):
+    """合并调用开启且 ASR 可用：一次 chat_audio 同时拿转写与 verdict —— judge 不再被
+    调、audit 恰好一条 audio-upload。Merged path: one chat_audio yields transcript +
+    verdict — judge never runs, exactly one audio-upload audit line."""
+    client.post("/api/voice/call/start")
+    monkeypatch.setattr(call_mod, "_local_transcribe", None)
+
+    class _MergedAsr:
+        def available(self):
+            return True
+        async def transcribe_base64(self, b64, fmt):
+            raise AssertionError("合并路径不许走两步的 transcribe_base64")
+        async def chat_audio(self, system, user, b64, fmt="wav"):
+            return '{"text": "打开记事本", "verdict": "command"}'
+    monkeypatch.setattr("core.voice.get_asr", lambda: _MergedAsr())
+
+    async def judge(t, r, relax):
+        raise AssertionError("合并调用已回 verdict，judge 不该被调")
+    monkeypatch.setattr(call_mod, "_judge", judge)
+
+    from core.logger import audit as real_audit
+    calls = []
+    monkeypatch.setattr(call_mod, "audit", lambda m: (calls.append(m), real_audit(m))[1])
+    r = _seg(client)
+    assert r.json()["hit"] is True and r.json()["text"] == "打开记事本"
+    assert r.json()["reason"] == "command"  # L2 verdict 落在 reason（响应无 verdict 字段）
+    uploads = [c for c in calls if c.startswith("audio-upload via=call-segment")]
+    assert len(uploads) == 1
+
+
+def test_call_segment_merge_l2_off_keeps_two_step(client, monkeypatch):
+    """merge_l2=False → 合并调用完全不接线，走既有两步（transcribe + judge）。
+    With merge_l2 off the merged path is unwired; the legacy two-step runs."""
+    import core.config as cm
+    monkeypatch.setattr(cm, "get_settings",
+                        lambda: cm.Settings(rag=cm.RagSection(auto_index=False),
+                                            voice={"call": {"smart_turn_enabled": False,
+                                                            "merge_l2": False}}))
+    client.post("/api/voice/call/start")
+    monkeypatch.setattr(call_mod, "_local_transcribe", None)
+
+    class _MergedAsr:
+        def available(self):
+            return True
+        async def transcribe_base64(self, b64, fmt):
+            return "今天天气怎么样"
+        async def chat_audio(self, system, user, b64, fmt="wav"):
+            raise AssertionError("merge_l2=False 时 chat_audio 不该被调")
+    monkeypatch.setattr("core.voice.get_asr", lambda: _MergedAsr())
+
+    seen = []
+    async def judge(t, r, relax):
+        seen.append(t)
+        return "command"
+    monkeypatch.setattr(call_mod, "_judge", judge)
+    r = _seg(client)
+    assert r.json()["hit"] is True and seen == ["今天天气怎么样"]

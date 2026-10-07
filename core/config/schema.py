@@ -300,6 +300,12 @@ class CallConfig(BaseModel):
     # 本地流式转写模型目录；缺失时跳过 L1，只走 L0+L2。
     # Local streaming ASR model dir; when missing, skip L1 and run L0+L2 only.
     local_asr_model: str = "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
+    # L2 合并调用：单次云端 chat 同时精转写+四分类（省一次上传与一轮 LLM）；
+    # False = 回到两步（cloud_transcribe + judge）。合并失败也自动回落两步。
+    # L2 merged call: one cloud chat does ASR + four-way judge (saves one upload and
+    # one LLM round); False = legacy two-step (cloud_transcribe + judge). A failed
+    # merged call falls back to the two-step automatically.
+    merge_l2: bool = True
 
 
 class VoiceSection(BaseModel):

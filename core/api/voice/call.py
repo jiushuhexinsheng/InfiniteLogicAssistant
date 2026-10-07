@@ -83,6 +83,35 @@ async def _judge(text: str, recent: str, relax: bool) -> str:
     return await judge_call_intent(text, recent, relax=relax)
 
 
+async def _merged(wav: bytes, recent: str, relax: bool) -> tuple[str, str | None]:
+    """L2 合并调用：单次 chat_audio 同时云端精转写+四分类。
+
+    任何失败（ASR 不可用/无 chat_audio/网络/解析）返回 ("", None) → 漏斗自动回落
+    两步旧路径，链路不断。成功上传恰好打一条 audio-upload 审计（与 _cloud_transcribe
+    同口径，绝不双计）。
+    """
+    import base64 as _b64
+    from core.prompts import CALL_GATE_MERGED_JSON, CALL_GATE_RELAX_NOTE, CALL_GATE_SYSTEM
+    from core.voice import get_asr
+    from core.voice.call_funnel import parse_merged_content
+    try:
+        asr = get_asr()
+        if not asr.available():
+            return "", None
+        system = CALL_GATE_SYSTEM + CALL_GATE_MERGED_JSON + (CALL_GATE_RELAX_NOTE if relax else "")
+        user = "请处理附带音频。"
+        if recent:
+            user += f"\n最近片段：{recent}"
+        content = await asr.chat_audio(system, user, _b64.b64encode(wav).decode(), "wav")
+    except Exception as e:
+        logger.warning("call merged 调用失败，回落两步: {}", e)
+        return "", None
+    text, verdict = parse_merged_content(content)
+    if text:
+        audit(f"audio-upload via=call-segment chars={len(text)} text={text[:80]!r}")
+    return text, verdict
+
+
 def _duration_rms(wav: bytes) -> tuple[float, float]:
     """从 wav 算 (时长秒, 归一化 RMS)。客户端不可信，能量在服务端算。"""
     with wave.open(io.BytesIO(wav), "rb") as w:
@@ -153,6 +182,7 @@ async def call_segment(request: Request):
     deps = FunnelDeps(
         cloud_transcribe=_cloud_transcribe,
         judge=_judge,
+        merged=_merged if cfg.merge_l2 else None,
         local_transcribe=_local_transcribe,
         smart_turn=_smart_turn if cfg.smart_turn_enabled else None,
         min_seconds=cfg.l0_min_seconds,

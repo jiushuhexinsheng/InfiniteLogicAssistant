@@ -112,3 +112,14 @@ CALL_GATE_RELAX_NOTE = (
     "\n【放宽模式】本段属于连续未命中后的复判：宁可误报不可漏报，"
     "倾向把不确定的判为 command。"
 )
+
+# L2 合并调用（单次音频 chat 同时转写+四分类）的输出契约：先逐字转写再判定，
+# 只回 JSON —— 对齐 CALL_GATE_SYSTEM 的四分类语义，无代码围栏。
+# Output contract for the L2 merged call (one audio chat does transcription + four-way
+# judgement): transcribe verbatim first, then judge, JSON only — same four-way semantics
+# as CALL_GATE_SYSTEM, no code fences.
+CALL_GATE_MERGED_JSON = (
+    "\n本段附带音频：先逐字转写，再完成上述四分类。只输出一个 JSON 对象"
+    "（不要代码围栏、不要解释文字）："
+    "{\"text\": \"<逐字转写>\", \"verdict\": \"command|chitchat|bystander|unsure\"}"
+)

@@ -106,6 +106,7 @@ voice:
     l0_min_seconds: 0.5     # 短于此的段本机丢弃
     smart_turn_enabled: true
     local_asr_model: "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
+    merge_l2: true           # L2 合并调用：单次云端同时转写+四分类（省一次上传与一轮 LLM）；false = 两步旧路径
   # 在线 ASR 语音转文字（OpenAI 兼容；endpoint/model 需自填，密钥在 config.secrets.yaml）
   asr:
     active: openai

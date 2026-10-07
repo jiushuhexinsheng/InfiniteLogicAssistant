@@ -75,6 +75,7 @@ voice:
     l0_min_seconds: 0.5         # 短于此的段本机丢弃（L0 粗筛）
     smart_turn_enabled: true    # Smart Turn v3「说完没」复核（L1）开关
     local_asr_model: "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
+    merge_l2: true              # L2 合并调用：单次云端 chat 同时转写+四分类；false = 两步旧路径
   asr:                          # 在线 ASR（OpenAI 兼容；密钥在 config.secrets.yaml / 环境变量）
     active: openai              # KWS 命中后抬取指令文本；cloud 模式下兼做唤醒判定
     profiles:
@@ -124,6 +125,7 @@ L2 云端精判），命中进现有编排。字段：
 | `l0_min_seconds` | `0.5` | L0 时长底线：短于此秒数的段直接丢弃 |
 | `smart_turn_enabled` | `true` | L1 的 Smart Turn v3「说完没」复核开关（`pipecat-ai==1.12.0` 只用这一个组件） |
 | `local_asr_model` | `models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20` | L1 本地转写模型目录；**模型不入库**，用 `python scripts/fetch_local_asr_model.py` 幂等拉取 |
+| `merge_l2` | `true` | L2 合并调用：单次云端 chat 同时精转写+四分类（省一次音频上传与一轮 LLM 判定）；只回文本时自动补判、失败自动回落两步旧路径；`false` = 直接走两步 |
 
 **降级语义**（每一级「坏得静默、链路不断」）：
 

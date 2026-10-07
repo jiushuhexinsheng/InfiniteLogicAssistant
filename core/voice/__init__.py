@@ -107,7 +107,6 @@ class ASRClient:
         Returns:
             识别出的文本。 / The recognized text.
         """
-        url = f"{self.endpoint.rstrip('/')}{self.chat_path}"
         # MiMo 文档：Base64 字符串上限 10MB —— 超限直接本地报错，省一次注定失败的上传。
         # MiMo docs: the Base64 string limit is 10MB — fail locally rather than attempt
         # an upload destined to be rejected.
@@ -141,11 +140,57 @@ class ASRClient:
         }
         if self.compat.get("send_language") and self.language:
             body["asr_options"] = {"language": self.language}
-        # 瞬时网络故障（Server disconnected / 超时 / 连接错误）指数退避重试；
-        # 这是间歇性断连的第一道防线 —— 实测该 ASR 服务会随机掐连接。
-        # Retry transient network failures (Server disconnected / timeout / connect
-        # error) with exponential backoff — the first line of defense against the
-        # measured intermittent disconnects of this ASR service.
+        return await self._post_chat(body)
+
+    async def chat_audio(self, system: str, user: str, audio_base64: str,
+                         audio_format: str = "wav") -> str:
+        """单次请求同时携带 system 指令 + 文本引导 + 音频（L2 合并调用通道）。
+
+        One request carrying a system instruction + text prompt + audio (the L2 merged-call
+        channel). Shares the retry/backoff POST with :meth:`transcribe_base64`.
+
+        Args:
+            system: 系统指令（如合并 JSON 输出约定）。System instruction (e.g. the merged JSON contract).
+            user: 用户文本引导（近况上下文等）。User text prompt (recent context etc.).
+            audio_base64: 音频数据的 base64 编码。 / The base64-encoded audio data.
+            audio_format: 音频格式（wav/mp3）。 / Audio format (wav/mp3).
+
+        Returns:
+            模型返回的 content 原文（调用方自行解析）。Raw content from the model (caller parses).
+        """
+        if len(audio_base64) > _MAX_B64_CHARS:
+            raise ValueError(
+                f"音频过大：Base64 后 {len(audio_base64)} 字符，超过 MiMo 上限 {_MAX_B64_CHARS}（10MB）"
+            )
+        audio = audio_base64
+        if self.compat.get("audio_data_url"):
+            mime = "audio/mpeg" if audio_format in ("mp3", "mpeg") else "audio/wav"
+            audio = f"data:{mime};base64,{audio_base64}"
+        body = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": [
+                    {"type": "text", "text": user},
+                    {"type": "input_audio", "input_audio": {"data": audio, "format": audio_format}},
+                ]},
+            ],
+            "max_tokens": 2048,
+        }
+        if self.compat.get("send_language") and self.language:
+            body["asr_options"] = {"language": self.language}
+        return await self._post_chat(body)
+
+    async def _post_chat(self, body: dict) -> str:
+        """POST chat completions 并取 content；瞬时网络故障指数退避重试。
+
+        这是间歇性断连的第一道防线 —— 实测该 ASR 服务会随机掐连接；4xx/5xx 不重试。
+        POST to chat completions and return the content; transient network failures
+        (Server disconnected / timeout / connect error) get exponential backoff — the
+        first line of defense against the measured intermittent disconnects of this ASR
+        service. HTTP status errors are not retried.
+        """
+        url = f"{self.endpoint.rstrip('/')}{self.chat_path}"
         last_exc: Exception | None = None
         for attempt in range(_MAX_ATTEMPTS):
             try:

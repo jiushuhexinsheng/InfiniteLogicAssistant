@@ -7,6 +7,24 @@
 
 ## 更新历史
 
+### 2026-10-07 优化方案 P2-4：通话漏斗 L2 合并调用
+
+L2 此前是**两次串行云端调用**（先 `cloud_transcribe` 上传音频拿转写，再拿文本调 LLM
+judge 四分类）。合并后单次音频 chat 同时完成转写+判定：
+
+- **一次请求**：`ASRClient.chat_audio(system, user, audio)` 复用既有重试 POST；
+  system = 四分类闸门提示 + 新的 JSON 输出契约（`CALL_GATE_MERGED_JSON`，只回
+  `{"text","verdict"}`、无代码围栏）。
+- **三重降级**（链路永不断）：① 合并给了 verdict → 直接用（零二次调用）；
+  ② 只给文本 → 该文本已是云端级转写，补判即可、**不重复上传音频**；
+  ③ 合并失败/空 → 自动回落既有两步（成本 = 改造前）。
+- **开关**：`voice.call.merge_l2`（默认 `true`），双侧 CallConfig 同步 + `gen:api`
+  重生成；`false` 完全不接线，走两步旧路径。
+- **审计口径不变**：合并成功恰好一条 `audio-upload via=call-segment`，回落两步时由
+  `_cloud_transcribe` 打——绝不双计。
+- 测试 +16（`parse_merged_content` 解析契约 5、漏斗合并路径 6、`chat_audio` 请求体 2、
+  端点接线 2、配置默认 1），全量 pytest **607** / vitest 318 / ruff / mypy 全绿。
+
 ### 2026-10-07 全项目文档同步（README / wiki / 配置模板）
 
 对全项目做了一轮分析后统一文档口径，均为**文档修正，零行为变更**：

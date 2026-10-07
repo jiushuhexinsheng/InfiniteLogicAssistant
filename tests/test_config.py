@@ -409,3 +409,10 @@ def test_call_config_defaults():
 def test_voice_section_has_call():
     from core.config.schema import VoiceSection
     assert hasattr(VoiceSection(), "call")
+
+
+def test_call_config_merge_l2_default():
+    """L2 合并调用默认开启（单次云端同时转写+四分类，省一次上传与一轮 LLM）。
+    The L2 merged call is on by default (one cloud call does ASR + judge)."""
+    from core.config.schema import CallConfig
+    assert CallConfig().merge_l2 is True

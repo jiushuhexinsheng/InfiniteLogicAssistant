@@ -246,3 +246,145 @@ def test_funnel_judge_relax_passed_positionally():
                                relax=True, rms=0.1, duration_s=2.0))
     assert seen["relax"] is True
     assert r.hit is True  # relax 提升 unsure
+
+
+# ── L2 合并调用（单次云端请求同时转写+四分类）/ merged L2 single cloud call ──
+
+from core.voice.call_funnel import parse_merged_content  # noqa: E402
+
+
+def test_parse_merged_valid_json():
+    """合法 JSON → (text, verdict)。Valid JSON yields both."""
+    t, v = parse_merged_content('{"text": "帮我打开记事本", "verdict": "command"}')
+    assert (t, v) == ("帮我打开记事本", "command")
+
+
+def test_parse_merged_strips_code_fence():
+    """模型爱套 ```json 围栏——剥掉后照常解析。Models wrap in fences; strip then parse."""
+    t, v = parse_merged_content('```json\n{"text": "现在几点", "verdict": "chitchat"}\n```')
+    assert (t, v) == ("现在几点", "chitchat")
+
+
+def test_parse_merged_bogus_verdict_keeps_text_only():
+    """verdict 越界 → 文本保留、verdict 置 None（交回两步补判，不许瞎猜）。Out-of-range
+    verdict keeps the text and returns None so the two-step path re-judges."""
+    t, v = parse_merged_content('{"text": "你好", "verdict": "banana"}')
+    assert t == "你好" and v is None
+
+
+def test_parse_merged_non_json_treated_as_raw_transcript():
+    """纯转写（模型无视 JSON 指令）→ 整段当文本、verdict None。Pure transcript (model
+    ignored the JSON instruction) becomes text with verdict None."""
+    t, v = parse_merged_content("今天天气真不错")
+    assert (t, v) == ("今天天气真不错", None)
+
+
+def test_parse_merged_empty_gives_empty():
+    assert parse_merged_content("") == ("", None)
+
+
+def _merged_ok(text, verdict, seen):
+    async def merged(wav, recent, relax, /):
+        seen.append((text, recent, relax))
+        return text, verdict
+    return merged
+
+
+def test_funnel_merged_used_single_cloud_call():
+    """合并调用可用时：一次云端搞定，cloud_transcribe 与 judge 都不许被调。When the
+    merged path is available, one cloud call does it all — neither legacy dep may run."""
+    seen: list = []
+
+    async def cloud(w):
+        raise AssertionError("cloud_transcribe 不该被调用")
+
+    async def judge(t, r, relax):
+        raise AssertionError("judge 不该被调用")
+
+    r = asyncio.run(run_funnel(WAV, _meta(),
+                               _deps(cloud_transcribe=cloud, judge=judge,
+                                     merged=_merged_ok("帮我打开记事本", "command", seen)),
+                               recent="最近", relax=False, rms=0.1, duration_s=2.0))
+    assert r.verdict == "command" and r.hit and r.stage == "l2"
+    assert r.text == "帮我打开记事本"
+    assert seen == [("帮我打开记事本", "最近", False)]
+
+
+def test_funnel_merged_text_only_rejudges_without_reupload():
+    """合并调用只回文本没回 verdict → 直接拿该文本补判，不许再传一次音频。
+    Text without verdict means the transcript is already cloud-grade: judge it, never
+    re-upload."""
+    judged: list = []
+
+    async def cloud(w):
+        raise AssertionError("已云端转写过，不许二次上传")
+
+    async def judge(t, r, relax):
+        judged.append(t)
+        return "chitchat"
+
+    r = asyncio.run(run_funnel(WAV, _meta(),
+                               _deps(cloud_transcribe=cloud, judge=judge,
+                                     merged=_merged_ok("今天天气", None, [])),
+                               recent="", relax=False, rms=0.1, duration_s=2.0))
+    assert r.hit and r.verdict == "chitchat" and r.text == "今天天气"
+    assert judged == ["今天天气"]
+
+
+def test_funnel_merged_exception_falls_back_to_two_step():
+    """合并调用整段失败 → 两步旧路径兜底（链路不断）。A failed merged call degrades to
+    the legacy two-step path — the pipeline never breaks."""
+    async def merged_boom(w, r, relax, /):
+        raise RuntimeError("net down")
+
+    r = asyncio.run(run_funnel(WAV, _meta(),
+                               _deps(merged=merged_boom),
+                               recent="", relax=False, rms=0.1, duration_s=2.0))
+    assert r.verdict == "command" and r.hit and r.stage == "l2"
+
+
+def test_funnel_merged_empty_result_falls_back_to_two_step():
+    """合并调用空手而归（无文本无 verdict）→ 两步旧路径。An empty merged result falls
+    back to the two-step path."""
+    async def merged_nothing(w, r, relax, /):
+        return "", None
+
+    async def cloud(w):
+        return "云端精转"
+
+    r = asyncio.run(run_funnel(WAV, _meta(),
+                               _deps(merged=merged_nothing, cloud_transcribe=cloud),
+                               recent="", relax=False, rms=0.1, duration_s=2.0))
+    assert r.verdict == "command" and r.hit
+
+
+def test_funnel_merged_relax_passed_positionally():
+    """与 judge 同款契约（裁决 R3）：relax 对 merged 也是位置参数。Same contract as
+    judge (Ruling R3): relax reaches merged positionally."""
+    seen: dict = {}
+
+    async def merged_pos(w, recent, relax, /):
+        seen["relax"] = relax
+        return "t", "unsure"
+
+    r = asyncio.run(run_funnel(WAV, _meta(), _deps(merged=merged_pos),
+                               recent="", relax=True, rms=0.1, duration_s=2.0))
+    assert seen["relax"] is True and r.hit  # relax 下 unsure 提升
+
+
+def test_funnel_no_merged_keeps_legacy_two_step():
+    """默认（deps.merged=None）必须走既有两步路径——合并是增量，不是替换。
+    With merged absent the legacy two-step must still run — the merge is additive."""
+    calls = {"cloud": 0, "judge": 0}
+
+    async def cloud(w):
+        calls["cloud"] += 1
+        return "云端精转"
+
+    async def judge(t, r, relax):
+        calls["judge"] += 1
+        return "command"
+
+    r = asyncio.run(run_funnel(WAV, _meta(), _deps(cloud_transcribe=cloud, judge=judge),
+                               recent="", relax=False, rms=0.1, duration_s=2.0))
+    assert r.hit and calls == {"cloud": 1, "judge": 1}

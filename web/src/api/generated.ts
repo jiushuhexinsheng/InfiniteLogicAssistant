@@ -985,6 +985,11 @@ export interface components {
              * @default models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
              */
             local_asr_model: string;
+            /**
+             * Merge L2
+             * @default true
+             */
+            merge_l2: boolean;
         };
         /**
          * CallSegmentResponse
