@@ -110,6 +110,20 @@ describe('VoiceCard', () => {
     expect(t).not.toContain('云端/自动模式')       // 上传口径按模式分开写。Upload scope differs per mode.
   })
 
+  /** 取消限时回答：answer_timeout_ms 现在只武装「裸唤醒后的等指令窗」—— label 不得
+   *  再叫「等待回答超时」（回答已永不限时）；配置键保持 answer_timeout_ms 不改名
+   *  （防旧 config.yaml 校验炸），语义只在 UI 层对齐。
+   *  Unlimited answer window: answer_timeout_ms now only arms the post-bare-wake
+   *  command window — the label must no longer say "等待回答超时" (answers are never
+   *  timed out). The config key stays answer_timeout_ms (renaming it would break old
+   *  config.yaml validation); only the UI copy follows the new semantics. */
+  it('answer_timeout_ms 的 label 反映指令窗语义（不再叫等待回答超时）', () => {
+    const w = mount(VoiceCard)
+    const t = w.text()
+    expect(t).not.toContain('等待回答超时')
+    expect(t).toContain('唤醒后等指令超时（ms）')
+  })
+
   /** 迁移回归：播报设置面板已移入「语音合成」卡，唤醒卡不得再内嵌。
    *  Migration regression: the playback panel moved into the TTS card and must no longer be embedded here. */
   it('不再内嵌播报设置面板', () => {

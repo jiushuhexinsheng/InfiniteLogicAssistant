@@ -77,7 +77,7 @@
     <SettingsField v-if="s.editable.value" label="上传节流（ms，两次唤醒判定的最小间隔）">
       <UiInput type="number" min="0" :model-value="s.ed().vad.upload_throttle_ms" @update:model-value="v => (s.ed().vad.upload_throttle_ms = toNum(v))" />
     </SettingsField>
-    <SettingsField v-if="s.editable.value" label="等待回答超时（ms）">
+    <SettingsField v-if="s.editable.value" label="唤醒后等指令超时（ms）">
       <UiInput type="number" min="1" :model-value="s.ed().vad.answer_timeout_ms" @update:model-value="v => (s.ed().vad.answer_timeout_ms = toNum(v))" />
     </SettingsField>
     <!-- 打断播报（barge-in，docs/designs/02 批3）：助手说话时也可直接开口打断。

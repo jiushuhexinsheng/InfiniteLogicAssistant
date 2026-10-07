@@ -27,7 +27,9 @@ import { startListening, stopListening, toggleWake, wakeEnabled } from './wake/w
  *  must outlive one call. */
 let wakeWasOnBeforeCall = false
 
-/** 双击入口：通话 ⇄ 待机。Double-click entry: call ⇄ idle. */
+/** 双击入口：通话 ⇄ 空闲（退出通话回 idle；与已删除的 standby 状态无关）。
+ *  Double-click entry: call ⇄ idle (leaving a call returns to idle; unrelated to the
+ *  removed standby state). */
 export async function toggleCall(): Promise<void> {
   if (!callConfig.enabled) {
     statusLine.value = '通话模式未启用（voice.call.enabled=false）'

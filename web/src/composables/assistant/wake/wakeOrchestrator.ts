@@ -165,12 +165,15 @@ function abandonPendingQuestion(): void {
   if (sid) void deps?.api.stopTask?.(sid)?.catch?.(() => { /* 尽力而为。Best effort. */ })
 }
 
-// 回答超时计时器（armAnswerTimer 家族）已随「取消限时回答」删除：回答永不限时。
-// answerTimeoutMs 仍武装「裸唤醒后的等指令窗」（配置键不动，语义见 T4 改名说明）。
-// The answer-timeout timer family (armAnswerTimer) is gone with the unlimited answer
-// window: answers are never timed out. answerTimeoutMs still arms the post-bare-wake
-// command window (the config key is unchanged; semantics renamed in T4).
-function answerTimeoutMs(): number {
+// 指令窗时长（毫秒）：只武装「裸唤醒后等指令」的短窗 —— 回答超时计时器
+// （armAnswerTimer 家族）已随「取消限时回答」删除，回答永不限时。配置键保持
+// answer_timeout_ms 不改名（改名会炸旧 config.yaml 校验），语义已收敛到指令窗。
+// Command window length (ms): only arms the short "bare wake, awaiting the command"
+// window — the answer-timeout timer family (armAnswerTimer) is gone with the unlimited
+// answer window; answers are never timed out. The config key stays answer_timeout_ms
+// (a rename would break old config.yaml validation); its semantics narrowed to the
+// command window.
+function commandWindowMs(): number {
   const ms = (vadConfig as { answer_timeout_ms?: number }).answer_timeout_ms
   return ms && ms > 0 ? ms : 8000
 }
@@ -184,7 +187,7 @@ function armCommandTimer() {
     statusLine.value = ''
     if (state.value === 'recording') state.value = wakeEnabled.value ? 'listening' : 'idle'
     console.log('[wake] 等指令超时，恢复唤醒判定')
-  }, answerTimeoutMs())
+  }, commandWindowMs())
 }
 
 // ── TTS 回声护栏 ──
