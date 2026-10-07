@@ -23,6 +23,7 @@ import {
   state, partialText, statusLine, wakeEnabled, vadConfig,
   pendingQuestion, failWake, wakeKeywords, wakeMode,
   callActive, inOpenWindow, markTurnEnded, callBargeInEnabled,
+  currentSessionId,
 } from '../store'
 import type { AsstState, PendingQuestion } from '../store'
 import { createSegmentRecorder, type SegmentRecorder } from '../useSegmentRecorder'
@@ -47,6 +48,8 @@ interface OrchestratorApi {
   transcribe(blob: Blob): Promise<{ ok?: boolean; text?: string }>
   /** 通话模式段落漏斗（Task 12 起接线；可选以保持既有测试假件兼容）。Call-mode segment funnel (wired in Task 12; optional so existing test doubles stay valid). */
   callSegment?(blob: Blob, meta: { tabFocused: boolean; inOpenWindow: boolean }): Promise<{ ok?: boolean; hit?: boolean; text?: string; stage?: string; reason?: string }>
+  /** 停止任务并弃掉待答问题（T1 stop 端点毒丸；可选以保持既有测试假件兼容）。Stop the task and abandon the pending question (the T1 stop-endpoint poison pill; optional so existing test doubles stay valid). */
+  stopTask?(sid: string): Promise<unknown>
 }
 
 /** 可注入依赖集合。Injectable dependencies. */
@@ -93,7 +96,6 @@ let breakerTrippedAt = 0
 let lastUploadAt = 0
 let listenGen = 0
 let startingWake = false
-let answerTimer: ReturnType<typeof setTimeout> | null = null
 let commandTimer: ReturnType<typeof setTimeout> | null = null
 let resetTimer: ReturnType<typeof setTimeout> | null = null
 const DONE_RESET_MS = 3000
@@ -102,11 +104,7 @@ let lastMode: string | null = null
 
 // ── 定时器管理 ──
 
-const TRANSCRIBABLE: AsstState[] = ['listening', 'standby', 'awaiting_answer', 'recording', 'followup']
-
-function clearAnswerTimer() {
-  if (answerTimer) { clearTimeout(answerTimer); answerTimer = null }
-}
+const TRANSCRIBABLE: AsstState[] = ['listening', 'awaiting_answer', 'recording', 'followup']
 
 // ── 续聊窗口（docs/designs/03-A）──
 
@@ -141,23 +139,40 @@ function clearCommandTimer() {
 }
 
 function clearWaitTimers() {
-  clearAnswerTimer()
   clearCommandTimer()
 }
 
+/**
+ * 弃题（待答期间命中唤醒词）：清问题卡 + stopTask 解除后端 ask() 阻塞（T1 毒丸），
+ * 本地 SSE 保持活着等 done(cancelled)。state 回 **thinking** —— 回合实际仍在跑（等收束），
+ * 且新指令必须满足 outbox 入队条件（thinking ∈ TURN_RUNNING），否则 awaiting_answer
+ * 直连 utter 会撞该会话的 409 busy 检查。与 useChat.abandonQuestion 同语义
+ * （DI 边界各持一份，互为参照）。
+ *
+ * Abandon (wake word hit while awaiting): clear the card + stopTask to unblock the
+ * backend ask() (the T1 poison pill), keeping the local SSE alive awaiting
+ * done(cancelled). State returns to **thinking** — the turn is genuinely still running
+ * (awaiting wrap-up) and a new instruction must satisfy the outbox enqueue condition
+ * (thinking ∈ TURN_RUNNING), lest a direct utter from awaiting_answer hit that
+ * session's 409 busy check. Same semantics as useChat.abandonQuestion (one copy per
+ * DI boundary; cross-referenced).
+ */
+function abandonPendingQuestion(): void {
+  if (!pendingQuestion.value) return
+  pendingQuestion.value = null
+  state.value = 'thinking'
+  const sid = currentSessionId.value
+  if (sid) void deps?.api.stopTask?.(sid)?.catch?.(() => { /* 尽力而为。Best effort. */ })
+}
+
+// 回答超时计时器（armAnswerTimer 家族）已随「取消限时回答」删除：回答永不限时。
+// answerTimeoutMs 仍武装「裸唤醒后的等指令窗」（配置键不动，语义见 T4 改名说明）。
+// The answer-timeout timer family (armAnswerTimer) is gone with the unlimited answer
+// window: answers are never timed out. answerTimeoutMs still arms the post-bare-wake
+// command window (the config key is unchanged; semantics renamed in T4).
 function answerTimeoutMs(): number {
   const ms = (vadConfig as { answer_timeout_ms?: number }).answer_timeout_ms
   return ms && ms > 0 ? ms : 8000
-}
-
-function armAnswerTimer() {
-  clearAnswerTimer()
-  answerTimer = setTimeout(() => {
-    answerTimer = null
-    if (!wakeEnabled.value) return
-    const ns = nextState(state.value, 'answer_timeout')
-    if (ns !== state.value) state.value = ns
-  }, answerTimeoutMs())
 }
 
 function armCommandTimer() {
@@ -326,13 +341,34 @@ async function processSegment(blob: Blob) {
   const pq = pendingQuestion.value
   if (pq) {
     turnToken++                 // 作废在飞的尾随提取：本段被消费为回答，任何迟到提取都不得再发
-    state.value = nextState(state.value, 'wake_detected')
-    if (state.value === 'awaiting_answer') armAnswerTimer()
     const text = await transcribeSegment(blob)
     if (!text) return
     failures = 0
+    // 待答先判唤醒词（纯本地拼音匹配，不打云端；转写复用不重复上传）：命中 → 弃题
+    // 开新轮（顺带修掉「开口即被当答案」——半句话被当成本题回答投出去），未命中 →
+    // 照旧走作答通道。裸命中 → 弃题后开指令窗（镜像 followup 分支语义）。
+    // Wake check first while awaiting (purely local pinyin match, no cloud call; the
+    // transcription is reused rather than re-uploaded): a hit abandons the question and
+    // starts a fresh turn (also fixing "speaking up gets taken for the answer" — a
+    // half-utterance delivered as this question's answer); a miss falls through to the
+    // answering channel as before. A bare hit opens the command window after abandoning
+    // (mirrors the followup branch's semantics).
+    const wake = detectWake(text, wakeKeywords.value)
+    if (wake.matched) {
+      abandonPendingQuestion()
+      if (wake.command) {
+        turnToken++             // 认领发送权：作废在飞尾随提取。Claim sending rights.
+        enterWakeCooldown()
+        deps.sendText(wake.command)
+      } else {
+        awaitingCommand = true
+        statusLine.value = '已唤醒，请说指令…'
+        state.value = 'recording'
+        armCommandTimer()
+      }
+      return
+    }
     const hit = matchOption(text, pq.options)
-    clearAnswerTimer()          // 已作答：作废陈旧超时，免得 8 秒后把状态踢进待机
     // 传段落捕获的问题快照：云端转写数秒内 pendingQuestion 可能被清（流错误竞态），
     // sendAnswer 内部不得重读 store（read-after-await 会让 qid 丢失 → 问答分开）。
     // Pass the question snapshot captured at segment start: during the multi-second
@@ -484,7 +520,7 @@ async function processSegment(blob: Blob) {
     // ── 命中：立即动作 ──
     awaitingCommand = true
     statusLine.value = '已唤醒，请说指令…'
-    if (state.value === 'listening' || state.value === 'standby') state.value = 'recording'
+    if (state.value === 'listening') state.value = 'recording'
     playBeep()
     armCommandTimer()
     void extractTrailingCommand(blob, mode)   // 不 await：后台提取尾随指令
@@ -563,7 +599,7 @@ async function fullDetect(chain: ReturnType<typeof ensureChain>, blob: Blob) {
 
   awaitingCommand = true
   statusLine.value = '已唤醒，请说指令…'
-  if (state.value === 'listening' || state.value === 'standby') state.value = 'recording'
+  if (state.value === 'listening') state.value = 'recording'
   playBeep()
   armCommandTimer()
 }
@@ -578,10 +614,25 @@ export function handleLocalResult(text: string) {
   const pq = pendingQuestion.value
   if (pq) {
     turnToken++                 // 认领：作废在飞提取
-    state.value = nextState(state.value, 'wake_detected')
-    if (state.value === 'awaiting_answer') armAnswerTimer()
+    // 待答先判唤醒词（与云端转写路径同语义：命中弃题开新轮，未命中照旧作答）。
+    // Wake check first while awaiting (same semantics as the ASR path: a hit abandons
+    // and starts a fresh turn, a miss answers as before).
+    const wake = detectWake(trimmed, wakeKeywords.value)
+    if (wake.matched) {
+      abandonPendingQuestion()
+      if (wake.command) {
+        turnToken++
+        enterWakeCooldown()
+        deps.sendText(wake.command)
+      } else {
+        awaitingCommand = true
+        statusLine.value = '已唤醒，请说指令…'
+        state.value = 'recording'
+        armCommandTimer()
+      }
+      return
+    }
     const hit = matchOption(trimmed, pq.options)
-    clearAnswerTimer()
     // 同步路径也传快照（与云端转写路径一致的绑定语义）。Snapshot on the sync path too (same binding semantics as the ASR path).
     deps.sendAnswer(hit ? '' : trimmed, hit?.value, 'voice', pq)
     return
@@ -640,7 +691,7 @@ export function handleLocalResult(text: string) {
 
   awaitingCommand = true
   statusLine.value = '已唤醒，请说指令…'
-  if (state.value === 'listening' || state.value === 'standby') state.value = 'recording'
+  if (state.value === 'listening') state.value = 'recording'
   playBeep()
   armCommandTimer()
 }
@@ -934,11 +985,6 @@ export function registerWatches() {
       return
     }
     if (wakeEnabled.value) void ensureListening()
-  })
-
-  watch(state, (s) => {
-    if (s === 'awaiting_answer') armAnswerTimer()
-    else clearAnswerTimer()
   })
 
   watch(state, (s) => {

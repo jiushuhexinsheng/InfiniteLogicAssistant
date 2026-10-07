@@ -1,9 +1,10 @@
 import { reactive, ref } from 'vue'
 import { api, streamUtter } from '../../api'
 import { formatError } from '../../errors'
-import { state, messages, tokenUsage, partialText, genId, addMessage, addBlocks, buildHistory, MAX_MESSAGES, pendingQuestion, currentSessionId, assistantMode, textProjection } from './store'
+import { state, messages, tokenUsage, partialText, genId, addMessage, addBlocks, buildHistory, MAX_MESSAGES, pendingQuestion, currentSessionId, assistantMode, textProjection, wakeKeywords } from './store'
 import { speakAuto, stopSpeak } from './useTts'
 import { matchOption } from './answerMatch'
+import { detectWake } from './wakeMatch'
 import { applyEvent, attachAnswer, finalizeBlocks, makeBlock } from '../../blocks/normalize'
 import { speechForBlocks } from '../../blocks/speech'
 import type { Block } from '../../blocks/types'
@@ -23,6 +24,24 @@ let abortController: AbortController | null = null
 export function abortChat() {
   abortController?.abort()
   abortController = null
+  const sid = currentSessionId.value
+  if (sid) void api.stopTask?.(sid)?.catch?.(() => { /* 尽力而为。Best effort. */ })
+}
+
+/** 弃题（待答期间命中唤醒词，文字侧）：清问题卡 + stopTask 解除后端 ask() 阻塞
+ *  （T1 毒丸），state 回 **thinking** —— 回合仍在跑（等 done），且新指令必须入队
+ *  等收束（直连 utter 撞该会话的 409 busy 检查）。与 wakeOrchestrator 的
+ *  abandonPendingQuestion 同语义（DI 边界各持一份，互为参照）。
+ *
+ *  Abandon (wake word hit while awaiting, text side): clear the card + stopTask to
+ *  unblock the backend ask() (the T1 poison pill); state returns to **thinking** — the
+ *  turn is still running (awaiting done) and a new instruction must queue for the
+ *  wrap-up (a direct utter would hit that session's 409 busy check). Same semantics as
+ *  wakeOrchestrator's abandonPendingQuestion (one copy per DI boundary; cross-referenced). */
+export function abandonQuestion(): void {
+  if (!pendingQuestion.value) return
+  pendingQuestion.value = null
+  state.value = 'thinking'
   const sid = currentSessionId.value
   if (sid) void api.stopTask?.(sid)?.catch?.(() => { /* 尽力而为。Best effort. */ })
 }
@@ -352,22 +371,25 @@ export function cancelTool(id: string) {
   }
 }
 
-/** 文字输入（与语音共用 LLM 管线）。分流规则（docs/designs/06 批3）：
+/** 文字输入（与语音共用 LLM 管线）。分流规则（docs/designs/06 批3；弃题分支见 03 取消限时回答）：
  *  1. 取消词 → 立即中止 + 清队（排队不得吞掉取消）；
- *  2. 有待答问题 → 转作答语义（选项 trim 精确匹配转结构化 choice），不排队；
+ *  2. 有待答问题 → 先判唤醒词（命中 → 弃题开新轮），未命中 → 转作答语义
+ *     （选项 trim 精确匹配转结构化 choice），不排队；
  *  3. 回合进行中 → 入 outbox 排队，收束自动连发；
  *  4. 空闲 → 直接起一轮。
  *
- *  Text input (shares the LLM pipeline with voice). Routing (docs/designs/06 batch 3):
+ *  Text input (shares the LLM pipeline with voice). Routing (docs/designs/06 batch 3;
+ *  the abandon branch: docs/designs/03 unlimited answer window):
  *  1. cancel word → abort now + clear the queue (the queue must never swallow a cancel);
- *  2. a pending question → answer semantics (option trim-exact match becomes a
- *     structured choice), never queued;
+ *  2. a pending question → wake word checked first (a hit abandons and starts a fresh
+ *     turn), otherwise answer semantics (option trim-exact match becomes a structured
+ *     choice), never queued;
  *  3. turn running → queue in the outbox, flushed when the turn wraps up;
  *  4. idle → start a turn directly.
  *
  *  @param text - 用户输入文本。User input text. */
 export function sendText(text: string) {
-  const t = text.trim()
+  let t = text.trim()
   if (!t) return
   if (CANCEL_RE.test(t)) {
     abortChat()
@@ -375,13 +397,25 @@ export function sendText(text: string) {
     return
   }
   // 待答问题优先：在输入框回答 = 作答（否则会被排队压到回合结束后，作答就死了）。
+  // 先判唤醒词（本地拼音匹配）：命中 → 弃题开新轮（带指令则指令作新文本往下走，
+  // state 已回 thinking → 满足入队条件；裸词只弃题），未命中 → 照旧作答。
   // A pending question wins first: typing an answer IS an answer (queuing it until the
-  // turn ends would kill the answer flow).
+  // turn ends would kill the answer flow). The wake word is checked first (local pinyin
+  // match): a hit abandons and starts a fresh turn (a command becomes the new text
+  // flowing down — state already returned to thinking so it satisfies the enqueue
+  // condition; a bare word only abandons), a miss answers as before.
   const pq = pendingQuestion.value
   if (pq) {
-    const hit = matchOption(t, pq.options)
-    void sendAnswer(hit ? '' : t, hit?.value, 'typed')
-    return
+    const wake = detectWake(t, wakeKeywords.value)
+    if (wake.matched) {
+      abandonQuestion()
+      if (!wake.command) return   // 裸唤醒：文字侧只弃题（不开指令窗）。Bare wake: abandon only.
+      t = wake.command            // 指令当新文本：入队等 done 收束连发。Command as new text: queued for the wrap-up chain.
+    } else {
+      const hit = matchOption(t, pq.options)
+      void sendAnswer(hit ? '' : t, hit?.value, 'typed')
+      return
+    }
   }
   // 回合**真正进行中**（LLM 流在跑）才排队；其余状态一律直接发送。
   // ⚠️ 回归靶子：唤醒指令与续聊窗口接话分别落在 listening / followup / recording /

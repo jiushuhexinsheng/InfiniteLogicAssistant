@@ -1,6 +1,13 @@
 import type { AsstState } from './store'
 
-/** 唤醒状态机的事件。Events of the wake state machine. */
+/** 唤醒状态机的事件。Events of the wake state machine.
+ *
+ * answer_timeout / wake_detected 已随「取消限时回答」删除 —— 回答永不限时、standby
+ * 整套移除，不再有「待答超时进待机」「待机唤醒续答」的迁移。
+ *
+ * answer_timeout / wake_detected are gone with the unlimited answer window — answers are
+ * never timed out, standby was removed entirely, so there is no more "timeout into
+ * standby" / "wake from standby to resume" transition. */
 export type WakeEvent =
   /** 提问就绪（已被播报）→ 应自动开录等待作答。A question is ready (already spoken). */
   | 'question_ready'
@@ -8,10 +15,6 @@ export type WakeEvent =
   | 'speech_started'
   /** 本次录音正常结束（有待转写内容）。The recording finished normally. */
   | 'speech_done'
-  /** 等待作答超时（全程未说话）。The answer wait timed out (no speech at all). */
-  | 'answer_timeout'
-  /** 唤醒词命中。The wake word fired. */
-  | 'wake_detected'
   /** 唤醒功能被关闭。The wake feature was switched off. */
   | 'wake_toggled_off'
   /** 回合结束（done/error）→ 开启续聊窗口。Turn ended → open the follow-up window. */
@@ -57,16 +60,6 @@ export function nextState(current: AsstState, event: WakeEvent): AsstState {
         || current === 'followup'
         ? 'awaiting_answer'
         : current
-
-    case 'answer_timeout':
-      // 只有待答态的超时才进待机；其它状态的超时与本题无关。
-      // Only the answer-wait timeout enters standby; other timeouts are unrelated.
-      return current === 'awaiting_answer' ? 'standby' : current
-
-    case 'wake_detected':
-      // 待机态唤醒 → 续答本题；其余态维持既有行为（由调用方置 recording）。
-      // Waking from standby resumes this question; other states keep existing behaviour.
-      return current === 'standby' ? 'awaiting_answer' : current
 
     case 'followup_open':
       // 回合刚结束才开续聊窗口（docs/designs/03-A）；其余状态开窗会截断在途流程。

@@ -27,12 +27,7 @@ describe('通话态状态文案（映射表层，全表面共享）', () => {
     expect(resolveStateLabel(STATE_VISUALS.listening, '「衍衡」')).toBe('通话聆听中')
   })
 
-  it('通话中待机态 → 不再喊唤醒词', () => {
-    callActive.value = true
-    const s = resolveStateLabel(STATE_VISUALS.standby, '「衍衡」')
-    expect(s).toContain('通话')
-    expect(s).not.toContain('说')
-  })
+  // standby（待机态）文案已随「取消限时回答」整套删除 —— 回答永不限时，不再有待机。
 
   it('通话中续聊态 → 不再喊唤醒词', () => {
     callActive.value = true
@@ -40,9 +35,8 @@ describe('通话态状态文案（映射表层，全表面共享）', () => {
     expect(s).not.toContain('「')
   })
 
-  it('非通话态三条文案保持原样（守护）', () => {
+  it('非通话态两条文案保持原样（守护）', () => {
     expect(resolveStateLabel(STATE_VISUALS.listening, '「衍衡」')).toBe('聆听中…说「衍衡」')
-    expect(resolveStateLabel(STATE_VISUALS.standby, '「衍衡」')).toBe('待机中…说「衍衡」继续')
     expect(resolveStateLabel(STATE_VISUALS.followup, '「衍衡」')).toBe('可直接开口，或说「衍衡」')
   })
 })

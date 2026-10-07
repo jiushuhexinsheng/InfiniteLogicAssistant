@@ -13,10 +13,9 @@ export type AsstState =
    *  Waiting for the operator to answer a question: the transcript goes to the answer
    *  channel rather than starting a new turn. */
   | 'awaiting_answer'
-  /** 等待回答超时后的待机：引擎仍在听唤醒词，唤醒后回到**本题**续答。
-   *  Standby after the answer timeout: the engine still listens for the wake word, and
-   *  waking resumes *this* question. */
-  | 'standby'
+  // standby（回答超时后的待机）已随「取消限时回答」删除：回答永不限时，不再有超时态。
+  // standby (the post-answer-timeout idle) is gone with the unlimited answer window:
+  // answers are never timed out, so there is no timeout state to fall into.
   /** 续聊窗口（docs/designs/03-A）：回合刚结束的免唤醒窗口 —— 窗口内的语音段直接
    *  当作新指令（不必再喊唤醒词），到期回 listening。0（followup_window_ms=0）关闭。
    *  Follow-up window (docs/designs/03-A): the wake-free window right after a turn —

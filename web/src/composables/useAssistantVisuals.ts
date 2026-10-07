@@ -33,7 +33,8 @@ export const STATE_VISUALS: Record<AsstState, StateVisual> = {
   idle:         { icon: 'wave',       label: '双击开通话',                color: '#6b7280', fx: 'fx-idle',          grad: 'brand' },
   listening:    { icon: 'ear',        label: hint => callActive.value ? '通话聆听中' : `聆听中…说${hint}`, color: '#34d399', fx: 'fx-listening', grad: 'rainbow' },
   awaiting_answer: { icon: 'mic',     label: '请直接说出你的回答…',        color: '#f59e0b', fx: 'fx-recording',     grad: 'rainbow' },
-  standby:      { icon: 'ear',        label: hint => callActive.value ? '通话待命中…直接开口' : `待机中…说${hint}继续`, color: '#94a3b8', fx: 'fx-idle', grad: 'brand' },
+  // standby 表项已随「取消限时回答」删除（回答永不限时，不再有待机态）。
+  // The standby entry went away with the unlimited answer window (no timeouts → no standby).
   followup:     { icon: 'chat',       label: hint => callActive.value ? '可直接开口' : `可直接开口，或说${hint}`, color: '#34d399', fx: 'fx-listening', grad: 'brand' },
   recording:    { icon: 'mic',        label: '录音中…',                   color: '#f87171', fx: 'fx-recording',     grad: 'rainbow' },
   transcribing: { icon: 'sparkles',   label: '识别中…',                   color: '#c084fc', fx: 'fx-transcribing',  grad: 'brand' },

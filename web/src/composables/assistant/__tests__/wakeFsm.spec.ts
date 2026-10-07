@@ -19,22 +19,11 @@ describe('wakeFsm 迁移表', () => {
     expect(nextState('done', 'question_ready')).toBe('awaiting_answer')
   })
 
-  /** 待答超时（用户全程未说话）→ 待机。An answer-wait timeout (the user never spoke) enters standby. */
-  it('answer_timeout 在待答态 → standby', () => {
-    expect(nextState('awaiting_answer', 'answer_timeout')).toBe('standby')
-  })
-
-  /** 待机时再唤醒 → 回到待答（续答本题），而不是开新一轮。
-   *  Waking from standby returns to awaiting the answer (resuming this question). */
-  it('待机态 wake_detected → awaiting_answer（续答本题）', () => {
-    expect(nextState('standby', 'wake_detected')).toBe('awaiting_answer')
-  })
-
-  /** 普通 listening 态唤醒维持既有权为（由调用方置 recording）—— 回归。
-   *  Waking from plain listening keeps existing behaviour (the caller sets recording). */
-  it('listening 态 wake_detected 不改状态（回归）', () => {
-    expect(nextState('listening', 'wake_detected')).toBe('listening')
-  })
+  // answer_timeout / wake_detected 迁移随「取消限时回答」删除（回答永不限时、standby
+  // 整套移除）—— 行为回归由 useWakeWord 的「待答永不超时」用例守住。
+  // The answer_timeout / wake_detected transitions went away with the unlimited answer
+  // window (no timeouts, standby removed entirely) — behaviour is pinned by
+  // useWakeWord's "answers never time out" case.
 
   /** 待答态检测到语音 → 状态不变（交回既有 VAD 静音逻辑收尾）。
    *  Speech starting while awaiting an answer leaves the state unchanged; the existing VAD
@@ -45,7 +34,6 @@ describe('wakeFsm 迁移表', () => {
 
   /** 关了唤醒开关 → idle。Turning the wake switch off goes idle. */
   it('wake_toggled_off → idle', () => {
-    expect(nextState('standby', 'wake_toggled_off')).toBe('idle')
     expect(nextState('awaiting_answer', 'wake_toggled_off')).toBe('idle')
     expect(nextState('listening', 'wake_toggled_off')).toBe('idle')
   })
@@ -53,9 +41,8 @@ describe('wakeFsm 迁移表', () => {
   /** 无关组合保持不变，不抛错。Unrelated combinations keep the current state and do not throw. */
   it('无关事件不改变状态', () => {
     expect(nextState('idle', 'speech_started')).toBe('idle')
-    expect(nextState('thinking', 'answer_timeout')).toBe('thinking')
     expect(nextState('recording', 'question_ready')).toBe('recording')
-    expect(nextState('listening', 'answer_timeout')).toBe('listening')
+    expect(nextState('listening', 'followup_open')).toBe('listening')
   })
 
   // ── 续聊窗口（docs/designs/03-A）──

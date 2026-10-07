@@ -267,7 +267,7 @@ describe('useChat 消息排队', () => {
    *  replies in followup — these voice-chain states must send immediately, never
    *  queue (no live turn exists to flush a queued message, so queueing wedges it
    *  forever). */
-  it.each(['listening', 'followup', 'recording', 'transcribing', 'standby'] as const)(
+  it.each(['listening', 'followup', 'recording', 'transcribing'] as const)(
     '语音链状态 %s 直接发送不入队',
     async (st) => {
       state.value = st
@@ -309,6 +309,59 @@ describe('useChat 消息排队', () => {
     const um = messages.value.filter(m => m.role === 'user')
     expect(um).toHaveLength(1)
     expect(um[0].blocks?.[0]?.type).toBe('answer')
+  })
+
+  /** 待答期间打字说唤醒词 → 弃题（stopTask 解除后端 ask 阻塞），指令入队等收束连发。
+   *  绝不作答、也绝不直连 utter（该会话仍占用中，直连必撞 409 —— 所以 state 回
+   *  thinking 让指令满足入队条件，done(cancelled) 收束时自动连发）。
+   *
+   * Typing the wake word while awaiting → abandon (stopTask unblocks the backend ask)
+   * and queue the command for when the turn wraps up. Never an answer, never a direct
+   * utter (the session is still busy — a direct call would hit 409 — hence state
+   * returns to thinking so the command satisfies the enqueue condition; the queued
+   * message chains automatically once done(cancelled) wraps up). */
+  it('待答打字说唤醒词 → 弃题且指令入队等收束', async () => {
+    vi.mocked(api.stopTask).mockReset()
+    currentSessionId.value = 's1'
+    state.value = 'awaiting_answer'
+    pendingQuestion.value = {
+      text: '确认执行吗？', kind: 'choice',
+      options: [{ value: 'yes', label: '允许本次' }, { value: 'no', label: '拒绝' }],
+    }
+
+    sendText('衍衡，帮我查天气')
+    await new Promise(r => setTimeout(r, 0))
+
+    expect(api.answer).not.toHaveBeenCalled()           // 不作答。Not an answer.
+    expect(pendingQuestion.value).toBeNull()            // 弃题：问题卡清掉。Abandoned: card cleared.
+    expect(api.stopTask).toHaveBeenCalledWith('s1')     // 解除后端 ask() 阻塞。Unblock the backend ask().
+    expect(state.value).toBe('thinking')                // 回合仍在跑（等 done 收束）。Turn still running (awaiting done).
+    expect(outboxCount.value).toBe(1)                   // 指令入队，收束自动连发。Queued; chained on wrap-up.
+    expect(streamUtter).not.toHaveBeenCalled()           // 不直连 utter（撞 409）。No direct utter (would hit 409).
+    expect(messages.value.filter(m => m.role === 'user')).toHaveLength(0)
+  })
+
+  /** 待答打字裸唤醒词 → 只弃题（文字侧不开指令窗）：不发送、不入队、不作答。
+   *  A bare wake word typed while awaiting → abandon only (no command window on the
+   *  text side): nothing sent, nothing queued, no answer. */
+  it('待答打字裸唤醒词 → 只弃题不发送', async () => {
+    vi.mocked(api.stopTask).mockReset()
+    currentSessionId.value = 's1'
+    state.value = 'awaiting_answer'
+    pendingQuestion.value = {
+      text: '确认执行吗？', kind: 'choice',
+      options: [{ value: 'yes', label: '允许本次' }],
+    }
+
+    sendText('衍衡')
+    await new Promise(r => setTimeout(r, 0))
+
+    expect(api.answer).not.toHaveBeenCalled()
+    expect(pendingQuestion.value).toBeNull()
+    expect(api.stopTask).toHaveBeenCalledWith('s1')
+    expect(outboxCount.value).toBe(0)
+    expect(streamUtter).not.toHaveBeenCalled()
+    expect(messages.value.filter(m => m.role === 'user')).toHaveLength(0)
   })
 })
 

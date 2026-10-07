@@ -40,7 +40,7 @@ describe('MiniHistory 空态文案', () => {
 
   /** 不同状态下空态文案一致（简化）。The empty copy is identical across states (simplified). */
   it('不同状态文案一致', () => {
-    const states = ['idle', 'listening', 'standby', 'recording', 'awaiting_answer'] as const
+    const states = ['idle', 'listening', 'recording', 'awaiting_answer'] as const
     for (const s of states) {
       const w = mount(MiniHistory, { props: { ...base, state: s as any } })
       expect(w.text()).toContain('开始对话')

@@ -268,13 +268,13 @@ describe('handleSegment 分流', () => {
     expect(sent).toEqual(['X'])  // 提取只认领一次
   })
 
-  /** 语音作答后陈旧超时不得再把状态踢进待机（回答完成后不再冒出录音/待答）。
-   *  场景：作答已投递，但前端状态停留在 awaiting_answer（回合继续、状态未变）——
-   *  8 秒前武装的超时若不清掉，会把状态踢进 standby，待机再开口就回到待答录音界面。
-   *  A stale answer timeout must not yank the state into standby after the answer was
-   *  delivered: the answer is in, but the state still sits on awaiting_answer (the turn
-   *  continues without a state change) — the timer armed 8s earlier must be defused. */
-  it('作答后陈旧应答超时不再把状态踢进待机', async () => {
+  /** 语音作答后状态保持待答、任何时间都不被踢走（原「陈旧超时踢 standby」的守护 ——
+   *  超时机制已随「取消限时回答」删除，本用例守住作答后状态不被任何定时副作用挪动）。
+   *  After a voice answer the state stays awaiting and is never yanked away at any later
+   *  point (the guard that used to watch for a stale timeout kicking it into standby —
+   *  the timeout mechanism is gone with the unlimited answer window; this case now pins
+   *  that no timer side effect moves the state after answering). */
+  it('作答后状态保持待答，任意时间后不被踢走', async () => {
     vi.useFakeTimers()
     try {
       vi.doMock('../../../api', () => ({
@@ -304,15 +304,18 @@ describe('handleSegment 分流', () => {
   })
 
   /**
-   * **待答提问优先**：这一段是「回答」，绝不能送去判唤醒词 —— 否则用户答「允许本次」会被
-   * 当成不含唤醒词的噪音丢掉，P6 的语音作答功能就此失效。这是本任务最容易写错的地方。
+   * **待答作答优先（非唤醒词）**：唤醒判定先跑（纯本地拼音匹配，不打云端），但
+   * 「允许本次」不含唤醒词 → 未命中 → 照旧走作答通道。命中才有弃题分支（见
+   * 「待答说唤醒词」用例）。这里最容易写错：唤醒分支不得吞掉正常作答，否则
+   * P6 的语音作答功能就此失效。
    *
-   * A pending question takes precedence: the segment is an *answer* and must never be sent to wake
-   * detection, or answering "允许本次" would be discarded as noise that carries no wake word and
-   * the whole voice-answering feature would silently stop working. This is the easiest thing to get
-   * wrong here.
+   * Answering wins for non-wake text: the wake check runs first (purely local pinyin
+   * match, no cloud call), but "允许本次" carries no wake word → miss → answering as
+   * before. Only a hit takes the abandon branch (see the wake-word-while-awaiting
+   * cases). Easiest thing to get wrong: the wake branch must not swallow normal
+   * answers or the voice-answering feature dies.
    */
-  it('待答提问时走答案通道，不判唤醒词', async () => {
+  it('待答作答（非唤醒词）照旧走答案通道，唤醒判定不打云端', async () => {
     vi.doMock('../../../api', () => ({
       api: {
         wakeCheck: vi.fn(async () => ({ ok: true, hit: true, bypass: false })),
@@ -384,6 +387,119 @@ describe('handleSegment 分流', () => {
       '', 'yes', 'voice',
       expect.objectContaining({ qid: 'q_snap', options: expect.any(Array) }),
     )
+  })
+
+  /**
+   * **待答说唤醒词 → 弃题开新轮**（取消限时回答）：转写复用后先做**本地**唤醒判定
+   * （拼音匹配，不打云端），命中即清问题卡 + stopTask 解除后端 ask() 阻塞，指令作为
+   * 新一轮发出 —— 这半句话绝不能被当成本题的回答投出去（修「开口即被当答案」）。
+   *
+   * Wake word while awaiting → abandon and start a new turn (unlimited answer window):
+   * after reusing the transcription the **local** wake check runs first (pinyin match,
+   * no cloud call); a hit clears the card and hits stopTask to unblock the backend
+   * ask(), and the command goes out as a fresh turn — this half-utterance must never
+   * be delivered as this question's answer (fixes "speaking up gets taken for the
+   * answer").
+   */
+  it('待答说唤醒词带指令 → 弃题并作为新指令发出', async () => {
+    vi.doMock('../../../api', () => ({
+      api: {
+        wakeCheck: vi.fn(async () => ({ ok: true, hit: true, bypass: false })),
+        wakeDetect: vi.fn(async () => ({ ok: true, matched: true, command: 'X', text: 'X' })),
+        transcribe: vi.fn(async () => ({ ok: true, text: '衍衡，帮我查天气' })),
+        stopTask: vi.fn(async () => ({ ok: true })),
+      },
+    }))
+    vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
+    const { api } = await import('../../../api')
+    const { sendAnswer, sendText } = await import('../useChat')
+    const store = await import('../store')
+    store.state.value = 'awaiting_answer'
+    store.currentSessionId.value = 's1'
+    store.pendingQuestion.value = {
+      text: '确认执行吗？', kind: 'choice',
+      options: [{ value: 'yes', label: '允许本次' }, { value: 'no', label: '拒绝' }],
+    }
+    const { handleSegment } = await import('../useWakeWord')
+    await handleSegment(new Blob(['x']))
+
+    expect(vi.mocked(sendAnswer)).not.toHaveBeenCalled()        // 不是本题的回答。Not this question's answer.
+    expect(store.pendingQuestion.value).toBeNull()              // 弃题：问题卡清掉。Abandoned: card cleared.
+    expect(vi.mocked(api.stopTask)).toHaveBeenCalledWith('s1')  // 解除后端 ask() 阻塞。Unblock the backend ask().
+    expect(vi.mocked(sendText)).toHaveBeenCalledWith('帮我查天气')  // 指令作新轮。The command starts a fresh turn.
+    expect(store.state.value).toBe('thinking')                  // 回合仍在跑 → 满足新指令入队条件。Turn still running → new instruction may queue.
+    // 唤醒判定纯本地：云端唤醒接口一个都不许调。Local-only wake check: no cloud wake endpoint may be called.
+    expect(vi.mocked(api.wakeCheck)).not.toHaveBeenCalled()
+    expect(vi.mocked(api.wakeDetect)).not.toHaveBeenCalled()
+  })
+
+  /** 待答只说裸唤醒词 → 弃题后开指令窗（镜像 followup 分支），下一段直接当指令。
+   *  A bare wake word while awaiting → abandon then open the command window (mirroring
+   *  the followup branch); the next segment becomes the command directly. */
+  it('待答只说唤醒词 → 弃题并进指令窗（不作答）', async () => {
+    vi.doMock('../../../api', () => ({
+      api: {
+        wakeCheck: vi.fn(async () => ({ ok: true, hit: true, bypass: false })),
+        wakeDetect: vi.fn(async () => ({ ok: true, matched: false, command: '', text: '' })),
+        transcribe: vi.fn(async () => ({ ok: true, text: '衍衡' })),
+        stopTask: vi.fn(async () => ({ ok: true })),
+      },
+    }))
+    vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
+    const { api } = await import('../../../api')
+    const { sendAnswer, sendText } = await import('../useChat')
+    const store = await import('../store')
+    store.state.value = 'awaiting_answer'
+    store.currentSessionId.value = 's1'
+    store.pendingQuestion.value = {
+      text: '确认执行吗？', kind: 'choice',
+      options: [{ value: 'yes', label: '允许本次' }, { value: 'no', label: '拒绝' }],
+    }
+    const { handleSegment } = await import('../useWakeWord')
+    await handleSegment(new Blob(['x']))
+
+    expect(vi.mocked(sendAnswer)).not.toHaveBeenCalled()
+    expect(store.pendingQuestion.value).toBeNull()
+    expect(vi.mocked(api.stopTask)).toHaveBeenCalledWith('s1')
+    expect(vi.mocked(sendText)).not.toHaveBeenCalled()          // 裸词：没有指令可发。Bare word: no command yet.
+    expect(store.state.value).toBe('recording')                 // 指令窗打开。Command window open.
+    expect(store.statusLine.value).toContain('已唤醒')
+  })
+
+  /** webspeech 同步路径同构：本地识别出唤醒词 → 弃题 + 指令作新轮（不走转写）。
+   *  The webspeech sync path is isomorphic: a local wake hit → abandon + the command
+   *  as a fresh turn (no transcription involved). */
+  it('待答 webspeech 识别出唤醒词 → 弃题并作为新指令发出', async () => {
+    vi.doMock('../../../api', () => ({
+      api: {
+        wakeCheck: vi.fn(async () => ({ ok: true, hit: true, bypass: false })),
+        wakeDetect: vi.fn(async () => ({ ok: true, matched: false, command: '', text: '' })),
+        transcribe: vi.fn(async () => ({ ok: true, text: 'unused' })),
+        stopTask: vi.fn(async () => ({ ok: true })),
+      },
+    }))
+    vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
+    const { api } = await import('../../../api')
+    const { sendAnswer, sendText } = await import('../useChat')
+    const store = await import('../store')
+    store.state.value = 'awaiting_answer'
+    store.currentSessionId.value = 's1'
+    store.pendingQuestion.value = {
+      text: '确认执行吗？', kind: 'choice',
+      options: [{ value: 'yes', label: '允许本次' }, { value: 'no', label: '拒绝' }],
+    }
+    const { handleLocalResult } = await import('../useWakeWord')
+    handleLocalResult('衍衡，帮我查天气')
+
+    expect(vi.mocked(sendAnswer)).not.toHaveBeenCalled()
+    expect(store.pendingQuestion.value).toBeNull()
+    expect(vi.mocked(api.stopTask)).toHaveBeenCalledWith('s1')
+    expect(vi.mocked(sendText)).toHaveBeenCalledWith('帮我查天气')
+    expect(store.state.value).toBe('thinking')
+    expect(vi.mocked(api.transcribe)).not.toHaveBeenCalled()    // 同步路径不经转写。The sync path skips ASR.
   })
 })
 
@@ -839,17 +955,18 @@ describe('useWakeWord 播报门控', () => {
 })
 
 /**
- * 等待窗口与收尾 —— 三条都是「定时器随 Vosk 引擎一起被删掉」造成的功能回归。
+ * 等待窗口与收尾 —— 待答窗口已随「取消限时回答」删除（回答永不限时，standby 整套移除）。
  *
- * 待答窗口：提问后一直不说话 → 进待机（README 与 P6 记载的行为），待机时再开口回到本题作答。
+ * 待答：提问后一直不说话 → **永不超时**，随时开口照旧作答本题。
  * 等指令窗口：只说了唤醒词却没跟指令 → 窗口过后该段不再被当成指令执行（误触发不能变成执行）。
  * 收尾复位：一轮结束 3 秒后回聆听，界面不会永久停在「完成」。
  *
- * Wait windows and finishing touches — three functional regressions caused by the timers being
- * deleted along with the Vosk engine: the answer window (no reply → standby, as recorded in the
- * README and P6; speaking again from standby resumes *this* question), the command window (a bare
- * wake word must not turn a later unrelated segment into an executed command), and the post-turn
- * reset (done/error returns to listening after 3s instead of parking the UI on "完成").
+ * Wait windows and finishing touches — the answer window is gone with the unlimited answer
+ * window (answers are never timed out; standby was removed entirely).
+ * A pending question with no reply **never times out**; speaking up any time later answers
+ * this very question. Command window: a bare wake word must not turn a later unrelated
+ * segment into an executed command. Post-turn reset: done/error returns to listening after
+ * 3s instead of parking the UI on "完成".
  */
 describe('useWakeWord 等待窗口与收尾', () => {
   beforeEach(() => { vi.resetModules(); localStorage.clear() })
@@ -878,8 +995,10 @@ describe('useWakeWord 等待窗口与收尾', () => {
     return { store, mod, sent, sendAnswer: chat.sendAnswer as any, sendText: chat.sendText as any }
   }
 
-  /** 待答窗口过期 → 进待机（走 wakeFsm 的 answer_timeout 迁移）；待机时再开口 → 回到本题作答。 */
-  it('待答无应答 → 进待机；待机时再开口 → 回到本题作答', async () => {
+  /** 待答**永不限时**（取消限时回答）：快进任意久仍是待答态，之后开口照旧作答本题。
+   *  Answers are **never timed out** (unlimited answer window): fast-forwarding any length
+   *  of time leaves the state awaiting, and speaking up later answers this very question. */
+  it('待答无应答 → 永不超时；之后开口照旧回到本题作答', async () => {
     vi.useFakeTimers()
     try {
       const { store, mod, sendAnswer } = await setupWait()
@@ -889,14 +1008,11 @@ describe('useWakeWord 等待窗口与收尾', () => {
         options: [{ value: 'yes', label: '允许本次' }],
       }
       store.state.value = 'awaiting_answer'
-      await nextTick()                            // 让 watch(state) 武装等待窗口。Let watch(state) arm the window.
-      await vi.advanceTimersByTimeAsync(8000)
+      await nextTick()
+      await vi.advanceTimersByTimeAsync(100_000)  // 快进远超原 8s 超时点。Fast-forward far past the old 8s timeout.
 
-      expect(store.state.value).toBe('standby')
+      expect(store.state.value).toBe('awaiting_answer')   // 永不进待机（standby 已删）。Never enters standby (standby is gone).
 
-      // 待机时用户又开口（说唤醒词回到本题）→ 状态回到待答，这一段作为回答投递。
-      // The user speaks again from standby (the wake word resumes this question): the state returns
-      // to awaiting_answer and this segment is delivered as the answer.
       await mod.handleSegment(new Blob(['x']))
       expect(store.state.value).toBe('awaiting_answer')
       expect(sendAnswer).toHaveBeenCalledWith(
