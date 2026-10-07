@@ -1,25 +1,27 @@
 #!/usr/bin/env node
 /**
- * 语音验收台 — P6「语音作答 / 无应答待机 / 再唤醒续答 / 播报期不自触发」4 条人工验收项的
- * 自动化辅助。
+ * 语音验收台 — 「播报后语音作答 / 待答说唤醒词即弃题开新轮 / 播报期不自触发 /
+ * 通话免唤醒」4 条人工验收项的自动化辅助。
  *
- * Voice acceptance harness — an automated assistant for the 4 manual P6 acceptance items
- * (voice answering / standby on silence / resume-on-wake / no self-trigger while speaking).
+ * Voice acceptance harness — an automated assistant for the 4 manual acceptance items
+ * (voice answering / wake-abandon during the answer wait / no self-trigger while
+ * speaking / wake-free call mode).
  *
- * 为什么需要它：这 4 项都需要真人对着麦克风说话、用耳朵听播报，无法用 Vitest 替代
+ * 为什么需要它：这几项都需要真人对着麦克风说话、用耳朵听播报，无法用 Vitest 替代
  * （真实的麦克风/扬声器通路驱动不了）。但「谁对谁错」的**判据**大部分是客观的
- * —— 状态机有没有进 standby、有没有发 /voice/answer、播报期间有没有任何音频分段被上传 ——
- * 这些可以自动采集。于是本脚本负责搭场景、采证据、判客观项，人只负责出声和听声。
+ * —— 弃题 stop 发没发、唤醒词有没有被误当答案提交（/voice/answer）、播报期间有没有
+ * 任何音频分段被上传 —— 这些可以自动采集。于是本脚本负责搭场景、采证据、判客观项，
+ * 人只负责出声和听声。
  *
  * 判据的来源：**采不到证据就报 INCONCLUSIVE，绝不报 PASS**。这条比任何单项检查都重要 ——
  * 一个「什么都没看见所以通过」的检查是假保障，比没有检查更糟。
  *
- * Why this exists: the 4 items need a human at the microphone and ears on the speaker and
+ * Why this exists: these items need a human at the microphone and ears on the speaker and
  * cannot be replaced by Vitest (a real mic/speaker path cannot be driven). But most of the
- * *verdicts* are objective — did the state machine enter standby, was /voice/answer issued,
- * was any audio segment uploaded during playback — and those can be captured automatically.
- * So the harness builds the scenario, collects the evidence and decides the objective parts;
- * the human only has to make sound and listen.
+ * *verdicts* are objective — was the abandon stop issued, was the wake word mistakenly
+ * submitted as an answer (/voice/answer), was any audio segment uploaded during playback —
+ * and those can be captured automatically. So the harness builds the scenario, collects
+ * the evidence and decides the objective parts; the human only has to make sound and listen.
  *
  * Where the verdicts come from: **no evidence means INCONCLUSIVE, never PASS**. That rule
  * outranks every individual check — a check that passes because it saw nothing is a false
@@ -28,12 +30,12 @@
  * 用法 / Usage:
  *   cd web && npm run verify:voice                  # 默认 http://127.0.0.1:8520
  *   npm run verify:voice -- --url http://127.0.0.1:5173
- *   npm run verify:voice -- --skip 4                # 跳过某项
- *   npm run verify:voice -- --skip 5                # 跳过通话模式项
+ *   npm run verify:voice -- --skip 3                # 跳过播报自触发项
+ *   npm run verify:voice -- --skip 4                # 跳过通话模式项
  *
  * 前置 / Prerequisites:
  *   - 后端已启动且前端已构建（python main.py serve），或 vite dev server 在跑
- *   - 本机有可用麦克风与扬声器，且**音量不为静音**（第 4 项的声学部分要靠空气传播）
+ *   - 本机有可用麦克风与扬声器，且**音量不为静音**（第 3 项的声学部分要靠空气传播）
  *   - 系统已安装 Chrome（用 channel: chrome 直接驱动，不下载额外浏览器）
  */
 import { createInterface } from 'node:readline'
@@ -44,22 +46,6 @@ import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright-core'
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
-
-/**
- * 离开 standby 后可能出现的状态集合（第 3 项判据用）。
- *
- * 刻意不写死 `awaiting_answer`：用户说完唤醒词后常常**顺口把答案也说了**，状态会一路
- * 走到 thinking/responding。写死单一目标会把这种「答得比预期多」误判为失败。
- *
- * The set of states reachable after leaving standby (check 3's verdict). Deliberately not
- * pinned to `awaiting_answer`: users often say the answer right after the wake word, and the
- * state then runs on to thinking/responding. Pinning it would misjudge "answered more than
- * expected" as a failure.
- */
-const LEFT_STANDBY_STATES = [
-  'awaiting_answer', 'recording', 'transcribing', 'thinking',
-  'tool_calling', 'responding', 'done', 'error',
-]
 
 /** 命令行参数解析。Command-line argument parsing. */
 function parseArgs(argv) {
@@ -294,8 +280,8 @@ async function ensurePanel(page) {
 }
 
 /**
- * 确保「播报」开关打开 —— 关着的话第 4 项没有声音可测，整个验收会变成空转。
- * Make sure the speak toggle is on: with it off there is no audio for check 4 and the whole
+ * 确保「播报」开关打开 —— 关着的话第 3 项没有声音可测，整个验收会变成空转。
+ * Make sure the speak toggle is on: with it off there is no audio for check 3 and the whole
  * run silently degenerates.
  *
  * @param {import('playwright-core').Page} page 页面。The page.
@@ -382,7 +368,7 @@ function buildReport(meta) {
     '# 语音验收报告（P6 / 子系统 C）',
     '',
     `> 由 \`web/scripts/verify-voice.mjs\` 自动生成于 ${new Date().toLocaleString('zh-CN')}`,
-    `> 应用地址：${meta.url}　唤醒词：${meta.keyword}　待答超时：${meta.answerTimeout}ms　播报开关：${meta.speakOn ? '开' : '**关**'}`,
+    `> 应用地址：${meta.url}　唤醒词：${meta.keyword}　播报开关：${meta.speakOn ? '开' : '**关**'}`,
     '',
     '| # | 验收项 | 结论 | 说明 |',
     '|---|--------|------|------|',
@@ -410,7 +396,7 @@ function buildReport(meta) {
 
 async function main() {
   say('═'.repeat(72))
-  say(' 语音验收台 · P6 语音作答 / 待机 / 再唤醒续答 / 播报期不自触发')
+  say(' 语音验收台 · 播报后作答 / 待答弃题开新轮 / 播报期不自触发 / 通话免唤醒')
   say('═'.repeat(72))
   say(`应用地址：${ARGS.url}`)
   say('前置检查：后端已启动；麦克风与扬声器可用且未静音；系统已装 Chrome。')
@@ -453,57 +439,56 @@ async function main() {
   await page.waitForTimeout(2500)
 
   // 麦克风探针必须在**应用取流之前**装好（开启唤醒才会 getUserMedia，此刻还没开）。
-  // 装不上不终止验收，但要如实告诉用户第 4 项将因此只能报 INCONCLUSIVE。
+  // 装不上不终止验收，但要如实告诉用户第 3 项将因此只能报 INCONCLUSIVE。
   // The mic probe must be installed *before* the app acquires a stream (only the wake enable
   // calls getUserMedia, and it has not happened yet). A failure does not abort the run, but the
-  // user is told that check 4 can then only report INCONCLUSIVE.
+  // user is told that check 3 can then only report INCONCLUSIVE.
   const micProbeOk = await installMicProbe(page)
   if (!micProbeOk) {
     say('\n⚠️  麦克风探针安装失败（页面里没有可用的 mediaDevices/MediaStreamTrack）。')
-    say('   第 4 项无法证明「播报期麦克风确实关着」，将报 INCONCLUSIVE 而不是 PASS。')
+    say('   第 3 项无法证明「播报期麦克风确实关着」，将报 INCONCLUSIVE 而不是 PASS。')
   }
 
-  // 配置：待答超时是第 2 项的判据基准，唤醒词是第 3/4 项的依据。
-  // Config: the answer timeout is check 2's baseline; the wake keyword underpins checks 3/4.
+  // 配置：唤醒词是第 2/3 项的判据依据（弃题判定 + 让助手复述）。
+  // Config: the wake keyword underpins checks 2 and 3 (abandon detection + verbatim repeat).
   const cfg = await page.evaluate(async () => (await fetch('/api/config')).json()).catch(() => ({}))
-  const answerTimeout = cfg?.vad?.answer_timeout_ms ?? 8000
   // 唤醒词：/api/config 暴露的是**列表** `keywords`（单数 `keyword` 是 Vosk 时代的遗留字段，
   // 早已不在响应里）。原先读 `.keyword` 会静默落到兜底值「小逻小逻」—— 那是个**已废弃、
-  // 根本唤不醒**的词，于是脚本会让操作者对着空气喊，检查 3/4 必然失败（而且是假失败）。
-  // 兜底值必须是**当前真的能唤醒**的词；取列表首项即可 —— 检查 4 要让助手把它一字不差念出来，
+  // 根本唤不醒**的词，于是脚本会让操作者对着空气喊，检查 2/3 必然失败（而且是假失败）。
+  // 兜底值必须是**当前真的能唤醒**的词；取列表首项即可 —— 检查 3 要让助手把它一字不差念出来，
   // 单项比多项更可靠。
   // Wake words: /api/config exposes the **list** `keywords` (the singular `keyword` is a Vosk-era
   // leftover long gone from the response). Reading `.keyword` silently fell back to 「小逻小逻」 —
   // a retired word that wakes nothing, so the harness would tell the operator to say a dead phrase
-  // and checks 3/4 would fail for a bogus reason. The fallback must be a word that actually wakes.
-  // Taking the first entry is enough: check 4 asks the assistant to repeat it verbatim, and one
+  // and checks 2/3 would fail for a bogus reason. The fallback must be a word that actually wakes.
+  // Taking the first entry is enough: check 3 asks the assistant to repeat it verbatim, and one
   // word is more reliably repeated than several.
   const keyword = (cfg?.wake_word?.keywords ?? [])[0] ?? '衍衡'
 
   await ensurePanel(page)
   const speakOn = await ensureSpeakOn(page)
   if (!speakOn) {
-    say('\n⚠️  「播报」开关处于关闭状态，第 4 项将没有音频可测（会标 INCONCLUSIVE）。')
+    say('\n⚠️  「播报」开关处于关闭状态，第 3 项将没有音频可测（会标 INCONCLUSIVE）。')
   }
 
   if (!(await ensureWake(page))) {
     say('\n❌ 语音唤醒未能在 25s 内进入 listening。')
     say('   常见原因：麦克风被占用 / 权限被拒（看浏览器控制台与球上的状态行文案）、后端未启动。')
     say('   后续 4 项全部标 SKIP。')
-    for (const [id, t] of [['1', '播报结束后直接开口说答案'], ['2', '播报后沉默 → 待机'],
-                           ['3', '待机态唤醒 → 续答本题'], ['4', '播报含唤醒词 → 不自触发']]) {
+    for (const [id, t] of [['1', '播报结束后直接开口说答案'], ['2', '待答说唤醒词 → 弃题开新轮'],
+                           ['3', '播报含唤醒词 → 不自触发'], ['4', '通话模式免唤醒指令']]) {
       record(id, t, 'SKIP', '唤醒引擎未启动，场景无法搭建')
     }
   } else {
     say('\n✓ 唤醒引擎已启动（state = listening）')
-    await runChecks({ page, reqs, keyword, answerTimeout, speakOn })
+    await runChecks({ page, reqs, keyword, speakOn })
     await runCallCheck(page, reqs)
   }
 
   await browser.close()
   rl.close()
 
-  const report = buildReport({ url: ARGS.url, keyword, answerTimeout, speakOn })
+  const report = buildReport({ url: ARGS.url, keyword, speakOn })
   const reportPath = ARGS.report || resolve(REPO_ROOT, 'docs', 'superpowers', 'plans', 'voice-verification-report.md')
   writeFileSync(reportPath, report, 'utf-8')
 
@@ -526,19 +511,20 @@ async function main() {
 }
 
 /**
- * 依次跑完 4 项验收。
- * Run all 4 acceptance checks in order.
+ * 依次跑完 3 项验收（通话模式在 runCallCheck 单独跑，是第 4 项）。
+ * Run the 3 in-page acceptance checks in order (the call-mode check follows as item 4).
  *
- * 顺序不是随意的：第 1 项用掉一个提问；第 2、3 项共用同一个提问（沉默 → 待机 → 唤醒续答
- * 本来就是一条连续的时间线）；第 4 项需要回到无待答提问的状态。
+ * 顺序不是随意的：第 1 项用掉一个提问（作答后回合自行跑完）；第 2 项自建一个待答提问、
+ * 当场弃题开新轮（新轮用直答型指令，跑完不留待答提问）；第 3 项要求回到无待答提问的状态。
  *
- * The order is deliberate: check 1 consumes one question; checks 2 and 3 share a single
- * question (silence → standby → resume-on-wake is one continuous timeline by nature); check 4
- * needs to be back in a no-pending-question state.
+ * The order is deliberate: check 1 consumes one question (its round finishes on its own);
+ * check 2 builds its own pending question and abandons it into a new round on the spot (the
+ * replacement command is a direct-answer type, so no pending question remains); check 3 needs
+ * to be back in a no-pending-question state.
  *
- * @param {{page: any, reqs: any, keyword: string, answerTimeout: number, speakOn: boolean}} ctx 上下文。Context.
+ * @param {{page: any, reqs: any, keyword: string, speakOn: boolean}} ctx 上下文。Context.
  */
-async function runChecks({ page, reqs, keyword, answerTimeout, speakOn }) {
+async function runChecks({ page, reqs, keyword, speakOn }) {
   // ── 第 1 项：播报结束后直接开口说答案 ──
   if (ARGS.skip.includes('1')) {
     record('1', '播报结束后直接开口说答案', 'SKIP', '命令行指定跳过')
@@ -575,113 +561,104 @@ async function runChecks({ page, reqs, keyword, answerTimeout, speakOn }) {
     }
   }
 
-  // ── 第 2 项：播报后沉默 → 待机 ──
+  // ── 第 2 项：待答期间说唤醒词 → 弃题开新轮 ──
+  //
+  // 取消限时回答后的契约：待答期间**先判唤醒词**（纯本地拼音匹配，不打云端）——命中即
+  // 弃掉本题（POST /api/task/{sid}/stop 投毒丸解除后端 ask() 阻塞），唤醒词后面的指令
+  // 作为新一轮发出；没命中才照旧当答案。旧实现把开口直接当答案，正是要修的 P0。
+  //
+  // Contract after the unlimited answer window: while awaiting, the wake word is judged
+  // FIRST (pure local pinyin match, no cloud call) — a hit abandons this question
+  // (POST /api/task/{sid}/stop poisons the backend's blocked ask()) and sends the trailing
+  // command as a new round; a miss is still the answer. The old behaviour treated any
+  // speech as the answer — the P0 this fixes.
   if (ARGS.skip.includes('2')) {
-    record('2', '播报后沉默 → 待机', 'SKIP', '命令行指定跳过')
+    record('2', '待答说唤醒词 → 弃题开新轮', 'SKIP', '命令行指定跳过')
   } else {
     say('\n' + '─'.repeat(72))
-    say('第 2 项：播报后沉默 → 待机（本项全自动判定）')
+    say('第 2 项：待答期间说唤醒词 → 弃题开新轮')
     say('─'.repeat(72))
     const sc = await newScenario(page, '帮我整理一下下载文件夹')
     if (!sc.ok) {
-      record('2', '播报后沉默 → 待机', 'FAIL',
+      record('2', '待答说唤醒词 → 弃题开新轮', 'FAIL',
         '发出消息后 90s 内没有进入 awaiting_answer，场景未搭成')
     } else {
-      const sampler = startSampler(page)
       say(`\n助手提问：${sc.question}`)
-      say(`\n👉 请**不要说话**，保持沉默 —— 等 ${answerTimeout}ms 待答超时后应自动进入待机。`)
-      // 倒计时与状态轮询并发跑：让用户知道还要安静多久，而不是干等一个不动的终端。
-      // Run the countdown concurrently with the state poll so the user knows how much longer
-      // to stay quiet instead of staring at a frozen terminal.
-      const [r] = await Promise.all([
-        waitForState(page, ['standby'], answerTimeout + 15000),
-        countdown(Math.round(answerTimeout / 1000), '请保持沉默，待答超时还剩'),
-      ])
-      sampler.stop()
-      const uiHasStandby = await page.evaluate(() => document.body.innerText.includes('待机'))
-      const delta = Math.round(r.ms)
-      const seq = sampler.states()
-      // 判据：进了 standby，且耗时落在超时值附近（早太多说明是别的原因进的，晚太多
-      // 说明超时没按配置生效）。
-      // Verdict: it entered standby and the elapsed time is near the configured timeout —
-      // much earlier means something else drove it, much later means the timeout did not
-      // take effect as configured.
-      const closeEnough = delta >= answerTimeout - 3000 && delta <= answerTimeout + 8000
-      // 没进待机时区分两种成因 —— 二者要采取的行动完全不同：
-      // (a) 麦克风采到了声音（VAD 判定有人说话 → 录音 → 转写 → 当成回答提交）：环境不安静，
-      //     换安静房间重跑即可，不是缺陷；
-      // (b) 状态一直停在 awaiting_answer：待答超时没生效，那才是真要查的。
-      // When standby is not reached, separate two causes that call for completely different
-      // actions: (a) the mic picked up sound (VAD saw speech → record → transcribe → submitted
-      // as an answer) — a noisy room, rerun somewhere quiet, not a defect; (b) the state never
-      // left awaiting_answer — the answer timeout is not working, and that is worth digging into.
-      const heardSound = seq.some(s => s === 'transcribing' || s === 'thinking' || s === 'recording')
-      const why = r.ok
-        ? ''
-        : heardAnswerWait(seq)
-          ? `麦克风采到了声音（${seq.join(' → ')}）—— 本项要求 ${answerTimeout}ms 内**真正静音**，请在安静环境重跑；这不是待机功能的缺陷`
-          : `${answerTimeout + 15000}ms 内未进入 standby（当前 ${r.state}）—— 待答超时没有生效，需排查`
-      const status = r.ok && closeEnough ? 'PASS' : 'FAIL'
-      record('2', '播报后沉默 → 待机', status,
-        r.ok
-          ? `沉默 ${delta}ms 后进入 standby（配置 ${answerTimeout}ms）${closeEnough ? '' : ' — 耗时偏离配置超时值，请核对 vad.answer_timeout_ms 是否生效'}`
-          : why,
-        `状态序列：${seq.join(' → ')}\n界面出现「待机」文案：${uiHasStandby ? '是' : '否'}\n` +
-        `采集到声音（VAD 触发录音）：${heardSound ? '是' : '否'}`)
-    }
-  }
-
-  // ── 第 3 项：待机态唤醒 → 续答本题 ──
-  if (ARGS.skip.includes('3')) {
-    record('3', '待机态唤醒 → 续答本题', 'SKIP', '命令行指定跳过')
-  } else {
-    say('\n' + '─'.repeat(72))
-    say('第 3 项：待机态唤醒 → 回到本题续答（而非开新一轮）')
-    say('─'.repeat(72))
-    const before = await getState(page)
-    if (before !== 'standby') {
-      record('3', '待机态唤醒 → 续答本题', 'INCONCLUSIVE',
-        `前置状态应为 standby，实际为 ${before}（多半是第 2 项没进待机）—— 场景未搭成`)
-    } else {
-      say(`\n👉 请现在说出唤醒词「${keyword}」。`)
-      say('   预期：回到**刚才那个提问**继续作答，而不是开始新一轮对话。')
-      // 同第 1 项：窗口开在用户开口之前。
+      say(`\n👉 请对着麦克风说「${keyword}，今天几点」——唤醒词 + 一个新指令，连起来说。`)
+      say('   预期：本题被弃掉，指令作为**新一轮**发出；唤醒词不会被当成本题的答案。')
+      // 同第 1 项：窗口开在用户开口之前（先说、后按回车）。
       // As in check 1: the window opens before the user speaks.
       const t0 = Date.now()
       await enter('   说完后按回车开始判定… ')
-      // 判据：**离开了 standby** 且**没有新的 /api/voice/utter**。
-      //
-      // 后半句才是决定性的：走新一轮必然经过 runTurn → /voice/utter，而那条新请求会
-      // abort 掉当前流，让后端阻塞中的 ask() 永久挂死 —— 正是本设计要修的老缺陷。
-      // 所以「没有新 utter」这一条足以把「续答本题」和「开新一轮」分开。
-      //
-      // Verdict: it left standby AND no new /api/voice/utter. The second half is decisive: a
-      // new round necessarily goes through runTurn → /voice/utter, and that new request aborts
-      // the live stream, leaving the backend's blocked ask() hanging forever — the very defect
-      // this design fixes. So "no new utter" alone separates resuming from starting over.
-      const back = await waitForState(page, LEFT_STANDBY_STATES, 60000)
-      const newUtters = reqs.since(t0, /^\/api\/voice\/utter$/)
-      const leftStandby = back.ok
-      const status = leftStandby && newUtters.length === 0 ? 'PASS' : 'FAIL'
-      record('3', '待机态唤醒 → 续答本题', status,
-        leftStandby && newUtters.length === 0
-          ? `唤醒后离开 standby 回到 ${back.state}，且未发新的 /api/voice/utter（${(back.ms / 1000).toFixed(1)}s）—— 续答本题`
-          : leftStandby
-            ? `离开了 standby，但发出了 ${newUtters.length} 条新的 /api/voice/utter —— 走成了新一轮（正是要修的老缺陷）`
-            : `唤醒后 60s 内没有离开 standby（当前 ${back.state}）—— 唤醒词没有被识别`,
-        `唤醒后状态：${back.state}\n新 /api/voice/utter 条数：${newUtters.length}`)
+      // 三类客观证据，先到先回：
+      //   stop —— 弃题毒丸已投（/api/task/{sid}/stop）
+      //   utter —— 指令起了新一轮（/api/voice/utter）
+      //   answer —— 语音被当成了本题答案（/api/voice/answer，弃题路径失守的信号）
+      // stop 之后 utter 还要等 done(cancelled) 回流 + outbox 连发，所以二者齐了才停。
+      // Three pieces of objective evidence; return on the first arrival: stop (abandon
+      // poison pill), utter (the command started a new round), answer (the speech was
+      // taken as this question's answer — the abandon path failed). After stop, utter
+      // still awaits the done(cancelled) round-trip plus the outbox flush, so wait for both.
+      await waitFor(() => {
+        const answer = reqs.since(t0, /^\/api\/voice\/answer$/)
+        const stop = reqs.since(t0, /^\/api\/task\/[^/]+\/stop$/)
+        const utter = reqs.since(t0, /^\/api\/voice\/utter$/)
+        return answer.length || (stop.length && utter.length) ? { answer, stop, utter } : null
+      }, 90000)
+      const answer = reqs.since(t0, /^\/api\/voice\/answer$/)
+      const stop = reqs.since(t0, /^\/api\/task\/[^/]+\/stop$/)
+      const utter = reqs.since(t0, /^\/api\/voice\/utter$/)
+      const transcribe = reqs.since(t0, /^\/api\/voice\/transcribe$/)
+      const after = await getState(page)
+      const evidence =
+        `按回车后状态：${after}\n窗口内相关请求：\n` +
+        reqs.since(t0, /^\/api\/(voice|task)\//)
+          .map(r => `  ${r.method} ${r.path}  body=${r.body}`).join('\n')
+      // 判定树（证据 → 结论，采不到证据绝不 PASS）：
+      // 1. 有 answer：转写文本含唤醒词 = 检测失守（FAIL）；不含 = 说的不是唤醒词/ASR
+      //    没听清，场景没搭成（INCONCLUSIVE）。
+      // 2. 无 answer、stop 与 utter 齐 = 弃题 + 新轮（PASS）。
+      // 3. 有 stop 无 utter：多半只说了裸唤醒词（弃题生效但没指令可发），场景没搭成。
+      // 4. 什么都没有：转写都没发生，场景没搭成。
+      // Decision tree (evidence → verdict; no evidence, never PASS): (1) an answer means
+      // either the detector failed (transcript contains the keyword → FAIL) or the
+      // operator's speech was not a wake word / ASR missed it (→ INCONCLUSIVE);
+      // (2) stop+utter with no answer = abandon + new round (PASS); (3) stop without
+      // utter is most likely a bare wake word (abandon worked, nothing to send) →
+      // scenario not set up; (4) nothing at all → transcription never happened.
+      let status, detail
+      if (answer.length) {
+        const body = answer[0].body || ''
+        if (body.includes(keyword)) {
+          status = 'FAIL'
+          detail = `语音被当成本题答案提交（/api/voice/answer body 含「${keyword}」），弃题路径失守 —— 待答先判唤醒词未生效`
+        } else {
+          status = 'INCONCLUSIVE'
+          detail = `提交了 /api/voice/answer 但 body 不含唤醒词（${body.slice(0, 120)}）—— 说的可能不是唤醒词或 ASR 没听清，场景未搭成（不是通过）`
+        }
+      } else if (stop.length && utter.length) {
+        status = 'PASS'
+        detail = `弃题已投（/api/task/*/stop ×${stop.length}）、唤醒词未被当答案（无 /api/voice/answer），指令发起新一轮 /api/voice/utter（${((Date.now() - t0) / 1000).toFixed(1)}s）`
+      } else if (stop.length) {
+        status = 'INCONCLUSIVE'
+        detail = `弃题已投（stop ×${stop.length}）但 90s 内无新 /api/voice/utter —— 多半只说了裸唤醒词、没带指令，场景未搭成（不是通过）`
+      } else {
+        status = 'INCONCLUSIVE'
+        detail = `90s 内未见 stop/utter/answer 任何一者（transcribe ×${transcribe.length}）—— 语音没被转写或没开口，场景未搭成（不是通过）`
+      }
+      record('2', '待答说唤醒词 → 弃题开新轮', status, detail, evidence)
     }
   }
 
-  // ── 第 4 项：播报含唤醒词不自触发 ──
-  if (ARGS.skip.includes('4')) {
-    record('4', '播报含唤醒词 → 不自触发', 'SKIP', '命令行指定跳过')
+  // ── 第 3 项：播报含唤醒词不自触发 ──
+  if (ARGS.skip.includes('3')) {
+    record('3', '播报含唤醒词 → 不自触发', 'SKIP', '命令行指定跳过')
   } else if (!speakOn) {
-    record('4', '播报含唤醒词 → 不自触发', 'INCONCLUSIVE',
+    record('3', '播报含唤醒词 → 不自触发', 'INCONCLUSIVE',
       '「播报」开关关闭，助手的播报不会出声，这项测不到（不是通过）')
   } else {
     say('\n' + '─'.repeat(72))
-    say('第 4 项：助手播报含唤醒词的文本 → 不应自触发唤醒')
+    say('第 3 项：助手播报含唤醒词的文本 → 不应自触发唤醒')
     say('─'.repeat(72))
     await runSelfTriggerCheck({ page, keyword, reqs })
   }
@@ -698,22 +675,22 @@ async function runChecks({ page, reqs, keyword, answerTimeout, speakOn }) {
  * No evidence = INCONCLUSIVE, never PASS.
  */
 async function runCallCheck(page, reqs) {
-  if (ARGS.skip.includes('5')) {
-    record(5, '通话模式免唤醒指令', 'SKIP', '命令行指定跳过')
+  if (ARGS.skip.includes('4')) {
+    record('4', '通话模式免唤醒指令', 'SKIP', '命令行指定跳过')
     return
   }
-  say('▶ 第 5 项：通话模式（免唤醒）')
+  say('▶ 第 4 项：通话模式（免唤醒）')
   const t0 = Date.now()
   try {
     await page.locator('.float-trigger').dblclick({ timeout: 5000 })
   } catch (e) {
-    record(5, '通话模式免唤醒指令', 'INCONCLUSIVE', `双击悬浮球失败：${e.message}`)
+    record('4', '通话模式免唤醒指令', 'INCONCLUSIVE', `双击悬浮球失败：${e.message}`)
     return
   }
   await sleep(1200)
   const listening = await page.locator('text=通话聆听中').count().catch(() => 0)
   if (!listening) {
-    record(5, '通话模式免唤醒指令', 'INCONCLUSIVE', '状态胶囊未显示「通话聆听中」（未进入通话态）')
+    record('4', '通话模式免唤醒指令', 'INCONCLUSIVE', '状态胶囊未显示「通话聆听中」（未进入通话态）')
     return
   }
   await say('    5 秒后请**直接**说一句完整指令（例如「今天几号」），不要喊唤醒词')
@@ -733,25 +710,25 @@ async function runCallCheck(page, reqs) {
   try { await page.locator('.float-trigger').dblclick({ timeout: 3000 }) } catch { /* ignore */ }
 
   if (!segs.length) {
-    record(5, '通话模式免唤醒指令', 'INCONCLUSIVE', '未见 call/segment 请求（录音/会话链路没跑起来）', evidence)
+    record('4', '通话模式免唤醒指令', 'INCONCLUSIVE', '未见 call/segment 请求（录音/会话链路没跑起来）', evidence)
     return
   }
   if (!utter.length) {
-    record(5, '通话模式免唤醒指令', 'INCONCLUSIVE', 'segment 有、utter 无（漏斗未命中或闸门误杀——人工核对 audit.log call-funnel 行）', evidence)
+    record('4', '通话模式免唤醒指令', 'INCONCLUSIVE', 'segment 有、utter 无（漏斗未命中或闸门误杀——人工核对 audit.log call-funnel 行）', evidence)
     return
   }
   if (wakes.length) {
-    record(5, '通话模式免唤醒指令', 'FAIL', `通话期出现了 ${wakes.length} 次唤醒判定请求（链路串了）`, evidence)
+    record('4', '通话模式免唤醒指令', 'FAIL', `通话期出现了 ${wakes.length} 次唤醒判定请求（链路串了）`, evidence)
     return
   }
-  record(5, '通话模式免唤醒指令', 'PASS', '免唤醒段落进漏斗并命中送编排，全程无唤醒判定', evidence)
+  record('4', '通话模式免唤醒指令', 'PASS', '免唤醒段落进漏斗并命中送编排，全程无唤醒判定', evidence)
 }
 
 /**
- * 第 4 项的实现：让助手**用自己正常的播报链路**念出含唤醒词的文本，播报期间观察
+ * 第 3 项的实现：让助手**用自己正常的播报链路**念出含唤醒词的文本，播报期间观察
  * 「有没有音频分段被录下来并上传」。
  *
- * Implementation of check 4: have the assistant speak a wake-word-containing text through its
+ * Implementation of check 3: have the assistant speak a wake-word-containing text through its
  * *own normal playback path* and watch whether any audio segment is recorded and uploaded
  * during playback.
  *
@@ -840,7 +817,7 @@ async function runSelfTriggerCheck({ page, keyword, reqs }) {
     // (engine=api) the sound comes out of an <audio> element, speechSynthesis.speak is never
     // called, and the browser side sees nothing. The two causes need different actions, so both
     // are stated.
-    record('4', '播报含唤醒词 → 不自触发', 'INCONCLUSIVE',
+    record('3', '播报含唤醒词 → 不自触发', 'INCONCLUSIVE',
       `浏览器端没有观察到助手用 speechSynthesis 念出「${keyword}」，播报里没有唤醒词就测不到自触发 —— 不是通过。` +
       `若助手确实出声了，多半是播报引擎设成了「后端 API」（声音走 <audio>，浏览器侧看不到）：` +
       `请在播报设置里切回浏览器引擎后重跑`,
@@ -915,7 +892,7 @@ async function runSelfTriggerCheck({ page, keyword, reqs }) {
     detail = `播报期间麦克风已释放（${playback.length} 次采样活轨道均为 0，播报前确有 ${before.filter(s => s.micLive > 0).length} 次采样开着），且窗口内无任何音频上传`
   }
 
-  record('4', '播报含唤醒词 → 不自触发', status, detail,
+  record('3', '播报含唤醒词 → 不自触发', status, detail,
     `播报文本：${spoken.slice(0, 160)}\n` +
     `麦克风活轨道数 —— 播报前曾开着 ${before.filter(s => s.micLive > 0).length}/${before.length} 次采样，` +
     `播报期最大 ${playbackMaxLive < 0 ? 'n/a' : playbackMaxLive}，播报后最大 ${Math.max(-1, ...after.map(s => s.micLive ?? -1))}\n` +
@@ -926,23 +903,6 @@ async function runSelfTriggerCheck({ page, keyword, reqs }) {
     `注：` +
     `「播报期无音频上传」这一半取决于扬声器→麦克风的实际通路（扬声器静音时它无判别力）；\n` +
     `    「播报期麦克风已释放」这一半直接测轨道，不依赖声学通路，任何情况下都可证伪。`)
-}
-
-/**
- * 状态序列里是否出现「麦克风采到声音」的迹象。
- *
- * 待答期间 VAD 一旦判定有人说话就会录音 → 转写 → 当成回答提交，于是永远等不到待答超时。
- * 这三个状态是那条路径的指纹。
- *
- * Whether the state sequence shows the mic picked up sound. During the answer wait, VAD
- * judging speech present starts a recording → transcription → submitted as an answer, so the
- * answer timeout is never reached. These three states are that path's fingerprint.
- *
- * @param {string[]} seq 状态序列。The state sequence.
- * @returns {boolean} 是否采到了声音。Whether sound was picked up.
- */
-function heardAnswerWait(seq) {
-  return seq.some(s => s === 'recording' || s === 'transcribing' || s === 'thinking')
 }
 
 /**
