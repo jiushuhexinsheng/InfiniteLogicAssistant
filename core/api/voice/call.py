@@ -68,7 +68,8 @@ async def _cloud_transcribe(wav: bytes) -> str:
 
 async def _smart_turn(wav: bytes) -> bool:
     from core.voice.smart_turn import get_smart_turn
-    import io as _io, wave as _wave
+    import io as _io
+    import wave as _wave
     try:
         with _wave.open(_io.BytesIO(wav), "rb") as w:
             sr, frames = w.getframerate(), w.readframes(w.getnframes())

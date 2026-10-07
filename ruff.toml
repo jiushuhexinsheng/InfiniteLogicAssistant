@@ -1,0 +1,9 @@
+# ruff —— 轻量 lint，与 mypy 互补（mypy 管类型，ruff 管未用导入 / 空 f-string /
+# 语法级错误）。规则集显式钉住 ruff 默认集（E4/E7/E9/F），仓库当前全绿；
+# 想加新规则须先把全仓告警清零再进 CI，避免门禁一开就红。
+# ruff —— lightweight lint complementing mypy (mypy covers types; ruff covers unused
+# imports / empty f-strings / syntax-level errors). The rule set is pinned to ruff's
+# default (E4/E7/E9/F); the repo is currently clean. New rules require a repo-wide
+# zeroing first so the gate never lands red.
+[lint]
+select = ["E4", "E7", "E9", "F"]

@@ -20,6 +20,9 @@ jobs:
         run: pip install --find-links=scripts/libs -r requirements.txt -r requirements-dev.txt
       - name: Type check (mypy)
         run: python -m mypy core/ server.py
+      - name: Lint (ruff)
+        # 规则集见 ruff.toml（默认 E4/E7/E9/F）；与 mypy 互补，管未用导入/空 f-string 等
+        run: ruff check core/ server.py main.py cli/
       - name: Tests (pytest)
         run: python -m pytest tests/ -q
       - name: Check generated types in sync (gen:api)

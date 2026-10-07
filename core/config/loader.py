@@ -232,10 +232,10 @@ def _build() -> Settings:
     from core import config as _cfg
     if not _cfg.CONFIG_FILE.exists() and _cfg.EXAMPLE_FILE.exists():
         shutil.copy2(str(_cfg.EXAMPLE_FILE), str(_cfg.CONFIG_FILE))
-        print(f"[配置] 已从 config.yaml.example 创建 config.yaml，请编辑后重新运行")
+        print("[配置] 已从 config.yaml.example 创建 config.yaml，请编辑后重新运行")
     if not _cfg.SECRETS_FILE.exists() and _cfg.SECRETS_EXAMPLE.exists():
         shutil.copy2(str(_cfg.SECRETS_EXAMPLE), str(_cfg.SECRETS_FILE))
-        print(f"[配置] 已从 config.secrets.yaml.example 创建 config.secrets.yaml（密钥独立存储，不入库）")
+        print("[配置] 已从 config.secrets.yaml.example 创建 config.secrets.yaml（密钥独立存储，不入库）")
 
     data = _read_yaml(_cfg.CONFIG_FILE)
     _inject_secrets(data, _load_secrets())

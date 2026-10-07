@@ -6,7 +6,7 @@ Sub-agent base — a single ReAct loop with a role prompt, cancellable.
 import asyncio
 import json
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Awaitable, Callable
 
 from core import config
 from core.llm.client import get_llm_client

@@ -19,7 +19,6 @@ lines in the audit log). KWS decides "is it our word" (sound-level; mid-sentence
 hit too); the text-layer leading rule decides "is it a wake" (anti-echo). When the engine
 is unavailable the gate auto-bypasses to pure cloud judging — it never blocks wake.
 """
-import os
 import struct
 import wave
 from pathlib import Path

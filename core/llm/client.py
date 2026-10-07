@@ -4,7 +4,6 @@ import asyncio
 import random
 import time
 from collections.abc import AsyncIterator
-from typing import Any
 
 import httpx
 

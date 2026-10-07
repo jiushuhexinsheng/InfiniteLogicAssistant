@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """环境与记忆端点响应。Environment and memory endpoint responses."""
-from typing import Any
 
 from pydantic import BaseModel
 

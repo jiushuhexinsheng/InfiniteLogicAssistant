@@ -177,7 +177,6 @@ async def rerank(query: str, hits: list[dict], top_k: int) -> list[dict]:
     if len(hits) <= top_k:
         return hits[:top_k]
     try:
-        from core import config
         from core.llm.client import get_llm_client
         from core.logger import audit
 

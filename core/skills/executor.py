@@ -4,7 +4,6 @@ Skill executor — fills args_template ({{param}} placeholders) with parameters,
 """
 from typing import Any
 
-from core.logger import logger
 from core.orchestrator.confirm import confirm_if_needed
 from core.orchestrator.session import Session
 from core.orchestrator.task import Task
