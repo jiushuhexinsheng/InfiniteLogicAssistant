@@ -7,6 +7,31 @@
 
 ## 更新历史
 
+### 2026-10-07 优化方案 P3-7/P3-8：唤醒链路重构推迟 + 浏览器 KWS 占位删除
+
+**P3-7（唤醒链路重构）Ruling：按方案前置条件推迟**——方案原文「建议等真人验收完 P8
+再动」。P8 硬门槛「未通过人工验收前不得宣称唤醒可用」仍挂着，验收前重构 971 行核心
+唤醒链路会把验收问题与重构问题混淆，故等真人验收完成后再动。
+
+**P3-8（删浏览器 KWS 占位 + 文案对齐真实链路）已落地**：
+
+- **删死代码**：`web/src/composables/assistant/wake/sherpaKwsProvider.ts`——占位
+  `isAvailable()` 恒 false，auto 链永不 push，从未参与运行（2026-09-29 Go/No-Go=No-Go：
+  官方 npm 只有 Node wasm）。No-Go 评估证据留档 `docs/designs/03-voice-conversation.md` §B
+  （处置行与节标题已标注「占位已删除，设计底稿保留」）；`wakeChain.ts` 清空全部 sherpa 引用
+  并在文件头写明删除理由。
+- **设置页模式提示改真实语义**：local/auto = 经**后端 KWS 闸门**判定（sherpa-onnx 跑在
+  本机后端，未命中不上云）；cloud = 旁路闸门纯云端；webspeech = 浏览器识别。
+- **隐私边界段修正**（P3-8 顺带发现的同类遗留）：旧文案「云端/自动模式无论是否说出唤醒词
+  都上传」「本地/浏览器模式音频不出本机」与 KWS 闸门后的实现**相反**——auto/local 未命中
+  不上云、命中才上传抬指令；webspeech 经浏览器厂商服务器（Chrome 中文走 Google）。现按
+  模式逐条分开写，口径对齐 `wiki/Security.md`。
+- 注释同步：`wake/types.ts`、`store.ts` 的 WakeMode 注释、README 目录树（去
+  `sherpaKwsProvider`）、VoiceCard 模式切换注释。
+- 测试 +2（VoiceCard 模式文案：local 写后端 KWS 且无「音频不出本机」承诺、auto 不写
+  「优先本地 Sherpa-ONNX」；既有隐私边界断言同时收紧到闸门后口径），全量 pytest **621** /
+  vitest **323** / ruff（CI 范围）/ mypy / vue-tsc 全绿；dist 已重建。
+
 ### 2026-10-07 优化方案 P2-6：语音上传成本仪表
 
 此前统计云端音频上传只能手动 `grep -c 'audio-upload via=' data/audit.log`。现在有界面：

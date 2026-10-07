@@ -13,18 +13,18 @@ import type { WakeMode } from '../store'
 import type { WakeProvider, WakeResult, WebSpeechWakeProvider } from './types'
 import { createCloudAsrProvider, type CloudAsrApi } from './cloudAsrProvider'
 import { createWebSpeechProvider } from './webSpeechProvider'
-import { createSherpaKwsProvider } from './sherpaKwsProvider'
+
+// 浏览器 WASM KWS（sherpaKwsProvider 占位）已按 2026-09-29 Go/No-Go=No-Go 评估移除：
+// 官方包无浏览器构建，占位 isAvailable() 恒 false 是死代码；判定本地化由后端 KWS
+// 闸门保证（评估记录见 docs/designs/03-voice-conversation.md B 节）。
+// The browser-WASM KWS placeholder (sherpaKwsProvider) was removed per the 2026-09-29
+// Go/No-Go=No-Go evaluation: the official package has no browser build, and the
+// placeholder's always-false isAvailable() was dead code; local judgement is guaranteed
+// by the backend KWS gate (evaluation record: docs/designs/03-voice-conversation.md §B).
 
 /** 模块级 provider 单例（延迟创建，首次使用时初始化）。Module-level provider singletons (lazy-created). */
-let sherpaProvider: WakeProvider | null = null
 let cloudProvider: WakeProvider | null = null
 let webSpeechProvider: WebSpeechWakeProvider | null = null
-
-/** 获取或创建 Sherpa-ONNX KWS 提供者。Get or create the Sherpa-ONNX KWS provider. */
-function getSherpa(): WakeProvider {
-  if (!sherpaProvider) sherpaProvider = createSherpaKwsProvider()
-  return sherpaProvider
-}
 
 /** 获取或创建云端 ASR 提供者（api 由首次调用时注入，后续忽略）。
  *  mode 变化时重建 —— cloud 模式随请求下发以旁路后端 KWS 闸门，缓存旧 mode 会失效。
@@ -68,10 +68,8 @@ export function getChain(mode: WakeMode, api?: CloudAsrApi): WakeProvider[] {
   switch (mode) {
     case 'local':
       // 本地判定 = 后端 KWS 闸门（同端点）：KWS 未命中不上云，命中才调 ASR 抬指令。
-      // 浏览器 WASM KWS（sherpaKwsProvider 占位）留给后续完全离线场景。
       // Local judging = the backend KWS gate (same endpoint): misses never reach the
-      // cloud, hits call ASR for command extraction. The browser-WASM sherpa provider
-      // (placeholder) stays reserved for a fully-offline future.
+      // cloud, hits call ASR for command extraction.
       return [getCloud(api, 'local')]
     case 'cloud':
       return [getCloud(api, 'cloud')]
@@ -81,17 +79,12 @@ export function getChain(mode: WakeMode, api?: CloudAsrApi): WakeProvider[] {
       return []
     case 'auto':
     default: {
+      // 自动 = 后端 KWS 闸门判定（mode=auto 不旁路），失败回退 Web Speech（orchestrator 特殊处理）。
+      // Auto = backend KWS gate (mode=auto does not bypass), with Web Speech as the
+      // orchestrator-handled fallback.
       const chain: WakeProvider[] = []
-      const sherpa = getSherpa()
       const cloud = getCloud(api, 'auto')
-      // Sherpa-ONNX 优先（本地、零延迟）
-      // Sherpa-ONNX first (local, zero latency)
-      if (sherpa.isAvailable()) chain.push(sherpa)
-      // 云端 ASR 其次（准确但有延迟）
-      // Cloud ASR next (accurate but with latency)
       if (cloud.isAvailable()) chain.push(cloud)
-      // Web Speech API 不加入链（orchestrator 特殊处理）
-      // Web Speech API not in chain (orchestrator handles specially)
       return chain
     }
   }
@@ -162,10 +155,8 @@ export function peekWebSpeechProvider(): WebSpeechWakeProvider | null {
  * Dispose all provider resources.
  */
 export function disposeAll(): void {
-  sherpaProvider?.dispose?.()
   cloudProvider?.dispose?.()
   webSpeechProvider?.dispose?.()
-  sherpaProvider = null
   cloudProvider = null
   webSpeechProvider = null
 }

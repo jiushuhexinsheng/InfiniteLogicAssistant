@@ -18,7 +18,9 @@
   - 自建路径（emscripten 编 sherpa fork / onnxruntime-web 手搬 zipformer KWS 状态机）维护成本
     高，增量收益仅「提示音提前 ~1.5s + 省一次 localhost 快检往返」——判定本地化零云成本已由
     后端 KWS 闸门保证。
-  - 处置：`sherpaKwsProvider` 占位保留、文件头记录评估证据与将来启用步骤；等官方浏览器构建。
+  - 处置：`sherpaKwsProvider` 占位曾保留待官方浏览器构建；**2026-10-07 按 P3-8 改为删除**
+    ——占位 `isAvailable()` 恒 false 是死代码（auto 链永不 push），评估证据仍存于本文件
+    §B（将来若官方发布浏览器构建，按 §B 设计重新引入）。
 - 测试：vitest 245 绿（新增 wakeFsm 3 / 续聊窗口 4）、pytest 494 绿、mypy 干净、build 通过。
 
 ## A. 续聊窗口（followup window）
@@ -69,9 +71,13 @@
 
 ---
 
-## B. 浏览器端 sherpa-onnx KWS（兑现 `sherpaKwsProvider` 占位）
+## B. 浏览器端 sherpa-onnx KWS（原 `sherpaKwsProvider` 占位）
 
-### 1. 现状
+> **状态（2026-10-07）**：占位文件 `web/src/composables/assistant/wake/sherpaKwsProvider.ts`
+> 已随 P3-8 删除（No-Go 评估见下，死代码不留）；本节保留为将来启用的设计底稿。
+> 下文对占位文件与 `wakeChain` 的行号引用是**删除前的历史快照**。
+
+### 1. 现状（占位删除前）
 
 - `sherpaKwsProvider.ts`：纯占位——`isAvailable()` 恒 false（`wasmReady` 从未置真）、`detect()` 恒 miss、`init()` 打日志 TODO（`sherpaKwsProvider.ts:49-84`，接入步骤注释在 26-38 行）。
 - `wakeChain.getChain('auto')` 里 sherpa 排第一，但因 `isAvailable()===false` 实际不参与（`wakeChain.ts:67-98`）。

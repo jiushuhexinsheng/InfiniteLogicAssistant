@@ -381,7 +381,7 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 │       ├── components/        FloatingAssistant（悬浮球）+ assistant/ + console/ + ui/ + layout/
 │       ├── composables/       assistant/（store · useChat · useTts · useWakeWord）
 │       │   └── assistant/wake/ 唤醒编排：wakeOrchestrator / wakeChain / cloudAsrProvider /
-│       │                      sherpaKwsProvider / webSpeechProvider
+│       │                      webSpeechProvider（本地判定在后端 KWS 闸门）
 │       ├── api/               openapi-typescript 生成类型（generated.ts，gen:api 同步）
 │       └── views/             StartPage.vue / ConsolePage.vue
 └── data/                      运行时数据（agent.log / audit.log / history.db / schedules.json /

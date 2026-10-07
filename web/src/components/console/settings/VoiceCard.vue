@@ -7,17 +7,26 @@
         {{ s.saving.value ? '保存中…' : '保存' }}
       </UiButton>
     </div>
-    <!-- 隐私边界：spec 明确要求「必须写进 README 与设置页」。
-         Privacy boundary, which the spec requires be stated on the settings page too. -->
+    <!-- 隐私边界：spec 明确要求「必须写进 README 与设置页」。口径对齐 wiki/Security.md：
+         云端模式（旁路闸门）无条件上传；自动/本地经后端 KWS 闸门（未命中不上云、命中才
+         上传抬指令）；浏览器模式走浏览器识别（并不更私密）。旧文案「云端/自动都上传」
+         「本地/浏览器音频不出本机」与 KWS 闸门后的实现相反，已按 P3-8 删除。
+         Privacy boundary (spec-required). Aligned with wiki/Security.md: cloud mode bypasses
+         the gate and uploads unconditionally; auto/local go through the backend KWS gate
+         (misses stay local, hits upload for instruction extraction); browser mode uses the
+         browser's recognizer (not more private). The old copy ("cloud/auto both upload",
+         "local/browser audio never leaves") contradicted the post-gate implementation. -->
     <p class="cs-note">
-      ⚠️ <strong>云端/自动模式</strong>下，每次 VAD 判到人声都会上传音频到云端 ASR —— <strong>无论是否说出唤醒词</strong>。
-      <strong>本地/浏览器模式</strong>下音频不出本机。
-      关闭下方「唤醒启用」即停止取麦；不接受音频上传请改用文字输入或本地模式。
+      ⚠️ <strong>云端模式</strong>下，每次 VAD 判到人声都会上传音频到云端 ASR —— <strong>无论是否说出唤醒词</strong>。
+      <strong>自动/本地模式</strong>经后端 KWS 闸门：没说唤醒词的段在本机丢弃、不上云，命中才上传抬取指令文本；
+      <strong>浏览器模式</strong>走浏览器识别（Chrome 中文经 Google 服务器，并不更私密）。
+      关闭下方「唤醒启用」即停止取麦；不接受音频上传请改用文字输入。
     </p>
     <SettingsField v-if="s.editable.value" label="唤醒启用" row>
       <UiToggle :model-value="s.ed().wake_word.enabled" @update:model-value="v => (s.ed().wake_word.enabled = v)" />
     </SettingsField>
-    <!-- 唤醒模式切换：本地（Web Speech API，零延迟）/ 云端（上传后端判定）/ 自动（优先本地） -->
+    <!-- 唤醒模式切换：自动/本地 = 后端 KWS 闸门判定；云端 = 旁路闸门纯云端；浏览器 = Web Speech API。
+         Auto/local = backend KWS gate; cloud = bypass gate, full cloud; browser = Web Speech API. -->
     <SettingsField label="唤醒模式">
       <UiSegmented
         :model-value="currentMode"
@@ -109,10 +118,10 @@ const currentMode = computed(() => wakeMode.value)
 /** 模式说明文案。Mode description text. */
 const modeHint = computed(() => {
   switch (wakeMode.value) {
-    case 'local': return '⚡ 本地模式：Sherpa-ONNX KWS 本地检测，零延迟、音频不出本机（需模型可用）'
-    case 'cloud': return '☁️ 云端模式：音频上传到后端 ASR 判定，延迟较高但识别率高'
+    case 'local': return '⚡ 本地模式：经后端 KWS 闸门判定（sherpa-onnx 跑在本机后端），未命中不上云、零 LLM 成本'
+    case 'cloud': return '☁️ 云端模式：跳过 KWS 闸门直接云端转写判定，延迟较高但识别率高'
     case 'webspeech': return '🌐 浏览器模式：Web Speech API 直接识别，免费但识别率较低'
-    default: return '🔄 自动模式：优先本地 Sherpa-ONNX，回退云端 ASR，最后 Web Speech API'
+    default: return '🔄 自动模式：经后端 KWS 闸门判定（未命中不上云），链路失败回退 Web Speech API'
   }
 })
 

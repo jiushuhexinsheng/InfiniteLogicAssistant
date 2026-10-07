@@ -186,8 +186,8 @@ export function callBargeInEnabled(configFlag: boolean, active: boolean = callAc
 /** 响应式唤醒词列表（**可多个**，命中任意一个即唤醒）。Reactive wake keywords (plural; any hit wakes). */
 export const wakeKeywords = ref<string[]>([...(wakeConfig.keywords ?? [])])
 
-/** 唤醒模式：auto = 自动优先本地、回退云端；local = 强制本地 Sherpa-ONNX；cloud = 强制云端；webspeech = 浏览器 Web Speech API。
- *  Wake mode: auto = prefer local with cloud fallback; local = force local Sherpa-ONNX; cloud = force cloud; webspeech = browser Web Speech API. */
+/** 唤醒模式：auto/local = 后端 KWS 闸门判定（未命中不上云）；cloud = 旁路闸门纯云端（每次人声段都上云）；webspeech = 浏览器 Web Speech API。
+ *  Wake mode: auto/local = backend KWS gate (misses never upload); cloud = bypass gate, full cloud (every speech segment uploads); webspeech = browser Web Speech API. */
 export type WakeMode = 'auto' | 'local' | 'cloud' | 'webspeech'
 const WAKE_MODE_KEY = 'xluo.wakeMode'
 /** 当前唤醒模式（持久化到 localStorage）。Current wake mode (persisted to localStorage). */

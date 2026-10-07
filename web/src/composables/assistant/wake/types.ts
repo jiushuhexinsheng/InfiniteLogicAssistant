@@ -1,13 +1,16 @@
 /**
  * 唤醒子系统共享类型定义。
  *
- * 每个唤醒检测提供者（Sherpa-ONNX KWS、云端 ASR、Web Speech API）都实现 `WakeProvider` 接口；
- * 回退链协调器按模式选择 provider 列表，依次尝试，第一个 matched 胜出。
+ * 每个唤醒检测提供者（云端 ASR【内含后端 KWS 闸门语义】、Web Speech API）都实现
+ * `WakeProvider` 接口；回退链协调器按模式选择 provider 列表，依次尝试，第一个 matched 胜出。
+ * 浏览器侧 WASM KWS 占位已按 2026-09-29 No-Go 评估移除（本地判定由后端 KWS 闸门承担）。
  *
  * Shared type definitions for the wake subsystem.
- * Every wake-detection provider (Sherpa-ONNX KWS, Cloud ASR, Web Speech API) implements the
- * `WakeProvider` interface; the fallback-chain coordinator picks a provider list by mode and
- * tries them in order — the first `matched` wins.
+ * Every wake-detection provider (Cloud ASR — carrying the backend KWS-gate semantics — and
+ * Web Speech API) implements the `WakeProvider` interface; the fallback-chain coordinator picks
+ * a provider list by mode and tries them in order — the first `matched` wins. The browser-side
+ * WASM KWS placeholder was removed per the 2026-09-29 No-Go evaluation (local judging is the
+ * backend KWS gate's job).
  */
 
 /** 唤醒检测结果。Wake detection result. */
