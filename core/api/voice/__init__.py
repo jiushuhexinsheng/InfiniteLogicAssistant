@@ -13,6 +13,7 @@ from fastapi import APIRouter
 from .call import router as _call_router
 from .meta import router as _meta_router
 from .run import router as _run_router
+from .stats import router as _stats_router
 from .tts import router as _tts_router
 from .wake import router as _wake_router
 
@@ -22,6 +23,7 @@ router.include_router(_tts_router)
 router.include_router(_wake_router)
 router.include_router(_run_router)
 router.include_router(_call_router)
+router.include_router(_stats_router)
 
 # 测试直驱的 SSE 辅助保持包级可达（tests/test_sse_resume.py）。
 # Run-stream helpers stay reachable at package level (tests/test_sse_resume.py).

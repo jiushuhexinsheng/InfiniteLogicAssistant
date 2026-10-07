@@ -52,6 +52,8 @@ permissions:
   （含转写文本前 80 字）；`kws-gate hit/skip=` 是**本地判定**记账（非上传，不进成本口径）。
   `grep -c 'audio-upload via=' data/audit.log` 即云端上传总次数 —— 统计调用量与成本的依据。
   （`/api/voice/answer` 只回传文本、不出音频，不记上传审计。）
+  界面侧统计走 `GET /api/voice/upload-stats`：它只回**计数与日期**，audit 行里的转写
+  原文（`text=`）绝不经该端点回放。
 - **助手播报期间麦克风被释放**；播报结束后 1.2 秒内音频整体丢弃（回声护栏——助手自称
   「衍衡」，防止它自己的声音被误唤醒或代答）。
 - **关闭方式**：再次点悬浮球上的 mic 徽章（或设 `voice.wake_word.enabled: false`），

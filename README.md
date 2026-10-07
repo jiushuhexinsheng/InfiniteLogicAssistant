@@ -181,6 +181,7 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 | POST | `/api/voice/resume` | SSE 断线后续播（`server.resume_grace_s` 宽限期内任务不丢） |
 | POST | `/api/voice/call/start` / `call/stop` | 通话模式开/关（无段落 300s 自动过期；开启期间与唤醒互斥） |
 | POST | `/api/voice/call/segment` | 通话段落进三级漏斗（L0 规则 → L1 本地转写 → L2 云端精判），`hit` 才送编排 |
+| GET | `/api/voice/upload-stats` | 云端音频上传成本统计（`audio-upload via=` 三前缀计数 + 近 7 日趋势，只回计数与日期） |
 | POST | `/api/tts` | 后端 TTS 合成（可选） |
 | GET/POST | `/api/tools` `/api/tools/call` | 工具列表 / 执行（是否询问由 `permissions` 策略决定） |
 | GET/DELETE | `/api/memory` | 长期记忆读取 / 删除 |

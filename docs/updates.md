@@ -7,6 +7,19 @@
 
 ## 更新历史
 
+### 2026-10-07 优化方案 P2-6：语音上传成本仪表
+
+此前统计云端音频上传只能手动 `grep -c 'audio-upload via=' data/audit.log`。现在有界面：
+
+- **后端** `GET /api/voice/upload-stats`：解析 `data/audit.log` 的 `audio-upload via=`
+  三前缀（wake / transcribe / call-segment），返回总数 + 三前缀分计 + 近 7 日按天趋势
+  （缺日补零）。**安全口径**：只回计数与日期，audit 行里的转写原文（`text=`）绝不回放。
+- **前端** 统计页（ConsoleStats）新增「云端音频上传（成本口径）」区块：三前缀计数卡 +
+  合计 + 近 7 日趋势柱；接口失败整块降级为 `—`（既有会话统计不受影响）。
+  提示行写明本地 KWS 闸门未命中的段不上传、不进本口径。
+- 测试 +8（后端解析/端点/隐私/缺文件 5 + 前端渲染 3），全量 pytest **621** /
+  vitest **321** / ruff / mypy / vue-tsc 全绿；dist 已重建。
+
 ### 2026-10-07 优化方案 P2-5：RAG 检索/精排结果缓存
 
 `rerank='llm'` 档每次上下文构建都是一笔 LLM 精排开销，而重复查询（会话内追问、

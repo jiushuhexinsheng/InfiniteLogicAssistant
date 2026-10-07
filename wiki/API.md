@@ -31,6 +31,7 @@
 | POST | `/api/voice/wake/check` | 本地 KWS 快检：只回答「有没有唤醒词」（毫秒级、零云端调用） |
 | POST | `/api/voice/wake` | 唤醒检测：转写 + 判定 + 切指令（mode=cloud 旁路本地闸门） |
 | POST | `/api/voice/transcribe` | ASR 转写（JSON 体 audio_base64，16kHz mono WAV） |
+| GET | `/api/voice/upload-stats` | 云端上传成本统计：`audio-upload via=wake/transcribe/call-segment` 三前缀计数 + 近 7 日趋势（**只回计数与日期**，绝不回放转写文本）；数据源 `data/audit.log`，统计页成本仪表用 |
 | POST | `/api/tts` | 文本转语音（返回音频字节） |
 | GET | `/api/memory` · DELETE `/api/memory/{topic}` | 长期记忆浏览/删除 |
 | GET / POST | `/api/history` · GET/DELETE `/api/history/{conv_id}` | 会话历史列表 / 详情 / 删除 |

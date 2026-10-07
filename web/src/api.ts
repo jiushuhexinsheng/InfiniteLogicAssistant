@@ -146,6 +146,16 @@ export const api = {
     return post('/voice/call/segment', { audio_base64, tab_focused: meta.tabFocused, in_open_window: meta.inOpenWindow })
   },
 
+  // 语音上传成本统计（audit 的 audio-upload via= 三前缀计数 + 近 7 日趋势；只回计数与日期）
+  // Voice upload cost stats (audio-upload via= counts + 7-day trend; counts and dates only)
+  /** 获取语音上传成本统计。Get voice upload cost stats. */
+  getUploadStats: () => get<{
+    ok: boolean
+    total: number
+    by_via: { wake: number; transcribe: number; 'call-segment': number }
+    days: { date: string; wake: number; transcribe: number; 'call-segment': number }[]
+  }>('/voice/upload-stats'),
+
   // 单工具执行（前端"重试失败工具"走后端真实重跑；高风险工具需 confirm: true 显式确认）
   // Single tool execution (frontend "retry failed tool" runs backend real retry; high-risk tools need confirm: true explicit confirmation)
   /** 调用单个工具。Call a single tool. */

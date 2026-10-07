@@ -8,16 +8,71 @@
       </UiCard>
     </div>
     <p class="hint">会话内统计，清空对话后归零。token 来自后端 SSE usage 透传（逐轮累计），提供方不回传时显示 —。</p>
+
+    <!-- 云端上传成本（audit 的 audio-upload via= 三前缀计数 + 近 7 日趋势；后端只回计数与日期）。
+         Cloud upload cost (audio-upload via= counts + 7-day trend; the backend returns counts and dates only). -->
+    <UiCard class="upload-stats">
+      <h3 class="upload-title">云端音频上传（成本口径）</h3>
+      <div class="stats-grid">
+        <div v-for="c in uploadCards" :key="c.lbl" class="stat">
+          <div class="num">{{ c.num }}</div>
+          <div class="lbl">{{ c.lbl }}</div>
+        </div>
+      </div>
+      <div v-if="uploadStats" class="trend">
+        <div v-for="d in uploadStats.days" :key="d.date" class="trend-bar"
+             :title="`${d.date}：${d.wake + d.transcribe + d['call-segment']} 次`"
+             :style="{ height: trendHeight(d) }"></div>
+      </div>
+      <p class="hint">未命中唤醒词的人声段不上传（本地 KWS 闸门），不计入本口径。</p>
+    </UiCard>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { api } from '../../api'
 import { useAssistant } from '../../composables/useAssistant'
 import { UiCard } from '../ui'
 
 /** 当前助手实例。Current assistant instance. */
 const asst = useAssistant()
+
+/** 上传统计数据（挂载时拉取；失败为 null → 卡片显示 —）。Upload stats (fetched on
+ *  mount; null on failure → cards show —). */
+const uploadStats = ref<Awaited<ReturnType<typeof api.getUploadStats>> | null>(null)
+
+onMounted(async () => {
+  try {
+    uploadStats.value = await api.getUploadStats()
+  } catch { /* 降级：上传卡片显示 —。Degrade: upload cards show —. */ }
+})
+
+/** 上传统计卡片（三前缀 + 合计；加载失败全部 —）。Upload stat cards (three vias +
+ *  total; all — when the fetch failed). */
+const uploadCards = computed(() => {
+  const s = uploadStats.value
+  if (!s) return [
+    { num: '—', lbl: '唤醒上传' }, { num: '—', lbl: '转写上传' },
+    { num: '—', lbl: '通话上传' }, { num: '—', lbl: '上传合计' },
+  ]
+  return [
+    { num: s.by_via.wake, lbl: '唤醒上传' },
+    { num: s.by_via.transcribe, lbl: '转写上传' },
+    { num: s.by_via['call-segment'], lbl: '通话上传' },
+    { num: s.total, lbl: '上传合计' },
+  ]
+})
+
+/** 趋势柱高（按日合计相对窗口最大值；全零时给基础高度保形）。
+ *  Bar height (daily total vs. the window max; a floor keeps shape when all zero). */
+function trendHeight(d: { wake: number; transcribe: number; 'call-segment': number }): string {
+  const s = uploadStats.value
+  if (!s) return '2px'
+  const max = Math.max(1, ...s.days.map((x) => x.wake + x.transcribe + x['call-segment']))
+  const n = d.wake + d.transcribe + d['call-segment']
+  return `${Math.round((n / max) * 36) + 2}px`
+}
 
 /** 统计数据：消息数、用户/助手消息数、工具调用数和工具总耗时。Statistics: message count, user/assistant message count, tool call count and total tool duration. */
 const stats = computed(() => {
@@ -63,4 +118,8 @@ const statCards = computed(() => [
 .num { font-size: 26px; font-weight: 700; color: var(--brand-c2); }
 .lbl { font-size: 12px; color: var(--text-3); margin-top: 4px; }
 .hint { font-size: 11px; color: var(--text-3); margin-top: 14px; line-height: 1.6; }
+.upload-stats { margin-top: 18px; }
+.upload-title { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 0 0 10px; }
+.trend { display: flex; align-items: flex-end; gap: 6px; height: 44px; margin-top: 14px; }
+.trend-bar { flex: 1; min-height: 2px; background: var(--brand-c2); opacity: .75; border-radius: 2px 2px 0 0; }
 </style>

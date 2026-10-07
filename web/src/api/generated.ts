@@ -352,6 +352,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/voice/upload-stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Voice Upload Stats
+         * @description 三前缀计数 + 近 7 日趋势（成本仪表数据源；只回计数与日期）。
+         *
+         *     Per-via counts + 7-day trend (the cost-dashboard feed; counts and dates only).
+         */
+        get: operations["voice_upload_stats_api_voice_upload_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tools": {
         parameters: {
             query?: never;
@@ -2292,6 +2314,43 @@ export interface components {
             enabled: boolean;
         };
         /**
+         * UploadStatsResponse
+         * @description 语音上传成本统计（P2-6 成本仪表）：三前缀计数 + 近 7 日趋势。
+         *
+         *     **只回计数与日期**——audit 行含转写原文，绝不回放（见 stats.py 安全口径）。
+         *
+         *     Voice upload cost stats (P2-6 cost dashboard): per-via counts + 7-day trend.
+         *     Counts and dates only — audit lines carry raw transcripts and are never echoed.
+         */
+        UploadStatsResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * By Via
+             * @default {}
+             */
+            by_via: {
+                [key: string]: number;
+            };
+            /**
+             * Days
+             * @default []
+             */
+            days: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
          * VadConfig
          * @description VAD（语音活动检测）配置。
          *
@@ -2771,6 +2830,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CallSegmentResponse"];
+                };
+            };
+        };
+    };
+    voice_upload_stats_api_voice_upload_stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadStatsResponse"];
                 };
             };
         };

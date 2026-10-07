@@ -126,6 +126,20 @@ class CallSegmentResponse(ApiResponse):
     stage: str = ""
     reason: str = ""
 
+class UploadStatsResponse(ApiResponse):
+    """语音上传成本统计（P2-6 成本仪表）：三前缀计数 + 近 7 日趋势。
+
+    **只回计数与日期**——audit 行含转写原文，绝不回放（见 stats.py 安全口径）。
+
+    Voice upload cost stats (P2-6 cost dashboard): per-via counts + 7-day trend.
+    Counts and dates only — audit lines carry raw transcripts and are never echoed.
+    """
+
+    total: int = 0
+    by_via: dict[str, int] = {}
+    days: list[dict] = []
+
+
 class WakeResponse(ApiResponse):
     """唤醒检测响应。
 
