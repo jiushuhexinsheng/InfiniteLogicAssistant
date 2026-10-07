@@ -13,7 +13,7 @@
 | P5 | 工具权限策略层（子系统 A） | ✅ 已完成 | [2026-09-13-tool-permission-policy.md](../superpowers/plans/2026-09-13-tool-permission-policy.md) | 设置页可配 allow / ask / deny（deny 短路 > 规则 > 层级 > 默认）；默认等价改造前行为；三个消费点全部走策略 |
 | P6 | 语音作答 + 无应答待机 + 再唤醒续答（子系统 C） | ✅ 已完成 | [2026-09-13-voice-answering.md](../superpowers/plans/2026-09-13-voice-answering.md) | 播报后自动开录、直接语音作答；无应答进待机；再唤醒续答本题；播报期间暂停监听 **（⚠️ 4 项验收均待重做：其中「播报期不自触发」曾被记为「已由验收台验证」，那是一次**真观测**（当时 `WakeWordEngine` 尚在，样本里非零的「播报前 12/22」可证），但它测的引擎与门控机制**已随唤醒链路重构整体删除并替换**，结论无法迁移到当前实现 —— 该「已验证」作废。此后引擎删除、探针目标消失，同一份检查才退化成只能报空洞 PASS 的假保障，故检查 4 已在 P8 重写。需真人有声环境跑 `npm run verify:voice` 重做，详见计划「撤回说明」）** |
 | P7 | 任务知识库（子系统 E） | ✅ 已完成 | [2026-09-13-task-knowledge-base.md](../superpowers/plans/2026-09-13-task-knowledge-base.md) | 完成时询问是否完成；成功任务存入独立模块；相似任务检索预填参数、减少询问（按**用户原话**匹配，非 LLM 归一化的 goal） |
-| P8 | 唤醒链路重构（**子项目 1 / 4**：VAD → KWS(API) → ASR） | ⏳ 待人工验收 | [2026-09-13-wake-detection-rework.md](../superpowers/plans/2026-09-13-wake-detection-rework.md) · [验收记录](../superpowers/plans/2026-09-13-wake-detection-rework-verification.md) | 唤醒重新可用且支持一句话说完：浏览器本地 VAD 切段 → `POST /api/voice/wake` 云端转写并判定「衍衡」「洛吉斯」→ 命中即起一轮；Vosk 引擎与 43MB 模型全部删除。**子项目 2（本地 KWS sherpa-onnx）/ 3（本地 ASR）/ 4（有序回退链 + 能力探测）待做** —— 三者各走独立 spec → 计划 → 实施。⚠️ spec 的硬门槛（人工验收 6 项，spec:198-212 风险表）**尚未执行**：spec 里所有实测用的都是 SAPI 合成音，对合成音识别好不代表对真人好 —— 验收通过前不得称「已完成」 |
+| P8 | 唤醒链路重构（**子项目 1 / 4**：VAD → KWS(API) → ASR） | ⏳ 待人工验收 | [2026-09-13-wake-detection-rework.md](../superpowers/plans/2026-09-13-wake-detection-rework.md) · [验收记录](../superpowers/plans/2026-09-13-wake-detection-rework-verification.md) | 唤醒重新可用且支持一句话说完：浏览器本地 VAD 切段 → `POST /api/voice/wake` 云端转写并判定「衍衡」「洛吉斯」→ 命中即起一轮；Vosk 引擎与 43MB 模型全部删除。**子项目 2（本地 KWS sherpa-onnx）✅ 已于 2026-09-26 落地**（`voice.kws` 闸门，25b458a / 64e4153）；**子项目 4（有序回退链 + 能力探测）✅ 已随同批交付**（`wakeChain.ts`：local / cloud / webspeech / auto 链 + isAvailable 探测）；**子项目 3（本地 ASR）⏳ 待做** —— 唤醒指令抬取仍走云端转写，本地转写目前只用于通话漏斗 L1。⚠️ spec 的硬门槛（人工验收 6 项，spec:198-212 风险表）**尚未执行**：spec 里所有实测用的都是 SAPI 合成音，对合成音识别好不代表对真人好 —— 验收通过前不得称「已完成」 |
 
 > P4–P7 的完整分解（接口边界、待决问题、风险、spec 大纲）见
 > [2026-09-13-agent-capabilities-roadmap-design.md](../superpowers/specs/2026-09-13-agent-capabilities-roadmap-design.md)。
@@ -34,7 +34,8 @@
 - **P8（子项目 1）**：8 / 8 个 Task 已实施 —— 自动化全绿、类型同步门禁通过、服务可绑定。
   ⚠️ **真人有声环境的人工验收 6 项「待人工验收」**，由用户对照麦克风逐条执行
   （见计划 Task 8 与 README「语音验收台」）；**未通过人工验收前不得宣称唤醒可用**。
-  子项目 2 / 3 / 4 未开始。
+  子项目 2（本地 KWS）✅、子项目 4（有序回退链 + 能力探测）✅ 已于 2026-09-26 随
+  唤醒链路大修交付；子项目 3（本地 ASR）⏳ 待做。
 
 > 每完成一个 Task：在对应计划里勾选 `[x]`，并更新上方「总体进度」计数。
 > 每完成一个阶段：对照该计划末尾的「验收清单」与「审查清单」，通过后把状态改为 ✅，并做阶段小结提交。
@@ -46,19 +47,19 @@
 - **桌面悬浮球 UI**（PySide6 / 早期 Tauri 尝试）：已完成 WIP 快照，代码迁移至 **`desktop-ball` 分支**，主分支已移除。
 - **本地常驻语音监听**：已随桌面端一并移除，代码在 `desktop-ball` 分支。
 
-**决策**：桌面端**不再迁移回主分支**。当前语音交互由浏览器端**本地 VAD 分段 + 云端唤醒判定** + 后端 ASR 承担，
+**决策**：桌面端**不再迁移回主分支**。当前语音交互由浏览器端**本地 VAD 分段 + 本地 KWS 唤醒判定** + 后端 ASR 承担，
 主分支以此为唯一语音入口；`desktop-ball` 分支保留为历史快照。
 
 ## 当前主分支功能基线
 
 | 能力 | 说明 |
 |------|------|
-| 语音交互 | 浏览器本地 VAD 分段 + `POST /api/voice/wake` 云端判定唤醒词（衍衡 / 洛吉斯）+ 后端 OpenAI 兼容 ASR/TTS + SpeechSynthesis 播报 |
-| 语音隐私 | ⚠️ 每次检测到人声都会把该片段上传云端 ASR（你 `config.yaml` 里 `asr` 指向的 endpoint，不是某个固定服务商），**无论是否唤醒**；VAD 只减少上传次数，不是隐私屏障（详见 README「安全」/ wiki/Security.md） |
+| 语音交互 | 浏览器本地 VAD 分段 → **本地 sherpa-onnx KWS 闸门**判定唤醒词（衍衡 / 洛吉斯，未命中不上云）→ 命中才调云端 ASR 抬指令 + 后端 OpenAI 兼容 ASR/TTS + SpeechSynthesis 播报 |
+| 语音隐私 | **本地 KWS 前置闸门（2026-09-26 起默认开启）**：没说唤醒词的人声段在本机直接丢弃、**不出本机不上云**；只有命中段上传云端 ASR。`kws.enabled: false` 或模型缺失时闸门旁路，才回到「每次人声段都上云」（详见 README「安全」/ wiki/Security.md） |
 | 任务编排 | 意图 → 任务 → 澄清 → 确认 → 执行 → 汇报，SSE 事件流 + 人类在环问答通道 |
 | 执行层 | Shell / Python（独立进程、可 kill 进程树）、文件系统（10+ 通用格式）、GUI 自动化、环境感知 |
 | 记忆/RAG | 长期事实记忆（facts.sqlite）+ 任务后 LLM 提取 + 关键词 RAG 上下文注入 |
 | 能力扩展 | MCP 客户端与桥、Skills 热加载、cron 定时（无人值守）、多智能体协调者 |
 | 控制 | CancellationToken 贯穿全链路：stop_task / stop_step / pause + taskkill /T 兜底 |
-| 测试 | 40 个 pytest 文件覆盖各层（`python -m pytest tests/ -q`） |
+| 测试 | 58 个 pytest 文件（591 用例）覆盖各层（`python -m pytest tests/ -q`）+ 前端 53 个 Vitest spec（318 用例） |
 | 定时被拒提醒 | 定时任务无人应答的高风险操作自动拒绝后，记 warning + 落盘会话历史（控制台可见） |
