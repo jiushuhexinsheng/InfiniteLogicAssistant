@@ -179,6 +179,8 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 | POST | `/api/voice/utter` | **编排入口**（SSE 事件流，`mode`: chat/task） |
 | POST | `/api/voice/answer` | 投递提问回答（可带 qid 配对） |
 | POST | `/api/voice/resume` | SSE 断线后续播（`server.resume_grace_s` 宽限期内任务不丢） |
+| POST | `/api/voice/call/start` / `call/stop` | 通话模式开/关（无段落 300s 自动过期；开启期间与唤醒互斥） |
+| POST | `/api/voice/call/segment` | 通话段落进三级漏斗（L0 规则 → L1 本地转写 → L2 云端精判），`hit` 才送编排 |
 | POST | `/api/tts` | 后端 TTS 合成（可选） |
 | GET/POST | `/api/tools` `/api/tools/call` | 工具列表 / 执行（是否询问由 `permissions` 策略决定） |
 | GET/DELETE | `/api/memory` | 长期记忆读取 / 删除 |
@@ -212,8 +214,9 @@ cd web && npm test              # 前端单元测试（Vitest）
 CI（`.github/workflows/ci.yml`）跑同款检查：后端 mypy + pytest + `gen:api` 同步校验
 （`generated.ts` 与 openapi 不一致即失败），前端 vue-tsc 构建 + Vitest。
 
-唤醒判定的前后端语义由共享测试向量（`tests/data/wake_vectors.json`）在 pytest 与 vitest
-双端共同钉住——改任一侧匹配规则，两侧测试必须同时变绿。
+唤醒判定与通话漏斗的前后端语义由共享测试向量（`tests/data/wake_vectors.json`、
+`call_funnel_vectors.json`）在 pytest 与 vitest 双端共同钉住——改任一侧匹配规则，
+两侧测试必须同时变绿。
 
 ### 前后端类型共享（openapi-typescript）
 
@@ -343,10 +346,12 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 │   ├── api/                   API 路由（voice / tools / memory / schedule / history / library /
 │   │                          sessions / settings / providers / state）
 │   │   ├── schemas/           pydantic 响应模型分域包（openapi → 前端类型单一事实来源）
-│   │   └── voice/             语音域子包：run（编排入口）/ wake / tts / meta
+│   │   └── voice/             语音域子包：run（编排入口）/ call（三级漏斗）/ wake / tts / meta
 │   ├── llm/                   LLM 客户端（stream.py SSE 解析 / client.py 重试+熔断+连接池 /
 │   │                          protocols/：openai · anthropic · gemini 三协议实现）
-│   ├── voice/                 ASR / TTS + 唤醒：wake.py（拼音级判定）/ pinyin.py / kws.py（本地 KWS 闸门）
+│   ├── voice/                 ASR / TTS + 唤醒：wake.py（拼音级判定）/ pinyin.py / kws.py（本地 KWS
+│   │                          闸门）/ local_asr.py（本地转写）/ smart_turn.py（说完没复核）/
+│   │                          call_funnel.py（通话三级漏斗 L0/L1/L2）
 │   ├── orchestrator/          编排层：blocks（消息块协议）/ events（SSE 契约）/ session（状态机）/
 │   │                          intent / task / clarify / confirm / executor / condense（历史滚动压缩）/
 │   │                          control / pipeline

@@ -26,6 +26,8 @@
 | POST | `/api/voice/utter` | **编排入口**：文本 → SSE 事件流（唯一 agent 路径，`mode`: chat/task） |
 | POST | `/api/voice/answer` | 投递澄清/确认问题的回答（可带 qid 配对，解除 ask() 阻塞） |
 | POST | `/api/voice/resume` | SSE 断线后续播（`server.resume_grace_s` 宽限期内任务继续） |
+| POST | `/api/voice/call/start` · `/api/voice/call/stop` | 通话模式开 / 关（建立漏斗会话；无段落 300s 自动过期，期间与唤醒互斥） |
+| POST | `/api/voice/call/segment` | 通话段落进三级漏斗（L0 规则 → L1 本地转写 → L2 云端精判）；请求体 `audio_base64` + `tab_focused` / `in_open_window`，响应 `hit` / `text` / `stage` / `reason`，`hit` 才由前端送 `/voice/utter` 编排 |
 | POST | `/api/voice/wake/check` | 本地 KWS 快检：只回答「有没有唤醒词」（毫秒级、零云端调用） |
 | POST | `/api/voice/wake` | 唤醒检测：转写 + 判定 + 切指令（mode=cloud 旁路本地闸门） |
 | POST | `/api/voice/transcribe` | ASR 转写（JSON 体 audio_base64，16kHz mono WAV） |

@@ -48,19 +48,28 @@ llm:
       max_tokens: 4096
 
 voice:
-  # 语音唤醒（VAD → 唤醒判定 → ASR，判定在云端；无本地模型）
+  # 语音唤醒（VAD → 本地 KWS 唤醒判定 → ASR 抬指令）
   # keywords 支持**多个**唤醒词，说哪个都能唤醒（命中任意一个即可）；旧写法 `keyword: 词`
   # 仍兼容（会当成唯一的那个唤醒词）。
-  # ⚠️ 隐私边界：每次本地 VAD 判到人声都会把该片段上传云端 ASR 判定，**无论是否唤醒**。
+  # ⚠️ 隐私边界：唤醒判定默认在本机完成（下方 kws 段，sherpa-onnx）——没说唤醒词的音频
+  # 在本机直接丢弃、不上云；只有命中唤醒词的那段才上传云端 ASR 抬取指令文本。
+  # （kws.enabled: false 或检测模型缺失时闸门旁路，才回到「每次人声段都上云」。）
   wake_word:
     enabled: true
     keywords:
       - 衍衡
       - 洛吉斯
     sensitivity: 0.5
-    # Vosk 时代遗留字段（浏览器端 WASM 模型 URL）：唤醒改走云端判定后已无人读，留空即可；
+    # Vosk 时代遗留字段（浏览器端 WASM 模型 URL）：唤醒改走 KWS/云端后已无人读，留空即可；
     # 字段本身保留只为不破坏已有配置（配置模型是 extra="forbid"，删字段会让老配置启动即报错）。
     model_path: ""
+  # 本地 KWS 前置闸门（sherpa-onnx 关键词检测，仅配置文件可改）：云端 ASR 之前先在本机
+  # 判定有没有唤醒词，未命中直接丢弃。模型目录缺失时闸门自动旁路并在启动日志注明。
+  kws:
+    enabled: true
+    model_dir: "models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
+    keywords_threshold: 0.25    # 检测阈值：越低越灵敏（漏报少、误报多）
+    keywords_score: 1.0         # 关键词得分加成：越高越易命中
   # 静音检测（自动停止录音）
   vad:
     silence_threshold: 0.02

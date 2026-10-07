@@ -21,8 +21,9 @@ cd web && npm run build         # 前端类型检查（vue-tsc）+ 生产构建
 cd web && npm run gen:api       # 后端 response_model 改动后重新生成前端类型
 ```
 
-> 唤醒判定的前后端语义由共享测试向量 `tests/data/wake_vectors.json` 在 pytest 与 vitest
-> 双端共同钉住——改任一侧匹配规则，两侧测试必须同时变绿。
+> 唤醒判定与通话漏斗的前后端语义由共享测试向量 `tests/data/wake_vectors.json`、
+> `tests/data/call_funnel_vectors.json` 在 pytest 与 vitest 双端共同钉住——改任一侧
+> 匹配规则，两侧测试必须同时变绿。
 
 ## CI（`.github/workflows/ci.yml`）
 

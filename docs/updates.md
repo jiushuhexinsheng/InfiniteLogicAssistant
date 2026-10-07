@@ -7,6 +7,24 @@
 
 ## 更新历史
 
+### 2026-10-07 全项目文档同步（README / wiki / 配置模板）
+
+对全项目做了一轮分析后统一文档口径，均为**文档修正，零行为变更**：
+
+- **README**：API 端点表补 `/api/voice/call/{start,stop,segment}` 三端点；目录结构补
+  `core/api/voice/call`、`core/voice/` 的 local_asr / smart_turn / call_funnel；
+  测试节补通话漏斗共享向量 `call_funnel_vectors.json`。
+- **wiki/API.md**：补通话三端点（会话 TTL 300s、请求/响应字段、hit 才送编排）。
+- **wiki/Development.md**：共享测试向量补 `call_funnel_vectors.json`。
+- **wiki/Security.md**：审计节补通话口径——`call-start/stop`、`call-funnel`（本地判定非上传）、
+  `audio-upload via=call-segment`（L2 云端转写，计入成本口径）。
+- **config.yaml.example**：修正两处过时声明——「判定在云端；无本地模型」与「无论是否唤醒
+  都上传」（与现行本地 KWS 闸门语义**相反**），并补文档化此前缺示例的 `voice.kws` 段；
+  已过 pydantic `Settings` 校验（extra=forbid）。
+
+同日更早的两笔行为修复见 git 历史：93bfb73（悬浮球双击改原生 dblclick）、
+c1b995b（通话态/唤醒关闭态提示文案下沉共享层）。
+
 ### 2026-10-05 通话模式（免唤醒持续流转 + 三级判定漏斗）
 
 **设计与计划**：spec `docs/superpowers/specs/2026-10-05-call-mode-funnel-design.md`；

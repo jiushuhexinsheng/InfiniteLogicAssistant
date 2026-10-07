@@ -66,6 +66,9 @@ permissions:
   `grep -c 'audio-upload via=' data/audit.log` 即云端上传总次数（成本口径）。
 - **本地 KWS 判定**另记 `kws-gate hit=1` / `kws-gate skip=1`（前缀不同：它不是上传，
   **不得混入 `audio-upload` 成本口径**；skip = 被闸门挡掉的背景声/闲聊）。
+- **通话模式**（`/api/voice/call/*`）：会话开/关记 `call-start` / `call-stop`；漏斗各级丢弃与
+  异常记 `call-funnel`（本地判定，非上传）；**L2 云端转写是真上传**，记
+  `audio-upload via=call-segment`（计入成本口径，与 wake/transcribe 同前缀）。
 - 与 `data/agent.log` 分离，独立文件保留 90 天。
 - 实现点：`core/tools/base.py`（TOOLS.acall/call）、`core/orchestrator/confirm.py`。
 
