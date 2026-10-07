@@ -6,6 +6,10 @@
 
 ## 实施状态
 
+- **⚠️ 2026-10-07 取消限时回答（本文件 A 节的「现状 #2」已作废）**：待答 8s 无应答 → `standby`、
+  喤醒回原问题的机制已整体删除——回答**永不限时**；待答期间改为**先判唤醒词**（命中即 `stop`
+  弃题开新轮，未命中照旧当答案）。`vad.answer_timeout_ms` 保留键名、语义收敛为**裸唤醒后的
+  等指令窗**（本文正文中的「待答 8s」字样是历史记录，实现以上述契约为准）。
 - **A 节（续聊窗口）已完成（2026-09-29）**：`AsstState` 新增 `followup`；wakeFsm 新增
   `followup_open` / `followup_expire` 事件；配置 `voice.vad.followup_window_ms`（默认 6000，
   0=关闭回旧「3s 回聆听」行为；同样因 editable_snapshot 只暴露 vad/wake_word 而放 vad 段）；

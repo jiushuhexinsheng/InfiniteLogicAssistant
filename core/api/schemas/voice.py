@@ -64,8 +64,9 @@ class VadConfig(BaseModel):
     silence_threshold: float = 0.02
     silence_duration_ms: int = 1500
     max_duration_ms: int = 10000
-    # 等待操作者语音回答的静音超时（毫秒）。
-    # Silence timeout (ms) while waiting for a spoken answer.
+    # 裸唤醒后的等指令窗（毫秒）；回答本身永不限时（键名保持 answer_timeout_ms 兼容旧配置）。
+    # Post-bare-wake command window (ms); answers themselves are never timed out (key name
+    # kept as answer_timeout_ms for old-config compatibility).
     answer_timeout_ms: int = 8000
     min_speech_ms: int = 300
     upload_throttle_ms: int = 500

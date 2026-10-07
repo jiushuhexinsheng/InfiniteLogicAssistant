@@ -210,11 +210,14 @@ class VadConfig(BaseModel):
     silence_threshold: float = Field(0.02, ge=0.0)
     silence_duration_ms: int = Field(1500, ge=0)
     max_duration_ms: int = Field(10000, ge=1000)
-    # 等待操作者语音回答的静音超时（毫秒）：超时无语音则进入待机（引擎仍听唤醒词）。
-    # 与 max_duration_ms 同族（都是收听时序），故放在本段而非新增分段。
-    # Silence timeout (ms) while waiting for a spoken answer; on timeout the assistant
-    # enters standby (the engine still listens for the wake word). It lives here rather
-    # than in a new section because it shares the family with max_duration_ms.
+    # 裸唤醒后的等指令窗（毫秒）：只喊唤醒词不带指令时，窗内没说指令则作废。
+    # 回答本身永不限时（取消限时回答），此键不再参与待答计时；键名保持 answer_timeout_ms
+    # 以兼容旧 config.yaml 校验。
+    # Post-bare-wake command window (ms): with only the wake word spoken, an instruction
+    # not arriving inside the window voids it. Answers themselves are never timed out
+    # (unlimited answer window); this key no longer times the answer wait. The name stays
+    # answer_timeout_ms for old config.yaml compatibility. Lives here rather than in a new
+    # section because it shares the family with max_duration_ms.
     answer_timeout_ms: int = Field(8000, gt=0)
     # 续聊窗口（docs/designs/03-A）：回合结束（done/error 且播报完）后的免唤醒窗口毫秒数，
     # 窗口内的语音段直接转写为新指令（不必喊唤醒词）；0=关闭（回到「done 后 3s 回聆听」旧行为）。

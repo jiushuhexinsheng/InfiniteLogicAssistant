@@ -83,9 +83,11 @@ voice:
     # Minimum gap (ms) between two wake-detection uploads; only that path is throttled, the
     # answer/command channels are not.
     upload_throttle_ms: 500
-    # 等待操作者语音回答的静音超时（毫秒）：超时无语音则进入待机（引擎仍听唤醒词）。
-    # Silence timeout (ms) while waiting for a spoken answer; on timeout the assistant
-    # enters standby (the engine still listens for the wake word).
+    # 裸唤醒后的等指令窗（毫秒）：只喊唤醒词不带指令，窗内没说指令则作废。
+    # 回答本身永不限时（键名保持 answer_timeout_ms 兼容旧配置）。
+    # Post-bare-wake command window (ms): with only the wake word spoken, an instruction
+    # not arriving inside the window voids it. Answers themselves are never timed out
+    # (key name kept answer_timeout_ms for old-config compatibility).
     answer_timeout_ms: 8000
     # 打断播报：true=助手说话时可用语音直接打断（独立回声消除流做能量检测）。
     # false（默认）= 播报期间停麦的旧行为。

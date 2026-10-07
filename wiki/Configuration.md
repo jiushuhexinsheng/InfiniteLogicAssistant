@@ -61,7 +61,7 @@ voice:
     max_duration_ms: 10000      # 单段硬上限
     min_speech_ms: 300          # 短于此长度的段直接丢弃（滤爆音）
     upload_throttle_ms: 500     # 两次唤醒判定的最小间隔
-    answer_timeout_ms: 8000     # 待答窗口：提问后一直没说话就进待机；唤醒后可回到本题续答
+    answer_timeout_ms: 8000     # 裸唤醒后的等指令窗（喊唤醒词不带指令时窗内没说则作废）；回答本身永不限时
     followup_window_ms: 6000    # 续聊窗口：回合结束/播报完后免唤醒直接说话即新指令；0=关闭
   kws:                          # 本地 KWS 唤醒闸门（sherpa-onnx；见下「语音隐私边界」）
     enabled: true               # false = 关闭本地判定，每次人声段直接上云（最大召回）

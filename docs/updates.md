@@ -7,6 +7,24 @@
 
 ## 更新历史
 
+### 2026-10-07 取消限时回答（待答永不限时 + 待答先判唤醒词弃题）
+
+「打开后沉默 8s 被丢题进待机」与真实使用冲突——思考久一点题就没了。整套限时机制删除：
+
+- **回答永不限时**：`awaiting_answer` 不再武装超时，`standby` 状态、FSM 事件、
+  「无应答进待机」文案/测试整体删除；超时进 standby、待机态唤醒续答两条验收项随之作废。
+- **待答期间先判唤醒词**（修「开口即被当答案」的 P0）：语音段到 → 先本地拼音匹配唤醒词，
+  命中即 `abandonPendingQuestion()`（`POST /task/{sid}/stop` 投毒丸解除后端 `ask()` 阻塞）
+  并把后面的指令作新一轮发出；未命中照旧当本题答案。后端 clarify 见毒丸 `reason`
+  → `return None` → `done cancelled`，前端收尾后 flush outbox 连发新指令。
+- **裸唤醒指令窗保留**：`vad.answer_timeout_ms` 键名不变（防旧 config.yaml 校验炸），语义
+  收敛为「唤醒后等指令窗」——只喊唤醒词不带指令，窗内没说则作废；设置页 label 同步改名
+  「唤醒后等指令超时（ms）」。
+- **验收台重编号 1–4**：1 播报后直接作答 / 2 待答说唤醒词→弃题开新轮（stop+utter 齐且无
+  answer 判 PASS，answer body 含唤醒词判 FAIL）/ 3 播报含唤醒词不自触发 / 4 通话免唤醒。
+- 测试：pytest / vitest 全绿（含弃题契约、新 label 回归），ruff / mypy / vue-tsc 通过；
+  README、wiki/Configuration.md、docs/designs/03、roadmap P6 口径同步。
+
 ### 2026-10-07 优化方案 P3-7/P3-8：唤醒链路重构推迟 + 浏览器 KWS 占位删除
 
 **P3-7（唤醒链路重构）Ruling：按方案前置条件推迟**——方案原文「建议等真人验收完 P8
