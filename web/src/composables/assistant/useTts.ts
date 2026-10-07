@@ -31,7 +31,8 @@ export interface TtsSettings {
   apiVoice: string
 }
 
-/** TTS 设置本地存储键。TTS settings local storage key. */
+/** TTS 设置本地存储键。TTS settings local storage key.
+ *  「xluo.」为历史前缀（与 store.ts 同），保留不迁移以免丢已有设置。 */
 const STORAGE_KEY = 'xluo.tts'
 
 /** MiMo 预置音色（mimo-v2.5-tts）；API 模式下拉提示，可自定义输入任意名字。

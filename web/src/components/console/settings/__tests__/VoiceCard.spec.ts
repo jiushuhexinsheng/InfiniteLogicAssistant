@@ -49,9 +49,9 @@ describe('VoiceCard', () => {
   it('编辑唤醒词写回 keywords，不产生 keyword 字段', async () => {
     const w = mount(VoiceCard)
     const idx = w.findAll('input.ui-input').findIndex((i) => (i.element as HTMLInputElement).value === '衍衡')
-    await w.findAll('input.ui-input')[idx].setValue('小逻')
+    await w.findAll('input.ui-input')[idx].setValue('燕恒')
     const ww = (editable.value as any).wake_word
-    expect(ww.keywords).toEqual(['小逻', '洛吉斯'])
+    expect(ww.keywords).toEqual(['燕恒', '洛吉斯'])
     expect(ww.keyword).toBeUndefined()   // 单数字段不该再出现。The singular field must not come back.
   })
 

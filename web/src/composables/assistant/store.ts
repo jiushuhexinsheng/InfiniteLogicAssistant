@@ -115,7 +115,9 @@ export const pendingQuestion = ref<PendingQuestion | null>(null)
  *  archives on completion. */
 export type AssistantMode = 'chat' | 'task'
 
-/** 模式的本地存储键。localStorage key for the mode. */
+/** 模式的本地存储键。localStorage key for the mode.
+ *  注：本文件持久化键统一用「xluo.」历史前缀（旧内部代号），**保留不迁移** ——
+ *  换前缀会丢掉老用户已存的 history/wakeMode/assistantMode。 */
 const MODE_KEY = 'xluo.assistantMode'
 
 /**
