@@ -18,17 +18,68 @@ from core.api import history, library, memory, providers, schedule, sessions, se
 from core.logger import logger
 
 
+def _acquire_instance_lock():
+    """单实例锁：跨进程互斥，第二个进程（`uvicorn --workers N` 的多余 worker、
+    重复启动的实例）拒绝启动。
+
+    本项目的会话/RunHandle/SSE resume 状态全在进程内存里（core/api/state.py 模块级
+    dict），多 worker 会让每个 worker 持一份互不相通的状态 → resume 找不到会话、
+    同一会话被两个 worker 各自执行。文件锁在进程退出（含崩溃）时由操作系统自动
+    释放，不会留下陈旧锁。
+
+    Single-instance lock: cross-process mutex — the second process (extra workers from
+    `uvicorn --workers N`, or a duplicate instance) is refused. Sessions / RunHandles /
+    SSE-resume state all live in this process's module-level dicts, so multiple workers
+    would each hold an divergent copy (resume misses the session; one session runs on
+    two workers). The OS releases the file lock when the process exits (crash
+    included), so no stale lock can linger.
+
+    Returns:
+        打开的锁文件句柄（关闭即释放）。The open lock handle (closing releases it).
+    """
+    import os
+
+    lock_path = config.ROOT_DIR / "data" / ".server.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fh = open(lock_path, "a+")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        raise RuntimeError(
+            "拒绝启动：另一个服务实例已在运行（多 worker 或重复启动）。"
+            "本项目仅支持单进程单 worker —— 会话与 SSE resume 状态保存在进程内存中，"
+            "多 worker 会互相丢失状态。请去掉 --workers 并先停止已有实例。"
+        ) from None
+    fh.seek(0)
+    fh.truncate()
+    fh.write(str(os.getpid()))
+    fh.flush()
+    return fh
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期：启动/关闭统一的应用上下文容器（MCP / 调度 / RAG 索引 / LLM 连接池）。
 
     Application lifespan: start/shutdown the unified app context container (MCP / scheduler / RAG index / LLM connection pool).
     """
-    # 应用上下文容器统一启动/关闭（MCP / 定时调度 / RAG 索引 / LLM 连接池）
-    from core.container import AppContext
-    await AppContext.get().start()
-    yield
-    await AppContext.get().shutdown()
+    # 单实例守卫先行：多 worker/重复实例在这里拒绝启动（状态都在本进程内存里）
+    lock_fh = _acquire_instance_lock()
+    try:
+        # 应用上下文容器统一启动/关闭（MCP / 定时调度 / RAG 索引 / LLM 连接池）
+        from core.container import AppContext
+        await AppContext.get().start()
+        yield
+        await AppContext.get().shutdown()
+    finally:
+        lock_fh.close()
 
 
 app = FastAPI(title="无限逻辑·语音助手", lifespan=lifespan)
