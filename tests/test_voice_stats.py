@@ -2,20 +2,25 @@
 """语音上传成本统计端点（P2-6）：audit.log 的 audio-upload via= 三前缀计数与按天趋势。
 Voice upload cost stats endpoint (P2-6): audio-upload via= counts and per-day trend
 from the audit log."""
+from datetime import date
+
 import pytest
 from fastapi.testclient import TestClient
 
 import server as server_module
 from core.api.voice import stats as stats_mod
 
+# 最后一条必须落在「今天」——近 7 日窗口的最后一天断言依赖它。
+# 写死日期只在提交当天通过（date-bomb），故动态生成。
+_TODAY = date.today().isoformat()
 
-_AUDIT样本 = """\
+_AUDIT样本 = f"""\
 2026-10-01 10:00:00.000 | audio-upload via=wake matched=True chars=9 command='打开记事本' text='衍衡，打开记事本'
 2026-10-01 11:00:00.000 | audio-upload via=transcribe chars=5 text='今天几号'
 2026-10-02 09:00:00.000 | audio-upload via=call-segment chars=8 text='明天几点下雨'
 2026-10-02 09:30:00.000 | call-funnel verdict=command hit=1 stage=l2 relax=0 text='明天几点下雨'
 2026-10-02 10:00:00.000 | kws-gate skip=1 text='电视里的对话'
-2026-10-07 08:00:00.000 | audio-upload via=wake matched=False chars=3 text='查一下新闻'
+{_TODAY} 08:00:00.000 | audio-upload via=wake matched=False chars=3 text='查一下新闻'
 """
 
 
@@ -48,7 +53,7 @@ def test_parse_per_day_trend():
     assert days == {
         "2026-10-01": {"wake": 1, "transcribe": 1, "call-segment": 0},
         "2026-10-02": {"wake": 0, "transcribe": 0, "call-segment": 1},
-        "2026-10-07": {"wake": 1, "transcribe": 0, "call-segment": 0},
+        _TODAY: {"wake": 1, "transcribe": 0, "call-segment": 0},
     }
 
 
