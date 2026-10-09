@@ -92,6 +92,10 @@ class CallConfig(BaseModel):
     smart_turn_enabled: bool = True
     local_asr_model: str = "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
     merge_l2: bool = True
+    # 会话过期 / miss 放宽阈值：见 config/schema/voice.py 同名字段（两处必须同步）。
+    # Session expiry / miss-relax threshold: same fields in config/schema/voice.py (keep in sync).
+    session_ttl_s: float = 300.0
+    relax_after_misses: int = 2
 
 class ConfigResponse(ApiResponse):
     """配置状态端点响应（LLM/ASR/TTS 可用性、唤醒词、VAD）。

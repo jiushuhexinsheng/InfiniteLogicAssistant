@@ -32,6 +32,9 @@ class AgentSection(BaseModel):
     # history into a summary once the estimated characters exceed this (LLM view only,
     # never the persisted session); 0 = off.
     condense_threshold_chars: int = Field(12000, ge=0)
+    # 多智能体子代理并发上限（此前是 coordinator 模块里的硬编码常量 4）。
+    # Concurrency cap for multi-agent sub-agents (formerly a hardcoded 4 in coordinator).
+    max_concurrent_subagents: int = Field(4, gt=0)
 
 
 class LlmClientSection(BaseModel):
@@ -169,6 +172,10 @@ class RagSection(BaseModel):
     rerank: Literal["none", "llm"] = "none"
     rerank_candidates: int = Field(12, gt=0)   # 粗排候选数。BM25 candidate count.
     rerank_top_k: int = Field(5, gt=0)         # 精排后注入数（= none 档的 top-k）。Rows injected after rerank (= top-k in the none tier).
+    # 结果缓存（此前是 cache.py 里的硬编码 TTL_S/MAX_ENTRIES）。
+    # Result cache (formerly the hardcoded TTL_S / MAX_ENTRIES in cache.py).
+    cache_ttl_s: float = Field(300.0, gt=0)
+    cache_max_entries: int = Field(128, gt=0)
 
 
 class ServerSection(BaseModel):
@@ -190,6 +197,17 @@ class ServerSection(BaseModel):
     # disconnect, resumable via /voice/resume inside the window; 0 = wrap up on
     # disconnect (legacy behaviour). Config-file only (same as the kws section).
     resume_grace_s: int = Field(120, ge=0)
+    # SSE 空闲保活 ping 间隔（秒；此前是 run.py 硬编码 PING_INTERVAL_S=15）。
+    # 前端看门狗（api.ts PING_TIMEOUT_MS=35s）必须大于此值。
+    # SSE idle keep-alive ping interval (s; formerly the hardcoded PING_INTERVAL_S=15
+    # in run.py). The frontend watchdog (api.ts PING_TIMEOUT_MS=35s) must stay larger.
+    ping_interval_s: float = Field(15.0, gt=0)
+    # 会话空闲回收秒数（此前是 state.py 硬编码 SESSION_TTL=30*60）。
+    # Idle session reclamation seconds (formerly the hardcoded SESSION_TTL = 30*60 in state.py).
+    session_ttl_s: int = Field(1800, gt=0)
+    # SSE resume 缓冲事件数（ring buffer maxlen；此前是 state.py 硬编码 500）。
+    # SSE resume ring-buffer capacity in events (formerly the hardcoded 500 in state.py).
+    sse_buffer_events: int = Field(500, gt=0)
 
 
 class MemorySection(BaseModel):

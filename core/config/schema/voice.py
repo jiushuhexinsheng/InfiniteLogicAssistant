@@ -172,6 +172,14 @@ class CallConfig(BaseModel):
     # one LLM round); False = legacy two-step (cloud_transcribe + judge). A failed
     # merged call falls back to the two-step automatically.
     merge_l2: bool = True
+    # 通话会话无段落自动过期秒数（防会话泄漏；此前是 call.py 硬编码 _SESSION_TTL_S）。
+    # Idle expiry of a call session in seconds (leak guard; formerly the hardcoded
+    # _SESSION_TTL_S in call.py).
+    session_ttl_s: float = Field(300.0, gt=0)
+    # 开放窗口内连续 miss 数，达到后 L2 复判放宽（此前是 call.py 硬编码 _RELAX_AFTER）。
+    # Consecutive misses inside the open window before the L2 re-judge relaxes
+    # (formerly the hardcoded _RELAX_AFTER in call.py).
+    relax_after_misses: int = Field(2, ge=1)
 
 
 class VoiceSection(BaseModel):

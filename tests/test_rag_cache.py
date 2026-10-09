@@ -2,6 +2,7 @@
 """RAG 检索/精排结果缓存（core.rag.cache）——省掉重复查询的 BM25 重算与 rerank LLM 花费。
 RAG retrieval/rerank result cache (core.rag.cache) — saves repeated BM25 recomputation
 and rerank LLM spend."""
+from core import config
 from core.rag import cache as cache_mod
 
 
@@ -22,7 +23,7 @@ def test_ttl_expiry(monkeypatch):
     monkeypatch.setattr(cache_mod.time, "monotonic", lambda: now["t"])
     cache_mod.clear()
     cache_mod.set("k", ["v"])
-    now["t"] += cache_mod.TTL_S - 1
+    now["t"] += config.settings.rag.cache_ttl_s - 1
     assert cache_mod.get("k") == ["v"]    # 未到期仍在。Not yet expired.
     now["t"] += 1
     assert cache_mod.get("k") is None     # 到期即失效。Expired.
@@ -33,10 +34,11 @@ def test_capacity_evicts_oldest():
     """超出容量淘汰最早插入（防内存无限涨）。Over capacity evicts the oldest entry
     (bounds memory)."""
     cache_mod.clear()
-    for i in range(cache_mod.MAX_ENTRIES + 10):
+    cap = config.settings.rag.cache_max_entries
+    for i in range(cap + 10):
         cache_mod.set(f"k{i}", [i])
     assert cache_mod.get("k0") is None            # 最旧的被挤掉。Oldest evicted.
-    assert cache_mod.get(f"k{cache_mod.MAX_ENTRIES + 9}") == [cache_mod.MAX_ENTRIES + 9]
+    assert cache_mod.get(f"k{cap + 9}") == [cap + 9]
     cache_mod.clear()
 
 

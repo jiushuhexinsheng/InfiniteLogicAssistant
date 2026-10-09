@@ -23,9 +23,6 @@ from core.voice.call_funnel import FunnelDeps, SegmentMeta, run_funnel
 
 router = APIRouter()
 
-_SESSION_TTL_S = 300.0      # 无段落自动过期（防会话泄漏）
-_RELAX_AFTER = 2            # 开放窗口内连续 miss 数，达到后复判放宽
-
 
 @dataclass
 class _CallSession:
@@ -45,7 +42,8 @@ def reset_session_state() -> None:
 
 
 def _alive() -> bool:
-    return _session is not None and (time.monotonic() - _session.last_segment_at) < _SESSION_TTL_S
+    return (_session is not None
+            and (time.monotonic() - _session.last_segment_at) < config.settings.voice.call.session_ttl_s)
 
 
 # ── 可注入的执行件（测试 monkeypatch 这四个名字）──
@@ -176,7 +174,7 @@ async def call_segment(request: Request):
         # 开放窗口两处来源取或：前端刚播报完（meta.in_open_window，本段上报）或
         # 后端自记的窗口（命中后开的 open_until）。任一成立即算在窗口内，允许 relax 复判放宽。
         in_open = meta.in_open_window or time.monotonic() < _session.open_until
-        relax = in_open and _session.consecutive_misses >= _RELAX_AFTER
+        relax = in_open and _session.consecutive_misses >= cfg.relax_after_misses
     recent = "; ".join(_session.recent[-3:]) if _session else ""
 
     deps = FunnelDeps(

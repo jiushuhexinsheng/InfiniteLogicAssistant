@@ -13,17 +13,15 @@ recomputation and rerank LLM spend (the LLM rerank tier charges per query).
 import time
 from typing import TypeVar
 
+from core import config
+
 _T = TypeVar("_T")
 
-# 结果保鲜期（秒）：会话内重复问同一问题命中缓存；过期后重检，跟进索引变化。
-# Freshness window (seconds): repeated identical questions inside a session hit the
-# cache; after expiry retrieval re-runs so index changes are picked up.
-TTL_S = 300.0
-
-# 容量上限（按插入序淘汰最旧）：防长期运行内存无限涨。
-# Capacity bound (oldest-inserted evicted): bounds memory over long runs.
-MAX_ENTRIES = 128
-
+# 参数已入配置（此前是本模块硬编码 TTL_S=300 / MAX_ENTRIES=128）：
+# 结果保鲜期 rag.cache_ttl_s（过期重检以跟进索引变化）；容量 rag.cache_max_entries
+# （按插入序淘汰最旧，防长期运行内存无限涨）。
+# Both knobs now live in config (formerly the hardcoded TTL_S=300 / MAX_ENTRIES=128):
+# freshness window rag.cache_ttl_s, capacity rag.cache_max_entries.
 _store: dict[str, tuple[float, object]] = {}
 
 
@@ -47,7 +45,7 @@ def get(key: str) -> _T | None:
     if ent is None:
         return None
     ts, value = ent
-    if time.monotonic() - ts >= TTL_S:
+    if time.monotonic() - ts >= config.settings.rag.cache_ttl_s:
         _store.pop(key, None)
         return None
     return value  # type: ignore[return-value]
@@ -58,7 +56,7 @@ def set(key: str, value: object) -> None:
     if key in _store:
         _store.pop(key)  # 重新插队到最新。Re-insert as newest.
     _store[key] = (time.monotonic(), value)
-    while len(_store) > MAX_ENTRIES:
+    while len(_store) > config.settings.rag.cache_max_entries:
         _store.pop(next(iter(_store)))
 
 

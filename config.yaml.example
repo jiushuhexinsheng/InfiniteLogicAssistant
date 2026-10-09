@@ -109,6 +109,8 @@ voice:
     smart_turn_enabled: true
     local_asr_model: "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
     merge_l2: true           # L2 合并调用：单次云端同时转写+四分类（省一次上传与一轮 LLM）；false = 两步旧路径
+    session_ttl_s: 300       # 会话无段落自动过期（秒，防会话泄漏）
+    relax_after_misses: 2    # 开放窗口内连续 miss 数，达到后 L2 复判放宽
   # 在线 ASR 语音转文字（OpenAI 兼容；endpoint/model 需自填，密钥在 config.secrets.yaml）
   asr:
     active: openai
@@ -143,6 +145,11 @@ server:
   # SSE disconnect grace (seconds): after a disconnect the task keeps running and can
   # resume via /voice/resume inside the window; 0 = stop on disconnect (legacy).
   resume_grace_s: 120
+  # SSE 空闲保活 ping 间隔（秒）；前端看门狗 35s 必须大于此值
+  ping_interval_s: 15
+  # 会话空闲回收（秒）；SSE resume 缓冲事件数（ring buffer 容量）
+  session_ttl_s: 1800
+  sse_buffer_events: 500
   # api_token 已移到 config.secrets.yaml（非 localhost 绑定时的 API 访问令牌）
   # 允许跨域的前端来源（默认空 = 禁止跨域；本地同源/开发代理不需要 CORS）
   cors_origins: []
@@ -159,6 +166,8 @@ rag:
   rerank: none               # none | llm
   rerank_candidates: 12      # 粗排候选数（rerank=llm 时先取这么多）
   rerank_top_k: 5            # 最终注入条数
+  cache_ttl_s: 300           # 检索/精排结果缓存保鲜期（秒）
+  cache_max_entries: 128     # 缓存容量上限（按插入序淘汰最旧）
 
 # 长期记忆（docs/designs/04）：检索新近度加权 + 注入预算 + 提取回看深度
 # recency_weight=0 关闭加权（纯 bm25）；inject_* 双闸限制注入 system prompt 的记忆体量
@@ -183,6 +192,7 @@ agent:
   auto_approve: false
   confirm_timeout_s: 0
   condense_threshold_chars: 12000
+  max_concurrent_subagents: 4   # 多智能体子代理并发上限
 
 # LLM 客户端：重试 / 熔断 / 连接池
 llm_client:

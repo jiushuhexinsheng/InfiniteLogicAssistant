@@ -20,7 +20,6 @@ from core.orchestrator.session import Session
 sessions: dict[str, Session] = {}
 controllers: dict[str, StopController] = {}
 session_ts: dict[str, float] = {}
-SESSION_TTL = 30 * 60  # 会话空闲 30 分钟回收
 
 
 @dataclass
@@ -43,7 +42,7 @@ class RunHandle:
     controller: StopController
     events: "Any"  # asyncio.Queue（延迟导入避免环）。asyncio.Queue (deferred to avoid a cycle).
     runner: "Any"  # asyncio.Task。asyncio.Task.
-    buffer: deque = field(default_factory=lambda: deque(maxlen=500))
+    buffer: deque = field(default_factory=lambda: deque(maxlen=config.settings.server.sse_buffer_events))
     next_seq: int = 1
     connected: bool = True
     finished: bool = False          # done 已发出 / runner 收尾。done emitted / runner wrapped up.
@@ -140,7 +139,8 @@ def sweep() -> None:
     Reclaim expired sessions (prevent memory leaks on long-running processes).
     """
     now = time.time()
-    for sid in [sid for sid, ts in session_ts.items() if now - ts > SESSION_TTL]:
+    for sid in [sid for sid, ts in session_ts.items()
+                if now - ts > config.settings.server.session_ttl_s]:
         cleanup(sid)
 
 

@@ -123,8 +123,6 @@ async def voice_utter(request: Request):
 
 # ── SSE 运行流（首连与 resume 共用）+ 断线宽限（docs/designs/06）──
 
-PING_INTERVAL_S = 15  # 空闲保活间隔（秒）。Idle keep-alive interval (seconds).
-
 async def _retire_run(run: state.RunHandle) -> None:
     """收尾一次运行：停 runner、落盘、（若注册表仍是它）清注册。幂等。
 
@@ -176,19 +174,21 @@ def _arm_grace(run: state.RunHandle) -> None:
     run.grace_task = asyncio.ensure_future(_watchdog())
 
 async def _stream_run(run: state.RunHandle):
-    """编排事件 → SSE（唯一 seq 编号与 buffer 入口；空闲 15s 发 ping 保活）。
+    """编排事件 → SSE（唯一 seq 编号与 buffer 入口；空闲发 ping 保活，间隔见
+    `server.ping_interval_s`，默认 15s）。
 
     首连与 /voice/resume 挂接共用。断线且未完成 → 进宽限；完成 → 收尾。
 
-    Orchestration events → SSE (the single seq-numbering and buffer entry; pings
-    every 15s while idle). Shared by the first connection and the /voice/resume
-    attach. Disconnected while unfinished → grace; finished → wrap-up.
+    Orchestration events → SSE (the single seq-numbering and buffer entry; idle
+    pings every `server.ping_interval_s`, default 15s). Shared by the first
+    connection and the /voice/resume attach. Disconnected while unfinished →
+    grace; finished → wrap-up.
     """
     getter = asyncio.ensure_future(run.events.get())
     try:
         while True:
             completed, _ = await asyncio.wait(
-                {run.runner, getter}, timeout=PING_INTERVAL_S,
+                {run.runner, getter}, timeout=config.settings.server.ping_interval_s,
                 return_when=asyncio.FIRST_COMPLETED,
             )
             if not completed:

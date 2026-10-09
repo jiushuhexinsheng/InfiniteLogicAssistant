@@ -1015,6 +1015,16 @@ export interface components {
              * @default true
              */
             merge_l2: boolean;
+            /**
+             * Session Ttl S
+             * @default 300
+             */
+            session_ttl_s: number;
+            /**
+             * Relax After Misses
+             * @default 2
+             */
+            relax_after_misses: number;
         };
         /**
          * CallSegmentResponse

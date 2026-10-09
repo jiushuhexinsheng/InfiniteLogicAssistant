@@ -18,8 +18,9 @@ from core.orchestrator.session import Session
 from core.orchestrator.task import Task
 from core.prompts import DECOMPOSE_SYSTEM, ROLE_PROMPTS as _ROLE_PROMPTS
 
-# 最大并发子代理数 / Max concurrent sub-agents
-MAX_CONCURRENT = 4
+# 最大并发子代理数走配置 agent.max_concurrent_subagents（此前是本模块硬编码 4）。
+# Max concurrent sub-agents now reads agent.max_concurrent_subagents (formerly a
+# hardcoded 4 in this module).
 
 _DECOMPOSE_TOOL = {
     "type": "function",
@@ -182,13 +183,13 @@ async def run_coordinator(task: Task, session: Session, cancel: CancellationToke
     dep = [s for s in subtasks if not s["independent"]]
 
     if indep:
-        sem = asyncio.Semaphore(MAX_CONCURRENT)
+        sem = asyncio.Semaphore(config.settings.agent.max_concurrent_subagents)
 
         async def limited(s: dict) -> None:
-            """信号量限流包装器，确保并发数不超过 MAX_CONCURRENT。
+            """信号量限流包装器，确保并发数不超过 agent.max_concurrent_subagents。
 
-            Semaphore-bounded wrapper that ensures concurrency stays at or below
-            ``MAX_CONCURRENT``.
+            Semaphore-bounded wrapper that keeps concurrency at or below
+            ``agent.max_concurrent_subagents``.
             """
             async with sem:
                 await run_one(s)
