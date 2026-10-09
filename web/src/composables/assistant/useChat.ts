@@ -1,14 +1,25 @@
-import { reactive, ref } from 'vue'
+import { reactive } from 'vue'
 import { api, streamUtter } from '../../api'
-import { formatError } from '../../errors'
-import { state, messages, tokenUsage, partialText, genId, addMessage, addBlocks, buildHistory, MAX_MESSAGES, pendingQuestion, currentSessionId, assistantMode, textProjection, wakeKeywords } from './store'
+import { state, messages, tokenUsage, partialText, genId, addMessage, buildHistory, MAX_MESSAGES, pendingQuestion, currentSessionId, assistantMode, textProjection, wakeKeywords } from './store'
 import { speakAuto, stopSpeak } from './useTts'
 import { matchOption } from './answerMatch'
 import { detectWake } from './wakeMatch'
-import { applyEvent, attachAnswer, finalizeBlocks, makeBlock } from '../../blocks/normalize'
+import { applyEvent, finalizeBlocks } from '../../blocks/normalize'
 import { speechForBlocks } from '../../blocks/speech'
 import type { Block } from '../../blocks/types'
-import type { ChatMessage, PendingQuestion } from './store'
+import type { ChatMessage } from './store'
+import { CANCEL_RE, enqueue, clearOutbox, flushOutbox } from './useChatOutbox'
+import { sendAnswer } from './useChatAnswer'
+
+// ─── 导出门面：outbox / 分叉编辑 / 工具 / 作答拆出为同目录子模块，原导入路径与
+//      导出面不变（纯移动）。runTurn/sendText/abortChat/abandonQuestion 留本主体。
+// Facade: the outbox / fork-edit / tools / answer clusters live in sibling submodules;
+// original import path and export surface unchanged (pure move). runTurn/sendText/
+// abortChat/abandonQuestion stay in this hub.
+export { outboxCount, clearQueued } from './useChatOutbox'
+export { sendAnswer }
+export { retryTool, cancelTool } from './useChatTools'
+export { forkAt, sendEdited, regenerate } from './useChatHistoryEdit'
 
 /** 流式对话中止句柄（取消/停止按钮用）。Abort handle for streaming conversation (for cancel/stop buttons). */
 let abortController: AbortController | null = null
@@ -52,39 +63,6 @@ export function abandonQuestion(): void {
  *  (the race where a late onAbort's done overwrites thinking, docs/designs/06 batch 3).
  *  Every handler of an old turn checks the generation before touching state. */
 let runGen = 0
-
-/** 待发消息队列：回合进行中用户再发 → 入队，回合收束自动连发（Open WebUI 式消息队列）。
- *  Outbox: sending while a turn runs queues the message; turn end flushes it
- *  (the Open WebUI-style message queue). */
-const outbox: string[] = []
-
-/** 队列长度（响应式，供输入框「排队中」徽标）。Queue length (reactive, for the input's
- *  "queued" badge). */
-export const outboxCount = ref(0)
-
-/** 取消词：立即中止并清队（排队不得吞掉取消）。Cancellation words: abort at once and
- *  clear the queue (the queue must never swallow a cancel). */
-const CANCEL_RE = /^(停止|取消|暂停|算了|别跑了|stop|cancel)$/i
-
-function enqueue(t: string) {
-  outbox.push(t)
-  outboxCount.value = outbox.length
-}
-
-function clearOutbox() {
-  outbox.length = 0
-  outboxCount.value = 0
-}
-
-/** 回合收束后弹出下一条排队消息（链条式：每回合收束弹一条）。
- *  Pop the next queued message after a turn wraps up (chained: one per turn end). */
-function flushOutbox() {
-  const t = outbox.shift()
-  outboxCount.value = outbox.length
-  if (!t) return
-  addMessage('user', t)
-  void runTurn()
-}
 
 /** 消费编排 SSE 流（唯一 agent 路径；工具由后端执行，前端只展示）。
  *  Consume orchestration SSE stream (single agent path; tools executed by backend, frontend only displays).
@@ -234,143 +212,6 @@ export async function runTurn() {
   if (alive()) flushSync()
 }
 
-/** 回答澄清/确认问题（解除后端 ask() 阻塞）。
- *  Answer clarification/confirmation question (unblock backend ask() call).
- *  @param text - 用户回答文本（选择类提问为空）。User answer text (empty for choice questions).
- *  @param choice - 结构化选择的取值（由选项按钮回传）。The structured selection returned by the option buttons.
- *  @param source - 作答通道（typed/voice/button），语音作答可审计。Answer channel (voice answers auditable).
- *  @param question - 作答对象快照（语音段落在转写前捕获）；缺省取 store 现值。
- *    云端转写要等数秒，期间 pendingQuestion 可能被清（流错误/中止竞态）—— 传快照
- *    让 qid 与贴块绑定「段落当时在回答的那个问题」，不因 store 已空而走独立气泡兜底
- *    （那正是「回答和问题分开」）。The question snapshot the answer binds to (voice
- *    segments capture it before ASR); defaults to the current store value. Cloud ASR
- *    takes seconds and pendingQuestion may be cleared meanwhile (stream error/abort
- *    race) — the snapshot keeps the qid and attach target bound to the question the
- *    segment was answering, instead of falling to the standalone-bubble fallback when
- *    the store is empty (which is exactly "answer and question split apart"). */
-export async function sendAnswer(
-  text: string,
-  choice?: string,
-  source: string = 'typed',
-  question?: PendingQuestion | null,
-) {
-  const t = text.trim()
-  // 结构化选择可以不带文本；两者皆空则不投递（避免空回答解除后端阻塞）。
-  // A structured choice may carry no text; when both are empty, don't deliver
-  // (avoiding an empty answer that would unblock the backend).
-  if (!t && !choice) return
-  if (!currentSessionId.value) return
-  // 作答对象：调用方快照优先（语音路径），否则 store 现值（按钮/输入框同步路径）。
-  // Answer target: the caller's snapshot first (voice path), else the current store
-  // value (button/input paths, synchronous — no await gap).
-  const target = question ?? pendingQuestion.value
-  // 记录用文本：选择类取被选选项的 label（人类可读），文本类取输入文本。
-  // Record text: a choice takes the selected option's label (human-readable), a text answer its own text.
-  const qid = target?.qid
-  const label = choice
-    ? (target?.options.find((o) => o.value === choice)?.label || choice)
-    : t
-  try {
-    await api.answer(currentSessionId.value, t, choice, { qid, source })
-    // 仅在投递成功后写记录，避免记录与后端状态不一致。
-    // Record only after a successful delivery, so the record cannot disagree with the backend.
-    // 配对问题在某条消息里 → 答案贴进该卡片（问题块紧后，修「问题和回答分离」）；
-    // 找不到（无 qid / 流已死）才落独立用户气泡兜底。
-    // Paired question lives in a message → attach the answer into that card right
-    // after the question block (fixes Q/A split apart); fall back to a standalone
-    // user bubble only when no holder exists (no qid / dead stream).
-    const holder = qid
-      ? messages.value.find(m => m.blocks?.some(b => b.type === 'question' && b.payload.qid === qid))
-      : undefined
-    if (qid && holder?.blocks) {
-      attachAnswer(holder.blocks, { qid, text: label, choice: choice ?? null, source })
-    } else {
-      addBlocks('user', [makeBlock('answer', { qid, text: label, choice: choice ?? null, source })])
-    }
-    // 只清「本次作答的那个问题」：快照路径下 store 可能已是另一个新问题，不得误清。
-    // Clear only the question this answer belongs to: on the snapshot path the store
-    // may already hold a different, newer question — it must not be wiped.
-    if (!pendingQuestion.value || pendingQuestion.value.qid === qid) pendingQuestion.value = null
-    // 已作答：问题还在被朗读的话就停掉（用户已经用行动回答了，不必念完）。
-    // Answered: stop the question reading if it is still going (the user already
-    // answered by action; it need not finish reading).
-    stopSpeak('new_turn')
-    // 诊断观测点：投递后记录 qid/配对结果，问答若再「分开」可据此定位（兜底 or 贴块）。
-    // Diagnostic probe: log qid/attach outcome after delivery so a future Q/A split can
-    // be attributed (fallback vs attach) from the console.
-    console.debug('[Asst] answer delivered', { qid, paired: !!holder, source })
-  } catch (e) {
-    addMessage('system', '回答投递失败：' + formatError(e))
-  }
-}
-
-/** 在消息块里找工具块（按 call_id / 块 id）。Find a tool block by call_id / block id. */
-function findToolBlock(id: string): Block | undefined {
-  for (const msg of messages.value) {
-    for (const b of msg.blocks || []) {
-      if (b.type === 'tool' && (b.payload.call_id === id || b.id === id)) return b
-    }
-  }
-  return undefined
-}
-
-/** 工具重试：失败的工具走后端真实重跑，再用修正结果续一轮对话。
- *  Tool retry: failed tool reruns on backend, then continues conversation with corrected result.
- *  @param id - 工具调用 ID。Tool call ID. */
-export async function retryTool(id: string) {
-  const blk = findToolBlock(id)
-  if (!blk) return
-
-  blk.payload.status = 'running'
-  blk.payload.output = ''
-  blk.payload.output_preview = ''
-  state.value = 'tool_calling'
-
-  const startTs = Date.now()
-  try {
-    // 高风险工具（后端返回 needs_confirm）先弹确认，确认后再带 confirm 重调。
-    // High-risk tools (backend returns needs_confirm) prompt confirmation first, then re-invoke with confirm flag.
-    let r = await api.callTool(blk.payload.name, blk.payload.args || {})
-    if (r.needs_confirm) {
-      const ok = window.confirm(`确认执行高风险工具「${blk.payload.name}」？\n参数：${JSON.stringify(blk.payload.args || {})}`)
-      r = ok
-        ? await api.callTool(blk.payload.name, blk.payload.args || {}, true)
-        : { ok: false, status: 'error', error: '用户取消确认' }
-    }
-    if (r.ok) {
-      blk.payload.status = r.status === 'ok' ? 'ok' : 'error'
-      blk.payload.output = r.output || ''
-      blk.payload.output_preview = (r.output || '').slice(0, 500)
-    } else {
-      blk.payload.status = 'error'
-      blk.payload.output = r.error || '执行失败'
-      blk.payload.output_preview = blk.payload.output
-    }
-  } catch (e) {
-    blk.payload.status = 'error'
-    // 兜底用领域化的「执行失败」，比通用的「未知错误」更能说明发生了什么
-    // Fall back to the domain-specific "执行失败", which conveys more than a generic message.
-    blk.payload.output = formatError(e, '执行失败')
-    blk.payload.output_preview = blk.payload.output
-  }
-  blk.payload.duration_ms = Date.now() - startTs
-  // 不再自动续轮：编排管线按新话语驱动，用户可发「继续」等新话语，历史随 messages 种子带入。
-  // No longer auto-continue: orchestration pipeline driven by new utterances, users can send "continue" etc., history seeded with messages.
-}
-
-/** 工具/回复取消：中止后端 SSE 流，本地将运行中的步骤标记为已取消。
- *  Tool/reply cancel: abort backend SSE stream, locally mark running steps as cancelled.
- *  @param id - 工具调用 ID。Tool call ID. */
-export function cancelTool(id: string) {
-  abortChat()
-  const blk = findToolBlock(id)
-  if (blk && (blk.payload.status === 'running' || !blk.payload.status)) {
-    blk.payload.status = 'cancelled'
-    blk.payload.output = '已取消'
-    blk.payload.output_preview = '已取消'
-  }
-}
-
 /** 文字输入（与语音共用 LLM 管线）。分流规则（docs/designs/06 批3；弃题分支见 03 取消限时回答）：
  *  1. 取消词 → 立即中止 + 清队（排队不得吞掉取消）；
  *  2. 有待答问题 → 先判唤醒词（命中 → 弃题开新轮），未命中 → 转作答语义
@@ -434,93 +275,4 @@ export function sendText(text: string) {
   }
   addMessage('user', t)
   void runTurn()
-}
-
-/** 清空排队消息（输入框徽标点击）。Clear queued messages (input badge click). */
-export function clearQueued() {
-  clearOutbox()
-}
-
-// ── 会话分叉 / 编辑重发 / 重新生成（docs/designs/07）──
-// 约束：整段覆盖式存储下，改写历史必须先分叉（源会话在服务端只读不动）；
-// 回合进行中一律禁用（与排队机制的「显式动作」边界一致）。
-
-/** 是否处于可做分叉/编辑动作的空闲态。Whether we are idle enough for fork/edit actions. */
-function idleForEdit(): boolean {
-  return state.value === 'done' || state.value === 'error' || state.value === 'idle'
-}
-
-/** 从 index 处（含该条）分叉：服务端复制前缀为新会话，本地截断并切到新 id。
- *  前缀内容本地与服务端一致，省一次历史拉取。失败返回 false。
- *
- *  Fork at index (inclusive): the server copies the prefix into a new conversation;
- *  locally truncate and switch to the new id. The prefix is identical on both sides,
- *  so no history refetch is needed. Returns false on failure.
- *
- *  @param index - 分叉边界消息下标（含）。Fork boundary message index (inclusive). */
-export async function forkAt(index: number): Promise<boolean> {
-  if (!idleForEdit()) return false
-  const sid = currentSessionId.value
-  if (!sid || index < 0 || index >= messages.value.length) return false
-  try {
-    const r = await api.forkSession(sid, index)
-    if (!r.ok) return false
-    const prefix = messages.value.slice(0, index + 1)
-    currentSessionId.value = r.session.id
-    messages.value = prefix
-    pendingQuestion.value = null
-    tokenUsage.value = {}
-    return true
-  } catch (e) {
-    addMessage('system', '分叉失败：' + formatError(e))
-    return false
-  }
-}
-
-/** 编辑 index 处的用户消息并重发：非末条先分叉（保原路径），改写后起新一轮。
- *
- *  Edit the user message at index and resend: non-tail messages fork first (the
- *  original path is kept); rewrite then start a new turn.
- *
- *  @param index - 被编辑消息下标。Index of the edited message.
- *  @param newText - 新文本。The new text.
- *  @returns 是否成功。Whether it succeeded. */
-export async function sendEdited(index: number, newText: string): Promise<boolean> {
-  const t = newText.trim()
-  if (!t || !idleForEdit()) return false
-  const target = messages.value[index]
-  if (!target || target.role !== 'user') return false
-  if (index < messages.value.length - 1) {
-    const ok = await forkAt(index)     // 保原路径（编辑必须先分叉）。Keep the original path.
-    if (!ok) return false
-  } else {
-    messages.value.splice(index + 1)   // 末条编辑：防御性截尾。Tail edit: defensive trim.
-  }
-  const m = messages.value[index]
-  m.text = t
-  m.blocks = [makeBlock('text', { md: t, variant: 'bubble' })]
-  void runTurn()
-  return true
-}
-
-/** 重新生成 index 处的助手回复：分叉到其前一条用户消息（含），用原话重跑一轮。
- *
- *  Regenerate the assistant reply at index: fork to the user message before it
- *  (inclusive) and rerun that turn with the original words.
- *
- *  @param index - 被重新生成的助手消息下标。Index of the assistant message.
- *  @returns 是否成功。Whether it succeeded. */
-export async function regenerate(index: number): Promise<boolean> {
-  if (!idleForEdit()) return false
-  const m = messages.value[index]
-  if (!m || m.role !== 'assistant') return false
-  let u = -1
-  for (let i = index - 1; i >= 0; i--) {
-    if (messages.value[i].role === 'user') { u = i; break }
-  }
-  if (u < 0) return false
-  const ok = await forkAt(u)           // 前缀含原问题、去掉本条回复。Prefix keeps the question, drops this reply.
-  if (!ok) return false
-  void runTurn()                        // 末条是用户消息 → 直接重跑。Last message is the user's → rerun.
-  return true
 }
