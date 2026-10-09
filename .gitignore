@@ -53,4 +53,4 @@ screen*.png
 # 本地转写模型（encoder 单文件 173/315MB 超 GitHub 100MB 限，走 fetch 脚本引导，不入库）
 # Local transcription models (encoder files exceed GitHub's 100MB limit; bootstrap via fetch script)
 models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/
-models/_asr_download.tar.bz2
+models/*.tar.bz2
