@@ -279,9 +279,12 @@ export interface paths {
         put?: never;
         /**
          * Task Stop
-         * @description 停止该会话的整个任务（CancellationToken → executor/子进程中止）。
+         * @description 停止该会话的整个任务（CancellationToken → executor/子进程中止），
+         *     并弃掉正等待的回答（解除 ask() 阻塞 —— 否则会话永久占用、新指令撞 utter 409）。
          *
-         *     Stop the whole task of the session (CancellationToken → executor/subprocess abort).
+         *     Stop the whole task of the session (CancellationToken → executor/subprocess abort)
+         *     and abandon any pending question (unblocks ask(); otherwise the session stays busy
+         *     and the next utter hits 409).
          */
         post: operations["task_stop_api_task__session_id__stop_post"];
         delete?: never;
