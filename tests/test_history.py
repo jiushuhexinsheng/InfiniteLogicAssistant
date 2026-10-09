@@ -14,7 +14,9 @@ def store(tmp_path):
 
 @pytest.mark.asyncio
 async def test_save_and_get_conversation(store):
-    """测试保存会话后可完整读取消息、工具调用与状态。Tests that a saved conversation can be fully read back with messages, tool calls, and status."""
+    """测试保存会话后可完整读取消息与状态；tool_calls 已随块协议退役（写入被忽略、
+    读回不再出现）。Tests that a saved conversation reads back with messages and status;
+    tool_calls retired with the block protocol (writes ignored, absent on read)."""
     await store.save_conversation("c1", [
         {"role": "user", "content": "你好"},
         {"role": "assistant", "content": "你好呀", "tool_calls": [{"name": "get_datetime"}]},
@@ -23,7 +25,7 @@ async def test_save_and_get_conversation(store):
     assert conv["id"] == "c1"
     assert len(conv["messages"]) == 2
     assert conv["messages"][1]["content"] == "你好呀"
-    assert conv["messages"][1]["tool_calls"] == [{"name": "get_datetime"}]
+    assert "tool_calls" not in conv["messages"][1]
     assert conv["status"] == "done"
 
 
@@ -92,10 +94,16 @@ async def test_messages_without_blocks_read_as_empty_list(store):
     assert conv["messages"][0]["blocks"] == []
 
 
-def test_migration_drops_legacy_rows_without_blocks(tmp_path):
-    """迁移时清除无 blocks 的旧平铺消息行（用户决定不做新旧共存），会话记录保留。
-    Migration deletes legacy flat message rows without blocks (the user opted out
-    of new/old coexistence); conversation records remain."""
+@pytest.mark.asyncio
+async def test_migration_drops_legacy_rows_and_tolerates_tool_calls_column(tmp_path):
+    """迁移时清除无 blocks 的旧平铺消息行（用户决定不做新旧共存），会话记录保留；
+    老库遗留的 tool_calls 列必须被容忍 —— 迁移后写入/读回照常（显式列名绕开遗留列）。
+
+    Migration deletes legacy flat message rows without blocks (the user opted out of
+    new/old coexistence); conversation records remain. A legacy tool_calls column
+    must be tolerated — writes and reads work after migration (explicit column
+    names sidestep the leftover column).
+    """
     import sqlite3
 
     path = tmp_path / "legacy.db"
@@ -110,3 +118,14 @@ def test_migration_drops_legacy_rows_without_blocks(tmp_path):
     with sqlite3.connect(str(path)) as conn:
         rows = conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
     assert rows == 0  # 旧消息行已清除
+
+    # 遗留列仍在（SQLite 不删列），但读写不受影响。
+    with sqlite3.connect(str(path)) as conn:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(messages)").fetchall()]
+    assert "tool_calls" in cols
+
+    await store.save_conversation("c1", [{"role": "user", "content": "新消息"}],
+                                  status="done", summary="s")
+    conv = await store.get_conversation("c1")
+    assert conv["messages"][0]["content"] == "新消息"
+    assert "tool_calls" not in conv["messages"][0]

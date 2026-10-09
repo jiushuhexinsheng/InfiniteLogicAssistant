@@ -12,18 +12,17 @@ class HistoryMessage(BaseModel):
     """历史记录中的单条消息。
 
     content 是纯文本投影（LLM 回喂降级与摘要取用）；blocks 为消息块协议的
-    块列表（消息恒带 blocks，旧历史已清除）。tool_calls 已废弃（块协议的
-    tool 块取代），保留字段仅供 API 形状稳定。
+    块列表（消息恒带 blocks，旧历史已清除）。原 `tool_calls` 字段已删除
+    （块协议的 tool 块完全取代；老库遗留列在读取时被忽略）。
 
     A single message in a conversation history. content is the plain-text
     projection (for LLM feed fallback and summaries); blocks is the
     message-block-protocol list (messages always carry blocks; old history has
-    been dropped). tool_calls is deprecated (superseded by tool blocks) and kept
-    only for API shape stability.
+    been dropped). The former `tool_calls` field is gone (fully superseded by
+    tool blocks; leftover columns in old databases are ignored on read).
     """
     role: str
     content: str = ""
-    tool_calls: list[dict[str, Any]] | None = None  # 废弃保留（deprecated）
     blocks: list[dict[str, Any]] = []
     turn_id: str | None = None
     ts: str | None = None

@@ -80,9 +80,14 @@ const stats = computed(() => {
   let toolCount = 0
   let toolDuration = 0
   for (const m of msgs) {
-    for (const tc of m.toolCalls || []) {
+    // 工具统计走 tool 块（块协议是事实源；原 toolCalls 字段已随兼容链删除）。
+    // Tool stats read tool blocks (the block protocol is the source of truth; the
+    // legacy toolCalls field went away with the compat chain).
+    for (const b of m.blocks || []) {
+      if (b.type !== 'tool') continue
       toolCount++
-      if (tc.durationMs != null) toolDuration += tc.durationMs
+      const ms = (b.payload as { duration_ms?: number }).duration_ms
+      if (ms != null) toolDuration += ms
     }
   }
   return {

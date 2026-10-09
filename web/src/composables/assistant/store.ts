@@ -30,23 +30,6 @@ export type AsstState =
   | 'done'
   | 'error'
 
-/** 工具调用接口，记录工具执行的详细信息。
- *  Tool call interface, records detailed information of tool execution. */
-export interface ToolCall {
-  /** 工具调用唯一标识。Unique identifier for tool call. */
-  id: string
-  /** 工具名称。Tool name. */
-  name: string
-  /** 工具调用参数。Tool call arguments. */
-  args: Record<string, any>
-  /** 工具执行结果。Tool execution result. */
-  result?: string
-  /** 工具调用状态。Tool call status. */
-  status: 'pending' | 'running' | 'done' | 'failed'
-  /** 工具执行耗时（毫秒）。Tool execution duration (milliseconds). */
-  durationMs?: number
-}
-
 /** 聊天消息接口，表示对话中的一条消息。
  *  blocks 是事实源（思考/工具/正文/提问/汇总等模块化块），text 是派生投影
  *  （供 TTS 摘要、MiniHistory 等只读消费方过渡使用）。
@@ -62,9 +45,6 @@ export interface ChatMessage {
   text: string
   /** 消息块列表（事实源）。Message blocks (source of truth). */
   blocks: Block[]
-  /** 消息关联的工具调用（已废弃：tool 块取代，保留兼容旧读取方）。
-   *  Tool calls (deprecated: superseded by tool blocks; kept for old readers). */
-  toolCalls?: ToolCall[]
   /** 消息时间戳。Message timestamp. */
   timestamp: number
 }
@@ -287,26 +267,15 @@ export function textProjection(blocks: Block[]): string {
 
 /** 添加消息到消息列表。Add message to message list.
  *  @param role - 消息角色。Message role.
- *  @param text - 消息文本（自动包装为 text 块）。Message text (wrapped into a text block).
- *  @param toolCalls - 可选的工具调用（已废弃，转为 tool 块）。Optional tool calls (deprecated, converted to tool blocks). */
-export function addMessage(role: ChatMessage['role'], text: string, toolCalls?: ToolCall[]) {
+ *  @param text - 消息文本（自动包装为 text 块）。Message text (wrapped into a text block). */
+export function addMessage(role: ChatMessage['role'], text: string) {
   const blocks: Block[] = []
   if (text) blocks.push(makeBlock('text', { md: text, variant: 'bubble' }))
-  // 兼容旧调用方：toolCalls 降级为 tool 块（新代码请直接用 addBlocks）
-  for (const tc of toolCalls || []) {
-    blocks.push(makeBlock('tool', {
-      call_id: tc.id, name: tc.name, args: tc.args || {},
-      status: tc.status === 'done' ? 'ok' : tc.status === 'failed' ? 'error' : 'running',
-      output: tc.result || '', output_preview: (tc.result || '').slice(0, 500),
-      duration_ms: tc.durationMs,
-    }))
-  }
   messages.value.push({
     id: genId(),
     role,
     text: textProjection(blocks) || text,
     blocks,
-    toolCalls,
     timestamp: Date.now(),
   })
   if (messages.value.length > MAX_MESSAGES) messages.value.shift()

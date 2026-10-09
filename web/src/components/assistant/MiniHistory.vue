@@ -138,11 +138,10 @@ const turns = computed<Turn[]>(() => {
         key: m.id,
         input: pendingInput,
         summary: cachedSummary(m),
-        // 工具徽章来自 tool 块（toolCalls 已废弃，退化兼容旧消息）
-        // Tool badges come from tool blocks (toolCalls deprecated; fallback for old messages).
-        tools: m.blocks?.length
-          ? m.blocks.filter(b => b.type === 'tool').map(b => b.payload.name)
-          : (m.toolCalls || []).map(tc => tc.name),
+        // 工具徽章来自 tool 块（块协议是事实源；toolCalls 兼容链已删除）。
+        // Tool badges come from tool blocks (the block protocol is the source of
+        // truth; the toolCalls compat chain is gone).
+        tools: (m.blocks || []).filter(b => b.type === 'tool').map(b => b.payload.name),
       })
       pendingInput = ''
     } else if (m.role === 'system') {

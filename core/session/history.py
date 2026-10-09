@@ -38,10 +38,16 @@ class HistoryStore:
                 conn.execute("ALTER TABLE conversations ADD COLUMN name TEXT DEFAULT ''")
             if "archived" not in cols:
                 conn.execute("ALTER TABLE conversations ADD COLUMN archived INTEGER DEFAULT 0")
+            # tool_calls 列已随块协议退役：新库不再建该列，老库的遗留列因所有
+            # INSERT/SELECT 都显式列名而被忽略（SQLite 容忍多余列）。
+            # The tool_calls column retired with the block protocol: new databases
+            # no longer create it, and a legacy column in old databases is ignored
+            # (every INSERT/SELECT names its columns explicitly; SQLite tolerates
+            # extra columns).
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS messages ("
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id TEXT, "
-                "role TEXT, content TEXT, tool_calls TEXT, ts TEXT)"
+                "role TEXT, content TEXT, ts TEXT)"
             )
             # 迁移：块协议列 —— blocks（JSON 数组）、turn_id（回合归属）、
             # ts_iso（消息真实时间；老行为是全表盖同一 now）。
@@ -145,15 +151,14 @@ class HistoryStore:
             for m in messages:
                 if not isinstance(m, dict):
                     continue
-                tool_calls = json.dumps(m.get("tool_calls"), ensure_ascii=False) if m.get("tool_calls") else None
                 blocks = json.dumps(m.get("blocks"), ensure_ascii=False) if m.get("blocks") else None
                 # ts_iso：消息真实时间（块协议带 ts）；缺省回退整表 now（旧行为）
                 # ts_iso: the message's real time (blocks carry ts); falls back to the
                 # table-wide now (legacy behavior).
                 conn.execute(
-                    "INSERT INTO messages (conversation_id, role, content, tool_calls, ts, blocks, turn_id, ts_iso) "
-                    "VALUES (?,?,?,?,?,?,?,?)",
-                    (conv_id, m.get("role", ""), m.get("content", "") or "", tool_calls, now,
+                    "INSERT INTO messages (conversation_id, role, content, ts, blocks, turn_id, ts_iso) "
+                    "VALUES (?,?,?,?,?,?,?)",
+                    (conv_id, m.get("role", ""), m.get("content", "") or "", now,
                      blocks, m.get("turn_id") or None, m.get("ts") or now),
                 )
 
@@ -192,7 +197,7 @@ class HistoryStore:
             if not c:
                 return None
             msgs = conn.execute(
-                "SELECT role, content, tool_calls, blocks, turn_id, ts_iso FROM messages "
+                "SELECT role, content, blocks, turn_id, ts_iso FROM messages "
                 "WHERE conversation_id=? ORDER BY id", (conv_id,)
             ).fetchall()
         return {
@@ -200,12 +205,11 @@ class HistoryStore:
             "archived": bool(c[6]),
             "messages": [
                 {"role": m[0], "content": m[1] or "",
-                 "tool_calls": json.loads(m[2]) if m[2] else None,
                  # 旧历史已在迁移时清除，blocks 恒为数组（最坏为空）
                  # Old history was dropped at migration; blocks is always a list.
-                 "blocks": json.loads(m[3]) if m[3] else [],
-                 "turn_id": m[4] or None,
-                 "ts": m[5] or None}
+                 "blocks": json.loads(m[2]) if m[2] else [],
+                 "turn_id": m[3] or None,
+                 "ts": m[4] or None}
                 for m in msgs
             ],
         }

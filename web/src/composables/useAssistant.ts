@@ -10,7 +10,7 @@ import { toggleWake, stopWake } from './assistant/useWakeWord'
 import { toggleCall } from './assistant/callMode'
 
 /** 类型沿用原模块路径导出，避免改动各组件 import。Types are re-exported from the original module path to avoid changing component imports. */
-export type { AsstState, ToolCall, ChatMessage } from './assistant/store'
+export type { AsstState, ChatMessage } from './assistant/store'
 
 /** 模块级初始化标志，确保只初始化一次。Module-level initialization flag to ensure only one initialization. */
 let initialized = false
