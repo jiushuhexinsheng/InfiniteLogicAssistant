@@ -62,15 +62,29 @@ async def find_similar(goal: str) -> dict | None:
     return await _get_task_store().find_similar(goal)
 
 # 后台任务引用集：CPython 的事件循环对 Task 仅持弱引用，不保留句柄的任务
-# 可能在执行完成前被垃圾回收 —— 而 extract_and_store 内部吞掉所有异常
-# （core/memory/extract.py），后果是长期记忆提取静默不发生、无任何报错痕迹。
+# 可能在执行完成前被垃圾回收。done 回调里顺带观察异常（task.exception()）——
+# 未被协程内部接住的异常若无人观察，只会进 loop 的 exception handler，排障无从下手。
 #
-# Background-task reference set: CPython's event loop only holds weak references
-# to Tasks, so a task without a retained handle may be garbage-collected before it
-# finishes — and extract_and_store swallows all exceptions internally
-# (core/memory/extract.py), making the consequence a silent loss of long-term
-# fact extraction with no error trace.
+# Background-task reference set: CPython's event loop only holds weak references to
+# Tasks, so a task without a retained handle may be garbage-collected before it
+# finishes. The done callback also observes exceptions (task.exception()) — an
+# exception that escapes the coroutine with no observer only reaches the loop's
+# exception handler, leaving nothing to debug from.
 _bg_tasks: set[asyncio.Task] = set()
+
+
+def _on_bg_done(t: asyncio.Task) -> None:
+    """后台任务收尾：丢弃引用 + 观察未接住的异常（留 warning 痕迹）。
+
+    Background-task wrap-up: drop the reference and observe any exception that
+    escaped the coroutine (leaving a warning trace).
+    """
+    _bg_tasks.discard(t)
+    if t.cancelled():
+        return
+    exc = t.exception()
+    if exc is not None:
+        logger.warning("后台任务未捕获异常: {}", exc)
 
 # 完成确认的两个固定选项（任务模式用）。
 # The two fixed options of the completion confirmation (used in task mode).
@@ -93,7 +107,7 @@ def _spawn_bg(coro) -> asyncio.Task:
     """
     t = asyncio.ensure_future(coro)
     _bg_tasks.add(t)
-    t.add_done_callback(_bg_tasks.discard)
+    t.add_done_callback(_on_bg_done)
     return t
 
 

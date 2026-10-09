@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""任务后事实提取 — LLM 结构化输出 facts → FactStore（失败静默，不阻塞主流程）。Post-task fact extraction — LLM structured-output facts → FactStore (failures are silent and never block the main flow)."""
+"""任务后事实提取 — LLM 结构化输出 facts → FactStore（失败不阻塞主流程，但**必留日志痕迹**）。Post-task fact extraction — LLM structured-output facts → FactStore (failures never block the main flow, but always leave a log trace)."""
 import json
 
 from core import config
@@ -82,6 +82,10 @@ async def extract_and_store(task: Task, result: dict, store: FactStore,
         session: 可选会话（提供前文与溯源）。Optional session (recent dialog + provenance).
     """
     if not result or result.get("status") not in ("done", "failed"):
+        # 跳过也要留痕（此前静默早退，排障时无法区分「没触发」与「触发后失败」）。
+        # Skips leave a trace too (a silent early return made "never ran" and "ran and
+        # failed" indistinguishable when debugging).
+        logger.debug("extract_and_store 跳过：status={}", (result or {}).get("status"))
         return
     msgs = list(getattr(session, "messages", None) or [])
     recent = ""
@@ -94,7 +98,8 @@ async def extract_and_store(task: Task, result: dict, store: FactStore,
         # session=None path.
         try:
             n = config.settings.memory.extract_recent_messages
-        except Exception:
+        except Exception as e:
+            logger.warning("读取 memory.extract_recent_messages 失败，回退默认值 2: {}", e)
             n = 2
         recent = _recent_dialog(msgs, n)
         last = msgs[-1] if msgs else {}
@@ -123,8 +128,17 @@ async def extract_and_store(task: Task, result: dict, store: FactStore,
                     topic = str(f.get("topic") or "").strip()
                     content = str(f.get("content") or "").strip()
                     if topic and content:
-                        await store.upsert(topic, content, source=f"task:{task.id}",
-                                           path=str(f.get("path") or ""), origin=origin)
+                        # 单条失败不中断其余事实（此前一个坏条目会吞掉整批提取结果）。
+                        # One bad row must not swallow the rest of the batch.
+                        try:
+                            await store.upsert(topic, content, source=f"task:{task.id}",
+                                               path=str(f.get("path") or ""), origin=origin)
+                        except Exception as e:
+                            logger.warning("extract_and_store 单条 upsert 失败（{}）: {}", topic, e)
                 return
+        # 流正常结束但没有 done 事件：此前静默走完零日志，看起来像「提取成功」。
+        # The stream ended with no done event: previously a zero-log walk-through that
+        # looked like a successful extraction.
+        logger.warning("extract_and_store 流结束但无 done 事件（task={}）", task.id)
     except Exception as e:
         logger.warning("extract_and_store 失败: {}", e)
