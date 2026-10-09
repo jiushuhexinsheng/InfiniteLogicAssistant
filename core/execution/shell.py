@@ -25,17 +25,35 @@ class ShellResult:
     duration: float
 
 
+def _kill_tree_windows(pid: int) -> None:
+    """Windows：taskkill /T 杀整棵进程树。Windows: taskkill /T kills the whole tree."""
+    subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True, text=True)
+
+
+def _kill_tree_posix(pid: int) -> None:
+    """POSIX：进程组 kill（进程不存在/无权限静默 —— 目标已死即达成）。
+
+    POSIX: process-group kill (silently ignore gone/no-permission — a dead target is
+    the goal anyway).
+    """
+    try:
+        os.killpg(pid, signal.SIGKILL)  # type: ignore[attr-defined]  # POSIX only
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 def kill_tree(pid: int) -> None:
-    """强杀进程树（Windows 用 taskkill /T，POSIX 用进程组 kill）。Force-kill the process tree (taskkill /T on Windows, process-group kill on POSIX)."""
+    """强杀进程树（平台分派：Windows taskkill /T，POSIX 进程组 kill）。
+
+    Force-kill the process tree, dispatched per platform (taskkill /T on Windows,
+    process-group kill on POSIX).
+    """
     if not pid:
         return
     if os.name == "nt":
-        subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True, text=True)
+        _kill_tree_windows(pid)
     else:
-        try:
-            os.killpg(pid, signal.SIGKILL)  # type: ignore[attr-defined]  # POSIX only
-        except (ProcessLookupError, PermissionError):
-            pass
+        _kill_tree_posix(pid)
 
 
 async def _drain(stream, buf: list[str]) -> None:
