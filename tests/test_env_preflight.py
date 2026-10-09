@@ -6,7 +6,21 @@ parser must tolerate comments/options/extras/env markers, and the check must
 fail loudly on both a missing package and a version mismatch — these are the
 two ways a local environment drifts away from requirements.txt.
 """
-import conftest as cf
+import importlib.util
+from pathlib import Path
+
+# 裸 `import conftest` 不再可靠：tests/server/conftest.py 拆包后，pytest 把两个同名
+# conftest 都注册进 sys.modules['conftest']（后加载的覆盖先加载的），拿到的会是
+# tests/server 的夹具模块。这里按路径显式加载本目录（tests/）下的根 conftest。
+# A bare `import conftest` is no longer reliable: after the tests/server/conftest.py split,
+# pytest registers both same-named conftests under sys.modules['conftest'] (the later load
+# clobbers the earlier one) and the wrong module comes back. Load the root conftest in this
+# directory by explicit path instead.
+_spec = importlib.util.spec_from_file_location(
+    "_root_tests_conftest", Path(__file__).resolve().with_name("conftest.py")
+)
+cf = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(cf)
 
 
 class TestParsePins:
