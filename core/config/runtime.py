@@ -18,7 +18,7 @@ Singleton state _settings / _reload_hooks is read and written through the packag
 and internal calls see the change too.
 """
 from core.config.constants import ROOT_DIR
-from core.config.loader import _build
+from core.config.loader import _build, _print_notice
 from core.config.schema import Settings
 
 _settings: Settings | None = None
@@ -149,7 +149,7 @@ def _resolve_profile(section: str, active_default: str) -> tuple[str, dict]:
     active = s.active or active_default
     if active not in profiles:
         active = next(iter(profiles))
-        print(f"[WARN] {section}.active='{s.active}' 在 profiles 中不存在，已回退到 '{active}'")
+        _print_notice(f"[WARN] {section}.active='{s.active}' 在 profiles 中不存在，已回退到 '{active}'")
     return active, profiles[active].model_dump()
 
 

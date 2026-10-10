@@ -9,6 +9,10 @@ jobs:
   # 后端：与本地/目标平台一致（Windows），离线 wheel 兜底
   backend:
     runs-on: windows-latest
+    env:
+      # 英文 runner 控制台默认 cp1252，中文 print 在收集阶段即 UnicodeEncodeError
+      # （PYTHONUTF8 统一 UTF-8，与本地开发口径一致；loader 另有降级打印兜底）
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

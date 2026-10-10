@@ -31,6 +31,20 @@ from core.config.constants import _ENV_KEY_MAP
 from core.config.schema import Settings
 
 
+def _print_notice(msg: str) -> None:
+    """启动提示打印：控制台编码不了中文时（如 CI 英文 runner 的 cp1252）降级为
+    \\u 转义文本，绝不因一条提示炸掉启动/收集。
+
+    Startup notice print: falls back to \\u-escaped text when the console cannot
+    encode Chinese (e.g. CI's English-runner cp1252) — a notice must never crash
+    boot or test collection.
+    """
+    try:
+        print(msg)
+    except UnicodeEncodeError:
+        print(msg.encode("unicode_escape").decode("ascii"))
+
+
 def _read_yaml(path) -> dict:
     """读取 YAML 文件并返回字典；文件不存在或内容为空时返回空字典。
 
@@ -158,8 +172,8 @@ def _profile_api_key(section: str, name: str, secrets: dict, profile: dict) -> s
     legacy = profile.get("api_key")
     if isinstance(legacy, str) and legacy:
         resolved = _resolve_env(legacy)
-        print(f"[WARN] {section}.profiles.{name}.api_key 已在 config.yaml 中配置（旧格式），"
-              f"请迁移到 config.secrets.yaml 或环境变量 {_ENV_KEY_MAP[section]}")
+        _print_notice(f"[WARN] {section}.profiles.{name}.api_key 已在 config.yaml 中配置（旧格式），"
+                      f"请迁移到 config.secrets.yaml 或环境变量 {_ENV_KEY_MAP[section]}")
         return resolved
     return ""
 
@@ -232,10 +246,10 @@ def _build() -> Settings:
     from core import config as _cfg
     if not _cfg.CONFIG_FILE.exists() and _cfg.EXAMPLE_FILE.exists():
         shutil.copy2(str(_cfg.EXAMPLE_FILE), str(_cfg.CONFIG_FILE))
-        print("[配置] 已从 config.yaml.example 创建 config.yaml，请编辑后重新运行")
+        _print_notice("[配置] 已从 config.yaml.example 创建 config.yaml，请编辑后重新运行")
     if not _cfg.SECRETS_FILE.exists() and _cfg.SECRETS_EXAMPLE.exists():
         shutil.copy2(str(_cfg.SECRETS_EXAMPLE), str(_cfg.SECRETS_FILE))
-        print("[配置] 已从 config.secrets.yaml.example 创建 config.secrets.yaml（密钥独立存储，不入库）")
+        _print_notice("[配置] 已从 config.secrets.yaml.example 创建 config.secrets.yaml（密钥独立存储，不入库）")
 
     data = _read_yaml(_cfg.CONFIG_FILE)
     _inject_secrets(data, _load_secrets())
