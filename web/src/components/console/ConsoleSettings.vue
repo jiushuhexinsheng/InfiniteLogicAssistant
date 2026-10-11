@@ -128,14 +128,19 @@ onMounted(() => { s.load() })
 </script>
 
 <style scoped>
+/* 布局（2026-10-11）：整页不再滚动 —— 标题区固定，滚动只发生在 .cs-main（保存/测试
+   连接所在的卡头再吸顶），滚动轴因此落在「保存」行以下的内容区，滚动内容不带动页面。
+   Layout (2026-10-11): the page itself no longer scrolls — the title area is fixed and
+   scrolling happens only inside .cs-main (whose card heads — holding 保存/测试连接 — are
+   sticky), so the scrollbar lives below the save row and content never drags the page. */
 .console-settings {
   width: 100%;
   max-width: 960px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 14px; flex: 1; min-height: 0; overflow-y: auto;}
-.cs-head { display: flex; flex-direction: column; gap: 4px; }
+  gap: 14px; flex: 1; min-height: 0; overflow: hidden;}
+.cs-head { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
 .cs-title {
   display: inline-flex; align-items: center; gap: 8px;
   font-size: var(--fs-lg); font-weight: 700; letter-spacing: .03em;
@@ -144,10 +149,10 @@ onMounted(() => { s.load() })
 .cs-title :deep(svg) { color: var(--brand-c2); }
 .cs-sub { font-size: var(--fs-xs); color: var(--text-3); margin: 0; }
 
-/* ── 左菜单 + 右内容 ── */
-.cs-body { display: flex; gap: 16px; align-items: flex-start; }
+/* ── 左菜单 + 右内容（内容区 = 唯一滚动容器） ── */
+.cs-body { display: flex; gap: 16px; align-items: stretch; flex: 1; min-height: 0; }
 .cs-menu {
-  width: 148px; flex-shrink: 0; position: sticky; top: 12px;
+  width: 148px; flex-shrink: 0;
   display: flex; flex-direction: column; gap: 3px;
 }
 .cs-menu-item {
@@ -169,7 +174,28 @@ onMounted(() => { s.load() })
 .cs-menu-dot.on { background: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, .6); }
 .cs-menu-extra { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-soft); }
 
-.cs-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+/* 唯一滚动区：上缘在标题区之下，右缘即滚动轴所在。 */
+.cs-main {
+  flex: 1; min-width: 0; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 14px;
+  padding-right: 2px;
+}
+
+/* 卡头（含保存/测试连接）吸顶：滚动只发生在卡头以下的内容，卡头始终可见。
+   吸顶时卡自身的 16px 上内边距已滚出视口，无需负 margin 反抵（会破坏静止态外观）。
+   Card heads (保存/测试连接) stick to the top: scrolling only happens below them,
+   so the save row stays visible at all times. Once stuck, the card's own 16px top
+   padding has scrolled out of view — no negative-margin counteraction needed (it
+   would distort the at-rest look). */
+.cs-main :deep(.cs-card-head) {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--surface-card);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  /* 吸顶时与下方滚过的内容分隔（常态也无违和，避免位移跳变）。
+     Separates the stuck head from content scrolling beneath (harmless at rest, no jump). */
+  box-shadow: 0 1px 0 var(--hairline);
+}
 
 .cs-conn { display: flex; gap: 8px; flex-wrap: wrap; }
 
