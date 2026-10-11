@@ -19,6 +19,10 @@
       @keydown="onKeydown"
       v-bind="$attrs"
     />
+    <!-- 装饰性 chevron 底座（对齐 UiSelect 触发器，标明「有建议层」；面板开合旋转）。
+         Decorative chevron seat (matches the UiSelect trigger, signals "suggestions
+         available"; rotates with the panel). -->
+    <span class="ui-combo-chevron" :class="{ open }"><UiIcon name="chevron-down" :size="14" /></span>
     <Teleport to="body">
       <ul
         v-if="open && filtered.length"
@@ -243,6 +247,27 @@ watch(open, (v) => {
 
 <style scoped>
 .ui-combo { position: relative; width: 100%; }
+/* 触发器右侧留出 chevron 底座位（与 UiSelect 触发器同款排版）。
+   Reserve room for the chevron seat on the right (same trigger layout as UiSelect). */
+.ui-combo .ui-input { padding-right: 38px; }
+
+/* chevron 底座：镜像 UiSelect 的 .ui-select-chevron（圆底座、开合旋转）。
+   Chevron seat: mirrors UiSelect's .ui-select-chevron (round seat, rotates on toggle). */
+.ui-combo-chevron {
+  position: absolute; right: 6px; top: 50%;
+  transform: translateY(-50%);
+  width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--surface-control);
+  color: var(--text-3);
+  pointer-events: none;
+  transition: transform var(--dur-base) var(--ease-out), color var(--dur-fast), background var(--dur-fast);
+}
+.ui-combo-chevron.open {
+  transform: translateY(-50%) rotate(180deg);
+  color: var(--brand-c2);
+  background: rgba(103, 232, 249, .12);
+}
 
 /* 弹层样式镜像 UiSelect（scoped 无法共享其样式）——改一处请同步另一处。
    Panel styles mirror UiSelect (scoped styles cannot be shared) — keep the two in sync. */
