@@ -14,6 +14,7 @@
       :value="modelValue"
       :placeholder="placeholder"
       :disabled="disabled"
+      autocomplete="off"
       @input="onInput"
       @focus="openPanel"
       @keydown="onKeydown"

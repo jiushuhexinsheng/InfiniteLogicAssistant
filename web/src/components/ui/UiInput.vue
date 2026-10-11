@@ -11,6 +11,7 @@
       type="number"
       :placeholder="placeholder"
       :disabled="disabled"
+      autocomplete="off"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
       @keydown="onKeydown"
       v-bind="$attrs"
@@ -31,6 +32,7 @@
     :type="type"
     :placeholder="placeholder"
     :disabled="disabled"
+    autocomplete="off"
     @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
     v-bind="$attrs"
   />
