@@ -126,7 +126,13 @@ function onKeydown(e: KeyboardEvent) {
 .ui-stepper {
   display: flex; align-items: center; gap: 6px;
   width: 100%; flex: 1 1 auto; min-width: 0;
+  /* 高度与文本输入严格同值（同一变量钉死）——内层不再自带纵向 padding，
+     由外层统一决定，避免数字框比其它框高。
+     Height pinned to the exact same value as text inputs (one shared token) — the inner
+     input carries no vertical padding any more, so the number field can never grow
+     taller than its siblings. */
   min-height: var(--min-target-size);
+  height: var(--min-target-size);
   padding: 0 6px 0 12px;
   background: var(--surface-input);
   border: 1px solid var(--border-base);
@@ -147,9 +153,10 @@ function onKeydown(e: KeyboardEvent) {
   flex: 1 1 auto; min-width: 0;
   background: transparent; border: none; outline: none;
   box-shadow: none !important;
-  padding: 10px 0;
+  padding: 0;                    /* 纵向 padding 归外层管，保证与文本框同高。Vertical padding belongs to the wrapper (same height as text fields). */
+  height: 100%;
   font-size: var(--fs-sm); font-family: inherit; color: var(--text-1);
-  min-height: auto;
+  min-height: 0;
 }
 .ui-stepper-input:focus { border-color: transparent; }
 .ui-stepper-input:disabled { opacity: .5; }
