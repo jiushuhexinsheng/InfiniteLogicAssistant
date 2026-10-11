@@ -20,10 +20,10 @@
     />
     <span class="ui-stepper-btns">
       <button type="button" class="ui-stepper-btn" :disabled="disabled" aria-label="增加" @click="bump(1)">
-        <UiIcon name="chevron-down" :size="11" class="ui-stepper-up" />
+        <UiIcon name="chevron-down" :size="9" class="ui-stepper-up" />
       </button>
       <button type="button" class="ui-stepper-btn" :disabled="disabled" aria-label="减少" @click="bump(-1)">
-        <UiIcon name="chevron-down" :size="11" />
+        <UiIcon name="chevron-down" :size="9" />
       </button>
     </span>
   </div>
@@ -168,15 +168,15 @@ function onKeydown(e: KeyboardEvent) {
 .ui-stepper-input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
 
 .ui-stepper-btns {
-  display: flex; flex-direction: column; gap: 2px;
+  display: flex; flex-direction: column; gap: 1px;
   flex: 0 0 auto;
 }
 .ui-stepper-btn {
-  width: 22px; height: 14px;
+  width: 16px; height: 12px;
   display: grid; place-items: center;
   border: none; padding: 0; cursor: pointer;
   background: var(--surface-control); color: var(--text-3);
-  border-radius: 4px;
+  border-radius: 3px;
   transition: color var(--dur-fast), background var(--dur-fast);
 }
 .ui-stepper-btn:hover:not(:disabled) { color: var(--brand-c2); background: rgba(103, 232, 249, .12); }
