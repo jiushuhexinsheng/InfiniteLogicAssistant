@@ -55,8 +55,10 @@ const props = defineProps<{
  *  empty label would show nothing at all. */
 const LABEL_FALLBACK: Partial<Record<AsstState, string>> = { responding: '回复中…' }
 
-/** 需要声波条的状态：正在收音的三种。States that show sound bars (the mic is live). */
-const EQ_STATES: AsstState[] = ['listening', 'recording', 'awaiting_answer']
+/** 需要声波条的状态：麦在收音的全部状态（含静待 —— 静待也保持本地侦听）。
+ *  States that show sound bars: every state with a live mic (standby included — it keeps
+ *  local listening). */
+const EQ_STATES: AsstState[] = ['listening', 'recording', 'awaiting_answer', 'standby']
 
 /** 胶囊文案。Pill copy.
  *  通话态特判已下沉共享映射表（useAssistantVisuals，2026-10-07 遗留审计：原特判只在本

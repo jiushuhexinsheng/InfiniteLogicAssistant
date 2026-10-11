@@ -18,6 +18,7 @@
 import { api } from '../../api'
 import { speaking, stopSpeak } from './useTts'
 import { sendText, sendAnswer } from './useChat'
+import { enterCallFromWake } from './callMode'
 import {
   configureOrchestrator,
   handleSegment as _handleSegment,
@@ -30,7 +31,10 @@ import {
 
 // 注入依赖：编排器通过这些引用来调用 API 和聊天方法
 // Inject dependencies: the orchestrator uses these references for API and chat calls
-configureOrchestrator({ api, sendText, sendAnswer, speaking, stopSpeak })
+// enterCall：静待中裸唤醒 → 通话聆听（callMode，DI 注入避免 wake 族反向 import callMode）。
+// enterCall: bare wake in standby → call listening (callMode, injected via DI so the wake
+// family never imports callMode directly).
+configureOrchestrator({ api, sendText, sendAnswer, speaking, stopSpeak, enterCall: enterCallFromWake })
 
 // 注册模块级 watch（幂等，首次 import 时执行一次）
 // Register module-level watches (idempotent, runs once on first import)

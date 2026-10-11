@@ -40,8 +40,8 @@ function pillOf(w: VueWrapper) {
  * The pill exists to say what the user can do right now, so every state must render copy.
  */
 describe('StatusPill 状态文案', () => {
-  it('待机显示「双击开通话」', () => {
-    expect(mountPill('idle').text()).toContain('双击开通话')
+  it('待机显示「双击开启语音」（2026-10-11：双击=电源开关）', () => {
+    expect(mountPill('idle').text()).toContain('双击开启语音')
   })
 
   it('聆听显示状态与唤醒词', () => {
@@ -99,8 +99,9 @@ describe('StatusPill 外观与侧向', () => {
     expect(pillOf(mountPill('idle')).classes()).not.toContain('hidden')
   })
 
-  it('只有麦克风在收音的状态才显示声波条', () => {
+  it('只有麦克风在收音的状态才显示声波条（含静待——静待保持本地侦听）', () => {
     expect(mountPill('listening').find('.sp-eq').exists()).toBe(true)
+    expect(mountPill('standby').find('.sp-eq').exists()).toBe(true)
     expect(mountPill('idle').find('.sp-eq').exists()).toBe(false)
   })
 

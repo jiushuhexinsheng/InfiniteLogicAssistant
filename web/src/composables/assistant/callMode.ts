@@ -1,79 +1,108 @@
 /**
- * 通话模式 FSM — 双击悬浮球进入的免唤醒持续聆听（spec: 2026-10-05-call-mode-funnel）。
+ * 语音电源开关 + 通话聆听入口（2026-10-11 用户状态图重定义，取代 2026-10-05 的
+ * 「双击进通话漏斗」spec）：
  *
- * 与唤醒链互斥：进入前先停唤醒、退出后监听全停；开放窗口（回答后的免焦点追问期）
- * 在 store 计时（markTurnEnded/inOpenWindow），段落路由（wakeOrchestrator.processSegment）
- * 读 store.callActive 分流。
+ *   关闭态(idle) ──双击──▶ 静待(standby：麦开、本地 KWS 侦听，= 唤醒前)
+ *   静待 ──喊唤醒词──▶ 通话聆听中(callActive+listening：漏斗持续聆听)
+ *   通话聆听中 ──静止 listen_idle_s──▶ 静待（orchState 空闲超时自动干净退出漏斗）
+ *   任意开启态 ──双击──▶ 关闭态（麦关；通话中先 callStop）
  *
- * Call-mode FSM — wake-free continuous listening entered by double-clicking the float
- * ball. Mutually exclusive with the wake chain (wake stops before entry, all listening
- * stops on exit); the open window is timed in the store (markTurnEnded/inOpenWindow)
- * and segment routing reads store.callActive.
+ * 单一链条、没有两个模式：双击是**电源**，唤醒词是**唤醒点**，静待=唤醒前。
+ *
+ * Voice power toggle + call-listening entry (2026-10-11 user state-diagram redefinition,
+ * superseding the 2026-10-05 "double-click enters the funnel" spec): double-click is the
+ * POWER (off ⇄ standby), the wake word is the WAKE POINT (standby → call listening), and
+ * the idle timeout walks call listening back to standby. One chain, no two modes;
+ * standby IS the pre-wake state.
  */
 import { api } from '../../api'
-import { callActive, callConfig, state, statusLine } from './store'
-import { startListening, stopListening, toggleWake, wakeEnabled, ensureListening } from './wake/wakeOrchestrator'
+import { callActive, callConfig, state, statusLine, wakeEnabled, wakeMode } from './store'
+import { startListening, stopListening, ensureListening } from './wake/wakeOrchestrator'
+import type { AsstState } from './store'
 
-/** 进入通话前的 wakeEnabled 快照。
- *  startListening 成功会把 wakeEnabled 置 true（wakeOrchestrator.ts:784），退出分支与失败
- *  回滚必须恢复之 —— 否则唤醒从未被用户打开却被武装：下一次 TTS 播报结束
- *  （wakeOrchestrator.ts:910）`if (wakeEnabled.value) void ensureListening()` 会复活录音器。
- *  模块级而非局部 const：进入与退出是两次独立的 toggleCall 调用，快照必须跨调用存活。
- *  Snapshot of wakeEnabled taken on call entry. startListening sets it true on success
- *  (wakeOrchestrator.ts:784); exit and the failure rollback must restore it, or wake gets
- *  armed though the user never turned it on — the next TTS end (wakeOrchestrator.ts:910)
- *  `if (wakeEnabled.value) void ensureListening()` revives the recorder. Module-level rather
- *  than a local const: entry and exit are separate toggleCall invocations, so the snapshot
- *  must outlive one call. */
-let wakeWasOnBeforeCall = false
+/** 开启态集合：处于其中任一状态 = 语音开着（双击应执行「关闭」）。
+ *  Set of powered-on states: being in any of them means the mic is live (a double-click
+ *  should power OFF). */
+const POWERED_STATES: AsstState[] = [
+  'listening', 'standby', 'recording', 'transcribing', 'awaiting_answer', 'followup', 'thinking', 'tool_calling', 'responding',
+]
 
-/** 双击入口：通话 ⇄ 非通话。退出落点按进通话前的唤醒快照 —— 之前开着唤醒的人回
- *  **listening 并重新拉起麦克风**（喊唤醒词立刻可用）；之前关着的回 idle（麦保持关）。
- *  旧实现无条件落 idle + wakeEnabled 恢复 true：麦已停、state 又不在任何会触发
- *  ensureListening 的路径上 → 退出通话后唤醒词永久喊不应（2026-10-11 现场复盘）。
- *  Double-click entry: call ⇄ non-call. The exit landing follows the pre-call wake
- *  snapshot — someone who had wake on returns to **listening with the mic re-acquired**
- *  (the wake word works immediately); wake-off returns to idle (mic stays off). The old
- *  build unconditionally landed on idle with wakeEnabled restored true: the mic was off
- *  and no path would call ensureListening, so the wake word stayed dead forever after
- *  leaving a call (2026-10-11 field post-mortem). */
-export async function toggleCall(): Promise<void> {
-  if (!callConfig.enabled) {
-    statusLine.value = '通话模式未启用（voice.call.enabled=false）'
-    return
-  }
-  if (callActive.value) {
-    callActive.value = false
-    stopListening()
-    wakeEnabled.value = wakeWasOnBeforeCall   // 回收 startListening 的置位（终审 Important #2）
-    statusLine.value = ''
-    if (wakeWasOnBeforeCall) {
-      state.value = 'listening'     // 唤醒点恢复：静待/空闲都不是退出通话的落点。
-      void ensureListening()        // 重新取流（stopListening 已释放旧麦）。
-    } else {
-      state.value = 'idle'
-    }
+function isPowered(): boolean {
+  return wakeEnabled.value || callActive.value || POWERED_STATES.includes(state.value)
+}
+
+/** 关闭语音：停通话会话（若有）、停麦、回关闭态。Power off: end the call session (if
+ *  any), stop the mic, return to the off state. */
+async function powerOff(): Promise<void> {
+  const wasCall = callActive.value
+  callActive.value = false
+  stopListening()
+  wakeEnabled.value = false
+  state.value = 'idle'
+  statusLine.value = ''
+  if (wasCall) {
     try { await api.callStop() } catch { /* 会话服务端 5 分钟自过期兜底 */ }
+  }
+}
+
+/**
+ * 双击 = 语音电源开关。开启直接落**静待**（唤醒前状态：麦开 + 本地 KWS 侦听），
+ * 不再进入通话漏斗 —— 漏斗由唤醒词从静待唤醒后进入（enterCallFromWake）。
+ *
+ * Double-click is the voice power switch. Power-on lands directly in **standby** (the
+ * pre-wake state: mic live + local KWS listening) instead of entering the call funnel —
+ * the funnel is entered by waking from standby with the wake word (enterCallFromWake).
+ */
+export async function togglePower(): Promise<void> {
+  if (isPowered()) {
+    await powerOff()
     return
   }
-  // 进入前先快照（必须在互斥停唤醒之前 —— 停唤醒会把 wakeEnabled 置 false）。
-  // Snapshot before entry (it must precede the mutual-exclusion stop: stopping wake sets the flag false).
-  wakeWasOnBeforeCall = wakeEnabled.value
-  // 互斥：唤醒在听先停（Review Focus #3）。
-  if (wakeEnabled.value) await toggleWake()
-  const r = await api.callStart().catch(() => ({ ok: false }))
-  if (!r.ok) {
-    wakeEnabled.value = wakeWasOnBeforeCall   // 互斥停唤醒已发生 → 失败同样恢复快照
-    statusLine.value = '通话模式启动失败（后端未就绪）'
+  const r = await startListening()   // 取流 + wakeEnabled=true + state=listening
+  if (r !== 'ok') {
+    statusLine.value = typeof r === 'string' ? r : '麦克风启动失败'
     return
+  }
+  state.value = 'standby'            // 开机即唤醒前（静待），等唤醒词
+  statusLine.value = ''
+}
+
+/** 旧名保留：callMode 的双击入口现在是电源开关（togglePower）。
+ *  Kept alias: callMode's double-click entry is now the power switch (togglePower). */
+export const toggleCall = togglePower
+
+/**
+ * 静待中喊唤醒词 → 进入**通话聆听中**（打开后端通话会话、漏斗接管段落判定）。
+ * 麦已在听（段录音器运行中），只切路由不碰麦克风。返回是否进入成功 ——
+ * 失败/未启用时调用方回退既有指令窗语义（不丢唤醒）。
+ *
+ * Wake word in standby → enter **call listening** (opens the backend call session; the
+ * funnel takes over segment judging). The mic is already live, so only the routing flips.
+ * Returns whether entry succeeded — on failure/disabled the caller falls back to the
+ * existing command-window semantics (the wake is never lost).
+ */
+export async function enterCallFromWake(): Promise<boolean> {
+  if (callActive.value) return true
+  if (!callConfig.enabled) return false
+  try {
+    const r = await api.callStart().catch(() => ({ ok: false }))
+    if (!r.ok) {
+      statusLine.value = '通话聆听启动失败（后端未就绪），已回退指令窗'
+      return false
+    }
+  } catch {
+    return false   // api 桩缺 callStart 等异常 → 回退指令窗（测试与降级路径）
   }
   callActive.value = true
-  const outcome = await startListening()
-  if (outcome !== 'ok') {
-    callActive.value = false
-    wakeEnabled.value = wakeWasOnBeforeCall   // 失败回滚同恢复快照（终审 Important #2）
-    await api.callStop().catch(() => {})
-    statusLine.value = typeof outcome === 'string' ? outcome : '麦克风启动失败'
-    return
-  }
+  wakeEnabled.value = true   // 静待的唤醒生命周期（播报回落 ensureListening gate 它）
+  state.value = 'listening'  // callActive=true → 视觉/文案 =「通话聆听中」
+  statusLine.value = ''
+  // webspeech 模式交接：段漏斗需要段录音器（SpeechRecognition 不产段）——先停浏览器
+  // 识别再走 ensureListening（callActive 已 true → acquireAndStart 强制段录音器路径）。
+  // Webspeech hand-off: the funnel needs the segment recorder (SpeechRecognition yields
+  // no segments) — stop the browser recognizer first, then ensureListening (callActive
+  // is already true, so acquireAndStart forces the segmenter path).
+  if (wakeMode.value === 'webspeech') stopListening()
+  void ensureListening()     // 兜底：漏斗期间麦必须在（幂等，已在听则无副作用）
+  return true
 }

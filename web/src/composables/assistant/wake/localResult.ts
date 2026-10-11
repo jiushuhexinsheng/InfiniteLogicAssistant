@@ -1,12 +1,12 @@
 import { state, statusLine, pendingQuestion, wakeKeywords, callActive } from '../store'
 import { matchOption } from '../answerMatch'
 import { detectWake, enterWakeCooldown } from '../wakeMatch'
-import { st, abandonPendingQuestion, clearCommandTimer, armCommandTimer, clearFollowupTimer, playBeep } from './orchState'
+import { st, abandonPendingQuestion, clearCommandTimer, armCommandTimer, clearFollowupTimer, playBeep, tryEnterCallFromStandby } from './orchState'
 // 拆分自 wakeOrchestrator.ts（重构：纯移动 + 状态收敛到 orchState.st，无行为变化）。
 // Split from wakeOrchestrator.ts (pure move; mutable state consolidated into orchState.st).
 // ── 处理本地识别结果（Web Speech API 路径）──
 
-export function handleLocalResult(text: string) {
+export async function handleLocalResult(text: string) {
   if (!st.deps) return
   const trimmed = text.trim()
   if (!trimmed) return
@@ -88,6 +88,10 @@ export function handleLocalResult(text: string) {
   const r = detectWake(trimmed, wakeKeywords.value)
   if (!r.matched) return
   if (r.command) { st.turnToken++; enterWakeCooldown(); st.deps.sendText(r.command); return }
+
+  // 静待中的裸唤醒 → 通话聆听中；失败回退指令窗。
+  // Bare wake in standby → call listening; failure falls back to the command window.
+  if (await tryEnterCallFromStandby()) return
 
   st.awaitingCommand = true
   statusLine.value = '已唤醒，请说指令…'

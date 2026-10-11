@@ -155,4 +155,38 @@ describe('静待中重新唤醒', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(store.state.value).toBe('standby')
   })
+
+  /**
+   * 用户状态图：静待 ──喊唤醒词──▶ 通话聆听中（漏斗接管，callStart 成功）。
+   * User state diagram: standby ──wake word──▶ call listening (funnel takes over).
+   */
+  it('静待中裸唤醒且 callStart 成功 → 通话聆听中（不落指令窗）', async () => {
+    vi.doMock('../../../api', () => ({
+      api: {
+        wakeCheck: vi.fn(async () => ({ ok: true, hit: true, bypass: false })),
+        wakeDetect: vi.fn(async () => ({ ok: true, matched: true, command: '', text: '衍衡。' })),
+        transcribe: vi.fn(async () => ({ ok: true, text: '' })),
+        callStart: vi.fn(async () => ({ ok: true, open_window_s: 8 })),
+        callStop: vi.fn(async () => ({ ok: true })),
+      },
+    }))
+    vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
+    const store = await import('../store')
+    const orch = await import('../wake/orchState')
+    const mod = await import('../useWakeWord')
+    store.vadConfig.listen_idle_s = 1
+    store.wakeEnabled.value = true
+    store.state.value = 'listening'
+    await nextTick()
+    vi.advanceTimersByTime(1_000)
+    await nextTick()
+    expect(store.state.value).toBe('standby')
+
+    await mod.handleSegment(new Blob(['x']))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.callActive.value).toBe(true)      // 漏斗已接管
+    expect(store.state.value).toBe('listening')    // 文案 =「通话聆听中」
+    expect(orch.st.awaitingCommand).toBe(false)    // 没落指令窗
+  })
 })

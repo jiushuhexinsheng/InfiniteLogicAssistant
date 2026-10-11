@@ -30,7 +30,7 @@ export interface StateVisual {
 
 /** 状态视觉映射表，为每个助手状态定义视觉配置。State visual mapping table, defines visual configuration for each assistant state. */
 export const STATE_VISUALS: Record<AsstState, StateVisual> = {
-  idle:         { icon: 'wave',       label: '双击开通话',                color: '#6b7280', fx: 'fx-idle',          grad: 'brand' },
+  idle:         { icon: 'wave',       label: '双击开启语音',              color: '#6b7280', fx: 'fx-idle',          grad: 'brand' },
   listening:    { icon: 'ear',        label: hint => callActive.value ? '通话聆听中' : `聆听中…说${hint}`, color: '#34d399', fx: 'fx-listening', grad: 'rainbow' },
   awaiting_answer: { icon: 'mic',     label: '请直接说出你的回答…',        color: '#f59e0b', fx: 'fx-recording',     grad: 'rainbow' },
   // standby 表项已随「取消限时回答」删除（回答永不限时，不再有待机态）。

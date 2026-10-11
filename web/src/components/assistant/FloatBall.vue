@@ -158,8 +158,9 @@ function onTouchEnd() { /* 单击由 click 事件处理 */ }
  *
  * Single and double click fire **separately** (2026-10-11 user requirement): a single
  * click defers its emit by `DBLCLICK_DEFER_MS` to give the native dblclick a chance to
- * arrive first; a double click cancels the pending single before emitting — double
- * toggles the call only (no panel open-close flash), single toggles the panel only.
+ * arrive first; a double click cancels the pending single before emitting — double is
+ * the voice POWER switch (off ⇄ standby, see callMode.togglePower), single toggles the
+ * panel only (no panel open-close flash).
  *
  * History: hand-rolled 250ms arbitration (below the OS double-click speed → doubles
  * split into singles, call entry silently failed — the 2026-10-05 root cause), then

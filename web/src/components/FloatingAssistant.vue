@@ -150,7 +150,9 @@ function onBallClick() {
   messageDot.value = false
 }
 
-/** 双击悬浮球：切换通话模式（免唤醒持续聆听）。Double-click float ball: toggle call mode. */
+/** 双击悬浮球：语音电源开关（关 ⇄ 静待；通话聆听中再双击=关闭）。2026-10-11 状态图。
+ *  Double-click float ball: voice power switch (off ⇄ standby; double-clicking during call
+ *  listening powers off). 2026-10-11 state diagram. */
 function onBallDblClick() {
   props.asst.toggleCall()
   messageDot.value = false

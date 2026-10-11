@@ -1,18 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const stopListening = vi.fn()
-const toggleWake = vi.fn(async () => {})
 const ensureListening = vi.fn()
-const wakeEnabled = { value: false }
-// 桩复刻真实 startListening 的语义：成功即把 wakeEnabled 置 true（wakeOrchestrator.ts:784）——
-// 这正是退出不回收时泄漏的来源；桩不复刻该置位就测不出泄漏（终审 Important #2）。
-// The stub mirrors real startListening: success sets wakeEnabled=true (wakeOrchestrator.ts:784) —
-// the very source of the leak when exit fails to restore it; without this the leak is untestable.
-const startListening = vi.fn(async () => { wakeEnabled.value = true; return 'ok' as const })
+// 桩复刻真实 startListening 的语义：成功即把 wakeEnabled 置 true、state 置 listening ——
+// 电源开的真实落点依赖它（真实实现在 micControl.startListening）。
+// wakeEnabled/state 走 **store 真身**：callMode 现在直接从 store 读（不再经门面转发），
+// 本地桩会与真身脱钩导致断言测错对象。
+// The stub mirrors real startListening: success sets wakeEnabled=true and state=listening.
+// wakeEnabled/state come from the **real store**: callMode now reads them directly from the
+// store (no facade forwarding), so a local stub would drift and assert the wrong object.
+const startListening = vi.fn(async () => {
+  wakeEnabled.value = true
+  state.value = 'listening'
+  return 'ok' as const
+})
 
 vi.mock('../wake/wakeOrchestrator', () => ({
-  startListening, stopListening, toggleWake, ensureListening,
-  get wakeEnabled() { return wakeEnabled },
+  startListening, stopListening, ensureListening,
 }))
 
 // brief 原文是 '../../../../api'（web/api，不存在）—— 相对本测试文件应为三层到 src/api，
@@ -22,31 +26,106 @@ vi.mock('../../../api', async (importOriginal) => {
   return { ...orig, api: { ...orig.api, callStart: vi.fn(async () => ({ ok: true, open_window_s: 8 })), callStop: vi.fn(async () => ({ ok: true })) } }
 })
 
-import { callActive, callConfig, callWindowUntil } from '../store'
+import { callActive, callConfig, callWindowUntil, state, wakeEnabled } from '../store'
 
-describe('通话 FSM', () => {
+/**
+ * 2026-10-11 状态图重定义：双击 = **语音电源**（关 ⇄ 静待），唤醒词 = 唤醒点
+ * （静待 → 通话聆听中）。没有两个模式 —— 电源开直接落静待，漏斗由
+ * enterCallFromWake 在唤醒时打开。
+ *
+ * 2026-10-11 state-diagram redefinition: double-click is the voice POWER (off ⇄ standby),
+ * the wake word is the WAKE POINT (standby → call listening). There are no two modes —
+ * power-on lands in standby, and the funnel opens via enterCallFromWake on wake.
+ */
+describe('语音电源开关（双击）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     callActive.value = false
     callWindowUntil.value = 0
     wakeEnabled.value = false
+    state.value = 'idle'
   })
 
-  it('进入通话：先停唤醒再建会话再启动监听', async () => {
-    const { toggleCall } = await import('../callMode')
-    wakeEnabled.value = true          // 唤醒正在听 → 必须先停（Review Focus #3）
-    await toggleCall()
-    expect(toggleWake).toHaveBeenCalled()
-    expect(callActive.value).toBe(true)
+  it('关闭态双击 → 电源开：取流并落静待（不开漏斗）', async () => {
+    const { togglePower } = await import('../callMode')
+    const { api } = await import('../../../api')
+    await togglePower()
     expect(startListening).toHaveBeenCalled()
+    expect(state.value).toBe('standby')          // 开机即唤醒前
+    expect(callActive.value).toBe(false)         // 不进通话漏斗
+    expect(vi.mocked(api.callStart)).not.toHaveBeenCalled()
   })
 
-  it('退出通话：清标志、停监听、关会话', async () => {
-    const { toggleCall } = await import('../callMode')
-    callActive.value = true
-    await toggleCall()
-    expect(callActive.value).toBe(false)
+  it('静待双击 → 电源关：停麦回关闭态（不动通话会话）', async () => {
+    const { togglePower } = await import('../callMode')
+    const { api } = await import('../../../api')
+    state.value = 'standby'
+    wakeEnabled.value = true
+    await togglePower()
     expect(stopListening).toHaveBeenCalled()
+    expect(state.value).toBe('idle')
+    expect(wakeEnabled.value).toBe(false)
+    expect(vi.mocked(api.callStop)).not.toHaveBeenCalled()
+  })
+
+  it('通话聆听中双击 → 电源关：先关通话会话再回关闭态', async () => {
+    const { togglePower } = await import('../callMode')
+    const { api } = await import('../../../api')
+    callActive.value = true
+    state.value = 'listening'
+    await togglePower()
+    expect(callActive.value).toBe(false)
+    expect(vi.mocked(api.callStop)).toHaveBeenCalled()
+    expect(state.value).toBe('idle')
+    expect(wakeEnabled.value).toBe(false)
+  })
+})
+
+describe('静待 → 通话聆听中（enterCallFromWake）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    callActive.value = false
+    wakeEnabled.value = false
+    state.value = 'standby'
+  })
+
+  it('成功：开漏斗会话、落 listening（文案=通话聆听中）、唤醒生命周期恢复', async () => {
+    const { enterCallFromWake } = await import('../callMode')
+    const ok = await enterCallFromWake()
+    expect(ok).toBe(true)
+    expect(callActive.value).toBe(true)
+    expect(state.value).toBe('listening')
+    expect(wakeEnabled.value).toBe(true)
+    expect(ensureListening).toHaveBeenCalled()   // 兜底拉麦（幂等）
+  })
+
+  it('后端未就绪 → 返回 false（调用方回退指令窗，不丢唤醒）', async () => {
+    const { api } = await import('../../../api')
+    vi.mocked(api.callStart).mockResolvedValueOnce({ ok: false } as any)
+    const { enterCallFromWake } = await import('../callMode')
+    const ok = await enterCallFromWake()
+    expect(ok).toBe(false)
+    expect(callActive.value).toBe(false)
+    expect(state.value).toBe('standby')          // 原地不动
+  })
+
+  it('voice.call.enabled=false → 返回 false（漏斗未启用）', async () => {
+    const { enterCallFromWake } = await import('../callMode')
+    const prev = callConfig.enabled
+    callConfig.enabled = false
+    try {
+      expect(await enterCallFromWake()).toBe(false)
+    } finally {
+      callConfig.enabled = prev
+    }
+  })
+})
+
+describe('通话辅助状态', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    callActive.value = false
+    callWindowUntil.value = 0
   })
 
   it('开放窗口计时', async () => {
@@ -67,55 +146,10 @@ describe('通话 FSM', () => {
   })
 
   it('播报结束开窗（markTurnEnded 后 inOpenWindow=true）', async () => {
-    // 归属：Task 10 把 markTurnEnded/inOpenWindow 放在 store（避免 wakeOrchestrator↔callMode 循环导入）。
     const { markTurnEnded, inOpenWindow, callWindowUntil } = await import('../store')
     callWindowUntil.value = 0
     expect(inOpenWindow()).toBe(false)
     markTurnEnded()
     expect(inOpenWindow()).toBe(true)
-  })
-
-  // ── 终审 Important #2：退出通话必须回收 wakeEnabled（否则唤醒被静默武装）──
-  // 机制：入口 startListening 把 wakeEnabled 置 true，退出分支不恢复 → 下一次 TTS 播报结束
-  // （wakeOrchestrator.ts:910）`if (wakeEnabled.value) void ensureListening()` 复活录音器。
-  // Final-review Important #2: exiting a call must restore wakeEnabled, or wake is silently armed.
-
-  it('唤醒关的用户：进入→退出后 wakeEnabled 仍为 false（不被通话监听置位泄漏）', async () => {
-    const { toggleCall } = await import('../callMode')
-    wakeEnabled.value = false
-    await toggleCall()   // 进入：startListening 桩按真实语义把 wakeEnabled 置 true
-    expect(wakeEnabled.value).toBe(true)
-    await toggleCall()   // 退出
-    expect(wakeEnabled.value).toBe(false)   // 退出必须回收进入前的开关
-  })
-
-  it('唤醒开的用户：通话往返后 wakeEnabled 仍为 true', async () => {
-    const { toggleCall } = await import('../callMode')
-    wakeEnabled.value = true
-    await toggleCall()
-    await toggleCall()
-    expect(wakeEnabled.value).toBe(true)
-  })
-
-  // ── 退出通话的落点（2026-10-11 现场复盘：旧版无条件落 idle + 麦关死 → 唤醒词永久喊不应）──
-
-  it('唤醒开的用户：退出通话落 listening 并重新拉麦（唤醒点立即可用）', async () => {
-    const { toggleCall } = await import('../callMode')
-    const { state } = await import('../store')
-    wakeEnabled.value = true
-    await toggleCall()   // 进入
-    await toggleCall()   // 退出
-    expect(state.value).toBe('listening')
-    expect(ensureListening).toHaveBeenCalled()
-  })
-
-  it('唤醒关的用户：退出通话落 idle、不拉麦', async () => {
-    const { toggleCall } = await import('../callMode')
-    const { state } = await import('../store')
-    wakeEnabled.value = false
-    await toggleCall()   // 进入
-    await toggleCall()   // 退出
-    expect(state.value).toBe('idle')
-    expect(ensureListening).not.toHaveBeenCalled()
   })
 })

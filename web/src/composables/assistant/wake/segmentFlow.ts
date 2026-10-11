@@ -6,7 +6,7 @@ import type { WakeProvider } from './types'
 import {
   st, abandonPendingQuestion, beginTranscribe, endTranscribe, onUploadFailed,
   breakerAllows, playBeep, armCommandTimer, clearCommandTimer, armFollowupTimer,
-  clearFollowupTimer, inEchoGuard,
+  clearFollowupTimer, inEchoGuard, tryEnterCallFromStandby,
 } from './orchState'
 // 拆分自 wakeOrchestrator.ts（重构：纯移动 + 状态收敛到 orchState.st，无行为变化）。
 // Split from wakeOrchestrator.ts (pure move; mutable state consolidated into orchState.st).
@@ -293,7 +293,11 @@ async function processSegment(blob: Blob) {
     if (!check.hit) return   // 未命中：丢弃，不出本机、零成本
     st.failures = 0
 
-    // ── 命中：立即动作 ──
+    // ── 命中：静待 → 通话聆听中（用户状态图）；其余态立即进指令窗 ──
+    if (await tryEnterCallFromStandby()) {
+      void extractTrailingCommand(blob, mode)   // 带指令的一句话照常后台提取执行
+      return
+    }
     st.awaitingCommand = true
     statusLine.value = '已唤醒，请说指令…'
     if (state.value === 'listening' || state.value === 'standby') state.value = 'recording'
@@ -361,6 +365,10 @@ async function fullDetect(chain: ReturnType<typeof ensureChain>, blob: Blob) {
     st.deps.sendText(result.command)
     return
   }
+
+  // 静待中的裸唤醒 → 通话聆听中；失败回退指令窗。
+  // Bare wake in standby → call listening; failure falls back to the command window.
+  if (await tryEnterCallFromStandby()) return
 
   st.awaitingCommand = true
   statusLine.value = '已唤醒，请说指令…'

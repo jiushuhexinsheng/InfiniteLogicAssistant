@@ -38,6 +38,12 @@ interface OrchestratorDeps {
   /** 停止播报（barge-in 命中时掐断 TTS；由 useTts 注入，缺省无操作）。
    *  Stop playback (cut the TTS on a barge-in hit; injected by useTts, no-op if absent). */
   stopSpeak?: (reason?: 'ui' | 'new_turn' | 'barge_in') => void
+  /** 静待中裸唤醒 → 进入通话聆听（useWakeWord 注入 callMode.enterCallFromWake；
+   *  返回 false/缺省时调用方回退指令窗语义，不丢唤醒）。
+   *  Bare wake in standby → enter call listening (useWakeWord injects
+   *  callMode.enterCallFromWake; a false/absent return falls back to the command-window
+   *  semantics so the wake is never lost). */
+  enterCall?(): Promise<boolean>
 }
 
 /** 编排器全部模块级可变状态（单一实例，各拆分模块共享同一引用）。
@@ -214,6 +220,29 @@ export function resetIdleDeadline() {
   if (!total) return
   st.idleDeadline = Date.now() + total
   if (state.value === 'listening') armIdleTimer()
+}
+
+/**
+ * 静待中的裸唤醒 → 通话聆听中（用户状态图：唤醒后进入持续聆听，漏斗接管判定）。
+ * 成功：提示音 + 进通话（state/listening+callActive），返回 true —— 调用方直接 return；
+ * 非静待态 / 未注入 enterCall / 启动失败：返回 false，调用方回退指令窗语义（不丢唤醒）。
+ *
+ * Bare wake in standby → call listening (user state diagram: after the wake word the
+ * chain enters continuous listening, the funnel takes over judging). Success: chime +
+ * call entered (listening + callActive), returns true — the caller returns right away;
+ * not-standby / enterCall absent / startup failure: returns false and the caller falls
+ * back to the command-window semantics (the wake is never lost).
+ */
+export async function tryEnterCallFromStandby(): Promise<boolean> {
+  if (state.value !== 'standby') return false
+  if (!st.deps?.enterCall) return false
+  try {
+    if (!(await st.deps.enterCall())) return false
+    playBeep()
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
