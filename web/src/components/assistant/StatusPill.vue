@@ -11,8 +11,9 @@
   >
     <!-- 尖角：指向球心，让胶囊与球读作一个整体。Tail: points at the ball so the two read as one unit. -->
     <span class="sp-tail"></span>
-    <!-- 声波条：只有麦克风在收音的状态才出现。Sound bars: only while the mic is live. -->
-    <span v-if="showEq" class="sp-eq"><i></i><i></i><i></i><i></i></span>
+    <!-- 声波条：只有麦克风在收音的状态才出现；高度随真实麦克风电平起伏（micLevel 单例）。
+         Sound bars: only while the mic is live; heights follow the real mic level (micLevel singleton). -->
+    <span v-if="showEq" class="sp-eq"><i v-for="(h, i) in eqHeights" :key="i" :style="{ height: h + 'px' }"></i></span>
     <!-- 状态圆点与图标：颜色取自状态视觉。Status dot and icon, coloured by the state visual. -->
     <span class="sp-dot"></span>
     <Icon :name="visual.icon" :size="13" class="sp-ico" />
@@ -27,6 +28,7 @@
  */
 import { computed } from 'vue'
 import Icon from '../Icon.vue'
+import { micLevel, eqBarHeights } from '../../composables/assistant/micLevel'
 import { resolveStateLabel } from '../../composables/useAssistantVisuals'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
 import type { AsstState } from '../../composables/useAssistant'
@@ -70,6 +72,11 @@ const label = computed(() => {
 
 /** 是否显示声波条。Whether the sound bars are shown. */
 const showEq = computed(() => EQ_STATES.includes(props.state))
+
+/** 4 根声波条的实时高度（随麦克风电平；静音回落 4px 基线，不再走 CSS 定时动画）。
+ *  Live heights of the four bars (follow the mic level; silence rests on the 4px
+ *  baseline — the CSS keyframe timer animation is gone). */
+const eqHeights = computed(() => eqBarHeights(micLevel.value))
 
 /**
  * 把 #rgb / #rrggbb 转成带透明度的 rgba()，用于状态色描边与光晕。
@@ -164,16 +171,9 @@ const pillStyle = computed(() => ({
 }
 .sp-eq i {
   width: 3px;
-  height: 5px;
+  height: 4px;               /* 基线；实际高度由 :style 随 micLevel 覆盖。Baseline; :style overrides with micLevel. */
   border-radius: 1px;
   background: var(--sp-color);
-  animation: sp-eq 1s ease-in-out infinite;
-}
-.sp-eq i:nth-child(2) { animation-delay: 0.15s; }
-.sp-eq i:nth-child(3) { animation-delay: 0.3s; }
-.sp-eq i:nth-child(4) { animation-delay: 0.45s; }
-@keyframes sp-eq {
-  0%, 100% { height: 4px; }
-  50% { height: 14px; }
+  transition: height 90ms linear;
 }
 </style>

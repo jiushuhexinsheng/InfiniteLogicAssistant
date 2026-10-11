@@ -103,4 +103,29 @@ describe('StatusPill 外观与侧向', () => {
     expect(mountPill('listening').find('.sp-eq').exists()).toBe(true)
     expect(mountPill('idle').find('.sp-eq').exists()).toBe(false)
   })
+
+  /**
+   * 声波条不再走 CSS 定时动画 —— 高度随 micLevel 单例实时变化（用户需求：
+   * 「根据声音收集去动」）。静音回落 4px 基线，说话时拉高。
+   * The bars no longer run a CSS timer animation — heights follow the micLevel
+   * singleton in real time (the "move with the captured sound" requirement). Silence
+   * rests on the 4px baseline; speech stretches them.
+   */
+  it('声波条高度随麦克风电平起伏', async () => {
+    const { micLevel, resetMicLevel } = await import('../../../composables/assistant/micLevel')
+    const heightsOf = (w: ReturnType<typeof mountPill>) =>
+      w.find('.sp-eq').findAll('i').map(b => (b.element as HTMLElement).style.height)
+    try {
+      resetMicLevel()
+      const quiet = mountPill('listening')
+      expect(heightsOf(quiet)).toEqual(['4px', '4px', '4px', '4px'])
+      quiet.unmount()
+
+      micLevel.value = 1
+      const loud = mountPill('listening')
+      expect(heightsOf(loud)).toEqual(['14px', '10px', '13px', '9px'])
+    } finally {
+      resetMicLevel()
+    }
+  })
 })

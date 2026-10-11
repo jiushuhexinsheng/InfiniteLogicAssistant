@@ -23,6 +23,9 @@ export interface SegmentOptions {
   maxMs: number
   /** 一段就绪时回调（已过滤掉过短的段）。Called with a finished segment, short ones already filtered. */
   onSegment: (blob: Blob) => void
+  /** 每 tick 上报原始 RMS（声波条随音量动；静音帧也上报以便电平回落）。Optional:
+   *  raw RMS each tick (drives the sound bars; silence frames report too so the level falls). */
+  onLevel?: (rms: number) => void
 }
 
 /** 分段录音句柄。The segment recorder handle. */
@@ -152,6 +155,7 @@ export function createSegmentRecorder(stream: MediaStream, opts: SegmentOptions)
     let sum = 0
     for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v }
     const rms = Math.sqrt(sum / buf.length)
+    opts.onLevel?.(rms)
 
     if (rms >= opts.speechThreshold) {
       silenceCount = 0
@@ -182,6 +186,7 @@ export function createSegmentRecorder(stream: MediaStream, opts: SegmentOptions)
     },
     stop() {
       if (timer) { clearInterval(timer); timer = null }
+      opts.onLevel?.(0)                     // 停听即归零，声波条回落。Zero on stop so the bars rest.
       // 先屏蔽再收尾：stop() 冲出的在途段不上传（用户已经关掉唤醒了）。复位照旧发生。
       // Suppress before settling: an in-flight segment is never uploaded after stop() (wake is
       // off). The bookkeeping is still reset.

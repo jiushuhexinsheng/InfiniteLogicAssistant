@@ -184,3 +184,21 @@ it('endSegment 撞上无 live recorder 后，后续语音仍能切出段', async
   expect(got.length).toBe(1)
   rec.stop()
 })
+
+
+/** onLevel：每 tick 上报原始 RMS，stop 时归零（驱动状态胶囊声波条）。 */
+it('onLevel 每 tick 上报 RMS，stop 归零', async () => {
+  const levels: number[] = []
+  FakeAnalyser.timeline = [0.3, 0.3, 0.3]
+  const rec = createSegmentRecorder(stream, {
+    ...OPTS, onSegment: () => {}, onLevel: (rms: number) => levels.push(rms),
+  })
+  rec.start()
+  await vi.advanceTimersByTimeAsync(300)
+  expect(levels.length).toBeGreaterThanOrEqual(3)
+  // 字节域量化：128+round(0.3*127)=166 → (166-128)/128=0.296875（不是精确 0.3）。
+  // Byte-domain quantization: 128+round(0.3*127)=166 → (166-128)/128=0.296875, not exactly 0.3.
+  expect(levels[0]).toBeCloseTo(0.3, 2)
+  rec.stop()
+  expect(levels[levels.length - 1]).toBe(0)
+})

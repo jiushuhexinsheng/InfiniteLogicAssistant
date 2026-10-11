@@ -8,9 +8,10 @@
       :class="{ active: isMiniActive }"
       @click="emit('open')"
     >
-      <!-- 音频均衡器动画。Audio equalizer animation. -->
+      <!-- 均衡器：高度随真实麦克风电平起伏（micLevel 单例），活跃时换渐变色。
+           Equalizer: heights follow the real mic level (micLevel singleton); active states use the gradient. -->
       <div class="mini-eq">
-        <span v-for="n in 4" :key="n"></span>
+        <span v-for="(h, i) in eqHeights" :key="i" :style="{ height: h + 'px' }"></span>
       </div>
       <div class="mini-meta">
         <!-- 角色名（你说/衍衡/系统）。Role name (You/YanHeng/System). -->
@@ -29,6 +30,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { UiIconButton, UiIcon } from '../ui'
+import { micLevel, eqBarHeights } from '../../composables/assistant/micLevel'
 import type { AsstState, ChatMessage } from '../../composables/useAssistant'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
 
@@ -67,6 +69,11 @@ const ACTIVE_STATES: AsstState[] = ['listening', 'recording', 'awaiting_answer',
  * Compute whether current state is active (controls EQ animation).
  */
 const isMiniActive = computed(() => ACTIVE_STATES.includes(props.state))
+
+/** 4 根均衡条的实时高度（随麦克风电平；静音回落基线，替代 CSS 定时动画）。
+ *  Live heights of the four EQ bars (follow the mic level; silence rests on the
+ *  baseline — replaces the CSS keyframe timer animation). */
+const eqHeights = computed(() => eqBarHeights(micLevel.value))
 
 /** 获取最后一条消息。Get the last message. */
 const lastMsg = computed<ChatMessage | null>(() => props.messages[props.messages.length - 1] || null)
@@ -144,22 +151,14 @@ const showMini = computed(() =>
 }
 .mini-eq span {
   width: 3px;
-  height: 5px;
+  height: 4px;               /* 基线；实际高度由 :style 随 micLevel 覆盖。Baseline; :style overrides with micLevel. */
   border-radius: 1px;
   background: linear-gradient(180deg, var(--brand-c1), var(--brand-c3));
+  transition: height 90ms linear;
 }
-/* 活跃状态时 EQ 播放动画。EQ animation when active. */
+/* 活跃状态换渐变色（高度已随音量，不再有定时动画）。Gradient when active (heights already follow volume; no timer animation). */
 .mini-player.active .mini-eq span {
   background: var(--brand-grad);
-  animation: eq 1s ease-in-out infinite;
-}
-.mini-eq span:nth-child(1) { animation-delay: 0s; }
-.mini-eq span:nth-child(2) { animation-delay: .15s; }
-.mini-eq span:nth-child(3) { animation-delay: .3s; }
-.mini-eq span:nth-child(4) { animation-delay: .45s; }
-@keyframes eq {
-  0%, 100% { height: 4px; }
-  50% { height: 14px; }
 }
 
 /* 元信息区域。Meta info area. */

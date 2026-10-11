@@ -4,6 +4,7 @@ import { getWebSpeechProvider, peekWebSpeechProvider, disposeAll } from './wakeC
 import { handleSegment } from './segmentFlow'
 import { handleLocalResult } from './localResult'
 import { st, clearWaitTimers, resetFailures, stopBargeIn } from './orchState'
+import { reportMicLevel, resetMicLevel } from '../micLevel'
 // 拆分自 wakeOrchestrator.ts（重构：纯移动 + 状态收敛到 orchState.st，无行为变化）。
 // Split from wakeOrchestrator.ts (pure move; mutable state consolidated into orchState.st).
 // ── 分段录音器 ──
@@ -18,6 +19,7 @@ function startSegmenter() {
     onSegment: (b) => {
       void handleSegment(b).catch((e) => console.warn('[wake] handleSegment error:', e))
     },
+    onLevel: reportMicLevel,   // 声波条随真实音量动。Sound bars follow the real volume.
   })
   st.segmenter.start()
 }
@@ -41,6 +43,7 @@ export function stopListening() {
     try { st.micStream.getTracks().forEach((t) => t.stop()) } catch { /* ignore */ }
     st.micStream = null
   }
+  resetMicLevel()   // 兜底归零（段录音器 stop 已归零；webspeech/异常路径无录音器）。Belt-and-braces zero.
 }
 
 // ── 取流 ──
