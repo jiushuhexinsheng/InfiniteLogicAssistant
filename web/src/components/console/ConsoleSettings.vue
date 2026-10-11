@@ -174,27 +174,15 @@ onMounted(() => { s.load() })
 .cs-menu-dot.on { background: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, .6); }
 .cs-menu-extra { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-soft); }
 
-/* 唯一滚动区：上缘在标题区之下，右缘即滚动轴所在。 */
+/* 唯一滚动区：上缘在标题区之下，右缘即滚动轴所在。
+   卡头**不吸顶**（2026-10-11 用户裁定：上半部分不要浮动）——随卡片正常滚动。
+   The single scroll region: its top edge sits under the fixed title area, the right
+   edge hosts the scrollbar. Card heads are **not sticky** (2026-10-11 user ruling:
+   the upper part must not float) — they scroll with their cards. */
 .cs-main {
   flex: 1; min-width: 0; min-height: 0; overflow-y: auto;
   display: flex; flex-direction: column; gap: 14px;
   padding-right: 2px;
-}
-
-/* 卡头（含保存/测试连接）吸顶：滚动只发生在卡头以下的内容，卡头始终可见。
-   吸顶时卡自身的 16px 上内边距已滚出视口，无需负 margin 反抵（会破坏静止态外观）。
-   Card heads (保存/测试连接) stick to the top: scrolling only happens below them,
-   so the save row stays visible at all times. Once stuck, the card's own 16px top
-   padding has scrolled out of view — no negative-margin counteraction needed (it
-   would distort the at-rest look). */
-.cs-main :deep(.cs-card-head) {
-  position: sticky; top: 0; z-index: 5;
-  background: var(--surface-card);
-  backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
-  /* 吸顶时与下方滚过的内容分隔（常态也无违和，避免位移跳变）。
-     Separates the stuck head from content scrolling beneath (harmless at rest, no jump). */
-  box-shadow: 0 1px 0 var(--hairline);
 }
 
 .cs-conn { display: flex; gap: 8px; flex-wrap: wrap; }
