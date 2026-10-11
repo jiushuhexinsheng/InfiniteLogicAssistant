@@ -18,7 +18,10 @@
         >
           <UiIcon :name="m.icon" :size="14" />
           <span>{{ m.label }}</span>
-          <i class="cs-menu-dot" :class="{ on: s.menuDot(m.id) }" title="绿点 = 就绪（密钥已设 / 测试通过 / 唤醒启用）"></i>
+          <!-- 绿点只出现在有就绪语义的模块（LLM/ASR/TTS/语音）；权限与高级设置不渲染点。
+               The dot only renders for modules with a readiness semantic (LLM/ASR/TTS/
+               Voice); Permissions and Advanced get no dot at all. -->
+          <i v-if="DOT_MENU_IDS.includes(m.id)" class="cs-menu-dot" :class="{ on: s.menuDot(m.id) }" title="绿点 = 就绪（密钥已设 / 测试通过 / 唤醒启用）"></i>
         </button>
         <div class="cs-menu-extra">
           <UiButton variant="secondary" size="sm" :disabled="s.detecting.value" @click="s.detectAll" block>
@@ -89,6 +92,11 @@ import { UiButton, UiChip, UiIcon } from '../ui'
 
 /** 设置页单例状态与操作（保留对象引用以维持响应式）。Settings singleton (kept as an object to preserve reactivity). */
 const s = useSettings()
+
+/** 渲染绿点的菜单模块（权限/高级设置无就绪语义，不渲染点）。
+ *  Menu modules that render the dot (Permissions/Advanced have no readiness semantic,
+ *  so they get no dot). */
+const DOT_MENU_IDS = ['llm', 'asr', 'tts', 'voice']
 
 /** TTS 引擎选择（与卡1 同源，决定卡2 渲染哪个分支）。Engine choice (same source as card 1; picks card 2's branch). */
 const { engine } = useTtsEngine()
