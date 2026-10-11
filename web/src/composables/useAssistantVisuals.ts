@@ -36,6 +36,7 @@ export const STATE_VISUALS: Record<AsstState, StateVisual> = {
   // standby 表项已随「取消限时回答」删除（回答永不限时，不再有待机态）。
   // The standby entry went away with the unlimited answer window (no timeouts → no standby).
   followup:     { icon: 'chat',       label: hint => callActive.value ? '可直接开口' : `可直接开口，或说${hint}`, color: '#34d399', fx: 'fx-listening', grad: 'brand' },
+  standby:      { icon: 'moon',       label: hint => `静待中…说${hint}唤醒`,              color: '#9ca3af', fx: 'fx-idle',      grad: 'brand' },
   recording:    { icon: 'mic',        label: '录音中…',                   color: '#f87171', fx: 'fx-recording',     grad: 'rainbow' },
   transcribing: { icon: 'sparkles',   label: '识别中…',                   color: '#c084fc', fx: 'fx-transcribing',  grad: 'brand' },
   thinking:     { icon: 'brain',      label: '思考中…',                   color: '#fb923c', fx: 'fx-thinking',      grad: 'brand' },

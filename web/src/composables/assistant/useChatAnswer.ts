@@ -4,6 +4,7 @@ import { messages, pendingQuestion, currentSessionId, addBlocks, addMessage } fr
 import type { PendingQuestion } from './store'
 import { stopSpeak } from './useTts'
 import { attachAnswer, makeBlock } from '../../blocks/normalize'
+import { resetIdleDeadline } from './wake/orchState'
 
 /** 回答澄清/确认问题（解除后端 ask() 阻塞）。
  *  Answer clarification/confirmation question (unblock backend ask() call).
@@ -43,6 +44,9 @@ export async function sendAnswer(
     : t
   try {
     await api.answer(currentSessionId.value, t, choice, { qid, source })
+    // 实质输入（作答也是能回答的信息）→ 聆听空闲倒计时重新起算。
+    // Substantive input (an answer is answerable information too) restarts the idle clock.
+    resetIdleDeadline()
     // 仅在投递成功后写记录，避免记录与后端状态不一致。
     // Record only after a successful delivery, so the record cannot disagree with the backend.
     // 配对问题在某条消息里 → 答案贴进该卡片（问题块紧后，修「问题和回答分离」）；

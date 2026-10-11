@@ -51,6 +51,8 @@ export const st: {
   commandTimer: ReturnType<typeof setTimeout> | null
   resetTimer: ReturnType<typeof setTimeout> | null
   followupTimer: ReturnType<typeof setTimeout> | null
+  idleTimer: ReturnType<typeof setTimeout> | null
+  idleDeadline: number
   echoGuardUntil: number
   turnToken: number
   currentChain: WakeProvider[]
@@ -69,6 +71,8 @@ export const st: {
   commandTimer: null,
   resetTimer: null,
   followupTimer: null,
+  idleTimer: null,
+  idleDeadline: 0,
   echoGuardUntil: 0,
   turnToken: 0,
   currentChain: [],
@@ -103,7 +107,7 @@ export const DONE_RESET_MS = 3000
 
 // ── 定时器管理 ──
 
-const TRANSCRIBABLE: AsstState[] = ['listening', 'awaiting_answer', 'recording', 'followup']
+const TRANSCRIBABLE: AsstState[] = ['listening', 'awaiting_answer', 'recording', 'followup', 'standby']
 
 // ── 续聊窗口（docs/designs/03-A）──
 
@@ -136,6 +140,56 @@ export function clearCommandTimer() {
 
 export function clearWaitTimers() {
   clearCommandTimer()
+}
+
+// ── 聆听空闲超时（vad.listen_idle_s）→ 静待 ──
+// 口径：只有「实质输入」重置截止时间（runTurn 入口 / sendAnswer 成功 / 回合 done），
+// 裸唤醒往返指令窗、空转写、漏斗 miss 都不续命。定时器只在 listening 期间挂表：
+// 中间态（thinking 等）到来时被 watches 的统一清理摘掉，回到 listening 按**剩余**
+// 时间重挂 —— 长回合不会把计时"藏起来"。
+// Listening idle timeout (vad.listen_idle_s) → standby. Only substantive input
+// extends the deadline (runTurn entry / sendAnswer success / turn done); bare-wake
+// excursions, empty transcripts and funnel misses never renew it. The timer only
+// runs while listening: intermediate states drop it via the unified cleanup in
+// watches, and re-entering listening re-schedules the **remaining** time — a long
+// turn cannot hide the clock.
+
+/** 聆听空闲时长（毫秒；0=永不超时）。Listening idle timeout in ms (0 = never). */
+export function listenIdleMs(): number {
+  const s = (vadConfig as { listen_idle_s?: number }).listen_idle_s
+  return s && s > 0 ? s * 1000 : 0
+}
+
+export function clearIdleTimer() {
+  if (st.idleTimer) { clearTimeout(st.idleTimer); st.idleTimer = null }
+}
+
+/** 按剩余时间武装空闲定时器（listen_idle_s=0 或截止已过且不在聆听时不动）。
+ *  Arm the idle timer with the remaining time (no-op when listen_idle_s=0). */
+export function armIdleTimer() {
+  clearIdleTimer()
+  const total = listenIdleMs()
+  if (!total) return
+  if (!st.idleDeadline) st.idleDeadline = Date.now() + total
+  const remain = st.idleDeadline - Date.now()
+  const fire = () => {
+    st.idleTimer = null
+    if (state.value !== 'listening') return   // 陈旧触发（状态已走）。Stale fire.
+    if (Date.now() < st.idleDeadline) { armIdleTimer(); return }   // 被续期过。Extended meanwhile.
+    state.value = 'standby'
+    statusLine.value = ''
+    console.log('[wake] 聆听空闲超时，转入静待（本地 KWS 侦听保持）')
+  }
+  st.idleTimer = setTimeout(fire, Math.max(0, remain))
+}
+
+/** 实质输入重置截止时间（当前在聆听则按新截止重挂表）。
+ *  Substantive input resets the deadline (re-scheduling the timer when listening now). */
+export function resetIdleDeadline() {
+  const total = listenIdleMs()
+  if (!total) return
+  st.idleDeadline = Date.now() + total
+  if (state.value === 'listening') armIdleTimer()
 }
 
 /**

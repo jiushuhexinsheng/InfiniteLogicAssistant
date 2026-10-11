@@ -296,7 +296,7 @@ async function processSegment(blob: Blob) {
     // ── 命中：立即动作 ──
     st.awaitingCommand = true
     statusLine.value = '已唤醒，请说指令…'
-    if (state.value === 'listening') state.value = 'recording'
+    if (state.value === 'listening' || state.value === 'standby') state.value = 'recording'
     playBeep()
     armCommandTimer()
     void extractTrailingCommand(blob, mode)   // 不 await：后台提取尾随指令
@@ -364,7 +364,7 @@ async function fullDetect(chain: ReturnType<typeof ensureChain>, blob: Blob) {
 
   st.awaitingCommand = true
   statusLine.value = '已唤醒，请说指令…'
-  if (state.value === 'listening') state.value = 'recording'
+  if (state.value === 'listening' || state.value === 'standby') state.value = 'recording'
   playBeep()
   armCommandTimer()
 }

@@ -91,7 +91,7 @@ export function handleLocalResult(text: string) {
 
   st.awaitingCommand = true
   statusLine.value = '已唤醒，请说指令…'
-  if (state.value === 'listening') state.value = 'recording'
+  if (state.value === 'listening' || state.value === 'standby') state.value = 'recording'
   playBeep()
   armCommandTimer()
 }

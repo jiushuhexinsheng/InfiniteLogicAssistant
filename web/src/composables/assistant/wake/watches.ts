@@ -2,7 +2,10 @@ import { watch } from 'vue'
 import { nextState } from '../wakeFsm'
 import { state, statusLine, wakeEnabled, pendingQuestion, callActive, markTurnEnded, callBargeInEnabled, vadConfig } from '../store'
 import { startBargeInMonitor, BARGE_IN_DURATION_MS } from '../bargeIn'
-import { st, armFollowupTimer, clearFollowupTimer, followupWindowMs, stopBargeIn, bargeInEnabled, DONE_RESET_MS, ECHO_GUARD_MS } from './orchState'
+import {
+  st, armFollowupTimer, clearFollowupTimer, followupWindowMs, stopBargeIn, bargeInEnabled,
+  DONE_RESET_MS, ECHO_GUARD_MS, clearIdleTimer, armIdleTimer, resetIdleDeadline,
+} from './orchState'
 import { ensureListening, stopListening } from './micControl'
 // 拆分自 wakeOrchestrator.ts（重构：纯移动 + 状态收敛到 orchState.st，无行为变化）。
 // Split from wakeOrchestrator.ts (pure move; mutable state consolidated into orchState.st).
@@ -65,6 +68,18 @@ export function registerWatches() {
   watch(state, (s) => {
     if (st.resetTimer) { clearTimeout(st.resetTimer); st.resetTimer = null }
     clearFollowupTimer()
+    // 聆听空闲倒计时随状态统一收放：进聆听按**剩余**时间重挂；其余状态一律摘表
+    // （实质输入的续期走 resetIdleDeadline，见 useChat/useChatAnswer）。
+    // The listening-idle countdown follows the unified state cleanup: re-entering
+    // listening re-schedules the **remaining** time; every other state drops it
+    // (substantive input extends the deadline via resetIdleDeadline in useChat /
+    // useChatAnswer).
+    clearIdleTimer()
+    if (s === 'listening') {
+      armIdleTimer()
+      return
+    }
+    if (s === 'done' || s === 'error') resetIdleDeadline()   // 回合完成 → 重新起算 3 分钟
     // 续聊窗口态：武装到期计时（到点回聆听）。
     // Follow-up state: arm the expiry timer (→ listening).
     if (s === 'followup') {

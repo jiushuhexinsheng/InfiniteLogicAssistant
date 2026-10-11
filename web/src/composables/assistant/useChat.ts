@@ -10,6 +10,7 @@ import type { Block } from '../../blocks/types'
 import type { ChatMessage } from './store'
 import { CANCEL_RE, enqueue, clearOutbox, flushOutbox } from './useChatOutbox'
 import { sendAnswer } from './useChatAnswer'
+import { resetIdleDeadline } from './wake/orchState'
 
 // ─── 导出门面：outbox / 分叉编辑 / 工具 / 作答拆出为同目录子模块，原导入路径与
 //      导出面不变（纯移动）。runTurn/sendText/abortChat/abandonQuestion 留本主体。
@@ -70,6 +71,7 @@ let runGen = 0
 export async function runTurn() {
   const last = messages.value[messages.value.length - 1]
   if (!last || last.role !== 'user') return  // 只对用户话语启动一轮。Only start a turn for user utterances.
+  resetIdleDeadline()   // 实质输入 → 聆听空闲倒计时重新起算。Substantive input restarts the idle clock.
   const gen = ++runGen   // 认领代际：此后所有回调先过 alive() 再动状态。Claim the generation.
   const alive = () => gen === runGen
   const text = last.text

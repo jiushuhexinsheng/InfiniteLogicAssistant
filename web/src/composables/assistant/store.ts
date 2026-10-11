@@ -35,6 +35,12 @@ export type AsstState =
    *  segments inside it are taken as fresh instructions (no wake word needed); on
    *  expiry it returns to listening. Disabled by followup_window_ms=0. */
   | 'followup'
+  /** 静待（聆听空闲超时 vad.listen_idle_s 到期）：麦克风保持、本地 KWS 闸门照跑
+   *  （未命中音频不出本机），喊唤醒词随时回聆听；与 idle（唤醒关闭、麦释放）不同。
+   *  Standby (vad.listen_idle_s expired): the mic stays on and the local KWS gate keeps
+   *  running (audio never leaves the machine on a miss); the wake word re-enters
+   *  listening anytime — distinct from idle (wake off, mic released). */
+  | 'standby'
   | 'recording'
   | 'transcribing'
   | 'thinking'
