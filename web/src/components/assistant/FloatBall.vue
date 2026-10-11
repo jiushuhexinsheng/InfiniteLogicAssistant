@@ -146,26 +146,36 @@ function onTouchMove(e: TouchEvent) {
 function onTouchEnd() { /* 单击由 click 事件处理 */ }
 
 /**
- * 单击：立即触发（开合面板）。双击：由原生 dblclick 判定 —— 浏览器跟随系统双击速度
- * （Windows 默认约 500ms），不再自设时间窗。
+ * 单击/双击**分离触发**（2026-10-11 用户需求：双击和单击分开触发）：
+ * - 单击延迟 `DBLCLICK_DEFER_MS` 发射 —— 给原生 dblclick 机会先到；
+ * - 双击（原生 dblclick，判定仍交给浏览器/系统速度）先取消待发单击再发射 ——
+ *   双击只开通话、面板不再被两次单击开-关闪烁；单击只开面板、不夹带通话切换。
  *
- * ⚠️ 旧实现用 250ms 定时器仲裁单/双击：窗口低于系统默认双击速度，自然手速的双击被拆成
- * 两次单击，dblclick 永不发出 →「双击开通话」静默失败（2026-10-05 根因复盘：audit 中
- * 用户 22:23:30 手速快成功进通话，22:45 后自然双击全程零 call-start，报「无法触发」）。
- * 双击时两次单击也照常各触发一次 —— 调用方各自 toggle，净效果中性（面板开又关）。
+ * 历史：曾用自设 250ms 窗仲裁（低于系统双击速度 → 双击被判成两次单击、通话静默失败，
+ * 2026-10-05 根因复盘）；随后改为「单击立即发射、双击时两次单击照发靠 toggle 中性」——
+ * 净效果对了但面板会闪。现在是第三版：延迟单击 + dblclick 取消，语义彻底正交。
+ * 取舍：单击开面板有 ~300ms 可感知延迟，这是分离的固有代价（常量集中在此可调）。
  *
- * Single click fires immediately (panel toggle). The double click is the native dblclick —
- * the browser follows the OS double-click speed (~500ms on Windows) instead of a
- * hand-rolled window.
+ * Single and double click fire **separately** (2026-10-11 user requirement): a single
+ * click defers its emit by `DBLCLICK_DEFER_MS` to give the native dblclick a chance to
+ * arrive first; a double click cancels the pending single before emitting — double
+ * toggles the call only (no panel open-close flash), single toggles the panel only.
  *
- * WHY: the old 250ms timer arbitration sat below the OS default double-click speed, so a
- * natural-speed double click got split into two single clicks and dblclick never fired —
- * double-click-to-call failed silently (2026-10-05 root-cause review: the audit shows the
- * user entered a call at 22:23:30 on a fast click, then every natural double click from
- * 22:45 on produced zero call-starts — reported as "无法触发").
- * On a double click both single clicks still fire — each caller toggles, so the net effect
- * is neutral (panel opens then closes).
+ * History: hand-rolled 250ms arbitration (below the OS double-click speed → doubles
+ * split into singles, call entry silently failed — the 2026-10-05 root cause), then
+ * "emit singles immediately, doubles emit both and rely on toggle neutrality" (right
+ * net effect, but the panel flashed). This is v3: deferred single + dblclick cancel —
+ * orthogonal semantics. Trade-off: a single click opens the panel after a perceptible
+ * ~300ms; that is the cost of separation (the constant lives here for tuning).
  */
+const DBLCLICK_DEFER_MS = 300
+let pendingClick: ReturnType<typeof setTimeout> | null = null
+
+/** 取消待发的单击（双击到达 / 重复点击重排时）。Cancel the pending single click. */
+function cancelPendingClick() {
+  if (pendingClick) { clearTimeout(pendingClick); pendingClick = null }
+}
+
 function onClick() {
   if (dragging.value) {
     dragging.value = false
@@ -175,7 +185,14 @@ function onClick() {
   }
   prevClickDragged = clickDragged
   clickDragged = false
-  emit('click')
+  // 延迟发射：双击的两击间隔内 dblclick 会先到并取消这里（重复点击只重排一份待发单击）。
+  // Deferred emit: within a double-click's two presses the dblclick arrives first and
+  // cancels this (repeat presses just re-schedule the one pending single).
+  cancelPendingClick()
+  pendingClick = setTimeout(() => {
+    pendingClick = null
+    emit('click')
+  }, DBLCLICK_DEFER_MS)
 }
 
 /** 上一击 / 本击是否被拖拽吞掉（双击的任一击是拖拽 → 整次双击作废）。 */
@@ -183,24 +200,28 @@ let prevClickDragged = false
 let clickDragged = false
 
 /**
- * 原生双击：触发 dblclick（开通话/退出通话）。任一构成击被拖拽吞掉则作废 ——
- * 拖球手势不得顺带开通话。Native double click: emits dblclick (enter/exit call mode).
- * If either constituent click was swallowed as a drag, the double click is void — dragging
- * the ball must not also start a call.
+ * 原生双击：取消待发单击后触发 dblclick（开通话/退出通话）。任一构成击被拖拽吞掉则
+ * 作废 —— 拖球手势不得顺带开通话（作废时待发单击保留：干净的那一击按单击算）。
+ * Native double click: cancels the pending single, then emits dblclick (enter/exit call
+ * mode). If either constituent click was swallowed as a drag, the double click is void —
+ * dragging the ball must not also start a call (the pending single survives: a clean
+ * constituent counts as a single click).
  */
 function onDblClick() {
   const dragged = prevClickDragged || clickDragged
   prevClickDragged = false
   clickDragged = false
   if (dragged) return
+  cancelPendingClick()
   emit('dblclick')
 }
 
-/** 组件卸载时清理全局事件监听和进度定时器。Clean up global listeners and progress timer on unmount. */
+/** 组件卸载时清理全局事件监听、进度定时器与待发单击。Clean up listeners, progress timer and pending click on unmount. */
 onUnmounted(() => {
   document.removeEventListener('pointermove', onDragMove)
   document.removeEventListener('pointerup', onDragEnd)
   stopProgress()
+  cancelPendingClick()
 })
 
 // ── 录音进度环（recording 时按 VAD 上限推进 conic 进度）──
