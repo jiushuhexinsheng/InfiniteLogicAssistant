@@ -23,6 +23,10 @@ interface OrchestratorApi {
   callSegment?(blob: Blob, meta: { tabFocused: boolean; inOpenWindow: boolean }): Promise<{ ok?: boolean; hit?: boolean; text?: string; stage?: string; reason?: string }>
   /** 停止任务并弃掉待答问题（T1 stop 端点毒丸；可选以保持既有测试假件兼容）。Stop the task and abandon the pending question (the T1 stop-endpoint poison pill; optional so existing test doubles stay valid). */
   stopTask?(sid: string): Promise<unknown>
+  /** 退出通话会话（静止超时自动退通话用；useWakeWord 注入的完整 api 自带，测试桩可缺省）。
+   *  Exit the call session (used by the idle-timeout auto-exit; the full api injected by
+   *  useWakeWord carries it, test doubles may omit it). */
+  callStop?(): Promise<unknown>
 }
 
 /** 可注入依赖集合。Injectable dependencies. */
@@ -164,30 +168,41 @@ export function clearIdleTimer() {
   if (st.idleTimer) { clearTimeout(st.idleTimer); st.idleTimer = null }
 }
 
-/** 按剩余时间武装空闲定时器（listen_idle_s=0 或通话中不武装）。
- *  Arm the idle timer with the remaining time (no-op when listen_idle_s=0 or in a call). */
+/** 按剩余时间武装空闲定时器（listen_idle_s=0 关闭）。
+ *  Arm the idle timer with the remaining time (listen_idle_s=0 disables it).
+ *
+ *  语义（用户口径，无条件）：**静止 listen_idle_s 秒 → 静待** —— 通话中同样生效，
+ *  到点自动干净退出通话（漏斗停、麦保持）再落静待；截止时间已过/未设时刷新为
+ *  「此刻 + N」（上一个聆听会话的窗口已耗尽，新开会话给完整窗口，不瞬移静待）。
+ *  Semantics (user rule, unconditional): **silent for listen_idle_s → standby** — it
+ *  applies mid-call too: on expiry the call is cleanly exited (funnel stops, mic stays)
+ *  and standby is entered. A missing/past deadline refreshes to "now + N" (the previous
+ *  listening session's window is used up; a fresh session gets a full window instead of
+ *  an instant standby).
+ */
 export function armIdleTimer() {
   clearIdleTimer()
   const total = listenIdleMs()
   if (!total) return
-  // 通话模式有自己的会话生命周期（后端 no_session 自动过期），空闲超时不适用 ——
-  // 否则通话中的 listening 3 分钟后被误标「静待」，而段仍走漏斗、唤醒词永不判定
-  // （2026-10-11 现场：用户在通话里看到静待，喊唤醒词全被漏斗丢弃）。
-  // Call mode has its own session lifecycle (backend no_session auto-expiry); the idle
-  // timeout does not apply — otherwise a call's listening state gets mislabelled
-  // "standby" after 3 minutes while segments still ride the funnel and the wake word
-  // is never judged (2026-10-11 field case).
-  if (callActive.value) return
-  if (!st.idleDeadline) st.idleDeadline = Date.now() + total
+  if (!st.idleDeadline || st.idleDeadline <= Date.now()) st.idleDeadline = Date.now() + total
   const remain = st.idleDeadline - Date.now()
   const fire = () => {
     st.idleTimer = null
     if (state.value !== 'listening') return          // 陈旧触发（状态已走）。Stale fire.
-    if (callActive.value) return                     // 通话中不转静待。No standby mid-call.
     if (Date.now() < st.idleDeadline) { armIdleTimer(); return }   // 被续期过。Extended meanwhile.
+    if (callActive.value) {
+      // 静止超时无条件生效：干净退出通话（callActive 落 false → 段不再进漏斗、
+      // 唤醒判定接管；后端通话会话由 callStop 立即关闭，best-effort）。
+      // Unconditional idle timeout: exit the call cleanly (callActive=false → segments
+      // leave the funnel and wake judging takes over; the backend call session closes
+      // via callStop, best-effort).
+      callActive.value = false
+      wakeEnabled.value = true   // 静待的唤醒生命周期需要（done/播报回落都 gate 它）
+      void st.deps?.api.callStop?.()?.catch?.(() => { /* 会话服务端 5 分钟自过期兜底 */ })
+    }
     state.value = 'standby'
     statusLine.value = ''
-    console.log('[wake] 聆听空闲超时，转入静待（本地 KWS 侦听保持）')
+    console.log('[wake] 聆听静止超时，转入静待（本地 KWS 侦听保持）')
   }
   st.idleTimer = setTimeout(fire, Math.max(0, remain))
 }
@@ -198,7 +213,7 @@ export function resetIdleDeadline() {
   const total = listenIdleMs()
   if (!total) return
   st.idleDeadline = Date.now() + total
-  if (state.value === 'listening' && !callActive.value) armIdleTimer()
+  if (state.value === 'listening') armIdleTimer()
 }
 
 /**

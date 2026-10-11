@@ -89,23 +89,22 @@ describe('聆听空闲超时 → 静待', () => {
   })
 
   /**
-   * 通话中不跑空闲超时（2026-10-11 现场）：通话里的 listening 若被误转「静待」，
-   * 用户以为回到了唤醒语义，而段仍走漏斗、唤醒词永不判定。
-   * No idle timeout mid-call (2026-10-11 field case): mislabelling a call's listening
-   * state "standby" makes the user think wake semantics apply while segments still ride
-   * the funnel and the wake word is never judged.
+   * 静止超时**无条件**生效（用户口径：静止 3 分钟 → 静待，通话中也一样）：
+   * 到点自动干净退出通话（callActive=false、漏斗停、麦保持、唤醒生命周期恢复）再落静待。
+   * The idle timeout applies **unconditionally** (user rule: silent 3 min → standby, mid-call
+   * too): on expiry the call is exited cleanly (funnel stops, mic stays, the wake lifecycle
+   * is restored) before standby is entered.
    */
-  it('通话中不武装、不触发空闲超时', async () => {
+  it('通话中静止超时 → 自动退通话并进静待', async () => {
     const { store, orch } = await setup()
     store.callActive.value = true
-    try {
-      await setState(store.state, 'listening')
-      expect(orch.st.idleTimer).toBeNull()
-      vi.advanceTimersByTime(3_600_000)
-      expect(store.state.value).toBe('listening')   // 通话中保持聆听，不转静待
-    } finally {
-      store.callActive.value = false
-    }
+    store.wakeEnabled.value = false        // 进通话时互斥关掉的唤醒
+    await setState(store.state, 'listening')
+    expect(orch.st.idleTimer).not.toBeNull()          // 通话中照样武装
+    vi.advanceTimersByTime(10_000)
+    expect(store.state.value).toBe('standby')
+    expect(store.callActive.value).toBe(false)        // 通话已干净退出
+    expect(store.wakeEnabled.value).toBe(true)        // 唤醒生命周期恢复（可再唤醒）
   })
 })
 
