@@ -73,6 +73,9 @@ class VadConfig(BaseModel):
     # 续聊窗口（毫秒，0=关闭）：见 config/schema.py 同名字段（两处必须同步）。
     # Follow-up window (ms, 0 = off): see the same field in config/schema.py (keep in sync).
     followup_window_ms: int = 6000
+    # 聆听空闲超时（秒，0=永不）：见 config/schema/voice.py 同名字段（两处必须同步）。
+    # Listening idle timeout (s, 0 = never): same field in config/schema/voice.py (keep in sync).
+    listen_idle_s: int = 180
     # 打断播报（barge-in）开关：见 config/schema.py 同名字段（两处必须同步）。
     # Barge-in toggle: see the same field in config/schema.py (both must stay in sync).
     barge_in: bool = False

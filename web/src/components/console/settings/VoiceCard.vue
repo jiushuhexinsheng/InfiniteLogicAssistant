@@ -89,6 +89,10 @@
     <SettingsField v-if="s.editable.value" label="续聊窗口（ms，结束后免唤醒直接说话；0=关）">
       <UiInput type="number" min="0" :model-value="s.ed().vad.followup_window_ms" @update:model-value="v => (s.ed().vad.followup_window_ms = toNum(v))" />
     </SettingsField>
+    <!-- 聆听空闲超时：唤醒进入聆听后 N 秒无实质信息 → 静待（麦保持本地 KWS 侦听）。 -->
+    <SettingsField v-if="s.editable.value" label="聆听空闲超时（秒，无实质信息转入静待；0=永不）">
+      <UiInput type="number" min="0" :model-value="s.ed().vad.listen_idle_s" @update:model-value="v => (s.ed().vad.listen_idle_s = toNum(v))" />
+    </SettingsField>
   </UiCard>
 </template>
 

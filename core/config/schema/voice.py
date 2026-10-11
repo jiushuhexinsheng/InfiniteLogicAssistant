@@ -90,6 +90,17 @@ class VadConfig(BaseModel):
     # wake word). 0 disables (back to the legacy "3s after done → listening"). Lives in the
     # vad section (listening-timing family; editable_snapshot only exposes vad/wake_word).
     followup_window_ms: int = Field(6000, ge=0)
+    # 聆听空闲超时（秒）：唤醒进入聆听后，持续 N 秒没有收到实质信息（发起一轮可回答
+    # 的对话）则回落「静待」态 —— 麦克风保持本地 KWS 侦听（未命中音频不出本机），
+    # 喊唤醒词随时可回聆听；0=永不超时（聆听为吸收态的旧行为）。
+    # 放 vad 段因它与收听时序同族，且 editable_snapshot 只暴露 vad/wake_word 两个语音子段。
+    # Listening idle timeout (seconds): after a wake enters listening, N seconds without
+    # substantive input (a turn that can be answered) falls back to the standby state —
+    # the mic keeps local KWS listening (audio never leaves the machine on a miss) and
+    # the wake word re-enters listening anytime; 0 = never time out (legacy behaviour
+    # where listening was absorbing). Lives in the vad section (listening-timing family;
+    # editable_snapshot only exposes vad/wake_word).
+    listen_idle_s: int = Field(180, ge=0)
     # 唤醒上传的两道成本闸（子项目 1）：短于此长度的片段不上传（滤掉咳嗽/关门等爆音），
     # 两次上传之间的最小间隔（避免连续误触发时刷接口）。
     # Two cost gates for wake uploads: clips shorter than min_speech_ms are never uploaded

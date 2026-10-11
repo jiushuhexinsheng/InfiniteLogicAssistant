@@ -2411,6 +2411,11 @@ export interface components {
              */
             followup_window_ms: number;
             /**
+             * Listen Idle S
+             * @default 180
+             */
+            listen_idle_s: number;
+            /**
              * Barge In
              * @default false
              */

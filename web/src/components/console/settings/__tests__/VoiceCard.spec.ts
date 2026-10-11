@@ -26,7 +26,7 @@ function snapshot() {
     wake_word: { enabled: true, keywords: ['衍衡', '洛吉斯'], sensitivity: 0.5, model_path: '' },
     vad: {
       silence_threshold: 0.02, silence_duration_ms: 1500, max_duration_ms: 10000,
-      answer_timeout_ms: 8000, min_speech_ms: 300, upload_throttle_ms: 500, followup_window_ms: 6000,
+      answer_timeout_ms: 8000, min_speech_ms: 300, upload_throttle_ms: 500, followup_window_ms: 6000, listen_idle_s: 180,
       barge_in: false,
     },
   }

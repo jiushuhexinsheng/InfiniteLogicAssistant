@@ -11,7 +11,7 @@ import type { WakeWordConfig, VadConfig, CallConfig } from '../../types'
  *  field, matching the backend api schema's default (`model_path: str = ""`). */
 export const wakeConfig: WakeWordConfig = { enabled: true, keywords: ['衍衡', '洛吉斯'], sensitivity: 0.5, model_path: '' }
 /** VAD（语音活动检测）配置。VAD (Voice Activity Detection) configuration. */
-export const vadConfig: VadConfig = { silence_threshold: 0.02, silence_duration_ms: 1500, max_duration_ms: 10000, answer_timeout_ms: 8000, min_speech_ms: 300, upload_throttle_ms: 500, barge_in: false, followup_window_ms: 6000 }
+export const vadConfig: VadConfig = { silence_threshold: 0.02, silence_duration_ms: 1500, max_duration_ms: 10000, answer_timeout_ms: 8000, min_speech_ms: 300, upload_throttle_ms: 500, barge_in: false, followup_window_ms: 6000, listen_idle_s: 180 }
 /** 通话模式配置（/api/config 的 call 段覆盖默认值）。Call-mode config (the `call` block of /api/config overrides these defaults). */
 export const callConfig: CallConfig = { enabled: true, open_window_s: 8, l0_min_rms: 0.02, l0_min_seconds: 0.5, smart_turn_enabled: true, local_asr_model: '', merge_l2: true, session_ttl_s: 300, relax_after_misses: 2 }
 /** 通话激活标志：唯一事实来源（store 级，避免 wakeOrchestrator ↔ callMode 循环导入）。Call-active flag: store-level single source of truth (avoids a wakeOrchestrator ↔ callMode import cycle). */

@@ -241,6 +241,32 @@ def test_vad_answer_timeout_reaches_frontend_payload(monkeypatch):
     assert snap["vad"]["answer_timeout_ms"] == 12000
 
 
+def test_vad_listen_idle_default_and_bounds():
+    """聆听空闲超时：默认 180s（3 分钟），0=永不超时合法，负数拒绝。
+
+    放在 VadConfig —— 收听时序同族，/api/config 与可编辑快照都以 VadConfig 暴露，
+    前端 vadConfig 直接读（api 手工副本同步由
+    test_wake_and_vad_duplicates_in_api_schemas_stay_in_sync 钉住）。
+
+    Listening idle timeout: defaults to 180s (3 minutes); 0 (never) is valid,
+    negatives are rejected. Lives in VadConfig (listening-timing family), exposed via
+    both /api/config and the editable snapshot, so the frontend vadConfig reads it
+    directly (the api hand-copy sync is pinned by the duplicate-model guard test)."""
+    assert c.Settings().voice.vad.listen_idle_s == 180
+    assert c.Settings(voice={"vad": {"listen_idle_s": 0}}).voice.vad.listen_idle_s == 0
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        c.Settings(voice={"vad": {"listen_idle_s": -1}})
+
+
+def test_vad_listen_idle_reaches_editable_snapshot(monkeypatch):
+    """必须进可编辑快照 —— 设置页的输入框从这里取值。
+    Must reach the editable snapshot — the settings-page input reads it from there."""
+    settings = c.Settings(voice={"vad": {"listen_idle_s": 60}})
+    monkeypatch.setattr(c, "get_settings", lambda: settings)
+    assert c.editable_snapshot()["vad"]["listen_idle_s"] == 60
+
+
 # ─── 唤醒词：多个关键字（2026-09-13 默认改为「衍衡」+「洛吉斯」）───
 
 

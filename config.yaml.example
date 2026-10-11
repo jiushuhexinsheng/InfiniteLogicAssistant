@@ -99,6 +99,9 @@ voice:
     # Follow-up window (ms): wake-free window after a turn ends / playback finishes —
     # speak inside it and the words are taken as a fresh instruction; 0 = off.
     followup_window_ms: 6000
+    # 聆听空闲超时（秒）：唤醒进入聆听后 N 秒无实质信息 → 静待（麦保持本地 KWS 侦听，
+    # 喊唤醒词随时可回聆听）；0=永不超时
+    listen_idle_s: 180
   # 通话模式（双击悬浮球进入，免唤醒持续聆听）：段落过三级漏斗
   # L0 规则 → L1 本地转写 → L2 云端精判，详见 docs/superpowers/specs/2026-10-05-call-mode-funnel-design.md
   call:
