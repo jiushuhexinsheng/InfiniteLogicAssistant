@@ -4,6 +4,7 @@ import { useConfig } from '../../../composables/useApi'
 import { notify } from '../../../composables/useToast'
 import { formatError } from '../../../errors'
 import type { EditableSnapshot } from '../../../types'
+import { testPassed } from './detection'
 
 /**
  * 设置页的核心状态与配置读写。
@@ -50,14 +51,20 @@ export function ed(): any {
 }
 
 /**
- * 判断指定菜单项是否显示绿点（密钥已设置）。
- * Check whether a menu item shows the "key set" dot.
+ * 判断指定菜单项是否显示绿点。
+ * 绿点语义（2026-10-11）：测过 → 以最近一次测试结果为准（通过=绿、失败=灰）；
+ * 没测过 → 回退「密钥已设置」。
+ * Check whether a menu item shows the green dot.
+ * Semantics (2026-10-11): tested → the last test result wins (pass = green, fail =
+ * gray); never tested → falls back to "API key set".
  *
  * @param id 菜单项 id。Menu item id.
  * @returns 是否显示绿点。Whether the dot is shown.
  */
 export function menuDot(id: string): boolean {
   if (id === 'llm' || id === 'asr' || id === 'tts') {
+    const tested = testPassed.value[id]
+    if (tested !== undefined) return tested
     const s = (editable.value as any)?.[id]
     return !!s?.api_key_set?.[s.active]
   }

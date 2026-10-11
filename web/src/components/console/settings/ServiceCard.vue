@@ -4,7 +4,13 @@
     <div class="cs-card-head">
       <span class="cs-card-title">{{ section.title }}</span>
       <div class="cs-card-btns">
-        <UiButton variant="secondary" size="sm" :disabled="s.detecting.value" @click="s.detectOne(section.name)">测试连接</UiButton>
+        <!-- 测试连接：进行中显示旋转动画 +「测试中…」（按钮禁用防重复点）；结果走 toast。
+             Test connection: spinning animation + "testing…" while running (disabled to
+             prevent double clicks); results go through a toast. -->
+        <UiButton variant="secondary" size="sm" :disabled="s.detecting.value" @click="s.detectOne(section.name)">
+          <UiIcon v-if="s.detecting.value" name="loader-2" :size="12" class="cs-spin" />
+          {{ s.detecting.value ? '测试中…' : '测试连接' }}
+        </UiButton>
         <UiButton variant="primary" size="sm" :disabled="!s.editable.value || s.saving.value" @click="s.saveModule(section.key)">
           {{ s.saving.value ? '保存中…' : '保存' }}
         </UiButton>
@@ -111,11 +117,6 @@
     <!-- 扩展插槽：TTS 卡在此挂载播报设置面板（引擎 / 音色 / 音量 / 试听）。
          Extension slot: the TTS card mounts the playback settings panel here (engine / voice / volume / preview). -->
     <slot />
-
-    <div v-if="s.connResults.value[section.name]" class="cs-connline" :class="'st-' + s.connResults.value[section.name].status">
-      {{ s.connResults.value[section.name].detail || s.connResults.value[section.name].status }}
-      <em v-if="s.connResults.value[section.name].latency_ms != null">{{ s.connResults.value[section.name].latency_ms }}ms</em>
-    </div>
     </div><!-- /cs-card-body -->
   </UiCard>
 </template>
@@ -182,11 +183,6 @@ function renameCompat(_i: number, oldKey: string, newKey: string) {
 /* 音色列表行：一行一个音色 + 删除按钮（与唤醒词行同构）。Voice row: one voice plus a delete button (mirrors the wake-word row). */
 .cs-voicerow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .cs-voicerow :deep(.ui-input) { flex: 1; min-width: 0; }
-.cs-connline {
-  font-size: var(--fs-2xs); color: var(--text-3);
-  border-top: 1px dashed var(--border-soft); padding-top: 7px;
-}
-.cs-connline em { font-style: normal; font-family: var(--font-mono); color: var(--brand-c2); margin-left: 6px; }
 
 /* 高级兼容编辑区：折叠密度 + 快捷 chip（与音色行同构的键值行）。Advanced compat editor:
    compact density + shortcut chips (key-value rows mirroring the voice row). */
@@ -204,7 +200,9 @@ function renameCompat(_i: number, oldKey: string, newKey: string) {
 .cs-compat-chip.on { color: var(--brand-c2); border-color: var(--brand-c2); background: rgba(52, 211, 153, .08); }
 .cs-compat-row { display: flex; align-items: center; gap: 8px; }
 .cs-compat-row :deep(.ui-input) { flex: 1; min-width: 0; font-family: var(--font-mono); }
-.st-ok { color: #34d399 !important; border-color: rgba(52, 211, 153, .4) !important; background: rgba(52, 211, 153, .07); }
-.st-skip { color: var(--text-3) !important; }
-.st-fail { color: #f87171 !important; border-color: rgba(248, 113, 113, .4) !important; background: rgba(248, 113, 113, .07); }
+
+/* 测试中旋转动画（挂在 loader-2 图标上）。Spin animation while a connection test runs
+   (applied to the loader-2 icon). */
+.cs-spin { animation: cs-spin .9s linear infinite; }
+@keyframes cs-spin { to { transform: rotate(360deg); } }
 </style>

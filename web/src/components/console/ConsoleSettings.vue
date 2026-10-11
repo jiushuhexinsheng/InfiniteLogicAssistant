@@ -18,7 +18,7 @@
         >
           <UiIcon :name="m.icon" :size="14" />
           <span>{{ m.label }}</span>
-          <i class="cs-menu-dot" :class="{ on: s.menuDot(m.id) }" title="密钥已设置"></i>
+          <i class="cs-menu-dot" :class="{ on: s.menuDot(m.id) }" title="绿点 = 密钥已设或测试通过"></i>
         </button>
         <div class="cs-menu-extra">
           <UiButton variant="secondary" size="sm" :disabled="s.detecting.value" @click="s.detectAll" block>
@@ -27,15 +27,11 @@
         </div>
       </aside>
 
-      <!-- 右侧内容区域：根据左侧菜单选择展示对应模块配置。Right content area: shows the module matching the left menu. -->
+      <!-- 右侧内容区域：根据左侧菜单选择展示对应模块配置。Right content area: shows the module matching the left menu.
+           检测结果不再占顶部条 —— toast 弹 3 秒 + 左侧菜单绿点（2026-10-11）。
+           Test results no longer take a top bar — a 3s toast plus the left-menu green
+           dot (2026-10-11). -->
       <div class="cs-main">
-        <!-- 连接状态条：展示各服务模块的连通性检测结果。Connection status bar: connectivity results per service module. -->
-        <div v-if="Object.keys(s.connResults.value).length" class="cs-conn">
-          <UiChip v-for="c in Object.values(s.connResults.value)" :key="c.name" :tone="connTone(c.status)" :dot="false">
-            {{ c.name }} {{ connStatusText(c.status) }}
-          </UiChip>
-        </div>
-
         <!-- 服务模块：LLM / ASR（仅在 activeMenu 匹配时显示）。Service modules: LLM / ASR (shown when activeMenu matches).
              必须同时等 editable 加载完成：activeMenu 初值即 'llm'，首屏若先渲染卡片会在 sec(key).profiles 上取到 undefined。
              Must also wait for editable to load: activeMenu starts as 'llm', so rendering the card first would read .profiles off undefined. -->
@@ -99,28 +95,6 @@ const { engine } = useTtsEngine()
 
 /** TTS section 定义（API 分支的 ServiceCard 用）。TTS section def (for the API branch's ServiceCard). */
 const ttsDef = sectionDefs.find(d => d.key === 'tts')!
-
-/**
- * 将连通性状态映射为 UI 色调。
- * Map a connectivity status to a UI tone.
- *
- * @param status 连通性状态。Connectivity status.
- * @returns UI 色调。The UI tone.
- */
-function connTone(status: string): 'ok' | 'warn' | 'err' | 'info' | 'neutral' {
-  return status === 'ok' ? 'ok' : status === 'skip' ? 'neutral' : 'err'
-}
-
-/**
- * 将连通性状态转为中文文本。
- * Convert a connectivity status to Chinese text.
- *
- * @param status 连通性状态。Connectivity status.
- * @returns 中文状态文本。The Chinese status text.
- */
-function connStatusText(status: string): string {
-  return status === 'ok' ? '✓ 连通' : status === 'skip' ? '跳过' : '✗ 失败'
-}
 
 // useSettings 的 state 跨挂载存活，故每次进入设置页都重新拉取，避免展示陈旧配置。
 // The useSettings state survives mount/unmount, so re-fetch on every entry to avoid stale config.
@@ -208,11 +182,8 @@ onMounted(() => { s.load() })
   gap: 12px;
   padding-right: 4px;
 }
-/* 连接状态条/问题列表不参与收缩，让位给卡片。
-   The connection bar / issues list never yield space — the cards do. */
-.cs-conn, .cs-issues { flex-shrink: 0; }
-
-.cs-conn { display: flex; gap: 8px; flex-wrap: wrap; }
+/* 问题列表不参与收缩，让位给卡片。The issues list never yields space — the cards do. */
+.cs-issues { flex-shrink: 0; }
 
 .cs-issues { display: flex; flex-direction: column; gap: 6px; }
 .cs-issues p {
