@@ -52,11 +52,16 @@ export function ed(): any {
 
 /**
  * 判断指定菜单项是否显示绿点。
- * 绿点语义（2026-10-11）：测过 → 以最近一次测试结果为准（通过=绿、失败=灰）；
- * 没测过 → 回退「密钥已设置」。
+ * 绿点语义（2026-10-11）：
+ * - LLM / ASR / TTS：测过 → 以最近一次测试结果为准（通过=绿、失败=灰）；没测过 →
+ *   回退「密钥已设置」。
+ * - 语音：唤醒启用且至少配了一个唤醒词 → 绿（「开启且正常」）。
+ * - 权限 / 高级设置：不设绿点（用户裁定）。
  * Check whether a menu item shows the green dot.
- * Semantics (2026-10-11): tested → the last test result wins (pass = green, fail =
- * gray); never tested → falls back to "API key set".
+ * Semantics (2026-10-11): LLM/ASR/TTS — tested → last test result wins (pass = green,
+ * fail = gray); untested → "API key set" fallback. Voice — wake enabled with at least
+ * one wake word = green ("enabled and healthy"). Permissions / Advanced — no dot (user
+ * ruling).
  *
  * @param id 菜单项 id。Menu item id.
  * @returns 是否显示绿点。Whether the dot is shown.
@@ -67,6 +72,12 @@ export function menuDot(id: string): boolean {
     if (tested !== undefined) return tested
     const s = (editable.value as any)?.[id]
     return !!s?.api_key_set?.[s.active]
+  }
+  if (id === 'voice') {
+    // 开启且正常 = 唤醒启用 + 至少一个唤醒词（空词表 = 配置坏，不算正常）。
+    // Enabled and healthy = wake on + at least one wake word (an empty list = broken config).
+    const w = (editable.value as any)?.wake_word
+    return !!w?.enabled && (w?.keywords?.length ?? 0) > 0
   }
   return false
 }

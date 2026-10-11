@@ -102,7 +102,18 @@ describe('menuDot 绿点语义', () => {
     expect(menuDot('llm')).toBe(false)
   })
 
-  it('非服务模块恒无绿点', () => {
+  it('语音：唤醒启用且有唤醒词 → 绿；关/空词表 → 不绿', () => {
+    editable.value = { wake_word: { enabled: true, keywords: ['衍衡'] } } as any
+    expect(menuDot('voice')).toBe(true)
+    editable.value = { wake_word: { enabled: false, keywords: ['衍衡'] } } as any
+    expect(menuDot('voice')).toBe(false)
+    editable.value = { wake_word: { enabled: true, keywords: [] } } as any
+    expect(menuDot('voice')).toBe(false)
+  })
+
+  it('权限与高级设置不设绿点（用户裁定）', () => {
+    editable.value = { permissions: {}, advanced: {} } as any
+    expect(menuDot('permissions')).toBe(false)
     expect(menuDot('advanced')).toBe(false)
   })
 })

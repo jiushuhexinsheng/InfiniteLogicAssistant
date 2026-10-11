@@ -18,7 +18,7 @@
         >
           <UiIcon :name="m.icon" :size="14" />
           <span>{{ m.label }}</span>
-          <i class="cs-menu-dot" :class="{ on: s.menuDot(m.id) }" title="绿点 = 密钥已设或测试通过"></i>
+          <i class="cs-menu-dot" :class="{ on: s.menuDot(m.id) }" title="绿点 = 就绪（密钥已设 / 测试通过 / 唤醒启用）"></i>
         </button>
         <div class="cs-menu-extra">
           <UiButton variant="secondary" size="sm" :disabled="s.detecting.value" @click="s.detectAll" block>
