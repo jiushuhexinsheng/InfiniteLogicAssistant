@@ -12,9 +12,19 @@ import re
 from importlib import metadata
 from pathlib import Path
 
+import os
+
 import pytest
 
 from core import config
+
+# 单实例文件锁对测试豁免：TestClient 启动 lifespan 不是「第二个实例」——
+# 否则本机边跑服务（start.bat）边跑 pytest 时，所有走 lifespan 的测试都会被
+# server 的守卫误拒。需要测锁本身时在用例里 delenv 恢复真实路径。
+# The instance file lock is exempted for tests: a TestClient booting the lifespan is
+# not "a second instance" — without this, running pytest while a local server is up
+# fails every lifespan test. Lock tests themselves delenv to exercise the real path.
+os.environ["IL_NO_INSTANCE_LOCK"] = "1"
 
 
 def _parse_pins(text: str) -> list[tuple[str, str]]:

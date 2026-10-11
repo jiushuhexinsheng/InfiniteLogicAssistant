@@ -34,10 +34,21 @@ def _acquire_instance_lock():
     two workers). The OS releases the file lock when the process exits (crash
     included), so no stale lock can linger.
 
+    测试豁免：`IL_NO_INSTANCE_LOCK=1`（tests/conftest.py 设置）返回空操作句柄 ——
+    TestClient 启动 lifespan 不构成「第二个实例」，否则本机边跑服务边跑测试会全部误红。
+
+    Test exemption: `IL_NO_INSTANCE_LOCK=1` (set by tests/conftest.py) returns a no-op
+    handle — a TestClient booting the lifespan is not "a second instance", and without
+    this every lifespan test would fail whenever tests run while a local server is up.
+
     Returns:
         打开的锁文件句柄（关闭即释放）。The open lock handle (closing releases it).
     """
+    import io
     import os
+
+    if os.environ.get("IL_NO_INSTANCE_LOCK"):
+        return io.StringIO()   # 关闭即「释放」，无实际互斥。Close = "release"; no mutex.
 
     lock_path = config.ROOT_DIR / "data" / ".server.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)

@@ -13,8 +13,10 @@ import server as server_module
 
 @pytest.fixture
 def isolated_lock(tmp_path, monkeypatch):
-    """把锁文件重定向到 tmp（不碰真实 data/.server.lock）。"""
+    """把锁文件重定向到 tmp（不碰真实 data/.server.lock）；同时关掉测试豁免开关
+    （conftest 全局置 IL_NO_INSTANCE_LOCK，本组用例要测真实锁路径）。"""
     monkeypatch.setattr(server_module.config, "ROOT_DIR", tmp_path, raising=False)
+    monkeypatch.delenv("IL_NO_INSTANCE_LOCK", raising=False)
     return tmp_path / "data" / ".server.lock"
 
 
