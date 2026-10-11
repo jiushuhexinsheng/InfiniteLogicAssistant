@@ -8,14 +8,21 @@
        clashes with the project's dark-glass look). Free typing stays unrestricted —
        the suggestion layer is only a hint/quick-pick. -->
   <div class="ui-combo" ref="wrapRef">
-    <input
+    <!-- 组合 UiInput 而非自绘 <input>：`.ui-input` 的样式挂在 UiInput 组件的 scoped
+         属性上，自绘 input 只带本组件 scope —— 类名相同也匹配不到样式（2026-10-11 现场
+         白底窄框的根因）。focus/keydown 经 $attrs 落到内层 input。
+         Compose UiInput instead of drawing a bare <input>: the `.ui-input` styles live on
+         UiInput's scoped attribute, while a locally drawn input only carries this
+         component's scope — same class, no styles (the root cause of the white narrow
+         box seen in the field on 2026-10-11). focus/keydown fall through $attrs to the
+         inner input. -->
+    <UiInput
       ref="inputRef"
-      class="ui-input"
-      :value="modelValue"
+      :model-value="modelValue"
       :placeholder="placeholder"
       :disabled="disabled"
       autocomplete="off"
-      @input="onInput"
+      @update:model-value="onValue"
       @focus="openPanel"
       @keydown="onKeydown"
       v-bind="$attrs"
@@ -65,7 +72,9 @@
  * grace).
  */
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
 import UiIcon from './UiIcon.vue'
+import UiInput from './UiInput.vue'
 
 /** 组件 Props：绑定值/建议列表/占位/禁用。Component props: value, suggestion list, placeholder, disabled. */
 const props = withDefaults(defineProps<{
@@ -81,9 +90,22 @@ const emit = defineEmits<{ 'update:modelValue': [v: string] }>()
 /** 面板唯一 id。Unique panel id. */
 const listId = `ui-combo-${Math.random().toString(36).slice(2, 8)}`
 
-const inputRef = ref<HTMLInputElement>()
+const inputRef = ref<ComponentPublicInstance>()
 const menuRef = ref<HTMLUListElement>()
 const wrapRef = ref<HTMLDivElement>()
+
+/** 取内层真实 input 元素。UiInput 是 v-if/v-else 条件根（片段），$el 可能是注释锚点
+ *  或 number 分支的外层 div —— 逐层解析到真正的 <input>。
+ *  The underlying input element. UiInput has conditional roots (a fragment), so $el may
+ *  be a comment anchor or the number branch's wrapper div — resolve down to the real
+ *  <input>. */
+function inputEl(): HTMLInputElement | undefined {
+  const root = inputRef.value?.$el as Node | undefined
+  if (!root) return undefined
+  if (root instanceof HTMLInputElement) return root
+  if (root instanceof Element) return root.querySelector('input') ?? undefined
+  return root.parentElement?.querySelector('input') ?? undefined   // 注释锚点 → 宿主容器
+}
 
 const open = ref(false)
 /** 打开时刻（毫秒）：焦点滚动宽限期基准。Open timestamp (focus-scroll grace anchor). */
@@ -123,9 +145,9 @@ function close() {
   open.value = false
 }
 
-function onInput(e: Event) {
+function onValue(v: string) {
   typed.value = true
-  emit('update:modelValue', (e.target as HTMLInputElement).value)
+  emit('update:modelValue', v)
   activeIndex.value = 0
   // 输入改变过滤集后若面板开着，重新定位（结果条数变了，高度可能变化）。
   // Reposition while open (the result count — and height — may change).
@@ -139,8 +161,8 @@ function onInput(e: Event) {
 
 /** 定位面板（锚定输入框；下方不足上翻）。Position the panel (anchor to input; flip up). */
 function positionMenu() {
-  const el = inputRef.value
-  if (!el) return
+  const el = inputEl()
+  if (!el || typeof el.getBoundingClientRect !== 'function') return
   const r = el.getBoundingClientRect()
   const PANEL_MAX = 260
   const spaceBelow = window.innerHeight - r.bottom
@@ -159,7 +181,7 @@ function positionMenu() {
 function pick(opt: string) {
   emit('update:modelValue', opt)
   close()
-  inputRef.value?.focus()
+  inputEl()?.focus()
 }
 
 /** 键盘活动项滚动可见。Scroll the keyboard-active item into view. */
