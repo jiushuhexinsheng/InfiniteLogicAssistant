@@ -28,5 +28,6 @@ export {
   startListening,
   toggleWake,
   stopWake,
+  ensureListening,
 } from './micControl'
 export { registerWatches } from './watches'

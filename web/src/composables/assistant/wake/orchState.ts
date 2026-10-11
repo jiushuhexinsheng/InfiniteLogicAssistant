@@ -4,7 +4,7 @@
 import type { Ref } from 'vue'
 import { nextState } from '../wakeFsm'
 import {
-  state, statusLine, vadConfig, pendingQuestion, wakeEnabled, currentSessionId,
+  state, statusLine, vadConfig, pendingQuestion, wakeEnabled, currentSessionId, callActive,
 } from '../store'
 import type { AsstState, PendingQuestion } from '../store'
 import type { SegmentRecorder } from '../useSegmentRecorder'
@@ -164,17 +164,26 @@ export function clearIdleTimer() {
   if (st.idleTimer) { clearTimeout(st.idleTimer); st.idleTimer = null }
 }
 
-/** 按剩余时间武装空闲定时器（listen_idle_s=0 或截止已过且不在聆听时不动）。
- *  Arm the idle timer with the remaining time (no-op when listen_idle_s=0). */
+/** 按剩余时间武装空闲定时器（listen_idle_s=0 或通话中不武装）。
+ *  Arm the idle timer with the remaining time (no-op when listen_idle_s=0 or in a call). */
 export function armIdleTimer() {
   clearIdleTimer()
   const total = listenIdleMs()
   if (!total) return
+  // 通话模式有自己的会话生命周期（后端 no_session 自动过期），空闲超时不适用 ——
+  // 否则通话中的 listening 3 分钟后被误标「静待」，而段仍走漏斗、唤醒词永不判定
+  // （2026-10-11 现场：用户在通话里看到静待，喊唤醒词全被漏斗丢弃）。
+  // Call mode has its own session lifecycle (backend no_session auto-expiry); the idle
+  // timeout does not apply — otherwise a call's listening state gets mislabelled
+  // "standby" after 3 minutes while segments still ride the funnel and the wake word
+  // is never judged (2026-10-11 field case).
+  if (callActive.value) return
   if (!st.idleDeadline) st.idleDeadline = Date.now() + total
   const remain = st.idleDeadline - Date.now()
   const fire = () => {
     st.idleTimer = null
-    if (state.value !== 'listening') return   // 陈旧触发（状态已走）。Stale fire.
+    if (state.value !== 'listening') return          // 陈旧触发（状态已走）。Stale fire.
+    if (callActive.value) return                     // 通话中不转静待。No standby mid-call.
     if (Date.now() < st.idleDeadline) { armIdleTimer(); return }   // 被续期过。Extended meanwhile.
     state.value = 'standby'
     statusLine.value = ''
@@ -189,7 +198,7 @@ export function resetIdleDeadline() {
   const total = listenIdleMs()
   if (!total) return
   st.idleDeadline = Date.now() + total
-  if (state.value === 'listening') armIdleTimer()
+  if (state.value === 'listening' && !callActive.value) armIdleTimer()
 }
 
 /**

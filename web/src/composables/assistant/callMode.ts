@@ -12,7 +12,7 @@
  */
 import { api } from '../../api'
 import { callActive, callConfig, state, statusLine } from './store'
-import { startListening, stopListening, toggleWake, wakeEnabled } from './wake/wakeOrchestrator'
+import { startListening, stopListening, toggleWake, wakeEnabled, ensureListening } from './wake/wakeOrchestrator'
 
 /** 进入通话前的 wakeEnabled 快照。
  *  startListening 成功会把 wakeEnabled 置 true（wakeOrchestrator.ts:784），退出分支与失败
@@ -27,9 +27,16 @@ import { startListening, stopListening, toggleWake, wakeEnabled } from './wake/w
  *  must outlive one call. */
 let wakeWasOnBeforeCall = false
 
-/** 双击入口：通话 ⇄ 空闲（退出通话回 idle；与已删除的 standby 状态无关）。
- *  Double-click entry: call ⇄ idle (leaving a call returns to idle; unrelated to the
- *  removed standby state). */
+/** 双击入口：通话 ⇄ 非通话。退出落点按进通话前的唤醒快照 —— 之前开着唤醒的人回
+ *  **listening 并重新拉起麦克风**（喊唤醒词立刻可用）；之前关着的回 idle（麦保持关）。
+ *  旧实现无条件落 idle + wakeEnabled 恢复 true：麦已停、state 又不在任何会触发
+ *  ensureListening 的路径上 → 退出通话后唤醒词永久喊不应（2026-10-11 现场复盘）。
+ *  Double-click entry: call ⇄ non-call. The exit landing follows the pre-call wake
+ *  snapshot — someone who had wake on returns to **listening with the mic re-acquired**
+ *  (the wake word works immediately); wake-off returns to idle (mic stays off). The old
+ *  build unconditionally landed on idle with wakeEnabled restored true: the mic was off
+ *  and no path would call ensureListening, so the wake word stayed dead forever after
+ *  leaving a call (2026-10-11 field post-mortem). */
 export async function toggleCall(): Promise<void> {
   if (!callConfig.enabled) {
     statusLine.value = '通话模式未启用（voice.call.enabled=false）'
@@ -39,8 +46,13 @@ export async function toggleCall(): Promise<void> {
     callActive.value = false
     stopListening()
     wakeEnabled.value = wakeWasOnBeforeCall   // 回收 startListening 的置位（终审 Important #2）
-    state.value = 'idle'
     statusLine.value = ''
+    if (wakeWasOnBeforeCall) {
+      state.value = 'listening'     // 唤醒点恢复：静待/空闲都不是退出通话的落点。
+      void ensureListening()        // 重新取流（stopListening 已释放旧麦）。
+    } else {
+      state.value = 'idle'
+    }
     try { await api.callStop() } catch { /* 会话服务端 5 分钟自过期兜底 */ }
     return
   }

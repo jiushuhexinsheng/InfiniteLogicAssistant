@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const stopListening = vi.fn()
 const toggleWake = vi.fn(async () => {})
+const ensureListening = vi.fn()
 const wakeEnabled = { value: false }
 // 桩复刻真实 startListening 的语义：成功即把 wakeEnabled 置 true（wakeOrchestrator.ts:784）——
 // 这正是退出不回收时泄漏的来源；桩不复刻该置位就测不出泄漏（终审 Important #2）。
@@ -10,7 +11,7 @@ const wakeEnabled = { value: false }
 const startListening = vi.fn(async () => { wakeEnabled.value = true; return 'ok' as const })
 
 vi.mock('../wake/wakeOrchestrator', () => ({
-  startListening, stopListening, toggleWake,
+  startListening, stopListening, toggleWake, ensureListening,
   get wakeEnabled() { return wakeEnabled },
 }))
 
@@ -94,5 +95,27 @@ describe('通话 FSM', () => {
     await toggleCall()
     await toggleCall()
     expect(wakeEnabled.value).toBe(true)
+  })
+
+  // ── 退出通话的落点（2026-10-11 现场复盘：旧版无条件落 idle + 麦关死 → 唤醒词永久喊不应）──
+
+  it('唤醒开的用户：退出通话落 listening 并重新拉麦（唤醒点立即可用）', async () => {
+    const { toggleCall } = await import('../callMode')
+    const { state } = await import('../store')
+    wakeEnabled.value = true
+    await toggleCall()   // 进入
+    await toggleCall()   // 退出
+    expect(state.value).toBe('listening')
+    expect(ensureListening).toHaveBeenCalled()
+  })
+
+  it('唤醒关的用户：退出通话落 idle、不拉麦', async () => {
+    const { toggleCall } = await import('../callMode')
+    const { state } = await import('../store')
+    wakeEnabled.value = false
+    await toggleCall()   // 进入
+    await toggleCall()   // 退出
+    expect(state.value).toBe('idle')
+    expect(ensureListening).not.toHaveBeenCalled()
   })
 })

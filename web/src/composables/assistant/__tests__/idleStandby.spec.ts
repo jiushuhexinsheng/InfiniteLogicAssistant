@@ -87,4 +87,73 @@ describe('聆听空闲超时 → 静待', () => {
     vi.advanceTimersByTime(3_600_000)
     expect(store.state.value).toBe('thinking')   // 陈旧触发被守卫拦住
   })
+
+  /**
+   * 通话中不跑空闲超时（2026-10-11 现场）：通话里的 listening 若被误转「静待」，
+   * 用户以为回到了唤醒语义，而段仍走漏斗、唤醒词永不判定。
+   * No idle timeout mid-call (2026-10-11 field case): mislabelling a call's listening
+   * state "standby" makes the user think wake semantics apply while segments still ride
+   * the funnel and the wake word is never judged.
+   */
+  it('通话中不武装、不触发空闲超时', async () => {
+    const { store, orch } = await setup()
+    store.callActive.value = true
+    try {
+      await setState(store.state, 'listening')
+      expect(orch.st.idleTimer).toBeNull()
+      vi.advanceTimersByTime(3_600_000)
+      expect(store.state.value).toBe('listening')   // 通话中保持聆听，不转静待
+    } finally {
+      store.callActive.value = false
+    }
+  })
+})
+
+/**
+ * 静待中的再唤醒（用户报告：进入静待后无法被重新唤醒）：超时进 standby →
+ * handleSegment 走 KWS 快检命中 → 必须进指令窗（recording + 提示音路径）。
+ * 端到端复用 useWakeWord.spec 的 mock 模式。
+ */
+describe('静待中重新唤醒', () => {
+  beforeEach(() => { vi.resetModules(); vi.useFakeTimers(); localStorage.clear() })
+  afterEach(() => { vi.useRealTimers() })
+
+  async function standBy(checkResp: { ok: boolean; hit: boolean; bypass: boolean }
+                         = { ok: true, hit: true, bypass: false }) {
+    vi.doMock('../../../api', () => ({
+      api: {
+        wakeCheck: vi.fn(async () => checkResp),
+        wakeDetect: vi.fn(async () => ({ ok: true, matched: true, command: '', text: '衍衡。' })),
+        transcribe: vi.fn(async () => ({ ok: true, text: '' })),
+      },
+    }))
+    vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
+    const store = await import('../store')
+    const orch = await import('../wake/orchState')
+    const mod = await import('../useWakeWord')   // 导入即注入 DI + registerWatches
+    store.vadConfig.listen_idle_s = 1
+    store.wakeEnabled.value = true
+    store.state.value = 'listening'
+    await nextTick()
+    vi.advanceTimersByTime(1_000)               // 空闲超时 → standby
+    await nextTick()
+    expect(store.state.value).toBe('standby')
+    return { store, orch, mod }
+  }
+
+  it('静待中 KWS 快检命中 → 进指令窗（recording + 已唤醒提示）', async () => {
+    const { store, mod } = await standBy()
+    await mod.handleSegment(new Blob(['x']))
+    await vi.advanceTimersByTimeAsync(0)         // 让 wakeCheck 等微任务 settle
+    expect(store.state.value).toBe('recording')
+    expect(store.statusLine.value).toContain('已唤醒')
+  })
+
+  it('静待中快检未命中 → 保持静待（不误动作）', async () => {
+    const { store, mod } = await standBy({ ok: true, hit: false, bypass: false })
+    await mod.handleSegment(new Blob(['x']))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.state.value).toBe('standby')
+  })
 })
