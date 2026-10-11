@@ -122,7 +122,7 @@
 │   ├── session/                # 会话域：会话历史落盘（history.py → data/history.db）
 │   ├── container.py            # ★ 应用上下文容器：全局服务生命周期（LLM/语音/scheduler/MCP）
 │   ├── prompts.py              # 系统提示词集中管理（单一来源）
-│   └── vendors.py              # 多 provider 协议分派（openai/anthropic/gemini）
+│   └── model_compat.py         # 多 provider 协议分派（openai/anthropic/gemini；无内置目录）
 ├── skills/                     # 技能定义（YAML，文件名 = 技能名）
 ├── memory/                     # 长期记忆数据（facts.sqlite）
 ├── rag/                        # RAG 索引数据（index.db）

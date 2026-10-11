@@ -186,7 +186,7 @@ audit `call-funnel` 行；云端转写共用 `audio-upload via=` 前缀，成本
 
 ### 2026-08-26 多厂商 Provider 配置
 
-- LLM 三协议（openai / anthropic / gemini）按 profile 分派；厂商目录 + `vendor_presets`
+- LLM 三协议（openai / anthropic / gemini）按 profile 分派；模型全自填 profile（厂商目录已随 2026-10-11 重构退役）
 - `GET /api/providers`、`POST /api/providers/fetch-models`；模型 failover
 
 ### 2026-08-25 配置系统重构

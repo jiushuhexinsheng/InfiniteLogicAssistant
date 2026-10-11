@@ -15,7 +15,7 @@
       <UiToggle :model-value="s.sec(section.key).enabled" @update:model-value="v => (s.sec(section.key).enabled = v)" />
     </SettingsField>
 
-    <!-- Profile 管理：切换 / 新增（厂商目录） / 删除。Profile management: switch / add from vendor catalog / delete. -->
+    <!-- Profile 管理：切换 / 新增（自填） / 删除。Profile management: switch / add (self-filled) / delete. -->
     <div class="cs-profrow">
       <SettingsField label="Profile" grow>
         <UiSelect :model-value="s.sec(section.key).active" @update:model-value="v => (s.sec(section.key).active = v)">

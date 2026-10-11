@@ -7,7 +7,7 @@
 
 | 源 | 内容 | 说明 |
 |---|---|---|
-| `config.yaml` | 非敏感结构（llm / voice / server / mcp / rag / agent / llm_client / tools / vendor_presets） | 由 `config.yaml.example` 复制；经 pydantic 校验，类型 / 范围 / 枚举写错启动即报错 |
+| `config.yaml` | 非敏感结构（llm / voice / server / mcp / rag / agent / llm_client / tools） | 由 `config.yaml.example` 复制；经 pydantic 校验，类型 / 范围 / 枚举写错启动即报错 |
 | `config.secrets.yaml` | 密钥（`llm/asr/tts.api_key`、`server.api_token`、`profiles.<name>` 每 profile 密钥） | 由 `config.secrets.yaml.example` 复制；**gitignored，不入库** |
 | 环境变量 | `LLM_API_KEY` / `ASR_API_KEY` / `TTS_API_KEY` / `SERVER_API_TOKEN` | 段级优先级最高，覆盖 secrets 段默认（profile 级密钥见下） |
 
@@ -25,9 +25,8 @@
 llm:
   active: deepseek                 # 当前生效的 profile 名（改 active 切换服务商）
   profiles:
-    deepseek:                      # OpenAI 兼容示例
+    deepseek:                      # OpenAI 兼容示例（全自填，无内置厂商目录）
       provider: openai             # 协议：openai / anthropic / gemini
-      vendor: deepseek             # 厂商目录 ID（UI 元数据）
       endpoint: "https://api.deepseek.com"   # 基座 URL，不含 /v1（与 chat_path 配对）
       model: "deepseek-chat"
       models: ["deepseek-chat", "deepseek-reasoner"]   # 可用模型列表（设置页「获取模型」可自动拉取）
@@ -36,12 +35,13 @@ llm:
       max_tokens: 4096
       temperature: 0.7
       timeout: 60
-      compat: {}                   # 兼容开关：stream_options / max_tokens_field
+      compat: {}                   # 网关兼容开关（设置页「高级兼容」可编辑，见下）
 ```
 
-内置厂商目录（`core/vendors.py`）：deepseek / openai / qwen / glm / kimi / doubao / qianfan /
-xinghuo / minimax / siliconflow / openrouter / ollama / lmstudio / anthropic / gemini / xiaomi-mimo。
-设置页「新增 Profile」可从目录一键预填；`config.yaml` 的 `vendor_presets` 可追加 / 覆盖自定义厂商。
+**模型全部自填**（2026-10-11 起无内置厂商目录）：设置页「新增模型」填写 名称 / 协议 /
+URL / 模型 / 密钥即可，可保存多个 profile、改 `active` 切换；「获取模型」按 `chat_path`
+自动推导列表路径拉取。`active` 留空时自动取第一个 profile；老配置里的 `vendor` /
+`vendor_presets` 键在加载时被静默忽略（不再报错）。
 
 ## voice — 语音
 
@@ -225,20 +225,20 @@ permissions:
 求值顺序：未注册工具 → 拒绝 > 任一 `deny` 规则短路 > 首条匹配规则 > 档位默认 > `default_action`。
 与计划级确认共用同一份策略；设置页「设置 → 权限」可改，详见[安全模型](Security.md)。
 
-## vendor_presets — 厂商目录扩展
+## 高级兼容（profile.compat）— 特殊网关的请求体补丁
 
-`core/vendors.py` 内置目录之外，可在 `config.yaml` 追加 / 覆盖预设（设置页「新增 Profile」可见，
-同 ID 覆盖内置）。endpoint 为基座 URL（不含 /v1），chat_path 与基座配对。
+部分网关不完全遵循 OpenAI 标准，需要兼容开关；设置页每个模型卡的「**高级兼容**」区
+以键值方式编辑（快捷 chip 一键开关），也可手改 `config.yaml`：
 
 ```yaml
-vendor_presets:
-  my-gateway:
-    kind: llm                   # llm / asr / tts
-    label: 我的网关
-    provider: openai
-    endpoint: "https://gateway.example.com"
-    chat_path: "/v1/chat/completions"
-    models: ["m1", "m2"]
-    api_key_env: "MY_GATEWAY_KEY"
-    compat: { stream_options: false }
+compat:
+  auth_header: api-key          # 认证头改用 api-key: <key>（小米 ASR）
+  audio_data_url: true          # 音频包成 data:URL（小米 ASR）
+  send_language: true           # 附带 asr_options.language（小米 ASR）
+  no_text_parts: true           # 网关拒绝请求携带文本 → 合并 L2 调用直接跳过
+  stream_options: true          # 是否请求 stream_options.include_usage（用量统计）
+  max_tokens_field: max_tokens  # max_tokens | max_completion_tokens（部分网关拒旧名）
 ```
+
+> `vendor_presets`（厂商目录扩展）已随目录退役：老配置中的该节与 profile 的 `vendor`
+> 键在加载 / 保存时被静默丢弃并提示一次，其余字段不受影响。

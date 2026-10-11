@@ -26,8 +26,8 @@
 - `server.py` — FastAPI 装配（lifespan / 认证中间件 / CORS / 静态托管 / 挂载路由）
 - `core/container.py` — 应用上下文容器（AppContext）：scheduler / MCP / LLM 连接池的生命周期统一启停
 - `core/config/` — 配置包：schema（pydantic 模型）/ loader（YAML+密钥注入）/ runtime（单例+热重载+profile 解析）
-- `core/prompts.py` — 系统提示词集中管理（编排各模块单一来源）；`core/vendors.py` — 厂商目录（LLM/ASR/TTS 预设）
-- `core/api/` — **API 路由**：`voice`（子包：编排 SSE 入口 + 唤醒检测/快检/转写/TTS）/ `tools` / `memory` / `schedule` / `history`（会话历史）/ `library`（任务知识库）/ `sessions`（列表/改名/清空/分叉）/ `settings`（配置热重载）/ `providers`（厂商目录）/ `state`（会话注册表）；`schemas/` 分域 pydantic 响应模型（openapi 单一事实来源）
+- `core/prompts.py` — 系统提示词集中管理（编排各模块单一来源）；`core/model_compat.py` — 模型 profile 工具（协议分派/模型列表路径，2026-10-11 起无内置厂商目录）
+- `core/api/` — **API 路由**：`voice`（子包：编排 SSE 入口 + 唤醒检测/快检/转写/TTS）/ `tools` / `memory` / `schedule` / `history`（会话历史）/ `library`（任务知识库）/ `sessions`（列表/改名/清空/分叉）/ `settings`（配置热重载）/ `providers`（拉取模型列表）/ `state`（会话注册表）；`schemas/` 分域 pydantic 响应模型（openapi 单一事实来源）
 - `core/voice/` — ASR / TTS + 唤醒判定：`wake.py`（拼音级文本判定）/ `pinyin.py` / `kws.py`（sherpa-onnx 本地 KWS 闸门）
 - `core/llm/` — 客户端（`client.py` 重试+熔断+连接池 / `stream.py` SSE 解析 / `protocols/`：openai · anthropic · gemini）
 - `core/orchestrator/` — **编排层**：blocks（消息块协议）/ events（SSE 契约）/ session（状态机）/ intent / task / clarify / confirm / executor / condense（ReAct 历史滚动压缩）/ control / pipeline

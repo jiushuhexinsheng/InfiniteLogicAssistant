@@ -190,7 +190,7 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 | GET/DELETE | `/api/history` `/api/history/{conv_id}` | 会话历史列表 / 详情 / 删除 |
 | GET/DELETE | `/api/library` `/api/library/{task_id}` | 任务知识库浏览 / 详情 / 删除 |
 | GET/POST/PATCH/DELETE | `/api/sessions` 等 | 会话管理（列表/改名/清空 `clear`/分叉 `fork`） |
-| GET/POST | `/api/providers` `/api/providers/fetch-models` | 厂商目录 / 拉取可用模型列表 |
+| POST | `/api/providers/fetch-models` | 拉取可用模型列表（自填 endpoint 后可用） |
 | POST | `/api/task/{session_id}/stop` | 停止整个任务 |
 
 完整 schema 见 `GET /openapi.json`（`web/src/api/generated.ts` 由其生成）。
@@ -241,7 +241,7 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 配置采用 **pydantic 强类型校验 + 双文件分离**（非敏感配置 / 密钥独立存储），保留多 profile YAML 结构：
 
 - `config.yaml`：非敏感结构（llm / voice / server / mcp / rag / memory / agent / llm_client /
-  tools / permissions / vendor_presets），**不含任何密钥**。加载时经 pydantic 模型校验
+  tools / permissions），**不含任何密钥**。加载时经 pydantic 模型校验
   （写错启动即报错）。多 profile（deepseek / openai / qwen / xiaomi-mimo…）改 `active` 切换。
 - `config.secrets.yaml`：密钥独立存储（`llm/asr/tts.api_key`、`server.api_token`），不入库；
   环境变量优先级更高。
@@ -258,7 +258,7 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
   `extract_recent_messages` 任务后提取回看条数）。
 - `tools`：`llm_max_output_chars`（喂给模型的工具正文截断）与 `lazy_groups`
   （渐进式工具 schema：分组降级为一行简介，模型按需先调 `tools_describe` 取全量）。
-- `vendor_presets`：厂商目录扩展（内置目录见 `core/vendors.py`，同 ID 覆盖内置）。
+
 - `llm_client`：重试 / 熔断参数。
 - `mcp.servers`：MCP server 列表（`{name, command, args}`），启动时自动连接并注册工具。
 - `server.api_token`：非 localhost 绑定时的 API 访问令牌（留空则拒绝非 localhost 启动）。
@@ -343,7 +343,7 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 │   ├── container.py           应用上下文容器（AppContext：scheduler / MCP / LLM 连接池统一启停）
 │   ├── logger.py              loguru 日志 + 审计（data/audit.log）
 │   ├── prompts.py             系统提示词集中管理（编排层单一来源）
-│   ├── vendors.py             厂商目录（LLM/ASR/TTS 预设 + config.yaml vendor_presets 扩展）
+│   ├── model_compat.py        模型 profile 工具（协议分派/模型列表路径/剥密钥；无内置目录）
 │   ├── detection/             检测域：environment / validator / connectivity
 │   ├── api/                   API 路由（voice / tools / memory / schedule / history / library /
 │   │                          sessions / settings / providers / state）

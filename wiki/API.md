@@ -39,7 +39,7 @@
 | GET / POST | `/api/sessions` · PATCH/DELETE `/api/sessions/{sid}` | 会话列表 / 新建 / 改名 / 归档删除 |
 | POST | `/api/sessions/{sid}/clear` · `/api/sessions/{sid}/fork` | 清空会话 / 分叉编辑 |
 | GET / POST | `/api/schedules` · DELETE `/api/schedules/{sid}` | 定时任务列表/注册/取消 |
-| GET | `/api/providers` · POST `/api/providers/fetch-models` | 厂商目录 / 拉取可用模型列表 |
+| POST | `/api/providers/fetch-models` | 拉取可用模型列表（自填 endpoint 后可用） |
 | POST | `/api/task/{session_id}/stop` | 停止该会话整个任务 |
 
 完整 schema 见 `GET /openapi.json`（前端 `web/src/api/generated.ts` 由其生成，
