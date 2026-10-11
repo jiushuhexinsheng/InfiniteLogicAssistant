@@ -4,7 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 vi.mock('../../../../api', () => ({
   api: {
-    patchConfig: vi.fn(), getConfigFull: vi.fn(), getProviders: vi.fn(),
+    patchConfig: vi.fn(), getConfigFull: vi.fn(),
     getTools: vi.fn(), getDetection: vi.fn(),
   },
 }))

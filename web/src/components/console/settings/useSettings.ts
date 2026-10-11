@@ -10,7 +10,7 @@ import * as apiKeys from './apiKeys'
  *
  * 实现按职责拆分：
  * - state.ts      核心状态与配置读写（editable / saveModule / load / sec / ed）
- * - profiles.ts   厂商目录与 Profile 管理
+ * - profiles.ts   Profile 管理（全自填，厂商目录已于 2026-10-11 退役）
  * - detection.ts  连通性检测与配置校验问题
  * - apiKeys.ts    API Key 弹窗与密钥读写
  *
@@ -45,23 +45,24 @@ export function useSettings() {
     load: state.load,
     saveModule: state.saveModule,
 
-    // ── 厂商目录与 Profile / Vendor catalog and profiles ──
-    catalog: profiles.catalog,
+    // ── Profile 管理（全自填）/ Profile management (self-filled) ──
     addingSection: profiles.addingSection,
     customAdding: profiles.customAdding,
     customName: profiles.customName,
     activeProfile: profiles.activeProfile,
-    vendorPreset: profiles.vendorPreset,
-    vendorList: profiles.vendorList,
     modelOptions: profiles.modelOptions,
     voiceOptions: profiles.voiceOptions,
-    presetToProfile: profiles.presetToProfile,
     toggleAdding: profiles.toggleAdding,
     confirmCustom: profiles.confirmCustom,
-    addProfileFromVendor: profiles.addProfileFromVendor,
     deleteProfile: profiles.deleteProfile,
     fetchModelsFor: profiles.fetchModelsFor,
-    loadCatalog: profiles.loadCatalog,
+
+    // ── 高级兼容开关（自填闭环）/ Advanced gateway compat toggles ──
+    compatShortcuts: profiles.COMPAT_SHORTCUTS,
+    compatEntries: profiles.compatEntries,
+    setCompat: profiles.setCompat,
+    removeCompat: profiles.removeCompat,
+    toggleCompat: profiles.toggleCompat,
 
     // ── 连通性检测 / Connectivity detection ──
     detecting: detection.detecting,

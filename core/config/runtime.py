@@ -100,7 +100,7 @@ def resolve_llm_profile() -> tuple[str, dict]:
         (profile 名称, profile 配置字典)；无可用 profile 时返回 ("", {})。
         (profile name, profile config dict); ("", {}) when no profile is available.
     """
-    return _resolve_profile("llm", "deepseek")
+    return _resolve_profile("llm")
 
 
 def resolve_asr_profile() -> tuple[str, dict]:
@@ -112,7 +112,7 @@ def resolve_asr_profile() -> tuple[str, dict]:
         (profile 名称, profile 配置字典)；无可用 profile 时返回 ("", {})。
         (profile name, profile config dict); ("", {}) when no profile is available.
     """
-    return _resolve_profile("asr", "openai")
+    return _resolve_profile("asr")
 
 
 def resolve_tts_profile() -> tuple[str, dict]:
@@ -124,19 +124,23 @@ def resolve_tts_profile() -> tuple[str, dict]:
         (profile 名称, profile 配置字典)；无可用 profile 时返回 ("", {})。
         (profile name, profile config dict); ("", {}) when no profile is available.
     """
-    return _resolve_profile("tts", "openai")
+    return _resolve_profile("tts")
 
 
-def _resolve_profile(section: str, active_default: str) -> tuple[str, dict]:
+def _resolve_profile(section: str) -> tuple[str, dict]:
     """按段名解析当前激活的 profile（asr/tts 从 voice 段下取）。
 
     Resolve the active profile for a section (asr/tts live under the voice section).
 
+    active 为空（目录退役后无内置默认名）→ 静默取第一个；active 有值但对不上 →
+    告警回退第一个（2026-10-11 起 active 不再有 deepseek/openai 之类目录默认名）。
+
+    Empty ``active`` (no built-in default name since the catalogue retired) silently
+    takes the first profile; a set-but-unknown ``active`` warns then falls back.
+
     Args:
         section: 段名（llm / asr / tts）。
             Section name (llm / asr / tts).
-        active_default: active 字段为空时的默认 profile 名。
-            Default profile name used when the active field is empty.
 
     Returns:
         (profile 名称, profile 配置字典)；无可用 profile 时返回 ("", {})。
@@ -146,8 +150,10 @@ def _resolve_profile(section: str, active_default: str) -> tuple[str, dict]:
     profiles = s.profiles
     if not profiles:
         return "", {}
-    active = s.active or active_default
-    if active not in profiles:
+    active = s.active
+    if not active:
+        active = next(iter(profiles))
+    elif active not in profiles:
         active = next(iter(profiles))
         _print_notice(f"[WARN] {section}.active='{s.active}' 在 profiles 中不存在，已回退到 '{active}'")
     return active, profiles[active].model_dump()

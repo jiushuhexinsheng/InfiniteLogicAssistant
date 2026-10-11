@@ -81,6 +81,29 @@
       <UiButton variant="secondary" size="sm" @click="s.fetchModelsFor(section)">获取模型</UiButton>
     </div>
 
+    <!-- 高级兼容（自填闭环）：特殊网关的请求体补丁，厂商预设退役后在此编辑。
+         Advanced gateway compat: request-body patches for special gateways; edited here
+         after the vendor presets retired. -->
+    <div class="cs-compat">
+      <div class="cs-compat-head">
+        <span class="cs-compat-title">高级兼容</span>
+        <span class="cs-compat-hint">特殊网关的请求体补丁（如小米需 auth_header/audio_data_url）</span>
+      </div>
+      <div class="cs-compat-shortcuts">
+        <button
+          v-for="c in s.compatShortcuts" :key="c.key" type="button"
+          class="cs-compat-chip" :class="{ on: compatHas(c.key) }"
+          @click="s.toggleCompat(section, c.key, c.value)"
+        >{{ c.label }}</button>
+      </div>
+      <div v-for="(row, i) in s.compatEntries(section)" :key="i" class="cs-compat-row">
+        <UiInput :model-value="row[0]" @update:model-value="v => renameCompat(i, row[0], v)" placeholder="键" />
+        <UiInput :model-value="row[1]" @update:model-value="v => s.setCompat(section, row[0], v, row[0])" placeholder="值" />
+        <UiButton variant="secondary" size="sm" hover="danger" @click="s.removeCompat(section, row[0])">删除</UiButton>
+      </div>
+      <UiButton variant="secondary" size="sm" @click="addCompat">＋ 新增兼容键</UiButton>
+    </div>
+
     <!-- 扩展插槽：TTS 卡在此挂载播报设置面板（引擎 / 音色 / 音量 / 试听）。
          Extension slot: the TTS card mounts the playback settings panel here (engine / voice / volume / preview). -->
     <slot />
@@ -119,6 +142,24 @@ function addVoice() {
   if (!Array.isArray(prof.voices)) prof.voices = []
   prof.voices.push('')
 }
+
+// ─── 高级兼容编辑辅助（数据直改 editable 快照，随「保存」一并 PATCH） ───
+
+/** 当前 profile 是否已有某兼容键。Whether the active profile has a compat key. */
+function compatHas(key: string): boolean {
+  return s.compatEntries(props.section).some(([k]) => k === key)
+}
+
+/** 追加一个空兼容键行（占位键名，改名即生效）。Append an empty compat row. */
+function addCompat() {
+  s.setCompat(props.section, `key_${Date.now().toString(36)}`, '')
+}
+
+/** 重命名兼容键（本质 = 删旧建新，值不变）。Rename a compat key (delete + recreate, value kept). */
+function renameCompat(_i: number, oldKey: string, newKey: string) {
+  const cur = s.compatEntries(props.section).find(([k]) => k === oldKey)
+  s.setCompat(props.section, newKey, cur?.[1] ?? '', oldKey)
+}
 </script>
 
 <style scoped>
@@ -141,6 +182,23 @@ function addVoice() {
   border-top: 1px dashed var(--border-soft); padding-top: 7px;
 }
 .cs-connline em { font-style: normal; font-family: var(--font-mono); color: var(--brand-c2); margin-left: 6px; }
+
+/* 高级兼容编辑区：折叠密度 + 快捷 chip（与音色行同构的键值行）。Advanced compat editor:
+   compact density + shortcut chips (key-value rows mirroring the voice row). */
+.cs-compat { border-top: 1px dashed var(--border-soft); padding-top: 9px; display: flex; flex-direction: column; gap: 7px; }
+.cs-compat-head { display: flex; align-items: baseline; gap: 8px; }
+.cs-compat-title { font-size: var(--fs-2xs); font-weight: 600; color: var(--text-2); letter-spacing: .04em; }
+.cs-compat-hint { font-size: var(--fs-2xs); color: var(--text-3); }
+.cs-compat-shortcuts { display: flex; flex-wrap: wrap; gap: 6px; }
+.cs-compat-chip {
+  font-size: var(--fs-2xs); font-family: var(--font-mono); color: var(--text-3);
+  background: rgba(15, 23, 42, .6); border: 1px solid var(--border-soft);
+  border-radius: var(--r-full); padding: 2px 9px; cursor: pointer;
+}
+.cs-compat-chip:hover { color: var(--brand-c2); border-color: var(--brand-c2); }
+.cs-compat-chip.on { color: var(--brand-c2); border-color: var(--brand-c2); background: rgba(52, 211, 153, .08); }
+.cs-compat-row { display: flex; align-items: center; gap: 8px; }
+.cs-compat-row :deep(.ui-input) { flex: 1; min-width: 0; font-family: var(--font-mono); }
 .st-ok { color: #34d399 !important; border-color: rgba(52, 211, 153, .4) !important; background: rgba(52, 211, 153, .07); }
 .st-skip { color: var(--text-3) !important; }
 .st-fail { color: #f87171 !important; border-color: rgba(248, 113, 113, .4) !important; background: rgba(248, 113, 113, .07); }

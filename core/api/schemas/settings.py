@@ -19,7 +19,6 @@ class ProfileEditable(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     provider: str = "openai"
-    vendor: str = ""
     endpoint: str = ""
     model: str = ""
     vision_model: str = ""

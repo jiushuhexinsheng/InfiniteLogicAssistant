@@ -824,28 +824,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/providers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Providers
-         * @description 返回合并后的厂商目录，按 kind（llm/asr/tts）分组，不含密钥。
-         *
-         *     Return the merged vendor catalog grouped by kind (llm/asr/tts), without secrets.
-         */
-        get: operations["list_providers_api_providers_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/providers/fetch-models": {
         parameters: {
             query?: never;
@@ -1080,28 +1058,6 @@ export interface components {
             open_window_s: number;
         };
         /**
-         * CatalogResponse
-         * @description 厂商目录端点响应。
-         *
-         *     ``/api/providers/catalog`` response.
-         */
-        CatalogResponse: {
-            /**
-             * Ok
-             * @default true
-             */
-            ok: boolean;
-            /** Error */
-            error?: string | null;
-            /**
-             * Catalog
-             * @default {}
-             */
-            catalog: {
-                [key: string]: components["schemas"]["ProviderPreset"][];
-            };
-        };
-        /**
          * ConfigFullResponse
          * @description 完整配置端点响应。
          *
@@ -1321,7 +1277,7 @@ export interface components {
          * FetchModelsResponse
          * @description 获取模型列表端点响应。
          *
-         *     ``/api/providers/models`` fetch response.
+         *     ``/api/providers/fetch-models`` fetch response.
          */
         FetchModelsResponse: {
             /**
@@ -1728,11 +1684,6 @@ export interface components {
              */
             provider: string;
             /**
-             * Vendor
-             * @default
-             */
-            vendor: string;
-            /**
              * Endpoint
              * @default
              */
@@ -1813,77 +1764,6 @@ export interface components {
             };
         } & {
             [key: string]: unknown;
-        };
-        /**
-         * ProviderPreset
-         * @description 厂商预设的完整结构（含所有可用字段）。
-         *
-         *     Full vendor preset structure (with all available fields).
-         */
-        ProviderPreset: {
-            /** Id */
-            id: string;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "llm" | "asr" | "tts";
-            /**
-             * Label
-             * @default
-             */
-            label: string;
-            /**
-             * Provider
-             * @default openai
-             */
-            provider: string;
-            /**
-             * Endpoint
-             * @default
-             */
-            endpoint: string;
-            /**
-             * Chat Path
-             * @default
-             */
-            chat_path: string;
-            /** Models Path */
-            models_path?: string | null;
-            /**
-             * Models
-             * @default []
-             */
-            models: string[];
-            /**
-             * Vision Models
-             * @default []
-             */
-            vision_models: string[];
-            /**
-             * Voices
-             * @default []
-             */
-            voices: string[];
-            /**
-             * Api Key Env
-             * @default
-             */
-            api_key_env: string;
-            /**
-             * Compat
-             * @default {}
-             */
-            compat: {
-                [key: string]: unknown;
-            };
-            /**
-             * Defaults
-             * @default {}
-             */
-            defaults: {
-                [key: string]: unknown;
-            };
         };
         /**
          * PutSecretsResponse
@@ -3456,26 +3336,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DetectionResponse"];
-                };
-            };
-        };
-    };
-    list_providers_api_providers_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CatalogResponse"];
                 };
             };
         };

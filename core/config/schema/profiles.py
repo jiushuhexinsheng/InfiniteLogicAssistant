@@ -1,47 +1,25 @@
 # -*- coding: utf-8 -*-
 """配置 schema — profiles 子模块（自 schema.py 拆出，纯移动）。
 
-LLM/ASR/TTS profile 与对应 section；VendorPreset/CompatConfig 供顶层 Settings 使用。
+LLM/ASR/TTS profile 与对应 section；CompatConfig 为网关兼容开关（extra=allow）。
+2026-10-11 起厂商目录（VendorPreset/vendor_presets/vendor 键）整体退役 —— profile 全部自填。
 """
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 class CompatConfig(BaseModel):
-    """厂商兼容开关（影响请求体组装；默认与既有行为一致，纯增量）。
+    """网关兼容开关（影响请求体组装；默认与既有行为一致，纯增量；额外键自由透传）。
 
-    Vendor compatibility toggles (affect request-body assembly; defaults preserve existing
-    behavior, purely additive).
+    Gateway compatibility toggles (affect request-body assembly; defaults preserve
+    existing behavior, purely additive; extra keys pass through freely).
     """
 
     model_config = ConfigDict(extra="allow")
 
     stream_options: bool = True   # 是否发 stream_options.include_usage（部分网关拒绝未知字段）
     max_tokens_field: Literal["max_tokens", "max_completion_tokens"] = "max_tokens"
-
-
-class VendorPreset(BaseModel):
-    """厂商目录预设（代码内置 + config.yaml vendor_presets 扩展）；extra=forbid 防拼错键。
-
-    Vendor catalog preset (built into the code + config.yaml vendor_presets extension);
-    extra=forbid prevents typos in keys.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    kind: Literal["llm", "asr", "tts"]
-    label: str = ""
-    provider: str = "openai"   # 协议：openai / anthropic / gemini
-    endpoint: str = ""         # 基座 URL（不含 /v1，与 chat_path 配对）
-    chat_path: str = ""
-    models_path: str = ""      # 获取模型列表路径；空则从 chat_path 推导
-    models: list[str] = Field(default_factory=list)
-    vision_models: list[str] = Field(default_factory=list)
-    voices: list[str] = Field(default_factory=list)   # 仅 TTS
-    api_key_env: str = ""      # 推荐环境变量名（非密钥本身）
-    compat: dict[str, Any] = Field(default_factory=dict)
-    defaults: dict[str, Any] = Field(default_factory=dict)
 
 
 class ProfileBase(BaseModel):
@@ -54,7 +32,6 @@ class ProfileBase(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     provider: str = "openai"   # 协议：openai / anthropic / gemini（LLM 分派用）
-    vendor: str = ""           # 厂商目录 ID（UI 元数据，不参与请求）
     endpoint: str = ""
     api_key: str = ""  # 由 loader 从 secrets/环境注入；config.yaml 不写
     api_key_env: str = ""      # 本 profile 专用环境变量名（优先级最高）
@@ -108,7 +85,7 @@ class LlmSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    active: str = "deepseek"
+    active: str = ""   # 空 = 取第一个 profile（目录退役后无内置默认名）
     profiles: dict[str, LlmProfile] = Field(default_factory=dict)
 
 
@@ -120,7 +97,7 @@ class AsrSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    active: str = "openai"
+    active: str = ""   # 空 = 取第一个 profile（目录退役后无内置默认名）
     profiles: dict[str, AsrProfile] = Field(default_factory=dict)
 
 
@@ -133,5 +110,5 @@ class TtsSection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
-    active: str = "openai"
+    active: str = ""   # 空 = 取第一个 profile（目录退役后无内置默认名）
     profiles: dict[str, TtsProfile] = Field(default_factory=dict)

@@ -132,9 +132,11 @@ def test_patch_config_deletes_profile(isolated_settings):
     assert set(data["llm"]["profiles"]) == {"a"}  # 被删的 b 不残留
 
 
-def test_patch_config_preserves_vendor_presets(isolated_settings):
-    """测试 PATCH 配置保留 vendor_presets。Tests PATCH config preserving vendor presets."""
-    import yaml
+def test_patch_config_tolerates_legacy_vendor_presets(isolated_settings):
+    """老配置带 vendor_presets（目录退役前的键）照常启动与 PATCH —— loader 建模前静默剥除
+    （extra=forbid 否则直接拒绝）。An old config carrying vendor_presets (pre-retirement key)
+    still boots and PATCHes — the loader strips it before modelling (extra=forbid would
+    otherwise reject it outright)."""
     from fastapi.testclient import TestClient
     import server as server_module
     isolated_settings.CONFIG_FILE.write_text(
@@ -143,6 +145,5 @@ def test_patch_config_preserves_vendor_presets(isolated_settings):
     )
     with TestClient(server_module.app) as tc:
         resp = tc.patch("/api/config", json={"agent": {"recursion_limit": 5}})
-    assert resp.status_code == 200
-    data = yaml.safe_load(isolated_settings.CONFIG_FILE.read_text(encoding="utf-8"))
-    assert data["vendor_presets"]["custom"]["label"] == "我的厂商"
+        assert resp.status_code == 200
+        assert tc.get("/api/config").status_code == 200

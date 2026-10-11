@@ -1,6 +1,6 @@
 // ─── API 端点 ───
 // ─── API Endpoints ───
-import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, LibraryTask, PingResponse, ProviderPreset, SessionItem, TextResponse, ToolCallResponse, ToolsResponse, WakeResponse } from '../types'
+import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, LibraryTask, PingResponse, SessionItem, TextResponse, ToolCallResponse, ToolsResponse, WakeResponse } from '../types'
 import { blobToWavBase64 } from '../audio'
 import { get, post, patchHttp, putHttp, del } from './http'
 // 类型别名（MemoryFact 等生成类型）由门面 ../api 定义，此处仅类型引用（运行时被擦除）。
@@ -30,9 +30,6 @@ export const api = {
   getDetection: () => get<{ ok: boolean; report: DetectionReport }>('/detection'),
 
   // 厂商目录 / 获取模型列表
-  // Provider catalog / fetch model list
-  /** 获取厂商目录。Get provider catalog. */
-  getProviders: () => get<{ ok: boolean; catalog: Record<'llm' | 'asr' | 'tts', ProviderPreset[]> }>('/providers'),
   /** 获取厂商模型列表。Fetch provider model list. */
   fetchModels: (section: string, profile: Record<string, any>) =>
     post<{ ok: boolean; models: string[]; count: number; error?: string }>('/providers/fetch-models', { section, profile }),

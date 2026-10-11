@@ -40,7 +40,7 @@ from core.config.schema import (
     AgentSection, AsrProfile, AsrSection, CompatConfig, LlmClientSection, LlmProfile,
     LlmSection, McpSection, McpServer, PermissionRule, PermissionsSection, PermissionTiers,
     ProfileBase, RagSection, ServerSection, Settings,
-    ToolsSection, TtsProfile, TtsSection, VadConfig, VendorPreset, VoiceSection,
+    ToolsSection, TtsProfile, TtsSection, VadConfig, VoiceSection,
     WakeWordConfig,
 )
 
@@ -48,7 +48,7 @@ __all__ = [
     # constants
     "ROOT_DIR", "CONFIG_FILE", "EXAMPLE_FILE", "SECRETS_FILE", "SECRETS_EXAMPLE", "_ENV_KEY_MAP",
     # schema
-    "Settings", "VendorPreset", "CompatConfig", "ProfileBase",
+    "Settings", "CompatConfig", "ProfileBase",
     "LlmProfile", "AsrProfile", "TtsProfile",
     "LlmSection", "AsrSection", "TtsSection",
     "WakeWordConfig", "VadConfig", "VoiceSection",

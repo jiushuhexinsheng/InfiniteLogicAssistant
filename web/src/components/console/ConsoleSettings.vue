@@ -124,7 +124,7 @@ function connStatusText(status: string): string {
 
 // useSettings 的 state 跨挂载存活，故每次进入设置页都重新拉取，避免展示陈旧配置。
 // The useSettings state survives mount/unmount, so re-fetch on every entry to avoid stale config.
-onMounted(() => { s.load(); s.loadCatalog() })
+onMounted(() => { s.load() })
 </script>
 
 <style scoped>

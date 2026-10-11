@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """异步 LLM 流式客户端 — httpx 解析 SSE → 事件流（参照 InfiniteLogic src/llm.py）。Asynchronous LLM streaming client — httpx parses SSE into an event stream (ported from InfiniteLogic src/llm.py).
 
-多协议分派（core.vendors.resolve_protocol，按 profile.provider / vendor / chat_path）：
+多协议分派（core.model_compat.resolve_protocol，按 profile.provider / chat_path）：
 - openai   : POST {endpoint}{chat_path}，OpenAI chat/completions SSE
 - anthropic: POST {endpoint}/v1/messages，Anthropic Messages API SSE
 - gemini   : POST {endpoint}/v1beta/models/{model}:streamGenerateContent?alt=sse
 
-Protocol dispatch (core.vendors.resolve_protocol, keyed by profile.provider / vendor / chat_path):
+Protocol dispatch (core.model_compat.resolve_protocol, keyed by profile.provider / chat_path):
 - openai   : POST {endpoint}{chat_path}, OpenAI chat/completions SSE
 - anthropic: POST {endpoint}/v1/messages, Anthropic Messages API SSE
 - gemini   : POST {endpoint}/v1beta/models/{model}:streamGenerateContent?alt=sse
@@ -43,7 +43,7 @@ from core.config import resolve_llm_profile
 from core.llm.protocols.anthropic import _stream_anthropic
 from core.llm.protocols.gemini import _stream_gemini
 from core.llm.protocols.openai import _stream_openai
-from core.vendors import resolve_protocol
+from core.model_compat import resolve_protocol
 
 
 async def stream_chat(

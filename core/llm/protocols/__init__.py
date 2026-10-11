@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""LLM 协议适配器(按 core.vendors.resolve_protocol 分派)。
+"""LLM 协议适配器(按 core.model_compat.resolve_protocol 分派)。
 
-LLM protocol adapters (dispatched by core.vendors.resolve_protocol):
+LLM protocol adapters (dispatched by core.model_compat.resolve_protocol):
 - openai   : OpenAI chat/completions SSE
 - anthropic: Anthropic Messages API SSE
 - gemini   : Gemini streamGenerateContent?alt=sse

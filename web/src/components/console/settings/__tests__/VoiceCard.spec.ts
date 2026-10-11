@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 vi.mock('../../../../api', () => ({
-  api: { patchConfig: vi.fn(), getConfigFull: vi.fn(), getProviders: vi.fn() },
+  api: { patchConfig: vi.fn(), getConfigFull: vi.fn() },
 }))
 
 import { editable } from '../state'

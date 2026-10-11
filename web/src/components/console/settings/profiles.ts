@@ -2,16 +2,18 @@ import { ref } from 'vue'
 import { api } from '../../../api'
 import { notify } from '../../../composables/useToast'
 import { formatError } from '../../../errors'
-import type { ProfileConfig, ProviderPreset } from '../../../types'
+import type { ProfileConfig } from '../../../types'
 import { editable, moduleBody } from './state'
 
 /**
- * 厂商目录与 Profile 管理（LLM / ASR / TTS 三模块共用）。
- * Vendor catalog and Profile management (shared by the LLM / ASR / TTS modules).
+ * Profile 管理（LLM / ASR / TTS 三模块共用）—— 全部自填，无厂商目录
+ * （2026-10-11 目录退役：endpoint/模型/协议/密钥由用户手填或「获取模型」拉取）。
+ *
+ * Profile management (shared by the LLM / ASR / TTS modules) — entirely self-filled,
+ * no vendor catalogue (retired 2026-10-11: endpoint/model/protocol/key are filled in
+ * by hand or pulled via "fetch models").
  */
 
-/** 厂商目录预设列表（按模块分组）。Vendor catalog presets (grouped by module). */
-export const catalog = ref<Record<string, ProviderPreset[]> | null>(null)
 /** 当前正在新增 Profile 的模块 key。Module key currently adding a Profile. */
 export const addingSection = ref<string | null>(null)
 /** 是否正在输入自定义 Profile 名称。Whether custom Profile name input is active. */
@@ -31,84 +33,25 @@ export function activeProfile(s: any): ProfileConfig {
 }
 
 /**
- * 根据 Profile 的 vendor 字段查找对应的厂商预设。
- * Find the vendor preset matching the Profile's vendor field.
+ * 当前 Profile 自己维护的模型列表（无目录合并；「获取模型」按钮填充）。
+ * The active profile's own model list (no catalogue merge; the "fetch models" button fills it).
  *
  * @param s 服务模块定义。The service module definition.
- * @returns 厂商预设或 null。The vendor preset, or null.
- */
-export function vendorPreset(s: any): ProviderPreset | null {
-  const prof = activeProfile(s)
-  if (!prof.vendor || !catalog.value) return null
-  return catalog.value[s.key]?.find((v) => v.id === prof.vendor) || null
-}
-
-/**
- * 获取指定模块的厂商预设列表。
- * Get the vendor preset list for a module.
- *
- * @param key 模块 key。Module key.
- * @returns 厂商预设列表。The vendor preset list.
- */
-export function vendorList(key: string): ProviderPreset[] {
-  return (catalog.value && catalog.value[key]) || []
-}
-
-/**
- * 合并 Profile 和厂商预设的模型列表（去重）。
- * Merge model lists from the Profile and its vendor preset (deduplicated).
- *
- * @param s 服务模块定义。The service module definition.
- * @returns 去重后的模型列表。The deduplicated model list.
+ * @returns 模型列表。The model list.
  */
 export function modelOptions(s: any): string[] {
-  const prof = activeProfile(s)
-  const v = vendorPreset(s)
-  return [...new Set([...(prof.models || []), ...(v?.models || [])])].filter(Boolean)
+  return [...new Set(activeProfile(s).models || [])].filter(Boolean)
 }
 
 /**
- * 合并 Profile 和厂商预设的音色列表（去重）。
- * Merge voice lists from the Profile and its vendor preset (deduplicated).
+ * 当前 Profile 自己维护的音色列表（无目录合并）。
+ * The active profile's own voice list (no catalogue merge).
  *
  * @param s 服务模块定义。The service module definition.
- * @returns 去重后的音色列表。The deduplicated voice list.
+ * @returns 音色列表。The voice list.
  */
 export function voiceOptions(s: any): string[] {
-  const prof = activeProfile(s)
-  const v = vendorPreset(s)
-  return [...new Set([...(prof.voices || []), ...(v?.voices || [])])].filter(Boolean)
-}
-
-/**
- * 目录预设 → 可编辑 profile（与后端 core/providers.preset_to_profile 对齐）。
- * Convert a catalog preset to an editable profile (aligned with the backend's
- * core/providers.preset_to_profile).
- *
- * @param v 厂商预设。The vendor preset.
- * @returns 可编辑的 Profile 配置。The editable profile config.
- */
-export function presetToProfile(v: ProviderPreset): ProfileConfig {
-  const p: any = {
-    provider: v.provider || 'openai',
-    vendor: v.id,
-    endpoint: v.endpoint,
-    chat_path: v.chat_path || '/v1/chat/completions',
-    models: [...v.models],
-    model: v.defaults?.model || v.models[0] || '',
-    api_key_env: v.api_key_env,
-    compat: { ...v.compat },
-  }
-  if (v.models_path) p.models_path = v.models_path
-  if (v.vision_models?.length) p.vision_model = v.vision_models[0]
-  if (v.voices?.length) {
-    p.voices = [...v.voices]
-    p.voice = v.defaults?.voice || v.voices[0]
-  }
-  for (const [k, val] of Object.entries(v.defaults || {})) {
-    if (p[k] === undefined) p[k] = val
-  }
-  return p
+  return [...new Set(activeProfile(s).voices || [])].filter(Boolean)
 }
 
 /**
@@ -140,8 +83,9 @@ export async function persistSection(key: string): Promise<boolean> {
 }
 
 /**
- * 自定义空白 Profile：内联输入取名 → 建空 profile 并立即保存。
- * Custom blank Profile: inline name input, then created and saved immediately.
+ * 自定义空白 Profile：内联输入取名 → 建空 profile 并立即保存（唯一新增路径）。
+ * Custom blank Profile: inline name input, then created and saved immediately (the
+ * only way to add a Profile).
  *
  * @param key 模块 key。Module key.
  */
@@ -158,24 +102,65 @@ export async function confirmCustom(key: string) {
   else notify.err(`已添加 Profile「${name}」（保存失败，请检查后手动保存）`)
 }
 
-/**
- * 从厂商目录新增 Profile 并立即保存。
- * Add a Profile from the vendor catalog and save it immediately.
- *
- * @param key 模块 key。Module key.
- * @param v 厂商预设。The vendor preset.
- */
-export async function addProfileFromVendor(key: string, v: ProviderPreset) {
-  const profiles = (editable.value as any)[key].profiles
-  let name = v.id
-  let i = 2
-  while (profiles[name]) name = `${v.id}-${i++}`
-  profiles[name] = presetToProfile(v)
-  ;(editable.value as any)[key].active = name
-  addingSection.value = null
-  const ok = await persistSection(key)
-  if (ok) notify.ok(`已添加并保存 Profile「${name}」，请设置 API Key`)
-  else notify.err(`已添加 Profile「${name}」（保存失败，请检查后手动保存）`)
+// ─── 高级兼容开关（目录退役后的自填闭环：网关特殊补丁不再靠预设预填） ───
+// Advanced gateway compatibility toggles (the self-fill loop after the catalogue
+// retired: gateway-specific patches are no longer pre-filled by presets).
+
+/** 常用兼容开关快捷项（点击即写入当前 profile 的 compat）。Common compat shortcuts. */
+export const COMPAT_SHORTCUTS: { label: string; key: string; value: string }[] = [
+  { label: 'api-key 认证头', key: 'auth_header', value: 'api-key' },
+  { label: '音频 data-URL', key: 'audio_data_url', value: 'true' },
+  { label: '附带语言', key: 'send_language', value: 'true' },
+  { label: '拒绝文本部件', key: 'no_text_parts', value: 'true' },
+  { label: '用量统计', key: 'stream_options', value: 'true' },
+  { label: 'max_tokens 改名', key: 'max_tokens_field', value: 'max_completion_tokens' },
+]
+
+/** 当前 profile 的 compat 对象（不存在先初始化）。The active profile's compat object
+ *  (initialized when missing). */
+function mutableCompat(s: any): Record<string, unknown> {
+  const prof = activeProfile(s) as any
+  if (!prof) return {}
+  if (!prof.compat || typeof prof.compat !== 'object') prof.compat = {}
+  return prof.compat
+}
+
+/** 读取兼容键值（展示为字符串行）。Read compat entries as display string rows. */
+export function compatEntries(s: any): [string, string][] {
+  return Object.entries(mutableCompat(s)).map(([k, v]) => [k, typeof v === 'string' ? v : String(v)])
+}
+
+/** 智能解析输入值：true/false → 布尔，纯数字 → number，其余原样字符串。
+ *  Smart-parse an input: true/false → boolean, pure digits → number, else the raw string. */
+export function parseCompatValue(raw: string): unknown {
+  const t = raw.trim()
+  if (t === 'true') return true
+  if (t === 'false') return false
+  if (t !== '' && !Number.isNaN(Number(t))) return Number(t)
+  return raw
+}
+
+/** 写入一个兼容键（改键名 = 删旧建新）。Write a compat key (renaming = delete + create). */
+export function setCompat(s: any, key: string, raw: string, oldKey?: string) {
+  const k = key.trim()
+  if (!k) return
+  const compat = mutableCompat(s)
+  if (oldKey && oldKey !== k) delete compat[oldKey]
+  compat[k] = parseCompatValue(raw)
+}
+
+/** 删除一个兼容键。Delete a compat key. */
+export function removeCompat(s: any, key: string) {
+  delete mutableCompat(s)[key]
+}
+
+/** 快捷项开关：已有同键则移除，否则按快捷值写入（一次点击可逆）。
+ *  Shortcut toggle: removes an existing key, otherwise writes the shortcut value
+ *  (one click, reversible). */
+export function toggleCompat(s: any, key: string, value: string) {
+  const compat = mutableCompat(s)
+  if (key in compat) delete compat[key]
+  else compat[key] = parseCompatValue(value)
 }
 
 /**
@@ -220,15 +205,4 @@ export async function fetchModelsFor(s: any) {
   } catch (e) {
     notify.err('获取模型失败：' + formatError(e))
   }
-}
-
-/**
- * 从后端拉取厂商目录预设（失败不阻塞设置页）。
- * Fetch the vendor catalog from the backend (failure does not block the settings page).
- */
-export async function loadCatalog() {
-  try {
-    const r = await api.getProviders()
-    if (r.ok) catalog.value = r.catalog
-  } catch { /* 目录拉取失败不阻塞设置页 / Catalog failure does not block the settings page */ }
 }

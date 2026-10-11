@@ -17,13 +17,14 @@ import { useSettings } from '../useSettings'
 /** 子组件依赖的成员清单（与 useSettings() 的返回键一一对应）。
  *  `app`（全局配置缓存）仅供 state.ts 内部 saveModule 刷新用，无组件消费，故不对外暴露。 */
 const EXPECTED_KEYS = [
-  'editable', 'saving', 'detecting', 'connResults', 'issues', 'catalog',
+  'editable', 'saving', 'detecting', 'connResults', 'issues',
   'addingSection', 'customAdding', 'customName', 'activeMenu', 'keyModal', 'showKey',
   'sec', 'ed', 'menuDot',
-  'activeProfile', 'vendorPreset', 'vendorList', 'modelOptions', 'voiceOptions', 'presetToProfile',
-  'toggleAdding', 'confirmCustom', 'addProfileFromVendor', 'deleteProfile', 'fetchModelsFor',
+  'activeProfile', 'modelOptions', 'voiceOptions',
+  'toggleAdding', 'confirmCustom', 'deleteProfile', 'fetchModelsFor',
+  'compatShortcuts', 'compatEntries', 'setCompat', 'removeCompat', 'toggleCompat',
   'saveModule', 'load', 'detectAll', 'detectOne',
-  'openKeyModal', 'keyEnvHint', 'confirmKey', 'clearKey', 'loadCatalog',
+  'openKeyModal', 'keyEnvHint', 'confirmKey', 'clearKey',
 ] as const
 
 describe('useSettings 公开契约', () => {
@@ -39,7 +40,7 @@ describe('useSettings 公开契约', () => {
   /** 状态成员必须是 ref（有 .value），否则组件里的 s.xxx.value 会崩。 */
   it('状态成员是 ref（具备 .value）', () => {
     const s = useSettings() as Record<string, any>
-    for (const key of ['editable', 'saving', 'detecting', 'connResults', 'issues', 'catalog',
+    for (const key of ['editable', 'saving', 'detecting', 'connResults', 'issues',
       'addingSection', 'customAdding', 'customName', 'activeMenu', 'keyModal', 'showKey']) {
       expect(s[key], `${key} 应为 ref`).toHaveProperty('value')
     }
@@ -50,7 +51,7 @@ describe('useSettings 公开契约', () => {
     const s = useSettings() as Record<string, any>
     for (const key of ['sec', 'ed', 'menuDot', 'toggleAdding', 'saveModule', 'load',
       'detectAll', 'detectOne', 'openKeyModal', 'keyEnvHint', 'confirmKey', 'clearKey',
-      'loadCatalog', 'fetchModelsFor', 'deleteProfile']) {
+      'fetchModelsFor', 'deleteProfile', 'compatEntries', 'setCompat', 'removeCompat', 'toggleCompat']) {
       expect(typeof s[key], `${key} 应为函数`).toBe('function')
     }
   })

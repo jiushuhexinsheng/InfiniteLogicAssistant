@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
-"""providers 域 API — 厂商目录 + 获取模型列表
+"""providers 域 API — 获取模型列表（自填 profile 用）
 
-GET  /api/providers              合并后厂商目录（代码内置 + YAML 扩展），按 kind 分组，无密钥
 POST /api/providers/fetch-models 服务端调 OpenAI 兼容 GET {endpoint}{models_path}/models
                                   拉模型列表（密钥只用于转发，永不回显）
+2026-10-11 起厂商目录端点 GET /api/providers 已随目录退役 —— profile 全部自填。
 
-GET  /api/providers              merged vendor catalog (built-in + YAML extension), grouped by kind, no secrets
-POST /api/providers/fetch-models server calls the OpenAI-compatible GET {endpoint}{models_path}/models
-                                  to fetch the model list (keys are only forwarded, never echoed)
+POST /api/providers/fetch-models server calls the OpenAI-compatible GET
+{endpoint}{models_path}/models to fetch the model list (keys are only forwarded,
+never echoed). The catalogue endpoint GET /api/providers was retired together with
+the vendor catalogue on 2026-10-11 — profiles are entirely self-filled.
 """
 import json
 
@@ -16,28 +17,13 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from core import config as config_mod
-from core.api.schemas import CatalogResponse, FetchModelsResponse
+from core.api.schemas import FetchModelsResponse
 from core.logger import logger
-from core.vendors import get_presets_by_kind, models_path_for, resolve_protocol, to_public_dict
+from core.model_compat import models_path_for, resolve_protocol
 
 router = APIRouter()
 
 _MODEL_LIMIT = 200  # 模型列表上限，避免写爆 config.yaml
-
-
-@router.get("/providers", response_model=CatalogResponse)
-async def list_providers():
-    """返回合并后的厂商目录，按 kind（llm/asr/tts）分组，不含密钥。
-
-    Return the merged vendor catalog grouped by kind (llm/asr/tts), without secrets.
-    """
-    catalog: dict = {}
-    for kind in ("llm", "asr", "tts"):
-        catalog[kind] = [
-            {"id": pid, **to_public_dict(preset.model_dump())}
-            for pid, preset in get_presets_by_kind(kind)
-        ]
-    return {"ok": True, "catalog": catalog}
 
 
 @router.post("/providers/fetch-models", response_model=FetchModelsResponse)

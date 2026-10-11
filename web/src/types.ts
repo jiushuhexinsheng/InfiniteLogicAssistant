@@ -35,7 +35,6 @@ export type ToolCallResponse = components['schemas']['ToolCallResponse']
 /** 配置文件类型。Profile config type. */
 export type ProfileConfig = components['schemas']['ProfileEditable']
 /** 厂商预设类型。Provider preset type. */
-export type ProviderPreset = components['schemas']['ProviderPreset']
 /** 可编辑快照类型。Editable snapshot type. */
 export type EditableSnapshot = components['schemas']['EditableSnapshot']
 /** 检测问题类型。Detection issue type. */

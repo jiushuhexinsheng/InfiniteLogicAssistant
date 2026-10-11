@@ -105,24 +105,51 @@ def test_profile_api_key_legacy_warns(monkeypatch, capsys):
 
 # ─── Settings 接受新字段 ───
 
-def test_settings_accepts_vendor_presets_and_failover():
-    """验证 Settings 接受 vendor_presets 与 models_failover 新字段。Verifies Settings accepts the new vendor_presets and models_failover fields."""
-    s = c.Settings(
-        vendor_presets={"myllm": c.VendorPreset(kind="llm", label="我的", endpoint="https://x", chat_path="/v1/chat/completions")},
-        agent=c.AgentSection(models_failover=["model-b"]),
-    )
-    assert s.vendor_presets["myllm"].label == "我的"
-    assert s.agent.models_failover == ["model-b"]
+def test_settings_rejects_vendor_presets_field():
+    """vendor_presets 字段已随厂商目录退役 —— Settings extra=forbid 直接拒绝该键
+    （老配置由 loader 的 _migrate_legacy_vendor_keys 在建模前剥除，见下方迁移用例）。
+    The vendor_presets field retired with the catalogue — Settings (extra=forbid) rejects
+    the key outright (legacy configs are stripped pre-modelling by
+    _migrate_legacy_vendor_keys; see the migration case below)."""
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        c.Settings(vendor_presets={"myllm": {"kind": "llm"}})
+    assert c.Settings().agent.models_failover == []   # models_failover 仍在
 
 
-def test_profile_accepts_vendor_models_compat_api_key_env():
-    """验证 LlmProfile 接受 vendor/models/compat/api_key_env 字段。Verifies LlmProfile accepts the vendor, models, compat, and api_key_env fields."""
+def test_migrate_legacy_vendor_keys_strips_and_warns(capsys):
+    """老配置迁移：顶层 vendor_presets 与 profile.vendor 键被剥除并各告警一次，
+    其余字段原样保留（extra=forbid 不再炸启动）。
+    Legacy migration: the top-level vendor_presets and per-profile vendor keys are
+    stripped with one notice each; everything else passes through unchanged (no more
+    extra=forbid boot failure)."""
+    from core.config.loader import _migrate_legacy_vendor_keys
+    data = {
+        "vendor_presets": {"custom": {"kind": "llm"}},
+        "llm": {"active": "a", "profiles": {"a": {"vendor": "deepseek", "model": "m"}}},
+        "voice": {"asr": {"profiles": {"b": {"vendor": "v", "model": "asr-m"}}}},
+    }
+    _migrate_legacy_vendor_keys(data)
+    assert "vendor_presets" not in data
+    assert "vendor" not in data["llm"]["profiles"]["a"]
+    assert data["llm"]["profiles"]["a"]["model"] == "m"
+    assert "vendor" not in data["voice"]["asr"]["profiles"]["b"]
+    out = capsys.readouterr().out
+    assert "vendor_presets" in out and "vendor 键" in out
+    # 剥完必须能过建模
+    c.Settings(**data)
+
+
+def test_profile_accepts_models_compat_api_key_env():
+    """验证 LlmProfile 接受 models/compat/api_key_env 字段（vendor 字段已随目录删除，
+    extra=allow 下残留键仍被容忍不炸）。Verifies LlmProfile accepts the models, compat and
+    api_key_env fields (the vendor field retired; leftovers stay tolerated under
+    extra=allow)."""
     prof = c.LlmProfile(
         vendor="deepseek", api_key_env="DEEPSEEK_API_KEY",
         models=["deepseek-chat"], models_path="/v1/models",
         compat={"stream_options": False},
     )
-    assert prof.vendor == "deepseek"
     assert prof.models == ["deepseek-chat"]
     assert prof.compat.stream_options is False
 
@@ -138,14 +165,13 @@ def test_compat_defaults_preserve_behavior():
 def test_editable_snapshot_keeps_new_fields_strips_key(monkeypatch):
     """验证设置快照保留新字段并剥离 api_key。Verifies the editable snapshot keeps new fields and strips the api_key."""
     settings = c.Settings(llm=c.LlmSection(profiles={
-        "ds": c.LlmProfile(vendor="deepseek", api_key_env="DEEPSEEK_API_KEY",
+        "ds": c.LlmProfile(api_key_env="DEEPSEEK_API_KEY",
                            models=["deepseek-chat"], compat={"stream_options": False}, api_key="SECRET"),
     }))
     monkeypatch.setattr(c, "get_settings", lambda: settings)
     snap = c.editable_snapshot()
     prof = snap["llm"]["profiles"]["ds"]
     assert "api_key" not in prof
-    assert prof["vendor"] == "deepseek"
     assert prof["api_key_env"] == "DEEPSEEK_API_KEY"  # 环境变量名非密钥，可透传
     assert prof["models"] == ["deepseek-chat"]
     assert prof["compat"]["stream_options"] is False  # CompatConfig 默认带 max_tokens_field

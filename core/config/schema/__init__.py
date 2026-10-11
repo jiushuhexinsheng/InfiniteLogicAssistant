@@ -4,7 +4,8 @@
 Configuration schema — pydantic strongly-typed models (pure definitions, no IO / no global state).
 
 加载时经 pydantic 模型校验（类型 / 范围 / 枚举，写错配置启动即报错）。
-结构对应 config.yaml：llm / voice / server / mcp / rag / agent / llm_client / tools + vendor_presets。
+结构对应 config.yaml：llm / voice / server / mcp / rag / agent / llm_client / tools。
+（2026-10-11 起 vendor_presets 目录扩展随目录退役，loader 对老键静默迁移。）
 
 自单文件 schema.py 拆包（纯移动）：本门面全量 re-export 全部类，
 `from core.config.schema import X` 与 `from core.config import schema` 两种导入面不变。
@@ -18,7 +19,6 @@ from .profiles import (
     ProfileBase,
     TtsProfile,
     TtsSection,
-    VendorPreset,
 )
 from .sections import (
     AgentSection,
@@ -59,7 +59,6 @@ __all__ = [
     "TtsProfile",
     "TtsSection",
     "ToolsSection",
-    "VendorPreset",
     "VadConfig",
     "VoiceSection",
     "WakeWordConfig",

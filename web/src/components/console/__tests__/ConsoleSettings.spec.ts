@@ -5,7 +5,6 @@ import { flushPromises, mount } from '@vue/test-utils'
 vi.mock('../../../api', () => ({
   api: {
     getConfigFull: vi.fn(),
-    getProviders: vi.fn(),
     patchConfig: vi.fn(),
     getDetection: vi.fn(),
     putSecret: vi.fn(),
@@ -52,7 +51,6 @@ function snapshot() {
 describe('ConsoleSettings 语音合成两卡结构', () => {
   beforeEach(async () => {
     vi.mocked(api.getConfigFull).mockResolvedValue({ ok: true, editable: snapshot() } as any)
-    vi.mocked(api.getProviders).mockResolvedValue({ ok: true, catalog: {} } as any)
     editable.value = null
     activeMenu.value = 'tts'
     ttsSettings.value.engine = 'browser'

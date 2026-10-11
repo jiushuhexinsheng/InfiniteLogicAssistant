@@ -1,7 +1,9 @@
 <template>
-  <!-- 厂商目录选择面板（新增 Profile）：从预设厂商快速创建配置。Vendor catalog panel (add Profile): quickly create config from vendor presets. -->
+  <!-- 新增 Profile 面板：内联输入名称 → 创建空白 profile（唯一新增路径；厂商目录已退役）。
+       Add-profile panel: inline name input → create a blank profile (the only way to add;
+       the vendor catalogue retired 2026-10-11). -->
   <div class="cs-vendor">
-    <p class="cs-vendor-tip">从厂商目录新增 Profile（自动预填端点/模型，可再手动调整）</p>
+    <p class="cs-vendor-tip">新增 Profile（自填 endpoint / 模型 / 密钥，可保存多个随时切换）</p>
     <!-- 自定义名称内联输入（替代 window.prompt）。Custom name inline input (replaces window.prompt). -->
     <div v-if="s.customAdding.value === sectionKey" class="cs-vendor-custom">
       <UiInput v-model="s.customName.value" placeholder="Profile 名称（如 my-gateway）" @keyup.enter="s.confirmCustom(sectionKey)" />
@@ -9,15 +11,12 @@
       <UiButton variant="secondary" size="sm" @click="s.customAdding.value = null">取消</UiButton>
     </div>
     <div v-else class="cs-vendor-grid">
-      <UiButton size="sm" shape="pill" class="cs-vendor-chip custom" @click="s.customAdding.value = sectionKey">＋ 自定义（空白）</UiButton>
-      <UiButton v-for="v in s.vendorList(sectionKey)" :key="v.id" size="sm" shape="pill" class="cs-vendor-chip" @click="s.addProfileFromVendor(sectionKey, v)">
-        {{ v.label }}
-      </UiButton>
+      <UiButton size="sm" shape="pill" class="cs-vendor-chip custom" @click="s.customAdding.value = sectionKey">＋ 新增模型</UiButton>
     </div>
   </div>
 </template>
 
-<!-- 厂商目录面板：父组件传入所属模块 key。Vendor catalog panel: the parent passes the owning module key. -->
+<!-- 新增面板：父组件传入所属模块 key。Add panel: the parent passes the owning module key. -->
 <script setup lang="ts">
 import { UiButton, UiInput } from '../../ui'
 import { useSettings } from './useSettings'

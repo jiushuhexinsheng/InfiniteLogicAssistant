@@ -229,6 +229,53 @@ def profile_api_key(section: str, name: str, profile: dict) -> str:
     return _profile_api_key(section, name, _load_secrets(), profile)
 
 
+def _migrate_legacy_vendor_keys(data: dict) -> None:
+    """目录退役迁移（2026-10-11）：老配置的厂商目录键在建模前静默剥除。
+
+    Settings 是 extra=forbid —— 顶层 ``vendor_presets`` 若不剥掉会直接启动失败；
+    profile 里的 ``vendor`` 键已随 ProfileBase 字段删除（extra=allow 能装但会泄漏到
+    快照/PATCH，回读报 400），一并剥掉。各剥一次弃用告警。
+
+    Catalogue-retirement migration (2026-10-11): strip legacy vendor keys from an old
+    config before modelling. Settings is extra=forbid, so a top-level
+    ``vendor_presets`` would fail the boot outright; the per-profile ``vendor`` key is
+    also stripped (its field is gone — extras would leak into snapshot/PATCH round
+    trips). One deprecation notice each.
+
+    Args:
+        data: YAML 读出的原始配置字典（就地修改）。The raw config dict (mutated in place).
+    """
+    if data.pop("vendor_presets", None) is not None:
+        _print_notice(
+            "[配置] vendor_presets（厂商目录扩展）已随厂商目录退役，该节已被忽略"
+            "——请改用自填 profile（名称/协议/URL/模型）"
+        )
+
+    def _strip_profiles(section) -> bool:
+        if not isinstance(section, dict):
+            return False
+        profiles = section.get("profiles")
+        if not isinstance(profiles, dict):
+            return False
+        stripped = False
+        for prof in profiles.values():
+            if isinstance(prof, dict) and "vendor" in prof:
+                prof.pop("vendor", None)
+                stripped = True
+        return stripped
+
+    hit = False
+    hit |= _strip_profiles(data.get("llm"))
+    voice = data.get("voice")
+    if isinstance(voice, dict):
+        for sub in ("asr", "tts"):
+            hit |= _strip_profiles(voice.get(sub))
+    for sub in ("asr", "tts"):          # 旧扁平结构（顶层 asr/tts）
+        hit |= _strip_profiles(data.get(sub))
+    if hit:
+        _print_notice("[配置] profile 里的 vendor 键已随厂商目录退役，该键已被忽略（其余字段不受影响）")
+
+
 def _build() -> Settings:
     """构建 Settings：必要时从 example 模板创建配置文件，读取 YAML、注入密钥并校验。
 
@@ -253,6 +300,7 @@ def _build() -> Settings:
 
     data = _read_yaml(_cfg.CONFIG_FILE)
     _inject_secrets(data, _load_secrets())
+    _migrate_legacy_vendor_keys(data)
     from pydantic import ValidationError
 
     try:

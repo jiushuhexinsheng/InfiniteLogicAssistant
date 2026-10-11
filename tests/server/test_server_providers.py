@@ -9,16 +9,12 @@ import server as server_module
 
 # ─── /api/providers ───
 
-def test_providers_catalog_no_secrets(client):
-    """测试提供商目录不含密钥信息。Tests the providers catalog containing no secret fields."""
-    data = client.get("/api/providers").json()
-    assert data["ok"] is True
-    assert set(data["catalog"]) == {"llm", "asr", "tts"}
-    for items in data["catalog"].values():
-        for item in items:
-            assert "api_key" not in item and "api_token" not in item
-    ds = next(x for x in data["catalog"]["llm"] if x["id"] == "deepseek")
-    assert ds["endpoint"] == "https://api.deepseek.com"
+def test_providers_catalog_endpoint_retired(client):
+    """目录端点已随厂商目录退役（2026-10-11）→ 404；profile 全部自填。
+    The catalogue endpoint retired with the vendor catalogue (2026-10-11) → 404; profiles
+    are entirely self-filled."""
+    resp = client.get("/api/providers")
+    assert resp.status_code == 404
 
 
 def test_fetch_models_accepts_anthropic(client, monkeypatch):

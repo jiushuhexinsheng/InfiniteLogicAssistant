@@ -52,9 +52,7 @@ from .memory import (
     MemoryListResponse,
 )
 from .providers import (
-    CatalogResponse,
     FetchModelsResponse,
-    ProviderPreset,
 )
 from .schedules import (
     ScheduleAddResponse,
@@ -113,7 +111,6 @@ __all__ = [
     "CallSegmentResponse",
     "UploadStatsResponse",
     "CallSessionResponse",
-    "CatalogResponse",
     "ConfigFullResponse",
     "ConfigHealthOut",
     "ConfigResponse",
@@ -144,7 +141,6 @@ __all__ = [
     "PermissionTiersOut",
     "PingResponse",
     "ProfileEditable",
-    "ProviderPreset",
     "PutSecretsResponse",
     "RagConfigOut",
     "ScheduleAddResponse",

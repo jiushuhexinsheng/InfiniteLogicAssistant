@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from core import config as config_mod
+from core.config.loader import _migrate_legacy_vendor_keys
 from core.api.schemas import (
     ConfigFullResponse, DetectionResponse, PatchConfigResponse, PutSecretsResponse,
 )
@@ -196,6 +197,12 @@ async def patch_config(request: Request):
     merged = _deep_merge(current, patch)
     _wholesale_profiles(merged, patch)
     _strip_secrets(merged)
+    # 目录退役迁移：老配置的 vendor_presets/vendor 键若不剥掉，下面的 extra=forbid
+    # 校验直接 400（与启动路径同一套迁移；剥后写回即完成清理）。
+    # Catalogue-retirement migration: without stripping legacy vendor_presets/vendor
+    # keys the extra=forbid validation below 400s (same migration as the boot path;
+    # the write-back completes the clean-up).
+    _migrate_legacy_vendor_keys(merged)
     try:
         config_mod.Settings(**merged)  # 校验：类型/范围/未知字段 违规即 400
     except ValidationError as e:

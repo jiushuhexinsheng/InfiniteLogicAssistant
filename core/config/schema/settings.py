@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
-"配置 schema — 顶层 Settings（自 schema.py 拆出，纯移动）。"
+"""配置 schema — 顶层 Settings（自 schema.py 拆出，纯移动）。
+
+2026-10-11 起 vendor_presets（厂商目录 YAML 扩展）字段退役 —— loader 对老配置里的
+该键做静默丢弃迁移；模型全部为用户自填 profile。
+"""
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .profiles import LlmSection, VendorPreset
+from .profiles import LlmSection
 from .sections import (
     AgentSection, LlmClientSection, McpSection, MemorySection, PermissionsSection,
     RagSection, ServerSection, ToolsSection,
@@ -11,10 +15,10 @@ from .sections import (
 from .voice import VoiceSection
 
 class Settings(BaseModel):
-    """顶层配置模型：汇总 llm / voice / server / mcp / rag / agent / llm_client / tools / vendor_presets。
+    """顶层配置模型：汇总 llm / voice / server / mcp / rag / agent / llm_client / tools。
 
     Top-level configuration model: aggregates llm / voice / server / mcp / rag / agent /
-    llm_client / tools / vendor_presets.
+    llm_client / tools.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -29,4 +33,3 @@ class Settings(BaseModel):
     llm_client: LlmClientSection = Field(default_factory=lambda: LlmClientSection())
     tools: ToolsSection = Field(default_factory=lambda: ToolsSection())
     permissions: PermissionsSection = Field(default_factory=lambda: PermissionsSection())
-    vendor_presets: dict[str, VendorPreset] = Field(default_factory=dict)  # 厂商目录 YAML 扩展
