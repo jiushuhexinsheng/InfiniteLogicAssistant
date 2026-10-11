@@ -6,7 +6,12 @@
       <span class="cs-card-title">本地语音 · 浏览器合成</span>
       <span class="cs-card-note">改动即时生效（存本机）</span>
     </div>
-    <TtsSettings />
+
+    <!-- 卡体：唯一滚动面（卡头固定在其上方）。The card body: the only scrolling surface
+         (the card head stays fixed above it). -->
+    <div class="cs-card-body">
+      <TtsSettings />
+    </div><!-- /cs-card-body -->
   </UiCard>
 </template>
 

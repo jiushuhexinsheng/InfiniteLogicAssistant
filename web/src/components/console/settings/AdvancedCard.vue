@@ -7,21 +7,27 @@
         {{ s.saving.value ? '保存中…' : '保存' }}
       </UiButton>
     </div>
-    <div v-for="d in advancedDefs" :key="d.key" class="cs-subcard">
-      <div class="cs-subcard-title">{{ d.title }}</div>
-      <template v-for="f in d.fields" :key="f[0]">
-        <SettingsField v-if="f[1] === 'bool'" :label="fieldLabel(f[0])" row>
-          <UiToggle :model-value="s.sec(d.key)[f[0]]" @update:model-value="v => (s.sec(d.key)[f[0]] = v)" />
-        </SettingsField>
-        <SettingsField v-else :label="fieldLabel(f[0])">
-          <UiInput :type="f[1] === 'number' ? 'number' : 'text'" v-model="s.sec(d.key)[f[0]]" />
-        </SettingsField>
-      </template>
-    </div>
-    <p class="cs-note">
-      MCP server 列表、服务器 host/port/api_token 建议直接编辑 config.yaml / config.secrets.yaml（改动需重启生效）。
-      密钥只报「已设置 / 未设置」，永不回显。
-    </p>
+
+    <!-- 卡体：唯一滚动面（卡头固定在其上方）。The card body: the only scrolling surface
+         (the card head stays fixed above it). -->
+    <div class="cs-card-body">
+      <div v-for="d in advancedDefs" :key="d.key" class="cs-subcard">
+        <div class="cs-subcard-title">{{ d.title }}</div>
+        <template v-for="f in d.fields" :key="f[0]">
+          <SettingsField v-if="f[1] === 'bool'" :label="fieldLabel(f[0])" row>
+            <UiToggle :model-value="s.sec(d.key)[f[0]]" @update:model-value="v => (s.sec(d.key)[f[0]] = v)" />
+          </SettingsField>
+          <SettingsField v-else :label="fieldLabel(f[0])">
+            <UiInput :type="f[1] === 'number' ? 'number' : 'text'" v-model="s.sec(d.key)[f[0]]" />
+          </SettingsField>
+        </template>
+      </div>
+
+      <p class="cs-note">
+        MCP server 列表、服务器 host/port/api_token 建议直接编辑 config.yaml / config.secrets.yaml（改动需重启生效）。
+        密钥只报「已设置 / 未设置」，永不回显。
+      </p>
+    </div><!-- /cs-card-body -->
   </UiCard>
 </template>
 

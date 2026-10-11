@@ -9,6 +9,9 @@
       </UiButton>
     </div>
 
+    <!-- 卡体：唯一滚动面（卡头固定在其上方）。The card body: the only scrolling surface
+         (the card head stays fixed above it). -->
+    <div class="cs-card-body">
     <p class="cs-note">
       求值顺序：未注册工具 → 拒绝；任一 <code>deny</code> 规则短路（不可被后续规则翻案）；
       首条匹配规则；层级默认；最后 <code>default_action</code>。
@@ -50,6 +53,7 @@
       </datalist>
       <UiButton variant="secondary" size="sm" @click="perms.rules.push({ match: '', action: 'ask' })">＋ 新增规则</UiButton>
     </div>
+    </div><!-- /cs-card-body -->
   </UiCard>
 </template>
 

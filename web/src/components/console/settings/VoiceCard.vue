@@ -7,6 +7,10 @@
         {{ s.saving.value ? '保存中…' : '保存' }}
       </UiButton>
     </div>
+
+    <!-- 卡体：唯一滚动面（卡头固定在其上方）。The card body: the only scrolling surface
+         (the card head stays fixed above it). -->
+    <div class="cs-card-body">
     <!-- 隐私边界：spec 明确要求「必须写进 README 与设置页」。口径对齐 wiki/Security.md：
          云端模式（旁路闸门）无条件上传；自动/本地经后端 KWS 闸门（未命中不上云、命中才
          上传抬指令）；浏览器模式走浏览器识别（并不更私密）。旧文案「云端/自动都上传」
@@ -93,6 +97,7 @@
     <SettingsField v-if="s.editable.value" label="聆听空闲超时（秒，无实质信息转入静待；0=永不）">
       <UiInput type="number" min="0" :model-value="s.ed().vad.listen_idle_s" @update:model-value="v => (s.ed().vad.listen_idle_s = toNum(v))" />
     </SettingsField>
+    </div><!-- /cs-card-body -->
   </UiCard>
 </template>
 

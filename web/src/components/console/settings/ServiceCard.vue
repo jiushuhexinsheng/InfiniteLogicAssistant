@@ -11,6 +11,10 @@
       </div>
     </div>
 
+    <!-- 卡体：唯一滚动面（卡头含保存/测试连接固定在其上方）。
+         The card body: the only scrolling surface (the head — 保存/测试连接 — stays fixed above). -->
+    <div class="cs-card-body">
+
     <SettingsField v-if="section.toggle" label="启用" row>
       <UiToggle :model-value="s.sec(section.key).enabled" @update:model-value="v => (s.sec(section.key).enabled = v)" />
     </SettingsField>
@@ -112,6 +116,7 @@
       {{ s.connResults.value[section.name].detail || s.connResults.value[section.name].status }}
       <em v-if="s.connResults.value[section.name].latency_ms != null">{{ s.connResults.value[section.name].latency_ms }}ms</em>
     </div>
+    </div><!-- /cs-card-body -->
   </UiCard>
 </template>
 

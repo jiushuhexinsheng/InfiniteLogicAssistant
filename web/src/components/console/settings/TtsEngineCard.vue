@@ -9,6 +9,10 @@
       </UiButton>
     </div>
 
+    <!-- 卡体：唯一滚动面（卡头固定在其上方）。The card body: the only scrolling surface
+         (the card head stays fixed above it). -->
+    <div class="cs-card-body">
+
     <!-- 大选择卡：本地（浏览器）/ API（后端）。Large picker cards: local (browser) / API (backend). -->
     <UiRadioCard
       :model-value="engine"
@@ -32,6 +36,7 @@
         aria-label="启用语音播报"
       />
     </div>
+    </div><!-- /cs-card-body -->
   </UiCard>
 </template>
 

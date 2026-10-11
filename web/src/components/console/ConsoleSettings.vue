@@ -128,11 +128,11 @@ onMounted(() => { s.load() })
 </script>
 
 <style scoped>
-/* 布局（2026-10-11）：整页不再滚动 —— 标题区固定，滚动只发生在 .cs-main（保存/测试
-   连接所在的卡头再吸顶），滚动轴因此落在「保存」行以下的内容区，滚动内容不带动页面。
-   Layout (2026-10-11): the page itself no longer scrolls — the title area is fixed and
-   scrolling happens only inside .cs-main (whose card heads — holding 保存/测试连接 — are
-   sticky), so the scrollbar lives below the save row and content never drags the page. */
+/* 布局（2026-10-11 第三轮裁定）：整页不滚动 —— 标题/菜单/卡头全部固定，只有每张卡的
+   卡体（.cs-card-body，保存行以下）自己滚，滚动轴就在「保存」正下方，内容不带动页面。
+   Layout (2026-10-11, third-round ruling): the page never scrolls — title, menu and card
+   heads are all fixed; only each card's body (.cs-card-body, below the save row) scrolls,
+   putting the scrollbar right under 保存 and keeping content from dragging the page. */
 .console-settings {
   width: 100%;
   max-width: 960px;
@@ -174,16 +174,43 @@ onMounted(() => { s.load() })
 .cs-menu-dot.on { background: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, .6); }
 .cs-menu-extra { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-soft); }
 
-/* 唯一滚动区：上缘在标题区之下，右缘即滚动轴所在。
-   卡头**不吸顶**（2026-10-11 用户裁定：上半部分不要浮动）——随卡片正常滚动。
-   The single scroll region: its top edge sits under the fixed title area, the right
-   edge hosts the scrollbar. Card heads are **not sticky** (2026-10-11 user ruling:
-   the upper part must not float) — they scroll with their cards. */
+/* 内容区不再整体滚动（2026-10-11 三轮裁定）：卡头固定在卡布局内、**卡体自己滚**——
+   滚动轴落在每张卡「保存」行的正下方，标题/菜单/卡头都不随滚动移动，页面整体不动。
+   The content area no longer scrolls as a whole (2026-10-11, third-round ruling): card
+   heads are fixed in the card layout and **each card body scrolls internally** — the
+   scrollbar sits directly under the card's save row; title, menu and card heads never
+   move and the page stays put. */
 .cs-main {
-  flex: 1; min-width: 0; min-height: 0; overflow-y: auto;
+  flex: 1; min-width: 0; min-height: 0; overflow: hidden;
   display: flex; flex-direction: column; gap: 14px;
-  padding-right: 2px;
 }
+
+/* 卡片：内容超出可用高度时收缩（不撑破内容区），短卡保持自然高度。
+   Cards shrink when their content exceeds the available height (never bursting the
+   region); short cards keep their natural height. */
+.cs-main :deep(.cs-card) {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+/* 卡头（标题/保存/测试连接）永不收缩。The card head never shrinks. */
+.cs-main :deep(.cs-card-head) { flex-shrink: 0; }
+/* 卡体：唯一的滚动面（滚动轴就在保存行下方）。The card body: the only scrolling surface
+   (its scrollbar sits right below the save row). */
+.cs-main :deep(.cs-card-body) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 4px;
+}
+/* 连接状态条/问题列表不参与收缩，让位给卡片。
+   The connection bar / issues list never yield space — the cards do. */
+.cs-conn, .cs-issues { flex-shrink: 0; }
 
 .cs-conn { display: flex; gap: 8px; flex-wrap: wrap; }
 
