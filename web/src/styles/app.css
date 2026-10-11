@@ -69,3 +69,24 @@ a:hover { color: var(--brand-c1); }
     transition-duration: .01ms !important;
   }
 }
+
+
+/* ── 输入框 Chrome 自动补全强制涂白覆盖（2026-10-11）──
+   Chrome 的 autofill 用 UA 高优先级样式把输入涂成白底黑字，页面上看像「混进来的白色
+   小框」；用超大 inset 阴影顶掉背景、text-fill-color 顶掉文字色（autocomplete=off
+   只能挡建议列表，挡不住已保存值的自动填充涂色）。
+   Chrome autofill paints inputs white with UA-privileged styles (the stray "white box"
+   in the dark UI); a huge inset shadow fakes the background back and text-fill-color
+   restores the text colour (autocomplete=off only suppresses the suggestion list, not
+   the saved-value paint). */
+.ui-input:-webkit-autofill,
+.ui-input:-webkit-autofill:hover,
+.ui-input:-webkit-autofill:focus,
+.ui-stepper-input:-webkit-autofill,
+.ui-stepper-input:-webkit-autofill:hover,
+.ui-stepper-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text-1);
+  caret-color: var(--text-1);
+  -webkit-box-shadow: 0 0 0 1000px var(--surface-input) inset !important;
+  transition: background-color 999999s ease-out 0s;
+}

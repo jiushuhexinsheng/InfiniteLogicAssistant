@@ -1,9 +1,11 @@
 <template>
-  <!-- 数字输入：自绘步进器（隐藏浏览器原生 spinner，圆钮风格对齐 UiSelect 的
-       chevron 底座）；文本输入保持单根 <input>，落点与旧版完全一致。
-     Number input: custom stepper (native browser spinners hidden; round buttons
-     styled after UiSelect's chevron seat); text input keeps the bare <input> root,
-     identical to before. -->
+  <!-- 数字输入：外层 div 即「可见字段」（边框/底色/聚焦光晕都在它身上），按钮用 flex
+       排在内侧右缘 —— 结构上不可能跑到字段外面（绝对定位在某些嵌套布局下会以卡片为
+       定位父级，按钮漂到卡片右缘）。浏览器原生 spinner 隐藏。
+     Number input: the wrapper div IS the visible field (border/background/focus glow all
+     live on it) and the buttons sit on the inner right edge via flex — structurally
+     unable to escape the field (absolute positioning can resolve against the card in
+     some nesting layouts and drift to the card's right edge). Native spinners hidden. -->
   <div v-if="type === 'number'" class="ui-stepper">
     <input
       class="ui-input ui-stepper-input"
@@ -118,11 +120,39 @@ function onKeydown(e: KeyboardEvent) {
 
 .ui-input:disabled { opacity: .5; cursor: not-allowed; }
 
-/* ── 数字步进器：隐藏原生 spinner，自绘圆钮（风格对齐 UiSelect chevron 底座） ──
-   Number stepper: native spinners hidden, round buttons drawn to match UiSelect's
-   chevron seat. */
-.ui-stepper { position: relative; width: 100%; flex: 1 1 auto; min-width: 0; }
-.ui-stepper-input { padding-right: 34px; }
+/* ── 数字步进器：外层 = 可见字段（与 .ui-input 同款外观/聚焦光晕），按钮 flex 内嵌 ──
+   Number stepper: the wrapper IS the visible field (same look/focus glow as .ui-input),
+   buttons flexed inside — they cannot escape the field's border. */
+.ui-stepper {
+  display: flex; align-items: center; gap: 6px;
+  width: 100%; flex: 1 1 auto; min-width: 0;
+  min-height: var(--min-target-size);
+  padding: 0 6px 0 12px;
+  background: var(--surface-input);
+  border: 1px solid var(--border-base);
+  border-radius: var(--r-lg);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .35);
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+}
+.ui-stepper:hover:not(:focus-within) {
+  border-color: rgba(103, 232, 249, .45);
+}
+.ui-stepper:focus-within {
+  border-color: var(--brand-c2);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .35), var(--focus-glow);
+}
+/* 内部输入透明化：外观全部交给外层，避免双层边框。
+   The inner input is transparent: all appearance belongs to the wrapper (no double border). */
+.ui-stepper-input {
+  flex: 1 1 auto; min-width: 0;
+  background: transparent; border: none; outline: none;
+  box-shadow: none !important;
+  padding: 10px 0;
+  font-size: var(--fs-sm); font-family: inherit; color: var(--text-1);
+  min-height: auto;
+}
+.ui-stepper-input:focus { border-color: transparent; }
+.ui-stepper-input:disabled { opacity: .5; }
 /* 隐藏浏览器原生上下按钮（各平台外观不一、与暗色玻璃风割裂）。
    Hide the browser's native up/down buttons (platform-inconsistent, clashes with the
    dark-glass look). */
@@ -131,14 +161,11 @@ function onKeydown(e: KeyboardEvent) {
 .ui-stepper-input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
 
 .ui-stepper-btns {
-  position: absolute; right: 5px; top: 50%;
-  transform: translateY(-50%);
   display: flex; flex-direction: column; gap: 2px;
-  pointer-events: none; /* 空隙不截点击，按钮自身再开。Gaps never swallow clicks; buttons opt in. */
+  flex: 0 0 auto;
 }
 .ui-stepper-btn {
-  pointer-events: auto;
-  width: 24px; height: 15px;
+  width: 22px; height: 14px;
   display: grid; place-items: center;
   border: none; padding: 0; cursor: pointer;
   background: var(--surface-control); color: var(--text-3);
