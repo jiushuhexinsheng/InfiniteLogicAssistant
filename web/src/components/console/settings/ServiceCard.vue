@@ -57,12 +57,11 @@
           <option value="mp3">mp3</option>
           <option value="pcm16">pcm16</option>
         </UiSelect>
-        <!-- 模型 / 音色可输入下拉：支持手动输入或从列表选择。Model / voice input with datalist: manual input or pick from the list. -->
+        <!-- 模型 / 音色：UiCombobox（可手输 + 项目风格建议层；替换原生 datalist 弹层）。
+             Model / voice: UiCombobox (free typing + project-styled suggestions; replaces
+             the native datalist popup). -->
         <template v-else-if="f === 'model' || f === 'voice'">
-          <UiInput :model-value="s.sec(section.key).profiles[s.sec(section.key).active][f]" @update:model-value="v => (s.sec(section.key).profiles[s.sec(section.key).active][f] = v)" :list="`dl-${section.key}-${f}`" />
-          <datalist :id="`dl-${section.key}-${f}`">
-            <option v-for="m in (f === 'model' ? s.modelOptions(section) : s.voiceOptions(section))" :key="m" :value="m" />
-          </datalist>
+          <UiCombobox :model-value="s.sec(section.key).profiles[s.sec(section.key).active][f]" @update:model-value="v => (s.sec(section.key).profiles[s.sec(section.key).active][f] = v)" :options="f === 'model' ? s.modelOptions(section) : s.voiceOptions(section)" />
         </template>
         <!-- 音色列表编辑器：写回 profile.voices，同时喂给上面「音色」输入框的 datalist。
              Voice list editor: writes back profile.voices, which also feeds the datalist of the "voice" input above. -->
@@ -100,11 +99,11 @@
         <span class="cs-compat-hint">特殊网关的请求体补丁（如小米需 auth_header/audio_data_url）</span>
       </div>
       <div class="cs-compat-shortcuts">
-        <button
-          v-for="c in s.compatShortcuts" :key="c.key" type="button"
-          class="cs-compat-chip" :class="{ on: compatHas(c.key) }"
+        <UiButton
+          v-for="c in s.compatShortcuts" :key="c.key"
+          size="sm" shape="pill" class="cs-compat-chip" :class="{ on: compatHas(c.key) }"
           @click="s.toggleCompat(section, c.key, c.value)"
-        >{{ c.label }}</button>
+        >{{ c.label }}</UiButton>
       </div>
       <div v-for="(row, i) in s.compatEntries(section)" :key="i" class="cs-compat-row">
         <UiInput :model-value="row[0]" @update:model-value="v => renameCompat(i, row[0], v)" placeholder="键" />
@@ -124,7 +123,7 @@
 <script setup lang="ts">
 import SettingsField from './SettingsField.vue'
 import VendorPicker from './VendorPicker.vue'
-import { UiButton, UiCard, UiChip, UiIcon, UiInput, UiSelect, UiToggle } from '../../ui'
+import { UiButton, UiCard, UiChip, UiCombobox, UiIcon, UiInput, UiSelect, UiToggle } from '../../ui'
 import { useSettings } from './useSettings'
 import { fieldLabel, isNumericField, type SectionDef } from './configDefs'
 
@@ -191,13 +190,15 @@ function renameCompat(_i: number, oldKey: string, newKey: string) {
 .cs-compat-title { font-size: var(--fs-2xs); font-weight: 600; color: var(--text-2); letter-spacing: .04em; }
 .cs-compat-hint { font-size: var(--fs-2xs); color: var(--text-3); }
 .cs-compat-shortcuts { display: flex; flex-wrap: wrap; gap: 6px; }
-.cs-compat-chip {
+/* 双类选择器压过 UiButton 基础样式（同 VendorPicker chip 的特异性手法）。
+   Double-class selector outspecifies UiButton base styles (same trick as the VendorPicker chip). */
+.cs-compat-shortcuts .cs-compat-chip.ui-btn {
   font-size: var(--fs-2xs); font-family: var(--font-mono); color: var(--text-3);
   background: rgba(15, 23, 42, .6); border: 1px solid var(--border-soft);
-  border-radius: var(--r-full); padding: 2px 9px; cursor: pointer;
+  border-radius: var(--r-full); padding: 3px 10px; cursor: pointer;
 }
-.cs-compat-chip:hover { color: var(--brand-c2); border-color: var(--brand-c2); }
-.cs-compat-chip.on { color: var(--brand-c2); border-color: var(--brand-c2); background: rgba(52, 211, 153, .08); }
+.cs-compat-shortcuts .cs-compat-chip.ui-btn:hover { color: var(--brand-c2); border-color: var(--brand-c2); }
+.cs-compat-shortcuts .cs-compat-chip.ui-btn.on { color: var(--brand-c2); border-color: var(--brand-c2); background: rgba(52, 211, 153, .08); }
 .cs-compat-row { display: flex; align-items: center; gap: 8px; }
 .cs-compat-row :deep(.ui-input) { flex: 1; min-width: 0; font-family: var(--font-mono); }
 

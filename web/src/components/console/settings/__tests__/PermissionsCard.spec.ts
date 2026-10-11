@@ -71,13 +71,18 @@ describe('PermissionsCard', () => {
     expect((editable.value as any).permissions.rules).toHaveLength(0)
   })
 
-  /** 工具名 datalist 来自 /api/tools。The tool-name datalist comes from /api/tools. */
-  it('工具名 datalist 来自已注册工具', async () => {
+  /** 工具名建议来自 /api/tools（UiCombobox 替换原生 datalist）。
+   *  Tool-name suggestions come from /api/tools (UiCombobox replaced the native datalist). */
+  it('工具名建议来自已注册工具（聚焦弹出项目风格面板）', async () => {
     vi.mocked(api.getTools).mockResolvedValue({
       ok: true, tools: [{ function: { name: 'read_file' } }],
     } as any)
     const w = mount(PermissionsCard)
     await flushPromises()
-    expect(w.find('datalist').html()).toContain('read_file')
+    const input = w.find('input[placeholder="如 run_* 或 read_file"]')
+    expect(input.exists(), '应存在规则匹配输入').toBe(true)
+    await input.trigger('focus')
+    const opts = document.querySelectorAll('body > .ui-select-menu .ui-select-option')
+    expect([...opts].some(o => o.textContent?.includes('read_file')), '建议面板应含 read_file').toBe(true)
   })
 })

@@ -89,12 +89,18 @@ describe('ServiceCard（语音合成扩展）', () => {
     expect(w.text()).toContain('参考音频（voiceclone）')
   })
 
-  /** profile.voices 同步进「音色」输入框的 datalist。profile.voices feeds the voice input's datalist. */
-  it('voices 进入音色输入框的 datalist', () => {
+  /** profile.voices 同步进「音色」组合框的建议层（UiCombobox 替换原生 datalist）。
+   *  profile.voices feeds the voice combobox suggestions (UiCombobox replaced the native datalist). */
+  it('voices 进入音色组合框建议（聚焦弹出项目风格面板）', async () => {
     const w = mount(ServiceCard, { props: { section: ttsDef } })
-    const dl = w.find('#dl-tts-voice')
-    expect(dl.exists()).toBe(true)
-    const values = dl.findAll('option').map(o => o.attributes('value'))
-    expect(values).toContain('Mia')
+    const combos = w.findAll('.ui-combo input')
+    expect(combos.length, 'model 与 voice 各一个组合框').toBe(2)
+    // 按当前值定位 voice 输入（不依赖字段渲染顺序）。Locate the voice input by its
+    // current value (no reliance on field render order).
+    const voiceInput = combos.find(i => (i.element as HTMLInputElement).value === 'Chloe')
+    expect(voiceInput, '应存在值为 Chloe 的组合框').toBeTruthy()
+    await voiceInput!.trigger('focus')
+    const opts = document.querySelectorAll('body > .ui-select-menu .ui-select-option')
+    expect([...opts].some(o => o.textContent?.includes('Mia')), '建议面板应含 Mia').toBe(true)
   })
 })

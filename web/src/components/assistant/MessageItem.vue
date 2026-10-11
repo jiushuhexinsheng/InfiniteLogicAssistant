@@ -47,7 +47,7 @@
       <!-- 内联编辑（docs/designs/07）：保存 → emit edit(index, text)；取消还原。
            Inline edit: save emits edit(index, text); cancel reverts. -->
       <div v-if="editing" class="msg-edit">
-        <textarea v-model="editText" class="me-ta" rows="3" @keydown.esc.prevent="editing = false" />
+        <UiTextarea v-model="editText" class="me-ta" :rows="3" @keydown.esc.prevent="editing = false" />
         <div class="me-btns">
           <button type="button" class="ma-btn" :disabled="!editText.trim()" @click="saveEdit">保存并重发</button>
           <button type="button" class="ma-btn" @click="editing = false">取消</button>
@@ -59,7 +59,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { UiIcon } from '../ui'
+import { UiIcon, UiTextarea } from '../ui'
 import MarkdownRenderer from '../MarkdownRenderer.vue'
 import BlockHost from '../blocks/BlockHost.vue'
 import type { ChatMessage } from '../../composables/useAssistant'

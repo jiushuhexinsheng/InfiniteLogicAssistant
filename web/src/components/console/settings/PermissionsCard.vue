@@ -39,7 +39,7 @@
       <div class="cs-subcard-title">规则（优先级高于层级默认）</div>
       <div v-for="(r, i) in perms.rules" :key="i" class="cs-profrow">
         <SettingsField label="工具名或通配" grow>
-          <UiInput v-model="r.match" list="perm-tool-names" placeholder="如 run_* 或 read_file" />
+          <UiCombobox v-model="r.match" :options="toolNames" placeholder="如 run_* 或 read_file" />
         </SettingsField>
         <SettingsField label="动作">
           <UiSelect v-model="r.action">
@@ -48,9 +48,6 @@
         </SettingsField>
         <UiButton variant="secondary" size="sm" hover="danger" @click="perms.rules.splice(i, 1)">删除</UiButton>
       </div>
-      <datalist id="perm-tool-names">
-        <option v-for="n in toolNames" :key="n" :value="n" />
-      </datalist>
       <UiButton variant="secondary" size="sm" @click="perms.rules.push({ match: '', action: 'ask' })">＋ 新增规则</UiButton>
     </div>
     </div><!-- /cs-card-body -->
@@ -61,7 +58,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { api } from '../../../api'
 import SettingsField from './SettingsField.vue'
-import { UiButton, UiCard, UiInput, UiSelect } from '../../ui'
+import { UiButton, UiCard, UiCombobox, UiSelect } from '../../ui'
 import { useSettings } from './useSettings'
 
 /** 设置页单例（保留对象引用以维持响应式）。Settings singleton (kept as an object to preserve reactivity). */
