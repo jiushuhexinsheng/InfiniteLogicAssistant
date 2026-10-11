@@ -167,16 +167,23 @@ function onKeydown(e: KeyboardEvent) {
 .ui-stepper-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .ui-stepper-input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
 
+/* 圆形底座：与 UiSelect 触发器的 chevron 座同尺寸同底色（26px 圆），内嵌上下双箭头 ——
+   数字框的附件与下拉框的附件读作同一个零件，风格统一。
+   Round seat: same size and seat colour as UiSelect's chevron seat (26px circle) with the
+   up/down arrows nested inside — the number field's accessory and the dropdown's
+   accessory read as the same part. */
 .ui-stepper-btns {
-  display: flex; flex-direction: column; gap: 1px;
   flex: 0 0 auto;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--surface-control);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  overflow: hidden;
 }
 .ui-stepper-btn {
-  width: 16px; height: 12px;
+  width: 100%; height: 13px;
   display: grid; place-items: center;
   border: none; padding: 0; cursor: pointer;
-  background: var(--surface-control); color: var(--text-3);
-  border-radius: 3px;
+  background: transparent; color: var(--text-3);
   transition: color var(--dur-fast), background var(--dur-fast);
 }
 .ui-stepper-btn:hover:not(:disabled) { color: var(--brand-c2); background: rgba(103, 232, 249, .12); }
