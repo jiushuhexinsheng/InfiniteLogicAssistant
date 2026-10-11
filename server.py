@@ -208,12 +208,28 @@ async def spa_handler(full_path: str):
     if target.is_dir():
         target = target / "index.html"
     if target.is_file():
-        return FileResponse(str(target))
+        return FileResponse(str(target), headers=_cache_headers(target))
     # SPA 兜底：非 /api 导航回退 index.html
     idx = WEB_DIST_DIR / "index.html"
     if idx.is_file():
-        return FileResponse(str(idx))
+        return FileResponse(str(idx), headers=_cache_headers(idx))
     return JSONResponse({"ok": False, "error": "页面不存在"}, status_code=404)
+
+
+def _cache_headers(target: Path) -> dict:
+    """静态资源缓存策略：HTML 入口必须回校验（否则浏览器启发式缓存旧 index.html，
+    用户看到的是上一次构建的 JS —— 改了前端「刷新也没用」的经典坑）；Vite 内容哈希
+    资源可永久缓存。
+
+    Cache policy for static files: the HTML entry must revalidate (otherwise the browser
+    heuristically caches the old index.html and users run the previous build — the
+    classic "refresh doesn't help" trap); Vite content-hashed assets cache forever.
+    """
+    if target.suffix == ".html":
+        return {"Cache-Control": "no-cache"}
+    if "assets" in target.parts:
+        return {"Cache-Control": "public, max-age=31536000, immutable"}
+    return {}
 
 
 def start_server(host: str = "", port: int = 0, open_browser: bool = True):

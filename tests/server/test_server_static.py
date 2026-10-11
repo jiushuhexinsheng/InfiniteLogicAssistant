@@ -25,6 +25,24 @@ def test_static_file_and_spa_fallback(client):
     assert resp.text == "<html>spa</html>"
 
 
+def test_cache_headers(client):
+    """缓存策略：HTML 入口 no-cache（防浏览器缓存旧 index.html —— 改前端「刷新也没用」
+    的经典坑），Vite 哈希资源 immutable。
+    Cache policy: the HTML entry is no-cache (the browser must never cache the stale
+    index.html — the classic "refresh doesn't help" trap); Vite hashed assets are
+    immutable."""
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert resp.headers.get("cache-control") == "no-cache"
+    dist = server_module.WEB_DIST_DIR
+    (dist / "assets").mkdir()
+    (dist / "assets" / "app.js").write_text("JS", encoding="utf-8")
+    r2 = client.get("/assets/app.js")
+    assert r2.headers.get("cache-control") == "public, max-age=31536000, immutable"
+    # SPA 兜底回 index 同样 no-cache。The SPA fallback to index is no-cache as well.
+    assert client.get("/some/route").headers.get("cache-control") == "no-cache"
+
+
 def test_unknown_api_404(client):
     """测试未知 API 路径返回 404。Tests unknown API paths returning 404."""
     resp = client.get("/api/nope")
