@@ -178,11 +178,16 @@ class CallConfig(BaseModel):
     # Local streaming ASR model dir; when missing, skip L1 and run L0+L2 only.
     local_asr_model: str = "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
     # L2 合并调用：单次云端 chat 同时精转写+四分类（省一次上传与一轮 LLM）；
-    # False = 回到两步（cloud_transcribe + judge）。合并失败也自动回落两步。
-    # L2 merged call: one cloud chat does ASR + four-way judge (saves one upload and
-    # one LLM round); False = legacy two-step (cloud_transcribe + judge). A failed
-    # merged call falls back to the two-step automatically.
-    merge_l2: bool = True
+    # False = 两步（cloud_transcribe + judge）。**默认关**——小米 ASR 网关明确拒绝
+    # 请求携带 text 部件（"text prompt is injected by the gateway" → 400），合并形状
+    # 对其先天不可用，每段先撞 400 再回落纯属浪费；两步路径功能零损失。支持
+    # 指令+音频同发的网关（如 OpenAI 系）可显式开启。
+    # L2 merged call: one cloud chat does ASR + the four-way judge. **Off by default** —
+    # the Xiaomi ASR gateway rejects text parts outright ("text prompt is injected by
+    # the gateway" → 400); the merged shape cannot work against it and every segment
+    # burned a doomed request before falling back. The two-step path loses nothing.
+    # Gateways that accept instruction+audio (OpenAI-style) can enable it explicitly.
+    merge_l2: bool = False
     # 通话会话无段落自动过期秒数（防会话泄漏；此前是 call.py 硬编码 _SESSION_TTL_S）。
     # Idle expiry of a call session in seconds (leak guard; formerly the hardcoded
     # _SESSION_TTL_S in call.py).

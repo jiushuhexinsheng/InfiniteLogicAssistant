@@ -134,7 +134,12 @@ BUILTIN_ASR: dict[str, VendorPreset] = dict([
     _preset("xiaomi-mimo-asr", kind="asr", label="小米 MiMo ASR", endpoint="https://api.xiaomimimo.com",
             chat_path="/v1/chat/completions", models=["mimo-v2.5-asr"],
             api_key_env="MIMO_API_KEY",
-            compat={"auth_header": "api-key", "audio_data_url": True, "send_language": True},
+            # no_text_parts：网关自行注入提示词并拒绝请求携带 text 部件（合并 L2 调用
+            # 对其 400）—— call_funnel 据此直接跳过合并、走两步。
+            # no_text_parts: the gateway injects its own prompt and rejects text parts
+            # (the merged L2 call 400s against it) — the funnel skips merged outright.
+            compat={"auth_header": "api-key", "audio_data_url": True, "send_language": True,
+                    "no_text_parts": True},
             defaults={"language": "zh", "timeout": 30}),
 ])
 

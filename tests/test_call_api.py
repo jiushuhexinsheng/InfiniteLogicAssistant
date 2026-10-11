@@ -154,7 +154,22 @@ def _async_const(v):
 def test_call_segment_merged_single_upload(client, monkeypatch):
     """合并调用开启且 ASR 可用：一次 chat_audio 同时拿转写与 verdict —— judge 不再被
     调、audit 恰好一条 audio-upload。Merged path: one chat_audio yields transcript +
-    verdict — judge never runs, exactly one audio-upload audit line."""
+    verdict — judge never runs, exactly one audio-upload audit line.
+
+    ⚠️ 显式开启 merge_l2：默认已改 False（小米网关拒 text 部件，2026-10-11），本用例
+    测的是合并路径本身，必须自己把开关打开。
+    Explicitly enables merge_l2: the default is now False (Xiaomi gateway rejects text
+    parts, 2026-10-11) and this case tests the merged path itself — it flips the switch.
+
+    ⚠️ 必须连 get_settings 一起换成**稳定实例**：client 夹具的桩每次调用都新建 Settings，
+    在「返回值」上打补丁路由永远读不到（拿到的是下一个新实例）。
+    get_settings must be swapped for a **stable instance** alongside: the client fixture's
+    double builds a fresh Settings per call, so patching "the returned value" never reaches
+    the route (it reads the next new instance)."""
+    from core import config as config_mod
+    stable = config_mod.Settings(rag=config_mod.RagSection(auto_index=False))
+    stable.voice.call.merge_l2 = True
+    monkeypatch.setattr(config_mod, "get_settings", lambda: stable)
     client.post("/api/voice/call/start")
     monkeypatch.setattr(call_mod, "_local_transcribe", None)
 

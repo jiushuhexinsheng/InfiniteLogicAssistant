@@ -438,7 +438,12 @@ def test_voice_section_has_call():
 
 
 def test_call_config_merge_l2_default():
-    """L2 合并调用默认开启（单次云端同时转写+四分类，省一次上传与一轮 LLM）。
-    The L2 merged call is on by default (one cloud call does ASR + judge)."""
+    """L2 合并调用**默认关闭**：小米 ASR 网关拒绝 text 部件（2026-10-11 实测 400
+    "ASR request must not include text parts"），合并形状对其先天不可用；两步路径
+    （转写+判定）功能零损失，支持指令+音频同发的网关可显式开启。
+    The L2 merged call defaults to **off**: the Xiaomi ASR gateway rejects text parts
+    (measured 400 "ASR request must not include text parts" on 2026-10-11), so the
+    merged shape cannot work against it; the two-step path loses nothing, and gateways
+    accepting instruction+audio can enable it explicitly."""
     from core.config.schema import CallConfig
-    assert CallConfig().merge_l2 is True
+    assert CallConfig().merge_l2 is False

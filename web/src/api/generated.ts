@@ -1012,7 +1012,7 @@ export interface components {
             local_asr_model: string;
             /**
              * Merge L2
-             * @default true
+             * @default false
              */
             merge_l2: boolean;
             /**

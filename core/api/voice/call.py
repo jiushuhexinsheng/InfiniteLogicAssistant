@@ -96,13 +96,26 @@ async def _merged(wav: bytes, recent: str, relax: bool) -> tuple[str, str | None
         asr = get_asr()
         if not asr.available():
             return "", None
+        # 网关能力闸门：拒绝 text 部件的网关（小米 ASR：「text prompt is injected by the
+        # gateway」，2026-10-11 实测 400）上合并形状先天不可用 —— 不发注定失败的请求，
+        # 直接回空让漏斗走两步。
+        # Gateway capability gate: gateways that reject text parts (Xiaomi ASR, measured
+        # 400 on 2026-10-11) cannot take the merged shape at all — don't send a doomed
+        # request; return empty and let the funnel run the two-step path.
+        if (getattr(asr, "compat", None) or {}).get("no_text_parts"):
+            return "", None
         system = CALL_GATE_SYSTEM + CALL_GATE_MERGED_JSON + (CALL_GATE_RELAX_NOTE if relax else "")
         user = "请处理附带音频。"
         if recent:
             user += f"\n最近片段：{recent}"
         content = await asr.chat_audio(system, user, _b64.b64encode(wav).decode(), "wav")
     except Exception as e:
-        logger.warning("call merged 调用失败，回落两步: {}", e)
+        # 带上响应体：4xx 的服务端原因（如网关拒 text 部件）只看 status 是猜不出来的。
+        # Include the response body: the server-side reason for a 4xx (e.g. the gateway
+        # rejecting text parts) is unguessable from the status alone.
+        resp = getattr(e, "response", None)
+        body = f" | resp: {resp.text[:300]}" if resp is not None else ""
+        logger.warning("call merged 调用失败，回落两步: {}{}", e, body)
         return "", None
     text, verdict = parse_merged_content(content)
     if text:
