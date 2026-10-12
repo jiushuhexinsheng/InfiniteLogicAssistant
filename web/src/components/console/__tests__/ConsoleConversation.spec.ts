@@ -32,10 +32,10 @@ import ConsoleConversation from '../ConsoleConversation.vue'
  * the 衍衡/online identity header removed — this component is message list + input only.
  */
 describe('ConsoleConversation 布局改版', () => {
-  it('不渲染右上角新建按钮（已移至左侧栏）', () => {
+  it('顶左动作条：新建对话 + 清空对话并排（2026-10-11 用户裁定：放对话页左侧）', () => {
     const w = mount(ConsoleConversation)
-    expect(w.text()).not.toContain('新建会话')
-    expect(w.find('.conv-top').exists()).toBe(false)
+    const btns = w.findAll('.conv-top button')
+    expect(btns.map(b => b.text())).toEqual(['新建对话', '清空对话'])
   })
 
   it('消息列表与输入框照常渲染', () => {

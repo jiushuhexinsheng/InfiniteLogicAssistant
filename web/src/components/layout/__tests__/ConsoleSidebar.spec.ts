@@ -15,14 +15,10 @@ describe('ConsoleSidebar', () => {
     useConsole().sidebarCollapsed.value = false
   })
 
-  it('新建 / 清空并排置顶且事件正确', async () => {
+  it('不放新建/清空（2026-10-11 用户裁定：动作在对话页左上，不进菜单）', () => {
     const w = mount(ConsoleSidebar, { props: { active: 'conv', wakeEnabled: true } })
-    const btns = w.findAll('.sb-actions button')
-    expect(btns.map(b => b.text())).toEqual(['新建', '清空'])
-    await btns[0].trigger('click')
-    await btns[1].trigger('click')
-    expect(w.emitted('new')).toHaveLength(1)
-    expect(w.emitted('clear')).toHaveLength(1)
+    expect(w.text()).not.toContain('新建')
+    expect(w.text()).not.toContain('清空')
   })
 
   it('折叠开关切换 collapsed 类并写入单例', async () => {

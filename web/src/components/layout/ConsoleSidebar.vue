@@ -18,17 +18,9 @@
       </button>
     </div>
 
-    <!-- 新建 / 清空（并排；折叠后为图标按钮）。New / Clear (side by side; icon-only when collapsed). -->
-    <div class="sb-actions">
-      <UiButton variant="secondary" size="sm" class="sb-act" @click="emit('new')">
-        <UiIcon name="plus" :size="13" /><span class="sa-txt">新建</span>
-      </UiButton>
-      <UiButton variant="secondary" size="sm" hover="danger" class="sb-act" @click="emit('clear')">
-        <UiIcon name="trash" :size="13" /><span class="sa-txt">清空</span>
-      </UiButton>
-    </div>
-
-    <!-- 中间导航区单独滚动（含「历史」入口）。Nav region scrolls on its own (incl. History). -->
+    <!-- 中间导航区单独滚动（含「历史」入口）；新建/清空在对话页左上（不进菜单）。
+         Nav region scrolls on its own (incl. History); New/Clear live on the conversation
+         page's top-left (not in the menu). -->
     <div class="sb-nav">
       <UiNavItem
         v-for="t in CONSOLE_TABS"
@@ -59,12 +51,12 @@
  * Console sidebar: brand + collapse toggle, New/Clear, tab nav, wake status.
  */
 import { CONSOLE_TABS, useConsole, type ConsoleTabKey } from '../../composables/useConsole'
-import { UiButton, UiIcon, UiNavItem, UiStatusDot } from '../ui'
+import { UiIcon, UiNavItem, UiStatusDot } from '../ui'
 
 /** 属性：当前激活标签页和语音唤醒开关状态。Props: currently active tab key and voice wake toggle state. */
 defineProps<{ active: ConsoleTabKey; wakeEnabled: boolean }>()
-/** 事件：选择标签页、新建对话、清空对话。Events: select tab, new conversation, clear conversation. */
-const emit = defineEmits<{ select: [key: ConsoleTabKey]; clear: []; new: [] }>()
+/** 事件：选择标签页。Events: select tab. */
+const emit = defineEmits<{ select: [key: ConsoleTabKey] }>()
 
 /** 折叠态（useConsole 单例 + localStorage 持久化）。Collapse state (useConsole singleton + localStorage). */
 const { sidebarCollapsed, toggleSidebar } = useConsole()
@@ -86,10 +78,7 @@ const { sidebarCollapsed, toggleSidebar } = useConsole()
 /* ── 折叠态：只留图标（导航/动作/状态点仍可用）。Collapsed: icons only (nav/actions/status stay usable). */
 .console-sidebar.collapsed { width: 62px; padding: 14px 8px; gap: 6px; }
 .console-sidebar.collapsed .sb-name { display: none; }
-.console-sidebar.collapsed .sa-txt { display: none; }
 .console-sidebar.collapsed .sb-foot-txt { display: none; }
-.console-sidebar.collapsed .sb-actions { flex-direction: column; }
-.console-sidebar.collapsed .sb-act { justify-content: center; padding-left: 0; padding-right: 0; }
 .console-sidebar.collapsed :deep(.ui-nav-label) { display: none; }
 .console-sidebar.collapsed :deep(.ui-nav-item) { justify-content: center; padding-left: 0; padding-right: 0; }
 .console-sidebar.collapsed .sb-foot { justify-content: center; padding-left: 0; padding-right: 0; }
@@ -115,10 +104,6 @@ const { sidebarCollapsed, toggleSidebar } = useConsole()
 .console-sidebar.collapsed .sb-fold { margin-left: auto; }
 .sb-fold-ico { transform: rotate(90deg); }          /* 收起：箭头朝左 */
 .sb-fold-ico.right { transform: rotate(-90deg); }   /* 展开：箭头朝右 */
-
-/* 新建 / 清空并排。New / Clear side by side. */
-.sb-actions { display: flex; gap: 6px; }
-.sb-act { flex: 1; justify-content: center; gap: 4px; }
 
 .sb-nav {
   flex: 1; min-height: 0; overflow-y: auto;

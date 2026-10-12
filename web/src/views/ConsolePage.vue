@@ -1,7 +1,7 @@
 <!-- 控制台页面模板 / Console page template -->
 <template>
   <!-- 控制台布局组件，包含标签页切换和消息清除功能 / Console layout component with tab switching and message clearing -->
-  <ConsoleLayout :active="activeTab" :wake-enabled="asst.wakeEnabled.value" @select="activeTab = $event" @clear="asst.clearMessages()" @new="newSession">
+  <ConsoleLayout :active="activeTab" :wake-enabled="asst.wakeEnabled.value" @select="activeTab = $event">
     <!-- 对话标签页 / Conversation tab -->
     <ConsoleConversation v-if="activeTab === 'conv'" />
     <!-- 任务标签页 / Task tab -->
@@ -66,6 +66,6 @@ const ConsoleHistory = defineAsyncComponent(() => import('../components/console/
 
 /** 获取助手实例 / Get assistant instance */
 const asst = useAssistant()
-/** 获取控制台状态、激活标签页与会话操作 / Get console state, active tab and session actions */
-const { activeTab, newSession } = useConsole()
+/** 获取控制台状态和激活标签页 / Get console state and active tab */
+const { activeTab } = useConsole()
 </script>

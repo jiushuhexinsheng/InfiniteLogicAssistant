@@ -8,8 +8,6 @@
         :active="active"
         :wake-enabled="wakeEnabled"
         @select="emit('select', $event)"
-        @clear="emit('clear')"
-        @new="emit('new')"
       />
       <!-- 主内容插槽。Main content slot. -->
       <main class="console-main"><slot /></main>
@@ -19,20 +17,20 @@
 
 <script setup lang="ts">
 /**
- * 控制台页面布局组件：侧边栏 + 主内容区。顶栏（含导航、系统信息、
- * 「返回开始页」）由 App.vue 的 AppHeader 统一渲染；「清空」按钮位于
- * 侧栏底部，经此转发给 ConsolePage。
- * Console layout: sidebar + main. The header (nav, system info, back to
- * start) is rendered once by AppHeader in App.vue; the clear button lives
- * in the sidebar footer and is forwarded here to ConsolePage.
+ * 控制台页面布局组件：侧边栏 + 主内容区。顶栏（导航、系统信息、「返回开始页」）
+ * 由 App.vue 的 AppHeader 统一渲染；「新建/清空对话」在对话页左上
+ * （2026-10-11 用户裁定，不进菜单）。
+ * Console layout: sidebar + main. The header (nav, system info, back to start) is
+ * rendered once by AppHeader in App.vue; "New/Clear conversation" sits on the
+ * conversation page's top-left (2026-10-11 user ruling — not in the menu).
  */
 import type { ConsoleTabKey } from '../../composables/useConsole'
 import ConsoleSidebar from './ConsoleSidebar.vue'
 
 /** 属性：当前激活的标签页和语音唤醒开关状态。Props: currently active tab key and voice wake toggle state. */
 defineProps<{ active: ConsoleTabKey; wakeEnabled: boolean }>()
-/** 事件：切换标签页、清空记录、新建对话（侧栏按钮触发并转发）。Events: switch tab, clear history, new conversation (forwarded from sidebar buttons). */
-const emit = defineEmits<{ select: [key: ConsoleTabKey]; clear: []; new: [] }>()
+/** 事件：切换标签页。Events: switch tab. */
+const emit = defineEmits<{ select: [key: ConsoleTabKey] }>()
 </script>
 
 <style scoped>
