@@ -247,6 +247,11 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
   环境变量优先级更高。
 - `voice.wake_word`：唤醒词（可多个）与开关；`voice.vad`：静音切段参数；
   `voice.kws`：本地 KWS 闸门（模型目录 / 检测阈值）。
+- `voice.asr.mode`：**转写模式**（2026-10-12）——`local`（本地 sherpa-onnx，音频不出本机；
+  缺模型时**明确报错，绝不静默上云**）/ `cloud`（默认，走 `active` profile 的云端）/
+  `hybrid`（本地优先，本地不可用 / 转写为空 / 失败时才回落云端）。覆盖**唤醒链与通话 L2**
+  （通话 L1 始终本地快筛）；`voice.asr.local_model` 为本地模型目录（`scripts/fetch_local_asr_model.py`
+  下载，模型不入库）。隐私口径见「安全」节。
 - `agent`：`recursion_limit`（ReAct 步数上限）、`multi_agent`（复杂任务是否转多智能体协调者）、
   `auto_approve`（write/exec 免确认开关）、`confirm_timeout_s`（确认/澄清超时秒数，
   0=不限；到期按拒绝处理，防确认链无限挂起）、`models_failover`（主模型故障备选序列）、

@@ -41,6 +41,13 @@ permissions:
 - **没说唤醒词的音频（电视声/闲聊）在本机直接丢弃 —— 不出本机、不上云、不花钱。**
   只有 KWS 听到唤醒词的那段，才上传到你 `config.yaml` 里 `asr` 指向的云端 ASR
   抬取**指令文本**（转写是「把语音变文字」，不是唤醒判定本身）。
+- **转写模式 `voice.asr.mode`（2026-10-12）决定「抬取指令文本 / 作答段」在哪转写**：
+  - `local`：**全程本机转写、不上云**（sherpa-onnx）；本地模型缺失时**明确报错**，
+    **绝不静默上云** —— 这是本功能的隐私硬约束（选了本地却偷偷上云是最不能犯的错）。
+  - `hybrid`：本地优先，仅当本地不可用 / 转写为空 / 失败时才回落云端（回落即上传，
+    审计记 `fallback=1`）。
+  - `cloud`（默认）：上面「KWS 命中才上传」的描述成立。
+  覆盖**唤醒链与通话 L2**（通话 L1 始终本地快筛）；设置页「语音识别」卡可切。
 - `cloud` 模式（设置页「语音」可切）**旁路本地闸门**：每次人声段都上云判定，最大召回，
   但隐私面回到「每段人声都出本机」。`webspeech` 模式走浏览器识别（Chrome 中文实际经
   Google 服务器，并不更私密）。
@@ -57,7 +64,8 @@ permissions:
 - **助手播报期间麦克风被释放**；播报结束后 1.2 秒内音频整体丢弃（回声护栏——助手自称
   「衍衡」，防止它自己的声音被误唤醒或代答）。
 - **关闭方式**：再次点悬浮球上的 mic 徽章（或设 `voice.wake_word.enabled: false`），
-  取麦即停止；不接受「唤醒片段送到第三方 ASR」时请改用文字输入，或等本地 ASR 落地。
+  取麦即停止；不接受「音频送到第三方 ASR」时把 `voice.asr.mode` 设为 `local`
+  （全程本机转写，需先 `python scripts/fetch_local_asr_model.py` 拉模型），或改用文字输入。
 
 ## 审计日志
 
@@ -68,9 +76,12 @@ permissions:
   `grep -c 'audio-upload via=' data/audit.log` 即云端上传总次数（成本口径）。
 - **本地 KWS 判定**另记 `kws-gate hit=1` / `kws-gate skip=1`（前缀不同：它不是上传，
   **不得混入 `audio-upload` 成本口径**；skip = 被闸门挡掉的背景声/闲聊）。
+- **本地转写**（`voice.asr.mode=local/hybrid` 走本地时）记 `asr-local via=wake|transcribe|call-segment`
+  —— 同样前缀不同，**不是上传、不进成本口径**（`hybrid` 回落云端那条仍记 `audio-upload ... fallback=1`）。
 - **通话模式**（`/api/voice/call/*`）：会话开/关记 `call-start` / `call-stop`；漏斗各级丢弃与
-  异常记 `call-funnel`（本地判定，非上传）；**L2 云端转写是真上传**，记
-  `audio-upload via=call-segment`（计入成本口径，与 wake/transcribe 同前缀）。
+  异常记 `call-funnel`（本地判定，非上传）；**L2 转写按 `voice.asr.mode` 记**：云端为真上传
+  `audio-upload via=call-segment`（计入成本口径，与 wake/transcribe 同前缀），本地为
+  `asr-local via=call-segment`（非上传）。
 - 与 `data/agent.log` 分离，独立文件保留 90 天。
 - 实现点：`core/tools/base.py`（TOOLS.acall/call）、`core/orchestrator/confirm.py`。
 

@@ -77,6 +77,8 @@ voice:
     local_asr_model: "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
     merge_l2: true              # L2 合并调用：单次云端 chat 同时转写+四分类；false = 两步旧路径
   asr:                          # 在线 ASR（OpenAI 兼容；密钥在 config.secrets.yaml / 环境变量）
+    mode: cloud                 # 转写模式：local=本地/不出本机（缺模型报错，不上云）/ cloud=云端（默认）/ hybrid=本地优先云端兜底
+    local_model: "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"  # 本地模型目录（先跑 python scripts/fetch_local_asr_model.py）
     active: openai              # KWS 命中后抬取指令文本；cloud 模式下兼做唤醒判定
     profiles:
       openai:
@@ -106,6 +108,10 @@ voice:
   `asr.active` 指向的服务商抬取指令文本。`kws.enabled: false` 或 `cloud` 模式 = 旁路本地
   判定，每次人声段都上云（最大召回）。KWS 模型（`kws.model_dir`）缺失时自动旁路并在启动
   日志注明。
+- **转写模式 `asr.mode`（2026-10-12）决定音频去哪转写**：`local` 时唤醒链与作答/指令段全程在
+  本机转写、**不上云**（缺模型时明确报错，绝不静默上云）；`hybrid` 本地优先，仅在本地不可用 /
+  转写为空 / 失败时回落云端（回落会上传，审计记 `fallback=1`）；`cloud`（默认）全部上传
+  `asr.active` 服务商。**上面「KWS 命中才上传」的描述以 `mode=cloud` 为前提。**
 - `kws.keywords_threshold` 调灵敏度（越低越灵敏）；唤醒词本身在 `wake_word.keywords` 配，
   由 text2token 自动生成 KWS 关键词文件，改词无需手动编排。
 - 降低调用量的其余旋钮：调大 `vad.min_speech_ms` 与 `vad.upload_throttle_ms`、调高
@@ -124,7 +130,7 @@ L2 云端精判），命中进现有编排。字段：
 | `l0_min_rms` | `0.02` | L0 能量底线：段落 RMS 低于此视为非人声，直接丢弃（可用真音频标定） |
 | `l0_min_seconds` | `0.5` | L0 时长底线：短于此秒数的段直接丢弃 |
 | `smart_turn_enabled` | `true` | L1 的 Smart Turn v3「说完没」复核开关（`pipecat-ai==1.12.0` 只用这一个组件） |
-| `local_asr_model` | `models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20` | L1 本地转写模型目录；**模型不入库**，用 `python scripts/fetch_local_asr_model.py` 幂等拉取 |
+| `local_asr_model` | `models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20` | **已迁移到 `voice.asr.local_model`**（2026-10-12），本键不再读取、仅为兼容旧配置保留；本地模型目录用 `python scripts/fetch_local_asr_model.py` 幂等拉取（模型不入库） |
 | `merge_l2` | `true` | L2 合并调用：单次云端 chat 同时精转写+四分类（省一次音频上传与一轮 LLM 判定）；只回文本时自动补判、失败自动回落两步旧路径；`false` = 直接走两步 |
 
 **降级语义**（每一级「坏得静默、链路不断」）：

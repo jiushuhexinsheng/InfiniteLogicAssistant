@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""下载通话模式 L1 本地转写模型（k2-fsa 官方 release），只保留推理所需文件。
+"""下载本地转写模型（k2-fsa 官方 release），只保留推理所需文件。
+
+用途：`voice.asr.mode` 的 local/hybrid 模式（唤醒链 + 通话 L2 的本地转写）与通话漏斗 L1
+快筛共用同一模型。`DEST` 必须与 `voice.asr.local_model` 默认值一致（有测试钉住）。
 
 用法: python scripts/fetch_local_asr_model.py
 包体 ~511MB（含 test_wavs/model.pt 等），解包后只保留 tokens.txt + encoder/decoder/
@@ -11,8 +14,11 @@ joiner onnx（实测保留集 ~530MB；encoder 单文件 int8 173MB / fp32 315MB
 - 下载包按预期字节数（511,274,346，GitHub API 实测）校验，中断残留的残缺包跳过前
   即被清掉重下；解包/移动失败也清残包后重抛，下次重跑可恢复（不留裸死锁）。
 
-Download the call-mode L1 local transcription model (official k2-fsa release), keeping
-only the inference files. Per ruling R9 the model is NOT committed (gitignored); this
+Download the local transcription model (official k2-fsa release), keeping only the
+inference files. Used by `voice.asr.mode` local/hybrid (wake chain + call L2) and the
+call-funnel L1 quick screen — all share this one model; `DEST` must match the
+`voice.asr.local_model` default (pinned by a test). Per ruling R9 the model is NOT
+committed (gitignored); this
 script is the sole bootstrap path for fresh environments, so it must be re-runnable and
 self-healing: idempotency checks the complete kept set (manifest, with a tokens+prefix
 fallback), the tarball is size-verified (511,274,346 bytes per the GitHub API) so an
