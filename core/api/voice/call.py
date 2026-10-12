@@ -53,15 +53,33 @@ def _local_transcribe(wav: bytes) -> str:
 
 
 async def _cloud_transcribe(wav: bytes) -> str:
-    """云端精转写：与 /voice/transcribe 同通道，逐条记 audio-upload 审计。"""
-    from core.voice import get_asr
-    import base64 as _b64
-    asr = get_asr()
-    if not asr.available():
+    """L2 精转写：按 `voice.asr.mode` 走本地/云端（与 /voice/transcribe 同一分发）。
+
+    漏斗契约要求「链路不断」—— 任何不可用/失败返回空串（`call_funnel.py` 的
+    `final_text = cloud_text or text` 自动回落 L1 文本），与旧实现的「云端不可用返回空串」
+    一致。审计按 engine 分档：云端上传用 `audio-upload via=`，本地用 `asr-local via=`。
+
+    L2 fine transcription through the shared tri-mode dispatch. The funnel contract is
+    "never break the chain": any unavailability/failure returns "" so the funnel falls
+    back to the L1 text (same as the old cloud-unavailable behaviour).
+    """
+    from core.voice import asr_dispatch
+    try:
+        res = await asr_dispatch.transcribe(wav, via="call-segment")
+    except asr_dispatch.AsrUnavailableError as e:
+        # 转写通路不可用（local 缺模型 / 云端未配置）：记一笔（**不是**上传），回落 L1 文本。
+        logger.warning("call L2 转写不可用（{}），回落 L1 文本", e.code)
+        audit(f"asr-local unavailable=1 via=call-segment reason={e.code}")
         return ""
-    text = await asr.transcribe_base64(_b64.b64encode(wav).decode(), "wav")
-    audit(f"audio-upload via=call-segment chars={len(text)} text={text[:80]!r}")
-    return text
+    except Exception as e:
+        logger.warning("call L2 转写失败，回落 L1 文本: {}", e)
+        return ""
+    if res.engine == "local":
+        audit(f"asr-local via=call-segment chars={len(res.text)} text={res.text[:80]!r}")
+    else:
+        tail = " fallback=1" if res.fallback else ""
+        audit(f"audio-upload via=call-segment chars={len(res.text)} text={res.text[:80]!r}{tail}")
+    return res.text
 
 
 async def _smart_turn(wav: bytes) -> bool:
@@ -190,10 +208,17 @@ async def call_segment(request: Request):
         relax = in_open and _session.consecutive_misses >= cfg.relax_after_misses
     recent = "; ".join(_session.recent[-3:]) if _session else ""
 
+    # L2 合并调用是**云端专有**优化（单次 chat 同时精转写+四分类）：local/hybrid 下「本地优先」
+    # 与之冲突，一律不接线 → 漏斗自然走两步（本地/云端 L2 都支持），且本地模式下绝不因合并上云。
+    # The merged L2 call is a **cloud-only** optimisation; under local/hybrid it conflicts
+    # with "local first", so it is never wired up and the funnel runs the two-step path.
+    from core.voice.asr_dispatch import resolve_mode
+    merged_on = cfg.merge_l2 and resolve_mode() == "cloud"
+
     deps = FunnelDeps(
         cloud_transcribe=_cloud_transcribe,
         judge=_judge,
-        merged=_merged if cfg.merge_l2 else None,
+        merged=_merged if merged_on else None,
         local_transcribe=_local_transcribe,
         smart_turn=_smart_turn if cfg.smart_turn_enabled else None,
         min_seconds=cfg.l0_min_seconds,

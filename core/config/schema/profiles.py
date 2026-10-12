@@ -90,13 +90,32 @@ class LlmSection(BaseModel):
 
 
 class AsrSection(BaseModel):
-    """ASR 段配置：当前激活 profile 及全部命名 profile。
+    """ASR 段配置：转写模式、本地模型目录、当前激活 profile 及全部命名 profile。
 
-    ASR section config: the active profile and all named profiles.
+    `mode` 决定音频走哪条转写通路（2026-10-12 新增；默认 `cloud` 与旧行为完全一致）：
+    - `local`：本地 sherpa-onnx 转写，音频不出本机、零成本；本地不可用/加载失败时
+      **明确报错，绝不静默上云**（隐私不变量）。
+    - `cloud`：走 `active` profile 的云端 ASR。
+    - `hybrid`：本地优先，云端兜底 —— 本地不可用 / 转写为空 / 失败时才调云端。
+
+    `local_model` 是本地流式转写模型目录（sherpa-onnx streaming zipformer）；模型不入库，
+    由 `scripts/fetch_local_asr_model.py` 下载（旧键 `voice.call.local_asr_model` 启动时
+    自动迁移到本键）。
+
+    ASR section config: transcription mode, local model dir, the active profile and all
+    named profiles. `mode` (new, defaults to `cloud` = the legacy behaviour) picks the
+    transcription path: `local` (on-device, never uploads — a missing model is a hard
+    error, never a silent upload), `cloud` (the active profile), `hybrid` (local first,
+    cloud as a rescue only when local is unavailable/empty/failed). `local_model` is the
+    local streaming model dir (not committed; fetched by
+    `scripts/fetch_local_asr_model.py`); the legacy key `voice.call.local_asr_model`
+    migrates to it at startup.
     """
 
     model_config = ConfigDict(extra="forbid")
 
+    mode: Literal["local", "cloud", "hybrid"] = "cloud"
+    local_model: str = "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
     active: str = ""   # 空 = 取第一个 profile（目录退役后无内置默认名）
     profiles: dict[str, AsrProfile] = Field(default_factory=dict)
 

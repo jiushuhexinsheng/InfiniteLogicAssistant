@@ -174,8 +174,13 @@ class CallConfig(BaseModel):
     # Smart Turn（说完没复核）开关：关=以浏览器 VAD 静音切段为回合边界（旧行为）。
     # Smart Turn switch: off = browser VAD cut is the turn boundary (legacy behaviour).
     smart_turn_enabled: bool = True
-    # 本地流式转写模型目录；缺失时跳过 L1，只走 L0+L2。
-    # Local streaming ASR model dir; when missing, skip L1 and run L0+L2 only.
+    # 已迁移到 voice.asr.local_model（2026-10-12）：本地转写升格为 ASR 段设置、不再隶属
+    # 通话开关。本键仅作迁移来源保留（extra="forbid" 删字段会让旧 config.yaml 启动即报错），
+    # 运行时不再读取；启动/保存时若本键被显式写过则由 loader 迁移到新键。
+    # Migrated to voice.asr.local_model (2026-10-12): local transcription is now an
+    # ASR-level setting, no longer owned by the call switch. This key stays purely as a
+    # migration source (extra="forbid" — dropping it would fail old config.yaml at
+    # startup); nothing reads it at runtime and the loader migrates a user-written value.
     local_asr_model: str = "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
     # L2 合并调用：单次云端 chat 同时精转写+四分类（省一次上传与一轮 LLM）；
     # False = 两步（cloud_transcribe + judge）。**默认关**——小米 ASR 网关明确拒绝

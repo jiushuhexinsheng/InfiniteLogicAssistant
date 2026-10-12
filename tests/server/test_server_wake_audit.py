@@ -283,3 +283,118 @@ def test_audio_upload_audit_prefix_is_shared(client, monkeypatch):
     assert len(uploads) == len(_AUDIO_UPLOAD_ENDPOINTS), uploads
     # ③ 前缀共用、取值集合吻合。Shared prefix with a matching set of via= values.
     assert {l.split()[1] for l in uploads} == {f"via={v}" for v in _AUDIO_UPLOAD_ENDPOINTS.values()}, lines
+
+
+# ─── ASR 三模式（voice.asr.mode）下的上传口径 ───
+
+
+def _mode_settings(monkeypatch, mode: str):
+    """把 get_settings 换成设好 `voice.asr.mode` 的**稳定实例**（夹具的桩每次新建 Settings，
+    在返回值上打补丁路由读不到）。"""
+    import core.config as cm
+    st = cm.Settings(rag=cm.RagSection(auto_index=False))
+    st.voice.asr.mode = mode
+    monkeypatch.setattr(cm, "get_settings", lambda: st)
+    return st
+
+
+class _LocalStub:
+    def __init__(self, text="", available=True):
+        self.text = text
+        self._available = available
+
+    def available(self):
+        return self._available
+
+    def status(self):
+        return (self._available, "" if self._available else "本地 ASR 模型目录不存在")
+
+    def transcribe_wav(self, wav):
+        return self.text
+
+
+class _ExplodingAsr:
+    """云端桩：任何调用即 AssertionError —— 「local 模式绝不静默上云」的硬证据。"""
+
+    def available(self):
+        raise AssertionError("local 模式不该触碰云端 ASR")
+
+    async def transcribe_base64(self, *a, **k):  # pragma: no cover - 不该被调到
+        raise AssertionError("local 模式不该触碰云端 ASR")
+
+
+def test_voice_wake_local_mode_never_uploads(client, monkeypatch):
+    """local 模式 `/voice/wake`：本地转写 → 写 `asr-local via=wake`，**零** audio-upload 行。"""
+    import core.voice as voice_pkg
+    import core.voice.asr_dispatch as ad
+    import core.api.voice.wake as voice_wake
+
+    _mode_settings(monkeypatch, "local")
+    monkeypatch.setattr(ad, "_local", lambda: _LocalStub("衍衡，帮我查天气。"))
+    monkeypatch.setattr(voice_pkg, "get_asr", lambda: _ExplodingAsr())
+
+    lines: list[str] = []
+    monkeypatch.setattr(voice_wake, "audit", lambda msg: lines.append(msg))
+    d = client.post("/api/voice/wake", json={"audio_base64": "AAAA"}).json()
+    assert d["ok"] is True and d["matched"] is True and d["command"] == "帮我查天气"
+    assert any(l.startswith("asr-local via=wake") for l in lines), lines
+    assert not any(l.startswith("audio-upload") for l in lines), lines
+
+
+def test_voice_wake_local_mode_missing_model_reports_error(client, monkeypatch):
+    """local 模式缺模型：明确报错，且**不产生任何上传行**（绝不静默上云）。"""
+    import core.voice as voice_pkg
+    import core.voice.asr_dispatch as ad
+    import core.api.voice.wake as voice_wake
+
+    _mode_settings(monkeypatch, "local")
+    monkeypatch.setattr(ad, "_local", lambda: _LocalStub(available=False))
+    monkeypatch.setattr(voice_pkg, "get_asr", lambda: _ExplodingAsr())
+
+    lines: list[str] = []
+    monkeypatch.setattr(voice_wake, "audit", lambda msg: lines.append(msg))
+    d = client.post("/api/voice/wake", json={"audio_base64": "AAAA"}).json()
+    assert d["ok"] is False and "本地" in d["error"]
+    assert not any(l.startswith("audio-upload") for l in lines), lines
+
+
+def test_voice_wake_hybrid_fallback_audits_upload(client, monkeypatch):
+    """hybrid 本地为空 → 云端兜底：恰好一行 `audio-upload via=wake ... fallback=1`。"""
+    import core.voice as voice_pkg
+    import core.voice.asr_dispatch as ad
+    import core.api.voice.wake as voice_wake
+
+    _mode_settings(monkeypatch, "hybrid")
+    monkeypatch.setattr(ad, "_local", lambda: _LocalStub(""))  # 本地空 → 兜底
+
+    class _Asr:
+        def available(self):
+            return True
+        async def transcribe_base64(self, b64, fmt="wav"):
+            return "衍衡，帮我查天气。"
+    monkeypatch.setattr(voice_pkg, "get_asr", lambda: _Asr())
+
+    lines: list[str] = []
+    monkeypatch.setattr(voice_wake, "audit", lambda msg: lines.append(msg))
+    d = client.post("/api/voice/wake", json={"audio_base64": "AAAA"}).json()
+    assert d["ok"] is True and d["matched"] is True
+    ups = [l for l in lines if l.startswith("audio-upload via=wake")]
+    assert len(ups) == 1 and "fallback=1" in ups[0], lines
+
+
+def test_voice_transcribe_local_mode_writes_asr_local_not_upload(client, monkeypatch):
+    """local 模式 `/voice/transcribe`：写 `asr-local via=transcribe`，不混入成本口径。"""
+    import core.voice as voice_pkg
+    import core.voice.asr_dispatch as ad
+    import core.api.voice.wake as voice_wake
+
+    _mode_settings(monkeypatch, "local")
+    monkeypatch.setattr(ad, "_local", lambda: _LocalStub("下载目录。"))
+    monkeypatch.setattr(voice_pkg, "get_asr", lambda: _ExplodingAsr())
+
+    lines: list[str] = []
+    monkeypatch.setattr(voice_wake, "audit", lambda msg: lines.append(msg))
+    d = client.post("/api/voice/transcribe", json={"audio_base64": "AAAA"}).json()
+    assert d["ok"] is True and d["text"] == "下载目录。"
+    assert any(l.startswith("asr-local via=transcribe") for l in lines), lines
+    assert not any(l.startswith("audio-upload") for l in lines), lines

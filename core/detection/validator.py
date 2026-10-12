@@ -76,6 +76,25 @@ def validate(settings: Settings) -> ConfigHealth:
     if not settings.voice.tts.enabled:
         issues.append(Issue("info", "voice.tts.enabled", "TTS 未启用（默认浏览器本地语音播报）"))
 
+    # ASR 三模式（2026-10-12）：local/hybrid 模式下本地模型缺失 → 明确提示。
+    # local 模式是 **error**（用户选了本地却转不了，且绝不静默上云）；hybrid 是 warning
+    # （会走云端兜底，功能不受影响但「本地优先」名不副实）。
+    # ASR tri-mode: under local/hybrid a missing local model is flagged — an error under
+    # `local` (on-device was chosen and cannot work; it must never silently upload), a
+    # warning under `hybrid` (cloud rescues it, but "local first" is then nominal).
+    if settings.voice.asr.mode in ("local", "hybrid"):
+        from core.voice.local_asr import local_model_present
+        if not local_model_present(settings.voice.asr.local_model):
+            mode = settings.voice.asr.mode
+            issues.append(Issue(
+                "error" if mode == "local" else "warning",
+                "voice.asr.local_model",
+                "本地 ASR 模型未下载 → "
+                + ("local 模式下语音转写会明确报错（音频不会上云）" if mode == "local"
+                   else "hybrid 模式下会回落云端（本地优先名不副实）")
+                + "；运行 python scripts/fetch_local_asr_model.py，或把 voice.asr.mode 改为 cloud",
+            ))
+
     # permissions：规则 match 必须至少命中一个已注册工具，否则是拼写错误会被静默忽略
     # （既不报错也不生效），用户会以为策略已生效。
     # permissions: a rule's match must hit at least one registered tool; otherwise a typo

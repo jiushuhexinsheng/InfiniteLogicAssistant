@@ -223,3 +223,116 @@ def test_call_segment_merge_l2_off_keeps_two_step(client, monkeypatch):
     monkeypatch.setattr(call_mod, "_judge", judge)
     r = _seg(client)
     assert r.json()["hit"] is True and seen == ["今天天气怎么样"]
+
+
+# ─── ASR 三模式（voice.asr.mode）在通话 L2 的接线 ───
+
+
+def _stable_settings(monkeypatch, *, mode="cloud", merge_l2=False):
+    """换 get_settings 为**稳定实例**并设好 mode/merge_l2 —— 夹具的桩每次新建 Settings，
+    在「返回值」上打补丁路由读不到（见 test_call_segment_merged_single_upload 的告警）。
+
+    Swap get_settings for a **stable instance** and set mode/merge_l2; the fixture's double
+    builds a fresh Settings per call, so patching the returned value never reaches the route."""
+    import core.config as cm
+    st = cm.Settings(rag=cm.RagSection(auto_index=False))
+    st.voice.asr.mode = mode
+    st.voice.call.merge_l2 = merge_l2
+    st.voice.call.smart_turn_enabled = False
+    monkeypatch.setattr(cm, "get_settings", lambda: st)
+    return st
+
+
+class _LocalStub:
+    def __init__(self, text="", available=True):
+        self.text = text
+        self._available = available
+
+    def available(self):
+        return self._available
+
+    def status(self):
+        return (self._available, "" if self._available else "本地不可用")
+
+    def transcribe_wav(self, wav):
+        return self.text
+
+
+def test_call_segment_local_mode_never_uploads(client, monkeypatch):
+    """local 模式：通话 L2 走本地、云端**零调用** —— 隐私不变量在通话路径同样成立。"""
+    _stable_settings(monkeypatch, mode="local")
+    client.post("/api/voice/call/start")
+    monkeypatch.setattr(call_mod, "_local_transcribe", None)  # L1 跳过，逼 L2 出手
+    import core.voice.asr_dispatch as ad
+    monkeypatch.setattr(ad, "_local", lambda: _LocalStub("本地指令"))
+
+    class _ExplodingCloud:
+        def available(self):
+            raise AssertionError("local 模式云端不该被调用")
+        async def transcribe_base64(self, *a, **k):
+            raise AssertionError("local 模式云端不该被调用")
+    monkeypatch.setattr("core.voice.get_asr", lambda: _ExplodingCloud())
+
+    from core.logger import audit as real_audit
+    calls: list[str] = []
+    monkeypatch.setattr(call_mod, "audit", lambda m: (calls.append(m), real_audit(m))[1])
+
+    async def judge(t, r, relax):
+        return "command"
+    monkeypatch.setattr(call_mod, "_judge", judge)
+    r = _seg(client)
+    assert r.json()["hit"] is True and r.json()["text"] == "本地指令"
+    assert any(c.startswith("asr-local via=call-segment") for c in calls), calls
+    assert not any(c.startswith("audio-upload") for c in calls), calls
+
+
+def test_call_segment_local_mode_ignores_merge_l2(client, monkeypatch):
+    """local 模式下**即使 merge_l2=True 也不接线**合并（云端专有）：chat_audio 零调用。"""
+    _stable_settings(monkeypatch, mode="local", merge_l2=True)
+    client.post("/api/voice/call/start")
+    monkeypatch.setattr(call_mod, "_local_transcribe", None)
+    import core.voice.asr_dispatch as ad
+    monkeypatch.setattr(ad, "_local", lambda: _LocalStub("本地指令"))
+
+    class _Cloud:
+        def available(self):
+            return True
+        async def transcribe_base64(self, b64, fmt):
+            raise AssertionError("local 模式不该走云端")
+        async def chat_audio(self, *a, **k):
+            raise AssertionError("local 模式不得走合并上云")
+    monkeypatch.setattr("core.voice.get_asr", lambda: _Cloud())
+
+    async def judge(t, r, relax):
+        return "command"
+    monkeypatch.setattr(call_mod, "_judge", judge)
+    r = _seg(client)
+    assert r.json()["hit"] is True and r.json()["text"] == "本地指令"
+
+
+def test_call_segment_hybrid_local_empty_falls_back_and_audits(client, monkeypatch):
+    """hybrid：本地转写为空 → 云端兜底，L2 审计恰好一条且带 fallback=1（可观测痕迹）。"""
+    _stable_settings(monkeypatch, mode="hybrid")
+    client.post("/api/voice/call/start")
+    monkeypatch.setattr(call_mod, "_local_transcribe", None)
+    import core.voice.asr_dispatch as ad
+    monkeypatch.setattr(ad, "_local", lambda: _LocalStub(""))  # 本地空 → 兜底
+
+    class _Cloud:
+        def available(self):
+            return True
+        async def transcribe_base64(self, b64, fmt):
+            return "云端兜底文本"
+    monkeypatch.setattr("core.voice.get_asr", lambda: _Cloud())
+
+    from core.logger import audit as real_audit
+    calls: list[str] = []
+    monkeypatch.setattr(call_mod, "audit", lambda m: (calls.append(m), real_audit(m))[1])
+
+    async def judge(t, r, relax):
+        return "command"
+    monkeypatch.setattr(call_mod, "_judge", judge)
+    r = _seg(client)
+    assert r.json()["hit"] is True and r.json()["text"] == "云端兜底文本"
+    ups = [c for c in calls if c.startswith("audio-upload via=call-segment")]
+    assert len(ups) == 1 and "fallback=1" in ups[0], calls

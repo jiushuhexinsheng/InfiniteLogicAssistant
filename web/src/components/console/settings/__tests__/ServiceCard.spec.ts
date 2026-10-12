@@ -104,3 +104,62 @@ describe('ServiceCard（语音合成扩展）', () => {
     expect([...opts].some(o => o.textContent?.includes('Mia')), '建议面板应含 Mia').toBe(true)
   })
 })
+
+/** ASR section 定义（与 configDefs 单一来源一致）。ASR section def. */
+const asrDef = sectionDefs.find(d => d.key === 'asr')!
+
+/** ASR 段快照。**保留 tts 段**：本文件上方 TTS 用例挂载的组件不会 unmount，beforeEach
+ *  换掉 editable 时它们会重渲染 —— 快照缺 tts 会让 `s.sec('tts')` 变 undefined 而抛错。
+ *  ASR snapshot. Keeps the tts section: components mounted by the TTS cases above are not
+ *  unmounted and re-render when editable changes — a tts-less snapshot would make
+ *  `s.sec('tts')` undefined and throw. */
+function asrSnapshot(mode = 'cloud', present = false) {
+  return {
+    ...structuredClone(snapshot()),
+    asr: {
+      active: 'a', api_key_set: { a: false },
+      profiles: {
+        a: { provider: 'openai', endpoint: 'https://x', model: 'm', language: 'zh',
+             chat_path: '/v1/chat/completions', timeout: 30 },
+      },
+      mode, local_model: 'models/asr', local_model_present: present,
+    },
+  }
+}
+
+/**
+ * ASR 三模式（本地/云端/混合）：段级 UiSegmented 渲染与写回、本地模型未就位的警示。
+ * ASR tri-mode: the section-level segmented control renders and writes back; a missing
+ * local model raises a warning.
+ */
+describe('ServiceCard（ASR 三模式）', () => {
+  beforeEach(() => {
+    editable.value = structuredClone(asrSnapshot()) as any
+  })
+
+  it('渲染 本地/云端/混合 三选项，点击写回 editable.asr.mode', async () => {
+    const w = mount(ServiceCard, { props: { section: asrDef } })
+    const items = w.findAll('.ui-segmented .sg-item')
+    expect(items.map(i => i.text())).toEqual(['本地', '云端', '混合'])
+    await items.find(i => i.text() === '混合')!.trigger('click')
+    expect((editable.value as any).asr.mode).toBe('hybrid')
+  })
+
+  it('本地模型未就位 + 选了「本地」→ 显示警示条', () => {
+    editable.value = structuredClone(asrSnapshot('local', false)) as any
+    const w = mount(ServiceCard, { props: { section: asrDef } })
+    expect(w.text()).toContain('本地 ASR 模型未就位')
+  })
+
+  it('云端模式不因本地模型缺失告警（与本地模型无关）', () => {
+    editable.value = structuredClone(asrSnapshot('cloud', false)) as any
+    const w = mount(ServiceCard, { props: { section: asrDef } })
+    expect(w.text()).not.toContain('本地 ASR 模型未就位')
+  })
+
+  it('本地模型已就位 → 不显示警示', () => {
+    editable.value = structuredClone(asrSnapshot('local', true)) as any
+    const w = mount(ServiceCard, { props: { section: asrDef } })
+    expect(w.text()).not.toContain('本地 ASR 模型未就位')
+  })
+})

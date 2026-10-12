@@ -21,7 +21,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from core import config as config_mod
-from core.config.loader import _migrate_legacy_vendor_keys
+from core.config.loader import _migrate_legacy_local_asr_model, _migrate_legacy_vendor_keys
 from core.api.schemas import (
     ConfigFullResponse, DetectionResponse, PatchConfigResponse, PutSecretsResponse,
 )
@@ -203,6 +203,11 @@ async def patch_config(request: Request):
     # keys the extra=forbid validation below 400s (same migration as the boot path;
     # the write-back completes the clean-up).
     _migrate_legacy_vendor_keys(merged)
+    # 本地转写模型键迁移：与启动路径同一套（旧键 → voice.asr.local_model）；不做则
+    # 前端 PATCH 回写会把新键擦掉（patch 只带 asr 段，旧键仍在 call 段但没人读）。
+    # Local-transcription key migration, same as the boot path; without it a frontend
+    # PATCH write-back would drop the new key (the patch carries only the asr section).
+    _migrate_legacy_local_asr_model(merged)
     try:
         config_mod.Settings(**merged)  # 校验：类型/范围/未知字段 违规即 400
     except ValidationError as e:

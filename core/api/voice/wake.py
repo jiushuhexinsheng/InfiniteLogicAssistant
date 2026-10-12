@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from core import config as config
 from core.api.schemas import TextResponse, WakeCheckResponse, WakeResponse
 from core.logger import audit, logger
+from core.voice import asr_dispatch
 
 router = APIRouter()
 
@@ -42,23 +43,29 @@ async def voice_transcribe(request: Request):
     Returns:
         {"ok": True, "text": ...}，或错误响应。{"ok": True, "text": ...}, or an error response.
     """
-    from core.voice import get_asr
-    asr = get_asr()
-    if not asr.available():
-        return JSONResponse({"ok": False, "error": "ASR 未配置"})
     try:
         body = await request.body()
         params = json.loads(body.decode("utf-8"))
         b64 = params.get("audio_base64", "")
         if not b64:
             return JSONResponse({"ok": False, "error": "请提供 audio_base64 参数"})
-        text = await asr.transcribe_base64(b64, "wav")
-        # 逐条记一次云端上传。前缀 `audio-upload via=` 与 /voice/wake 共用，便于一条 grep 数全：
-        #   grep -c 'audio-upload via=' data/audit.log
-        # One line per cloud upload. The `audio-upload via=` prefix is shared with /voice/wake so a
-        # single grep counts them all.
-        audit(f"audio-upload via=transcribe chars={len(text)} text={text[:80]!r}")
-        return {"ok": True, "text": text}
+        wav = base64.b64decode(b64)
+        # 转写走 voice.asr.mode（本地/云端/混合统一分发）。记账分两档：云端上传用共用前缀
+        # `audio-upload via=`（便于 `grep -c 'audio-upload via=' data/audit.log` 数全）；
+        # 本地转写用 `asr-local via=`（音频未上云，**不进**成本统计）。hybrid 兜底加 fallback=1。
+        # Route via voice.asr.mode. Two audit prefixes: `audio-upload via=` for real cloud
+        # uploads (shared so one grep counts them all), `asr-local via=` for on-device
+        # transcription (never counted as an upload); a hybrid fallback adds fallback=1.
+        res = await asr_dispatch.transcribe(wav, via="transcribe")
+        if res.engine == "local":
+            audit(f"asr-local via=transcribe chars={len(res.text)} text={res.text[:80]!r}")
+        else:
+            tail = " fallback=1" if res.fallback else ""
+            audit(f"audio-upload via=transcribe chars={len(res.text)} text={res.text[:80]!r}{tail}")
+        return {"ok": True, "text": res.text}
+    except asr_dispatch.AsrUnavailableError as e:
+        # 明确失败（云端未配置 / local 模式本地不可用）—— 绝不静默上云。
+        return JSONResponse({"ok": False, "error": str(e)})
     except Exception as e:
         logger.error("voice_transcribe: {}", e)
         return JSONResponse({"ok": False, "error": str(e)})
@@ -112,7 +119,6 @@ async def voice_wake(request: Request):
     "chime, then wait for the command", and putting that judgement server-side makes it unit
     testable while keeping the frontend thin.
     """
-    from core.voice import get_asr
     from core.voice.kws import get_kws
     from core.voice.wake import detect
 
@@ -141,17 +147,18 @@ async def voice_wake(request: Request):
             audit("kws-gate skip=1")
             return {"ok": True, "matched": False, "command": "", "text": ""}
 
-    asr = get_asr()
-    if not asr.available():
-        return JSONResponse({"ok": False, "error": "ASR 未配置"})
     try:
-        text = await asr.transcribe_base64(b64, "wav")
+        res = await asr_dispatch.transcribe(wav_bytes, via="wake")
+    except asr_dispatch.AsrUnavailableError as e:
+        # 明确失败（云端未配置 / local 模式本地不可用）—— 绝不静默上云。
+        return JSONResponse({"ok": False, "error": str(e)})
     except Exception as e:
         logger.error("voice_wake: {}", e)
         # 不吞异常：前端要靠 ok=False 计连续失败次数并熔断，静默成功会让它一直重试。
         # Do not swallow: the frontend counts ok=False toward its circuit breaker; a silent success
         # would keep it retrying.
         return JSONResponse({"ok": False, "error": str(e)})
+    text = res.text
 
     result = detect(text, config.settings.voice.wake_word.keywords)
     # 音频判定优先于文本判定：KWS（发音级）听到了唤醒词就唤醒成立，ASR 文本只负责
@@ -164,13 +171,20 @@ async def voice_wake(request: Request):
     # text hit with no KWS hit (gate bypassed) stands as usual.
     matched = result.matched or kws_hit is True
     command = result.command if result.matched else ""
-    # 每次上传记一笔：这是统计调用量与成本的依据（spec「成本与隐私」）。前缀与
-    # /voice/transcribe 共用，`grep -c 'audio-upload via=' data/audit.log` 即云端上传总次数。
-    # One audit line per upload: the basis for measuring call volume and cost (spec, "cost and
-    # privacy"). The prefix is shared with /voice/transcribe, so a single grep counts every cloud
-    # upload.
-    audit(
-        f"audio-upload via=wake matched={matched} chars={len(text)} "
-        f"command={command[:40]!r} text={text[:80]!r}"
-    )
+    # 记一笔：云端上传用共用前缀（`grep -c 'audio-upload via=' data/audit.log` 即总次数，
+    # 与 /voice/transcribe 一致）；本地转写用 `asr-local via=`，音频未上云、不进成本统计。
+    # One record: cloud uploads use the shared prefix (a single grep counts every upload,
+    # same as /voice/transcribe); local transcription uses `asr-local via=` and is never
+    # counted as an upload.
+    if res.engine == "local":
+        audit(
+            f"asr-local via=wake matched={matched} chars={len(text)} "
+            f"command={command[:40]!r} text={text[:80]!r}"
+        )
+    else:
+        tail = " fallback=1" if res.fallback else ""
+        audit(
+            f"audio-upload via=wake matched={matched} chars={len(text)} "
+            f"command={command[:40]!r} text={text[:80]!r}{tail}"
+        )
     return {"ok": True, "matched": matched, "command": command, "text": result.text}

@@ -109,6 +109,7 @@ voice:
     l0_min_rms: 0.02        # 段落能量低于此视为非人声（实现期可用真音频标定）
     l0_min_seconds: 0.5     # 短于此的段本机丢弃
     smart_turn_enabled: true
+    # 已迁移到 voice.asr.local_model（2026-10-12），本键不再读取；保留仅为兼容旧配置
     local_asr_model: "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
     # L2 合并调用：单次云端同时转写+四分类。默认关 —— 小米 ASR 网关拒绝请求携带 text
     # 部件（提示词由网关注入），合并形状对其 400；两步路径功能零损失。支持指令+音频
@@ -118,6 +119,12 @@ voice:
     relax_after_misses: 2    # 开放窗口内连续 miss 数，达到后 L2 复判放宽
   # 在线 ASR 语音转文字（OpenAI 兼容；endpoint/model 需自填，密钥在 config.secrets.yaml）
   asr:
+    # 转写模式（2026-10-12）：local=本地转写/不出本机/零成本（缺模型时明确报错，绝不静默上云）；
+    # cloud=云端（默认，与旧行为一致）；hybrid=本地优先、本地不可用/为空/失败时才走云端
+    mode: cloud
+    # 本地流式转写模型目录（sherpa-onnx streaming zipformer）；模型不入库，
+    # 首次使用先运行: python scripts/fetch_local_asr_model.py
+    local_model: "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
     active: openai
     profiles:
       openai:

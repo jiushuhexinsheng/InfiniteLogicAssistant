@@ -21,9 +21,12 @@
          browser's recognizer (not more private). The old copy ("cloud/auto both upload",
          "local/browser audio never leaves") contradicted the post-gate implementation. -->
     <p class="cs-note">
-      ⚠️ <strong>云端模式</strong>下，每次 VAD 判到人声都会上传音频到云端 ASR —— <strong>无论是否说出唤醒词</strong>。
-      <strong>自动/本地模式</strong>经后端 KWS 闸门：没说唤醒词的段在本机丢弃、不上云，命中才上传抬取指令文本；
-      <strong>浏览器模式</strong>走浏览器识别（Chrome 中文经 Google 服务器，并不更私密）。
+      🎙️ <strong>转写模式</strong>（「语音识别」卡）＝<strong>{{ asrModeLabel }}</strong>：{{ asrPrivacyLine }}。
+    </p>
+    <p class="cs-note">
+      ⚠️ <strong>唤醒模式＝云端</strong>时，每次 VAD 判到人声都会上传音频到云端 ASR —— <strong>无论是否说出唤醒词</strong>。
+      <strong>自动/本地</strong>经后端 KWS 闸门：没说唤醒词的段在本机丢弃、不上云，命中才上传抬取指令文本；
+      <strong>浏览器</strong>走浏览器识别（Chrome 中文经 Google 服务器，并不更私密）。
       关闭下方「唤醒启用」即停止取麦；不接受音频上传请改用文字输入。
     </p>
     <SettingsField v-if="s.editable.value" label="唤醒启用" row>
@@ -123,6 +126,23 @@ const modeOptions: { value: WakeMode; label: string }[] = [
 
 /** 当前唤醒模式。Current wake mode. */
 const currentMode = computed(() => wakeMode.value)
+
+/** ASR 转写模式标签（区分于「唤醒模式」：那个是本地/云端 KWS 判定，这个是音频去哪转写）。
+ *  ASR transcription-mode label (distinct from the wake mode: that one is the KWS
+ *  judging location, this one is where audio gets transcribed). */
+const asrModeLabel = computed(() => {
+  const m = s.sec('asr')?.mode
+  return m === 'local' ? '本地' : m === 'hybrid' ? '混合' : '云端'
+})
+
+/** 转写模式的隐私口径一句话（与「语音识别」卡的分档说明一致）。 */
+const asrPrivacyLine = computed(() => {
+  switch (s.sec('asr')?.mode) {
+    case 'local': return '唤醒链与作答/指令段的音频在本机转写、不上云（缺模型时明确报错，绝不偷偷上云）'
+    case 'hybrid': return '本地优先，本地不可用/转写为空时才回落云端（回落即上传，审计记 fallback=1）'
+    default: return '音频上传到当前 ASR profile 的服务商；下面的唤醒模式口径以此为前提'
+  }
+})
 
 /** 模式说明文案。Mode description text. */
 const modeHint = computed(() => {

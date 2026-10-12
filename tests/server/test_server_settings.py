@@ -147,3 +147,46 @@ def test_patch_config_tolerates_legacy_vendor_presets(isolated_settings):
         resp = tc.patch("/api/config", json={"agent": {"recursion_limit": 5}})
         assert resp.status_code == 200
         assert tc.get("/api/config").status_code == 200
+
+
+# ─── ASR 三模式（voice.asr.mode）的 PATCH 往返 ───
+
+def test_patch_config_persists_asr_mode(isolated_settings):
+    """PATCH 顶层 asr.mode → 归一化到 voice.asr 并落盘、热重载 —— 设置页三模式控件的保存路径。"""
+    import yaml
+    from fastapi.testclient import TestClient
+    import server as server_module
+    with TestClient(server_module.app) as tc:
+        resp = tc.patch("/api/config", json={"asr": {"mode": "hybrid"}})
+    assert resp.status_code == 200
+    data = yaml.safe_load(isolated_settings.CONFIG_FILE.read_text(encoding="utf-8"))
+    assert data["voice"]["asr"]["mode"] == "hybrid"
+    assert isolated_settings.get_settings().voice.asr.mode == "hybrid"
+
+
+def test_patch_config_rejects_local_model_present(isolated_settings):
+    """`local_model_present` 是**只读展示**字段（仅出现在可编辑快照里）—— 回送会被
+    `extra="forbid"` 拒绝 400，钉住「前端不得把它 PATCH 回来」。"""
+    from fastapi.testclient import TestClient
+    import server as server_module
+    with TestClient(server_module.app) as tc:
+        resp = tc.patch("/api/config", json={"asr": {"local_model_present": True}})
+    assert resp.status_code == 400
+
+
+def test_patch_config_migrates_legacy_local_asr_model(isolated_settings):
+    """PATCH 路径与启动路径**同一套迁移**：用户显式写过旧键 voice.call.local_asr_model 时，
+    一次 PATCH 会把新键写出来（不做则新键永远不出现，用户改了本地模型也读不到）。"""
+    import yaml
+    from fastapi.testclient import TestClient
+    import server as server_module
+    isolated_settings.CONFIG_FILE.write_text(
+        "voice:\n  call:\n    local_asr_model: models/legacy-asr\n  asr:\n    active: a\n"
+        "    profiles:\n      a:\n        provider: openai\n        endpoint: x\n        model: m\n",
+        encoding="utf-8",
+    )
+    with TestClient(server_module.app) as tc:
+        resp = tc.patch("/api/config", json={"agent": {"recursion_limit": 7}})
+    assert resp.status_code == 200
+    data = yaml.safe_load(isolated_settings.CONFIG_FILE.read_text(encoding="utf-8"))
+    assert data["voice"]["asr"]["local_model"] == "models/legacy-asr"

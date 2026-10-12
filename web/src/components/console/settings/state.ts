@@ -110,6 +110,13 @@ export function moduleBody(id: string): Record<string, any> {
   // The permissions section is not profile-shaped, so it needs its own branch; the
   // fall-through below would PATCH garbage like {active: undefined, profiles: undefined}.
   if (id === 'permissions') return { permissions: e.permissions }
+  // ASR 段不是纯 profile 形状：转写模式（mode）与本地模型目录（local_model）也要带上 ——
+  // 落到下面的兜底分支只会发 {active, profiles}，用户切换的模式会被**静默丢弃**（保存看似成功）。
+  // ⚠️ 只读的 local_model_present 绝不回送（后端 extra="forbid" → 400）。
+  // The ASR section is not plain profile-shaped: the transcription mode and the local
+  // model dir must ride along, or the fall-through below would silently drop the user's
+  // mode selection. The read-only local_model_present is never sent back.
+  if (id === 'asr') return { asr: { active: e.asr.active, profiles: e.asr.profiles, mode: e.asr.mode, local_model: e.asr.local_model } }
   return { [id]: { active: e[id].active, profiles: e[id].profiles } }
 }
 

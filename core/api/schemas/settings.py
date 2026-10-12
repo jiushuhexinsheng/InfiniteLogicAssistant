@@ -53,6 +53,26 @@ class TtsSectionEditable(SectionEditable):
     """
     enabled: bool = False
 
+class AsrSectionEditable(SectionEditable):
+    """ASR 区段（多转写模式、本地模型目录与「本地模型是否就位」标记）。
+
+    **必须独立于共用的 `SectionEditable`**：`mode`/`local_model` 是 ASR 专有字段，塞进
+    基类会让 `llm` 段也冒出这些字段（前端整份回写会把 `llm.mode` 写进 config.yaml →
+    `extra="forbid"` 400）。不独立建类则 `response_model` 会**静默过滤**掉这些字段，
+    前端永远收不到。
+
+    `local_model_present` 是**只读展示**字段（纯文件系统判断，不加载模型）；前端不得
+    把它回送（回送会被 `extra="forbid"` 拒绝）。
+
+    ASR section (extra transcription mode, local model dir, and a read-only "local model
+    present" flag). Kept separate from the shared `SectionEditable` so `mode`/`local_model`
+    do not leak into the `llm` section; without a dedicated model `response_model` would
+    silently drop them.
+    """
+    mode: str = "cloud"
+    local_model: str = ""
+    local_model_present: bool = False
+
 class AgentConfigOut(BaseModel):
     """Agent 配置输出（递归限制、多代理、故障转移模型列表、确认超时、压缩阈值）。
 
@@ -159,7 +179,7 @@ class EditableSnapshot(BaseModel):
     Configuration editable snapshot (data source for the front-end settings page).
     """
     llm: SectionEditable
-    asr: SectionEditable
+    asr: AsrSectionEditable
     tts: TtsSectionEditable
     wake_word: WakeWordConfig
     vad: VadConfig

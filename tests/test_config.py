@@ -473,3 +473,79 @@ def test_call_config_merge_l2_default():
     accepting instruction+audio can enable it explicitly."""
     from core.config.schema import CallConfig
     assert CallConfig().merge_l2 is False
+
+
+# ─── ASR 三模式（2026-10-12）：本地 / 云端 / 混合 ───
+
+
+def test_asr_mode_default_cloud_and_rejects_invalid():
+    """`voice.asr.mode` 默认 `cloud`（与旧行为逐字一致），非法值由 Literal 拒绝。
+
+    `voice.asr.mode` defaults to `cloud` (identical to the legacy behaviour); an invalid
+    value is rejected by the Literal."""
+    from core.config.schema import AsrSection
+    assert AsrSection().mode == "cloud"
+    assert c.Settings(voice={"asr": {"mode": "hybrid"}}).voice.asr.mode == "hybrid"
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        c.Settings(voice={"asr": {"mode": "offline"}})
+
+
+def test_asr_local_model_default_matches_fetch_script():
+    """`voice.asr.local_model` 默认值必须与下载脚本的 `DEST` 一致 —— 否则用户跑了脚本、
+    模型仍报「找不到」，且错误文案指向一个不存在的目录。
+
+    The default must match the fetch script's `DEST`; otherwise the user runs the script
+    and still gets "model missing", pointing at a directory that does not exist."""
+    import importlib.util
+    from pathlib import Path
+    from core.config.schema import AsrSection
+    root = Path(c.ROOT_DIR)
+    spec = importlib.util.spec_from_file_location(
+        "_fetch_local_asr_model", root / "scripts" / "fetch_local_asr_model.py")
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # __main__ 守卫使 main() 不执行
+    assert AsrSection().local_model == mod.DEST.relative_to(root).as_posix()
+
+
+def test_migrate_legacy_call_local_asr_model_moves_to_asr():
+    """旧键 `voice.call.local_asr_model` → `voice.asr.local_model` 的迁移。
+
+    三条不变量：① 旧键被显式写过且新键缺席 → 值搬过去；② 新键已存在 → 旧键不覆盖；
+    ③ YAML 根本没写旧键 → 不迁移（旧键在模型里有**非空默认值**，若在建模后的对象上判空
+    会恒真 —— 这正是必须在原始字典上判断的原因）。
+
+    Migration invariants: a user-written old key with no new key moves over; an existing
+    new key wins; a config that never mentioned the old key does not migrate (the old key
+    has a non-empty model default, so probing the modelled object would always be true —
+    which is exactly why the raw dict must be checked)."""
+    from core.config.loader import _migrate_legacy_local_asr_model
+
+    d1 = {"voice": {"call": {"local_asr_model": "models/mine"}}}
+    _migrate_legacy_local_asr_model(d1)
+    assert d1["voice"]["asr"]["local_model"] == "models/mine"
+    assert d1["voice"]["call"]["local_asr_model"] == "models/mine"  # 旧键保留（extra=forbid）
+
+    d2 = {"voice": {"call": {"local_asr_model": "models/old"},
+                    "asr": {"local_model": "models/new"}}}
+    _migrate_legacy_local_asr_model(d2)
+    assert d2["voice"]["asr"]["local_model"] == "models/new"
+
+    d3 = {"voice": {"call": {"enabled": True}}}
+    _migrate_legacy_local_asr_model(d3)
+    assert "local_model" not in d3["voice"].get("asr", {})
+
+
+def test_asr_mode_reaches_editable_snapshot(monkeypatch):
+    """`mode`/`local_model` 必须进可编辑快照 —— 设置页 ASR 卡的控件从这里取值；
+    `local_model_present` 是只读展示标记（不得回送，回送会被 extra=forbid 拒绝）。
+
+    `mode`/`local_model` must reach the editable snapshot (the settings page reads them
+    from there); `local_model_present` is a read-only display flag."""
+    settings = c.Settings(voice={"asr": {"mode": "hybrid", "local_model": "models/x"}})
+    monkeypatch.setattr(c, "get_settings", lambda: settings)
+    snap = c.editable_snapshot()
+    assert snap["asr"]["mode"] == "hybrid"
+    assert snap["asr"]["local_model"] == "models/x"
+    assert isinstance(snap["asr"]["local_model_present"], bool)

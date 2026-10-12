@@ -949,6 +949,59 @@ export interface components {
             error?: string | null;
         };
         /**
+         * AsrSectionEditable
+         * @description ASR 区段（多转写模式、本地模型目录与「本地模型是否就位」标记）。
+         *
+         *     **必须独立于共用的 `SectionEditable`**：`mode`/`local_model` 是 ASR 专有字段，塞进
+         *     基类会让 `llm` 段也冒出这些字段（前端整份回写会把 `llm.mode` 写进 config.yaml →
+         *     `extra="forbid"` 400）。不独立建类则 `response_model` 会**静默过滤**掉这些字段，
+         *     前端永远收不到。
+         *
+         *     `local_model_present` 是**只读展示**字段（纯文件系统判断，不加载模型）；前端不得
+         *     把它回送（回送会被 `extra="forbid"` 拒绝）。
+         *
+         *     ASR section (extra transcription mode, local model dir, and a read-only "local model
+         *     present" flag). Kept separate from the shared `SectionEditable` so `mode`/`local_model`
+         *     do not leak into the `llm` section; without a dedicated model `response_model` would
+         *     silently drop them.
+         */
+        AsrSectionEditable: {
+            /**
+             * Active
+             * @default
+             */
+            active: string;
+            /**
+             * Profiles
+             * @default {}
+             */
+            profiles: {
+                [key: string]: components["schemas"]["ProfileEditable"];
+            };
+            /**
+             * Api Key Set
+             * @default {}
+             */
+            api_key_set: {
+                [key: string]: boolean;
+            };
+            /**
+             * Mode
+             * @default cloud
+             */
+            mode: string;
+            /**
+             * Local Model
+             * @default
+             */
+            local_model: string;
+            /**
+             * Local Model Present
+             * @default false
+             */
+            local_model_present: boolean;
+        };
+        /**
          * CallConfig
          * @description 通话模式配置（`core/config/schema.py` 里 CallConfig 的**手工副本**，两处必须同步，
          *     理由同 WakeWordConfig/VadConfig：response_model 会静默过滤未声明字段）。
@@ -1218,7 +1271,7 @@ export interface components {
          */
         EditableSnapshot: {
             llm: components["schemas"]["SectionEditable"];
-            asr: components["schemas"]["SectionEditable"];
+            asr: components["schemas"]["AsrSectionEditable"];
             tts: components["schemas"]["TtsSectionEditable"];
             wake_word: components["schemas"]["WakeWordConfig"];
             vad: components["schemas"]["VadConfig"];

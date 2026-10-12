@@ -71,3 +71,42 @@ def test_validator_silent_when_no_rules():
     from core.detection.validator import validate
     health = validate(Settings())
     assert not any("permissions" in i.key for i in health.issues)
+
+
+# ─── ASR 三模式：本地模型缺失的语义检查 ───
+
+
+def test_validator_errors_missing_local_model_in_local_mode(monkeypatch, tmp_path):
+    """local 模式缺本地模型 → **error**（选了本地却转不了，且绝不静默上云）。"""
+    monkeypatch.setattr(config_mod, "ROOT_DIR", tmp_path)
+    health = validate(config_mod.Settings(voice={"asr": {"mode": "local"}}))
+    assert health.ok is False
+    assert any(i.key == "voice.asr.local_model" and i.level == "error" for i in health.issues)
+
+
+def test_validator_warns_missing_local_model_in_hybrid_mode(monkeypatch, tmp_path):
+    """hybrid 模式缺本地模型 → warning（会走云端兜底，功能不受影响但本地优先名不副实）。"""
+    monkeypatch.setattr(config_mod, "ROOT_DIR", tmp_path)
+    health = validate(config_mod.Settings(voice={"asr": {"mode": "hybrid"}}))
+    assert health.ok is True
+    assert any(i.key == "voice.asr.local_model" and i.level == "warning" for i in health.issues)
+
+
+def test_validator_silent_on_missing_local_model_in_cloud_mode(monkeypatch, tmp_path):
+    """cloud 模式不触碰本地模型 → 无任何相关提示。"""
+    monkeypatch.setattr(config_mod, "ROOT_DIR", tmp_path)
+    health = validate(config_mod.Settings(voice={"asr": {"mode": "cloud"}}))
+    assert not any(i.key == "voice.asr.local_model" for i in health.issues)
+
+
+def test_validator_silent_when_local_model_present(monkeypatch, tmp_path):
+    """模型就位 → local 模式也无提示（不因「没下载」误报）。"""
+    monkeypatch.setattr(config_mod, "ROOT_DIR", tmp_path)
+    d = tmp_path / "models" / "asr"
+    d.mkdir(parents=True)
+    (d / "tokens.txt").write_text("a\n", encoding="utf-8")
+    for kind in ("encoder", "decoder", "joiner"):
+        (d / f"{kind}-x.onnx").write_text("x", encoding="utf-8")
+    health = validate(config_mod.Settings(
+        voice={"asr": {"mode": "local", "local_model": "models/asr"}}))
+    assert not any(i.key == "voice.asr.local_model" for i in health.issues)

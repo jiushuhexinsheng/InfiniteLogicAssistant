@@ -26,6 +26,8 @@ export interface SectionDef {
   toggle: boolean
   /** 可编辑字段名列表。Editable field names. */
   fields: string[]
+  /** 段级三选一控件（如 ASR 转写模式）；缺省不渲染。Section-level segmented control (e.g. the ASR transcription mode); not rendered when absent. */
+  modeField?: { key: string; options: { value: string; label: string }[] }
 }
 
 /** 高级设置子卡定义。Advanced sub-card definition. */
@@ -53,7 +55,12 @@ export const sectionDefs: SectionDef[] = [
   { key: 'llm', name: 'LLM', title: 'LLM 大模型', toggle: false,
     fields: ['provider', 'endpoint', 'model', 'chat_path', 'max_tokens', 'temperature', 'timeout'] },
   { key: 'asr', name: 'ASR', title: 'ASR 语音识别', toggle: false,
-    fields: ['provider', 'endpoint', 'model', 'language', 'chat_path', 'timeout'] },
+    fields: ['provider', 'endpoint', 'model', 'language', 'chat_path', 'timeout'],
+    modeField: { key: 'mode', options: [
+      { value: 'local', label: '本地' },
+      { value: 'cloud', label: '云端' },
+      { value: 'hybrid', label: '混合' },
+    ] } },
   { key: 'tts', name: 'TTS', title: 'TTS 语音合成', toggle: true,
     fields: ['provider', 'endpoint', 'model', 'voice', 'voices', 'voice_ref', 'format', 'chat_path', 'timeout'] },
 ]
@@ -106,6 +113,7 @@ export const LABELS: Record<string, string> = {
   rerank: '精排(none/llm)', rerank_candidates: '粗排候选数', rerank_top_k: '注入条数',
   condense_threshold_chars: '滚动压缩阈值(字符,0=关)',
   llm_max_output_chars: '工具输出LLM上限(字,0=不限)',
+  mode: '转写模式',
 }
 
 /**

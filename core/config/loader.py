@@ -276,6 +276,43 @@ def _migrate_legacy_vendor_keys(data: dict) -> None:
         _print_notice("[配置] profile 里的 vendor 键已随厂商目录退役，该键已被忽略（其余字段不受影响）")
 
 
+def _migrate_legacy_local_asr_model(data: dict) -> None:
+    """本地转写模型键迁移（2026-10-12）：voice.call.local_asr_model → voice.asr.local_model。
+
+    本地转写升格为 ASR 段设置后，模型键归位到 asr 段。必须在 **YAML 原始字典**上判断旧键
+    是否存在 —— 旧键在模型里有**非空默认值**，若在建模后的对象上判空会恒真、把用户的新键
+    值永久覆盖。新键已存在时以新键为准（不覆盖）；旧键保留在 call 段（extra="forbid" 不能
+    删字段），仅作迁移来源、运行时不再读取。
+
+    Local-transcription model-key migration (2026-10-12): move
+    voice.call.local_asr_model to voice.asr.local_model. The check must run on the **raw
+    YAML dict** — the old key has a non-empty model default, so testing it on the modelled
+    object would always be true and clobber the user's new-key value. An existing new key
+    wins (never overwritten); the old key stays in the call section (extra="forbid" — it
+    cannot be dropped) as a migration source only.
+
+    Args:
+        data: YAML 读出的原始配置字典（就地修改）。The raw config dict (mutated in place).
+    """
+    voice = data.get("voice")
+    if not isinstance(voice, dict):
+        return
+    call = voice.get("call")
+    if not isinstance(call, dict) or "local_asr_model" not in call:
+        return
+    legacy = call.get("local_asr_model")
+    asr = voice.get("asr")
+    if not isinstance(asr, dict):
+        asr = {}
+        voice["asr"] = asr
+    if not asr.get("local_model") and legacy:
+        asr["local_model"] = legacy
+        _print_notice(
+            "[配置] voice.call.local_asr_model 已迁移到 voice.asr.local_model"
+            "（本地转写升格为 ASR 段设置；旧键保留但不再读取）"
+        )
+
+
 def _build() -> Settings:
     """构建 Settings：必要时从 example 模板创建配置文件，读取 YAML、注入密钥并校验。
 
@@ -301,6 +338,7 @@ def _build() -> Settings:
     data = _read_yaml(_cfg.CONFIG_FILE)
     _inject_secrets(data, _load_secrets())
     _migrate_legacy_vendor_keys(data)
+    _migrate_legacy_local_asr_model(data)
     from pydantic import ValidationError
 
     try:

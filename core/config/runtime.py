@@ -224,11 +224,21 @@ def editable_snapshot() -> dict:
     def _key_set(section) -> dict:
         return {name: bool(p.api_key) for name, p in section.profiles.items()}
 
+    def _local_model_present() -> bool:
+        # 延迟 import（core.voice.local_asr → core.config，模块级 import 会成环）；
+        # 纯文件系统判断，不加载模型（见 local_asr.local_model_present 的说明）。
+        from core.voice.local_asr import local_model_present
+        return local_model_present()
+
     return {
         "llm": {"active": s.llm.active, "profiles": _profiles(s.llm),
                 "api_key_set": _key_set(s.llm)},
         "asr": {"active": s.voice.asr.active, "profiles": _profiles(s.voice.asr),
-                "api_key_set": _key_set(s.voice.asr)},
+                "api_key_set": _key_set(s.voice.asr),
+                # 三模式（2026-10-12）：mode/local_model 可编辑；local_model_present 是
+                # 只读展示（纯文件系统判断，不加载模型），前端不得回送。
+                "mode": s.voice.asr.mode, "local_model": s.voice.asr.local_model,
+                "local_model_present": _local_model_present()},
         "tts": {"enabled": s.voice.tts.enabled, "active": s.voice.tts.active,
                 "profiles": _profiles(s.voice.tts), "api_key_set": _key_set(s.voice.tts)},
         "wake_word": s.voice.wake_word.model_dump(),

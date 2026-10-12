@@ -35,7 +35,8 @@ function fullSnapshot(llmActive = 'ds') {
   const prof = { provider: 'openai', endpoint: 'https://x', model: 'm', chat_path: '/v1/chat/completions', models: [] }
   return {
     llm: { active: llmActive, profiles: { ds: { ...prof }, other: { ...prof } }, api_key_set: { ds: false, other: false } },
-    asr: { active: 'a', profiles: { a: { ...prof } }, api_key_set: { a: false } },
+    asr: { active: 'a', profiles: { a: { ...prof } }, api_key_set: { a: false },
+      mode: 'cloud', local_model: 'models/asr', local_model_present: false },
     tts: { enabled: false, active: 't', profiles: { t: { ...prof } }, api_key_set: { t: false } },
     wake_word: { enabled: true, keywords: ['衍衡'], sensitivity: 0.5, model_path: '' },
     vad: { silence_threshold: 0.02, listen_idle_s: 180 },
@@ -90,6 +91,18 @@ describe('moduleBody 各模块 PATCH 形状', () => {
   it('tts → {tts:{enabled, active, profiles}}', () => {
     const b = moduleBody('tts') as any
     expect(Object.keys(b.tts).sort()).toEqual(['active', 'enabled', 'profiles'])
+  })
+
+  it('asr → {active, profiles, mode, local_model}（**不含**只读的 local_model_present）', () => {
+    // 关键回归：asr 若落到兜底分支只发 {active, profiles}，用户切换的转写模式会被**静默
+    // 丢弃**（保存看似成功）；local_model_present 回送则被后端 extra=forbid 拒绝 400。
+    // Key regression: a fall-through would silently drop the mode; sending the read-only
+    // local_model_present back would 400 on the backend's extra="forbid".
+    const b = moduleBody('asr') as any
+    expect(Object.keys(b)).toEqual(['asr'])
+    expect(Object.keys(b.asr).sort()).toEqual(['active', 'local_model', 'mode', 'profiles'])
+    expect(b.asr.mode).toBe('cloud')
+    expect(b.asr).not.toHaveProperty('local_model_present')
   })
 })
 
