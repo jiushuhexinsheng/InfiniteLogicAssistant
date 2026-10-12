@@ -1,4 +1,8 @@
 import { ref } from 'vue'
+import { api } from '../api'
+import { createNewSession } from './assistant/store'
+import { notify } from './useToast'
+import { formatError } from '../errors'
 
 /** 控制台标签页键类型。Console tab key type. */
 export type ConsoleTabKey = 'conv' | 'task' | 'status' | 'tools' | 'stats' | 'env' | 'memory' | 'settings' | 'history' | 'library' | 'schedule'
@@ -35,8 +39,40 @@ export const CONSOLE_TABS: ConsoleTab[] = [
  *  otherwise `activeTab.value = 'conv'` in subviews only changes their local ref, unable to actually switch console views. */
 const activeTab = ref<ConsoleTabKey>('conv')
 
+/** 侧栏折叠态持久化键（localStorage）。Sidebar collapse persistence key. */
+const SIDEBAR_KEY = 'xluo.consoleSidebarCollapsed'
+/** 侧栏是否折叠（模块单例，跨挂载存活；持久化到 localStorage）。
+ *  Whether the sidebar is collapsed (module singleton surviving mount/unmount;
+ *  persisted to localStorage). */
+const sidebarCollapsed = ref(tryGet())
+
+function tryGet(): boolean {
+  try { return localStorage.getItem(SIDEBAR_KEY) === '1' } catch { return false }
+}
+
+/** 切换侧栏折叠并持久化。Toggle the sidebar collapse and persist. */
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  try { localStorage.setItem(SIDEBAR_KEY, sidebarCollapsed.value ? '1' : '0') } catch { /* 隐私模式忽略 */ }
+}
+
+/** 新建会话：清空当前对话，开启新的独立对话线（侧栏「新建」触发；原先内联在
+ *  ConsoleConversation，随按钮移到左侧栏一并迁来）。
+ *  Create a new session: clear the current conversation and start a fresh thread (fired
+ *  by the sidebar's New button; moved here from ConsoleConversation along with the button). */
+export async function newSession(): Promise<void> {
+  try {
+    const r = await api.createSession()
+    createNewSession(r.session.id)
+    activeTab.value = 'conv'   // 新建后回到对话页。Return to the conversation tab.
+    notify.ok('已新建会话')
+  } catch (e) {
+    notify.err('新建会话失败：' + formatError(e))
+  }
+}
+
 /** 控制台状态管理 composable。Console state management composable.
- *  @returns 包含活动标签页的响应式引用。Contains reactive reference of active tab. */
+ *  @returns 活动标签页、侧栏折叠态与会话操作。Active tab, sidebar collapse state and session actions. */
 export function useConsole() {
-  return { activeTab }
+  return { activeTab, sidebarCollapsed, toggleSidebar, newSession }
 }

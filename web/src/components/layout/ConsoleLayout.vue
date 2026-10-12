@@ -9,6 +9,7 @@
         :wake-enabled="wakeEnabled"
         @select="emit('select', $event)"
         @clear="emit('clear')"
+        @new="emit('new')"
       />
       <!-- 主内容插槽。Main content slot. -->
       <main class="console-main"><slot /></main>
@@ -30,8 +31,8 @@ import ConsoleSidebar from './ConsoleSidebar.vue'
 
 /** 属性：当前激活的标签页和语音唤醒开关状态。Props: currently active tab key and voice wake toggle state. */
 defineProps<{ active: ConsoleTabKey; wakeEnabled: boolean }>()
-/** 事件：切换标签页、清空记录（由侧栏底部按钮触发并转发）。Events: switch tab, clear history (forwarded from the sidebar footer). */
-const emit = defineEmits<{ select: [key: ConsoleTabKey]; clear: [] }>()
+/** 事件：切换标签页、清空记录、新建对话（侧栏按钮触发并转发）。Events: switch tab, clear history, new conversation (forwarded from sidebar buttons). */
+const emit = defineEmits<{ select: [key: ConsoleTabKey]; clear: []; new: [] }>()
 </script>
 
 <style scoped>

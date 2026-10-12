@@ -1,11 +1,10 @@
 <template>
   <div ref="scrollEl" class="console-messages">
-    <!-- 欢迎横幅：显示助手名称、在线状态和唤醒词。Welcome banner: shows assistant name, online status and wake keyword. -->
-    <div class="welcome">
-      <span class="w-avatar"><UiIcon name="brain" :size="13" /></span>
-      <span class="w-name">衍衡</span>
-      <span class="mono w-state">{{ banner }}</span>
-    </div>
+    <!-- 欢迎横幅（衍衡/在线状态行）已移除（2026-10-11 用户要求：对话页去掉身份头，
+         状态信息由悬浮球状态胶囊与侧栏承担）。
+         The welcome banner (衍衡 / online-status row) is removed (2026-10-11 user
+         request: drop the identity header from the conversation page — status lives on
+         the float-ball pill and the sidebar). -->
     <div v-if="!messages.length" class="console-empty">
       还没有对话 —— 点右下角悬浮球，或输入文字开始。
     </div>
@@ -30,18 +29,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
 import MessageItem from '../assistant/MessageItem.vue'
-import { UiIcon } from '../ui'
 import type { ChatMessage } from '../../composables/useAssistant'
-import { wakeEnabled } from '../../composables/assistant/store'
-import { consoleBanner } from '../../composables/assistant/hints'
 
-/** 组件 props：消息列表、唤醒词、消息级动作开关（回合空闲且有会话）。
- *  Component props: message list, wake keyword, message-level action switch. */
+/** 组件 props：消息列表、消息级动作开关（回合空闲且有会话）。
+ *  Component props: message list, message-level action switch. */
 const props = withDefaults(
-  defineProps<{ messages: ChatMessage[]; wakeHint?: string; canAct?: boolean }>(),
-  { wakeHint: '「衍衡」或「洛吉斯」', canAct: false },
+  defineProps<{ messages: ChatMessage[]; canAct?: boolean }>(),
+  { canAct: false },
 )
 /** 组件事件：工具重试/取消 + 消息分叉/编辑/重生成。Component events. */
 const emit = defineEmits<{
@@ -51,9 +47,6 @@ const emit = defineEmits<{
   edit: [index: number, text: string]
   regen: [index: number]
 }>()
-
-/** 横幅状态段：随唤醒开关走（唤醒关时不再叫人喊唤醒词）。Banner status segment: wake-switch aware (no shout-the-wake-word advice when wake is off). */
-const banner = computed(() => consoleBanner(wakeEnabled.value, props.wakeHint))
 
 /** 滚动容器 DOM 引用。Scroll container DOM reference. */
 const scrollEl = ref<HTMLElement | null>(null)
@@ -78,17 +71,6 @@ onMounted(scrollToBottom)
   flex: 1; min-height: 0; overflow-y: auto;
   display: flex; flex-direction: column;
 }
-.welcome {
-  display: flex; align-items: center; gap: 8px;
-  padding: 4px 4px 14px;
-}
-.w-avatar {
-  width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
-  background: var(--brand-grad); color: var(--text-on-brand);
-  display: grid; place-items: center;
-}
-.w-name { font-size: var(--fs-sm); font-weight: 600; color: var(--text-1); }
-.w-state { font-size: var(--fs-2xs); color: var(--text-3); }
 .console-msgs {
   display: flex; flex-direction: column; gap: 14px;
   padding: 4px 2px 10px; max-width: 860px; width: 100%; margin: 0 auto;

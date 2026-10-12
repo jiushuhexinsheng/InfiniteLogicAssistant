@@ -33,10 +33,4 @@ export function emptyHint(wakeOn: boolean, hint: string): string {
   return wakeOn ? `输入文字，或说${hint}唤醒` : `输入文字，或双击悬浮球开通话`
 }
 
-/**
- * 控制台欢迎横幅状态段：唤醒开保持原句；唤醒关明示已关闭。
- * Console welcome-banner status segment: wake on keeps the original; wake off says so.
- */
-export function consoleBanner(wakeOn: boolean, hint: string): string {
-  return wakeOn ? `在线 · 说${hint}唤醒` : '在线 · 语音唤醒已关'
-}
+// consoleBanner（控制台欢迎横幅状态段）已随横幅移除删除（2026-10-11 对话页去掉身份头）。
