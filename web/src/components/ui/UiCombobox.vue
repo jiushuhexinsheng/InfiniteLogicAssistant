@@ -31,28 +31,25 @@
          Decorative chevron seat (matches the UiSelect trigger, signals "suggestions
          available"; rotates with the panel). -->
     <span class="ui-combo-chevron" :class="{ open }"><UiIcon name="chevron-down" :size="14" /></span>
-    <Teleport to="body">
-      <ul
-        v-if="open && filtered.length"
-        ref="menuRef"
-        class="ui-select-menu"
-        :class="{ up: flipUp }"
-        :style="menuStyle"
-      >
-        <li
-          v-for="(opt, i) in filtered"
-          :id="`${listId}-${i}`"
-          :key="opt"
-          class="ui-select-option"
-          :class="{ on: i === activeIndex, sel: opt === modelValue }"
-          @mousemove="activeIndex = i"
-          @mousedown.prevent="pick(opt)"
-        >
-          <span class="ui-select-option-label">{{ opt }}</span>
-          <UiIcon v-if="opt === modelValue" name="check" :size="13" class="ui-select-check" />
-        </li>
-      </ul>
-    </Teleport>
+    <!-- 弹层：样式与定位由 UiPopoverPanel + useAnchoredPanel 提供（与 UiSelect 共用）。
+         差异在于**没有 listbox 语义**（这是建议层，不是必须择一的列表框）、选中时机走
+         mousedown（抢在输入框失焦前落地，否则先关后选）、且不因选空而渲染空态行。
+         Panel: styling and positioning come from UiPopoverPanel + useAnchoredPanel (shared
+         with UiSelect). The differences are deliberate — no listbox semantics (this is a
+         suggestion layer, not a pick-one listbox), pick on mousedown (must land before the
+         input blurs), and no empty-state row (an empty suggestion set never opens the panel). -->
+    <UiPopoverPanel
+      v-if="open && filtered.length"
+      :list-id="listId"
+      :items="comboItems"
+      :selected="modelValue"
+      :active-index="activeIndex"
+      :flip-up="flipUp"
+      :panel-style="menuStyle"
+      pick-on="mousedown"
+      @pick="i => pick(filtered[i])"
+      @hover="setActive"
+    />
   </div>
 </template>
 
@@ -62,19 +59,22 @@
  * Typeable combobox (v-model + options array). Same API as UiInput plus a suggestion list.
  *
  * 与 UiSelect 的分工：UiSelect = 纯选择（值必须来自选项）；UiCombobox = 可手输 +
- * 建议（模型名/音色/工具名这类「通常选、偶尔造」的字段）。面板定位/键盘/关闭策略
- * 与 UiSelect 同构（Teleport body、空间不足上翻、↑↓/Enter/Esc、300ms 焦点滚动宽限）。
+ * 建议（模型名/音色/工具名这类「通常选、偶尔造」的字段）。面板的定位/键盘/关闭/样式
+ * 与 UiSelect 同构，由 `useAnchoredPanel` + `UiPopoverPanel` 提供（此前两个文件各有一份
+ * 逐行重复的实现）；两者刻意不同的地方写在模板注释里。
  *
  * Division of labour: UiSelect = pure pick (value must come from options); UiCombobox =
  * free typing + suggestions (fields like model/voice/tool names that are usually picked
- * but sometimes invented). Panel positioning, keyboard and close policies mirror
- * UiSelect (teleport to body, flip up when short, ↑↓/Enter/Esc, 300ms focus-scroll
- * grace).
+ * but sometimes invented). Panel positioning, keyboard, close policy and styling mirror
+ * UiSelect and now come from `useAnchoredPanel` + `UiPopoverPanel` (each file used to carry a
+ * line-by-line duplicate); the deliberate differences are documented in the template.
  */
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import UiIcon from './UiIcon.vue'
 import UiInput from './UiInput.vue'
+import UiPopoverPanel from './UiPopoverPanel.vue'
+import { useAnchoredPanel } from './useAnchoredPanel'
 
 /** 组件 Props：绑定值/建议列表/占位/禁用。Component props: value, suggestion list, placeholder, disabled. */
 const props = withDefaults(defineProps<{
@@ -87,18 +87,18 @@ const props = withDefaults(defineProps<{
 /** 事件：值变更（输入即发、点选也发）。Emits value change (live typing and picks). */
 const emit = defineEmits<{ 'update:modelValue': [v: string] }>()
 
-/** 面板唯一 id。Unique panel id. */
-const listId = `ui-combo-${Math.random().toString(36).slice(2, 8)}`
-
 const inputRef = ref<ComponentPublicInstance>()
-const menuRef = ref<HTMLUListElement>()
 const wrapRef = ref<HTMLDivElement>()
 
-/** 取内层真实 input 元素。UiInput 是 v-if/v-else 条件根（片段），$el 可能是注释锚点
- *  或 number 分支的外层 div —— 逐层解析到真正的 <input>。
- *  The underlying input element. UiInput has conditional roots (a fragment), so $el may
- *  be a comment anchor or the number branch's wrapper div — resolve down to the real
- *  <input>. */
+/**
+ * 取内层真实 input 元素。UiInput 是 v-if/v-else 条件根（片段），$el 可能是注释锚点
+ * 或 number 分支的外层 div —— 逐层解析到真正的 <input>。
+ * The underlying input element. UiInput has conditional roots (a fragment), so $el may
+ * be a comment anchor or the number branch's wrapper div — resolve down to the real
+ * <input>.
+ *
+ * @returns 内层 input 元素。The inner input element.
+ */
 function inputEl(): HTMLInputElement | undefined {
   const root = inputRef.value?.$el as Node | undefined
   if (!root) return undefined
@@ -107,12 +107,6 @@ function inputEl(): HTMLInputElement | undefined {
   return root.parentElement?.querySelector('input') ?? undefined   // 注释锚点 → 宿主容器
 }
 
-const open = ref(false)
-/** 打开时刻（毫秒）：焦点滚动宽限期基准。Open timestamp (focus-scroll grace anchor). */
-let openedAt = 0
-const activeIndex = ref(0)
-const flipUp = ref(false)
-const menuStyle = ref<Record<string, string>>({})
 /** 是否正在键入（聚焦打开时展示全部建议；键入后才按输入过滤 —— 否则当前值
  *  会把其它建议滤掉，如值 'Chloe' 打开就看不到 'Mia'）。
  *  Whether the user is typing (focus opens with all suggestions; filtering only starts
@@ -130,21 +124,40 @@ const filtered = computed<string[]>(() => {
   return list.filter(o => o.toLowerCase().includes(q))
 })
 
+/** 弹层选项：字符串建议映射成 { value, label }（弹层行的形状）。
+ *  Panel rows: the string suggestions mapped to { value, label }. */
+const comboItems = computed(() => filtered.value.map(v => ({ value: v, label: v })))
+
+/** 弹层的共享行为（定位/翻转/外点/滚动宽限/键盘循环/随开随挂监听）。
+ *  The panel's shared behaviour (positioning / flip / outside-click / scroll grace /
+ *  wrap-around keyboard / attach-while-open listeners). */
+const panel = useAnchoredPanel({
+  anchor: () => inputEl(),
+  wrap: () => wrapRef.value,
+  count: () => filtered.value.length,
+  idPrefix: 'ui-combo',
+})
+const { open, flipUp, menuStyle, activeIndex, listId } = panel
+
 /** 打开面板（无建议时不打开，纯自由输入）。Open the panel (no suggestions → stays closed). */
 function openPanel() {
   typed.value = false
   if (!filtered.value.length) return
-  open.value = true
-  openedAt = performance.now()
   const sel = filtered.value.indexOf(props.modelValue)
-  activeIndex.value = sel >= 0 ? sel : 0
-  positionMenu()
+  panel.show(sel >= 0 ? sel : 0)
 }
 
+/** 关闭面板。Close the panel. */
 function close() {
-  open.value = false
+  panel.close()
 }
 
+/**
+ * 输入回调：写值 + 重算过滤集；面板开着就重新定位或关闭。
+ * Input callback: write the value, recompute the filter, and either reposition or close.
+ *
+ * @param v 输入值。Typed value.
+ */
 function onValue(v: string) {
   typed.value = true
   emit('update:modelValue', v)
@@ -154,61 +167,47 @@ function onValue(v: string) {
   nextTick(() => {
     if (open.value) {
       if (!filtered.value.length) close()
-      else positionMenu()
+      else panel.place()
     }
   })
 }
 
-/** 定位面板（锚定输入框；下方不足上翻）。Position the panel (anchor to input; flip up). */
-function positionMenu() {
-  const el = inputEl()
-  if (!el || typeof el.getBoundingClientRect !== 'function') return
-  const r = el.getBoundingClientRect()
-  const PANEL_MAX = 260
-  const spaceBelow = window.innerHeight - r.bottom
-  const spaceAbove = r.top
-  flipUp.value = spaceBelow < Math.min(PANEL_MAX + 8, spaceAbove) && spaceAbove > spaceBelow
-  menuStyle.value = {
-    left: `${Math.round(r.left)}px`,
-    width: `${Math.round(r.width)}px`,
-    ...(flipUp.value
-      ? { bottom: `${Math.round(window.innerHeight - r.top + 4)}px` }
-      : { top: `${Math.round(r.bottom + 4)}px` }),
-  }
-}
-
-/** 选中建议（mousedown 触发，先于 input 失焦）。Pick a suggestion (mousedown fires before blur). */
+/**
+ * 选中建议（mousedown 触发，先于 input 失焦）。Pick a suggestion (mousedown fires before blur).
+ *
+ * @param opt 选中的建议文本。The picked suggestion.
+ */
 function pick(opt: string) {
   emit('update:modelValue', opt)
   close()
   inputEl()?.focus()
 }
 
-/** 键盘活动项滚动可见。Scroll the keyboard-active item into view. */
-function scrollActive() {
-  nextTick(() => {
-    document.getElementById(`${listId}-${activeIndex.value}`)?.scrollIntoView?.({ block: 'nearest' })
-  })
+/**
+ * 同步鼠标悬停项为键盘活动项（弹层的 `hover` 事件）。
+ * Mirror a hovered row into the keyboard-active index (the panel's `hover` event).
+ *
+ * @param i 建议索引。Suggestion index.
+ */
+function setActive(i: number) {
+  activeIndex.value = i
 }
 
-function move(d: number) {
-  const n = filtered.value.length
-  if (!n) return
-  activeIndex.value = (activeIndex.value + d + n) % n
-  scrollActive()
-}
-
-/** 键盘：↑↓ 导航、Enter 选中（面板关闭时 Enter 不吞，保留给表单提交）、Esc/Tab 关闭。
- *  Keyboard: ↑↓ navigate, Enter picks (Enter with the panel closed is NOT swallowed —
- *  left for form submission), Esc/Tab close. */
+/**
+ * 键盘：↑↓ 导航、Enter 选中（面板关闭时 Enter 不吞，保留给表单提交）、Esc/Tab 关闭。
+ * Keyboard: ↑↓ navigate, Enter picks (Enter with the panel closed is NOT swallowed —
+ * left for form submission), Esc/Tab close.
+ *
+ * @param e 键盘事件。Keyboard event.
+ */
 function onKeydown(e: KeyboardEvent) {
   switch (e.key) {
     case 'ArrowDown':
       if (!open.value && filtered.value.length) { e.preventDefault(); openPanel() }
-      else if (open.value) { e.preventDefault(); move(1) }
+      else if (open.value) { e.preventDefault(); panel.move(1) }
       break
     case 'ArrowUp':
-      if (open.value) { e.preventDefault(); move(-1) }
+      if (open.value) { e.preventDefault(); panel.move(-1) }
       break
     case 'Enter':
       if (open.value) { e.preventDefault(); pick(filtered.value[activeIndex.value]) }
@@ -221,51 +220,6 @@ function onKeydown(e: KeyboardEvent) {
       break
   }
 }
-
-/** 外部指针按下关闭（面板在 body 下）。Close on outside pointerdown (panel lives under body). */
-function onDocPointer(e: PointerEvent) {
-  const t = e.target as Node
-  if (wrapRef.value?.contains(t)) return
-  if (menuRef.value?.contains(t)) return
-  close()
-}
-
-/**
- * 滚动关闭（与 UiSelect 同策略）：放行面板自身滚动与打开后 300ms 内的焦点/连锁滚动
- * （浏览器为把输入框滚进视口的异步微滚，不排除会「一输入就关」）。
- * Close on scroll (same policy as UiSelect): panel's own scroll and focus/chain scrolls
- * within 300ms of opening are exempt (the browser's async micro-scroll to bring the
- * input into view — without the exemption the panel closes on the first keystroke).
- */
-function onScroll(e: Event) {
-  const t = e.target
-  if (menuRef.value && t instanceof Node && menuRef.value.contains(t)) return
-  if (performance.now() - openedAt < 300) return
-  if (open.value) close()
-}
-
-function onResize() {
-  if (open.value) close()
-}
-
-onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', onDocPointer)
-  window.removeEventListener('scroll', onScroll, true)
-  window.removeEventListener('resize', onResize)
-})
-
-// 打开时挂全局监听，关闭时摘除（随开随挂）。Attach global listeners while open, detach when closed.
-watch(open, (v) => {
-  if (v) {
-    document.addEventListener('pointerdown', onDocPointer)
-    window.addEventListener('scroll', onScroll, true)
-    window.addEventListener('resize', onResize)
-  } else {
-    document.removeEventListener('pointerdown', onDocPointer)
-    window.removeEventListener('scroll', onScroll, true)
-    window.removeEventListener('resize', onResize)
-  }
-})
 </script>
 
 <style scoped>
@@ -291,43 +245,4 @@ watch(open, (v) => {
   color: var(--brand-c2);
   background: rgba(103, 232, 249, .12);
 }
-
-/* 弹层样式镜像 UiSelect（scoped 无法共享其样式）——改一处请同步另一处。
-   Panel styles mirror UiSelect (scoped styles cannot be shared) — keep the two in sync. */
-.ui-select-menu {
-  position: fixed;
-  z-index: 1000;
-  margin: 0; padding: 4px;
-  list-style: none;
-  max-height: 260px;
-  overflow-y: auto;
-  background: rgba(10, 15, 28, .96);
-  backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-3);
-  animation: ui-combo-in .12s var(--ease-out);
-}
-@keyframes ui-combo-in {
-  from { opacity: 0; transform: translateY(-4px) scale(.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-@media (prefers-reduced-motion: reduce) { .ui-select-menu { animation: none; } }
-
-.ui-select-option {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 8px 10px;
-  border-radius: var(--r-md);
-  font-size: var(--fs-xs); color: var(--text-1);
-  cursor: pointer;
-  transition: background var(--dur-fast), color var(--dur-fast);
-}
-.ui-select-option-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ui-select-option:hover,
-.ui-select-option.on { background: rgba(103, 232, 249, .14); color: var(--brand-c2); }
-.ui-select-option.sel { background: rgba(103, 232, 249, .08); color: var(--brand-c2); }
-.ui-select-option.sel:hover,
-.ui-select-option.sel.on { background: rgba(103, 232, 249, .16); }
-.ui-select-check { flex-shrink: 0; color: var(--brand-c2); }
 </style>

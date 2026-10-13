@@ -21,36 +21,23 @@
       <span class="ui-select-chevron" :class="{ open }"><UiIcon name="chevron-down" :size="14" /></span>
     </button>
 
-    <!-- 弹层挂 body：不受祖先 overflow 裁剪，空间不足时向上翻转。
-         Panel teleported to body: immune to ancestor overflow, flips up when space runs out. -->
-    <Teleport to="body">
-      <ul
-        v-if="open"
-        :id="listId"
-        ref="menuRef"
-        class="ui-select-menu"
-        :class="{ up: flipUp }"
-        role="listbox"
-        :style="menuStyle"
-      >
-        <li v-if="!options.length" class="ui-select-empty">无选项</li>
-        <li
-          v-for="(it, i) in options"
-          :id="`${listId}-${i}`"
-          :key="it.value"
-          class="ui-select-option"
-          role="option"
-          :data-value="it.value"
-          :class="{ on: i === activeIndex, sel: it.value === modelValue }"
-          :aria-selected="it.value === modelValue"
-          @mousemove="activeIndex = i"
-          @click="pick(i)"
-        >
-          <span class="ui-select-option-label">{{ it.label }}</span>
-          <UiIcon v-if="it.value === modelValue" name="check" :size="13" class="ui-select-check" />
-        </li>
-      </ul>
-    </Teleport>
+    <!-- 弹层挂 body：不受祖先 overflow 裁剪，空间不足时向上翻转。样式与定位由
+         UiPopoverPanel + useAnchoredPanel 提供 —— 与 UiCombobox 共用同一份。
+         Panel teleported to body: immune to ancestor overflow, flips up when space runs out.
+         Styling and positioning come from UiPopoverPanel + useAnchoredPanel, shared with
+         UiCombobox. -->
+    <UiPopoverPanel
+      v-if="open"
+      :list-id="listId"
+      :items="options"
+      :selected="modelValue"
+      :active-index="activeIndex"
+      :flip-up="flipUp"
+      :panel-style="menuStyle"
+      listbox
+      @pick="pick"
+      @hover="setActive"
+    />
   </div>
 </template>
 
@@ -65,16 +52,25 @@
  * hover 高亮、选中打勾、空间不足向上翻转；键盘 ↑↓/Home/End/Enter/Esc 走 combobox 模式
  * （焦点留在触发器，aria-activedescendant 指向活动项）。
  *
- * Items used to be parsed out of `<option>` vnodes in the slot (recursively unwrapping Fragments
- * and extracting text in JS), which clashed with the `options`-prop family in `UiSegmented` /
- * `UiRadioCard` — now unified on `options`. The native popup is OS-styled and cannot be
- * customized, hence the teleported custom panel: dark glass, hover highlight, check on selected,
- * flips up when space runs short; keyboard ↑↓/Home/End/Enter/Esc follow the combobox pattern
- * (focus stays on the trigger, aria-activedescendant points at the active item).
+ * 弹层的定位/翻转/外点关闭/滚动宽限与弹层样式由 `useAnchoredPanel` + `UiPopoverPanel`
+ * 提供，与 `UiCombobox` 共用（此前两个文件各有一份逐行重复的实现）。
+ *
+ * Items used to be parsed out of `<option>` vnodes in the slot (recursively unwrapping
+ * Fragments and extracting text in JS), which clashed with the `options`-prop family in
+ * `UiSegmented` / `UiRadioCard` — now unified on `options`. The native popup is OS-styled and
+ * cannot be customized, hence the teleported custom panel: dark glass, hover highlight, check
+ * on selected, flips up when space runs short; keyboard ↑↓/Home/End/Enter/Esc follow the
+ * combobox pattern (focus stays on the trigger, aria-activedescendant points at the active item).
+ *
+ * The panel's positioning / flip / outside-click-close / scroll grace and its styling come from
+ * `useAnchoredPanel` + `UiPopoverPanel`, shared with `UiCombobox` — each file used to carry a
+ * line-by-line duplicate of both.
  */
-import { ref, computed, nextTick, onBeforeUnmount, watch } from 'vue'
+import { computed, ref } from 'vue'
 import type { SegOption } from './UiSegmented.vue'
 import UiIcon from './UiIcon.vue'
+import UiPopoverPanel from './UiPopoverPanel.vue'
+import { useAnchoredPanel } from './useAnchoredPanel'
 
 /** 组件 Props：选项列表/当前值/禁用/占位文案。Component props: options, current value, disabled, placeholder.
  *  `options` 复用 `SegOption` —— { value, label } 是本目录所有单选族组件共用的选项形状。
@@ -90,24 +86,20 @@ const props = withDefaults(defineProps<{
 /** 事件：选中值变更。Event: selection changed. */
 const emit = defineEmits<{ 'update:modelValue': [v: string] }>()
 
-/** 面板唯一 id（setup 内一次性生成）。Unique panel id (generated once in setup). */
-const listId = `ui-sel-${Math.random().toString(36).slice(2, 8)}`
-
-/** 触发器 / 面板 / 外层元素引用。Trigger / panel / wrapper refs. */
+/** 触发器 / 外层元素引用。Trigger / wrapper refs. */
 const triggerRef = ref<HTMLButtonElement>()
-const menuRef = ref<HTMLUListElement>()
 const wrapRef = ref<HTMLDivElement>()
 
-/** 面板开合。Panel open state. */
-const open = ref(false)
-/** 打开时刻（毫秒）：焦点滚动/连锁滚动的宽限期基准。Open timestamp (ms): grace-period anchor for focus/chain scrolls. */
-let openedAt = 0
-/** 键盘活动项索引。Keyboard-active option index. */
-const activeIndex = ref(0)
-/** 空间不足时向上翻转。Flip upward when space runs short. */
-const flipUp = ref(false)
-/** 面板定位样式（fixed，锚定触发器）。Panel position (fixed, anchored to the trigger). */
-const menuStyle = ref<Record<string, string>>({})
+/** 弹层的共享行为（定位/翻转/外点/滚动宽限/键盘循环/随开随挂监听）。
+ *  The panel's shared behaviour (positioning / flip / outside-click / scroll grace /
+ *  wrap-around keyboard / attach-while-open listeners). */
+const panel = useAnchoredPanel({
+  anchor: () => triggerRef.value,
+  wrap: () => wrapRef.value,
+  count: () => props.options.length,
+  idPrefix: 'ui-sel',
+})
+const { open, flipUp, menuStyle, activeIndex, listId } = panel
 
 /**
  * 触发器显示文本：命中选项显示其 label，否则回退原值。
@@ -126,44 +118,20 @@ function openMenu() {
     console.warn('[UiSelect] options 为空，面板不打开')
     return
   }
-  open.value = true
-  openedAt = performance.now()
   const sel = props.options.findIndex(i => i.value === props.modelValue)
-  activeIndex.value = sel >= 0 ? sel : 0
-  positionMenu()
-  nextTick(() => {
-    document.getElementById(`${listId}-${activeIndex.value}`)?.scrollIntoView?.({ block: 'nearest' })
-  })
+  // 打开即把选中项滚进可视区（与 UiCombobox 的差异之一）。
+  // Scroll the selected item into view on open (one of the deliberate differences from UiCombobox).
+  panel.show(sel >= 0 ? sel : 0, true)
 }
 
 /** 关闭面板。Close the panel. */
 function close() {
-  open.value = false
+  panel.close()
 }
 
 /** 切换面板。Toggle the panel. */
 function toggle() {
   open.value ? close() : openMenu()
-}
-
-/**
- * 定位面板（锚定触发器；下方空间不足则上翻）。Position the panel (anchor to trigger; flip up when short below).
- */
-function positionMenu() {
-  const el = triggerRef.value
-  if (!el) return
-  const r = el.getBoundingClientRect()
-  const PANEL_MAX = 260
-  const spaceBelow = window.innerHeight - r.bottom
-  const spaceAbove = r.top
-  flipUp.value = spaceBelow < Math.min(PANEL_MAX + 8, spaceAbove) && spaceAbove > spaceBelow
-  menuStyle.value = {
-    left: `${Math.round(r.left)}px`,
-    width: `${Math.round(r.width)}px`,
-    ...(flipUp.value
-      ? { bottom: `${Math.round(window.innerHeight - r.top + 4)}px` }
-      : { top: `${Math.round(r.bottom + 4)}px` }),
-  }
 }
 
 /**
@@ -180,17 +148,13 @@ function pick(i: number) {
 }
 
 /**
- * 移动键盘活动项（带循环）。Move the keyboard-active item (wraps around).
+ * 同步鼠标悬停项为键盘活动项（弹层的 `hover` 事件）。
+ * Mirror a hovered row into the keyboard-active index (the panel's `hover` event).
  *
- * @param d 步进方向（±1）。Step direction (±1).
+ * @param i 选项索引。Option index.
  */
-function move(d: number) {
-  const n = props.options.length
-  if (!n) return
-  activeIndex.value = (activeIndex.value + d + n) % n
-  nextTick(() => {
-    document.getElementById(`${listId}-${activeIndex.value}`)?.scrollIntoView?.({ block: 'nearest' })
-  })
+function setActive(i: number) {
+  activeIndex.value = i
 }
 
 /**
@@ -203,11 +167,11 @@ function onKeydown(e: KeyboardEvent) {
   switch (e.key) {
     case 'ArrowDown':
       e.preventDefault()
-      open.value ? move(1) : openMenu()
+      open.value ? panel.move(1) : openMenu()
       break
     case 'ArrowUp':
       e.preventDefault()
-      open.value ? move(-1) : (openMenu(), (activeIndex.value = props.options.length - 1))
+      open.value ? panel.move(-1) : (openMenu(), (activeIndex.value = props.options.length - 1))
       break
     case 'Home':
       if (open.value) { e.preventDefault(); activeIndex.value = 0 }
@@ -228,67 +192,6 @@ function onKeydown(e: KeyboardEvent) {
       break
   }
 }
-
-/**
- * 外部指针按下关闭（面板在 body 下，需单独判断）。Close on outside pointerdown (panel lives under body).
- *
- * @param e 指针事件。Pointer event.
- */
-function onDocPointer(e: PointerEvent) {
-  const t = e.target as Node
-  if (wrapRef.value?.contains(t)) return
-  if (menuRef.value?.contains(t)) return
-  close()
-}
-
-/**
- * 滚动关闭面板，但要排除两类「非用户意图」的滚动：
- *
- * 1. 面板自身滚动（max-height 260px 可滚；打开时 scrollIntoView 定位选中项会触发）；
- * 2. **打开瞬间的焦点/连锁滚动** —— 浏览器为了让被点按钮进入视口而微滚祖先容器
- *    （.console-settings 这类 overflow 容器），该滚动是异步分帧的，发生在监听挂载之后，
- *    不排除的话「点开即关」，且只在视口较满的页面（控制台）复现，极难排查。
- *
- * Closes on scroll but excludes two non-user-intent cases: (1) the panel's own
- * scrolling (scrollIntoView on open); (2) the *focus scroll* the browser performs
- * right after opening (asynchronously, after listeners attach) to bring the clicked
- * button into view inside overflow containers like .console-settings — without the
- * grace period the panel closes the instant it opens, only on fuller pages.
- *
- * @param e 滚动事件。Scroll event.
- */
-function onScroll(e: Event) {
-  const t = e.target
-  // 面板内部滚动：放行。Scroll inside the panel: pass.
-  if (menuRef.value && t instanceof Node && menuRef.value.contains(t)) return
-  // 打开宽限期内的焦点/连锁滚动：放行。Focus/chain scrolls within the grace period: pass.
-  if (performance.now() - openedAt < 300) return
-  if (open.value) close()
-}
-
-/** 窗口缩放：面板锚点失效，直接关闭。Resize invalidates the anchor: close immediately. */
-function onResize() {
-  if (open.value) close()
-}
-
-onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', onDocPointer)
-  window.removeEventListener('scroll', onScroll, true)
-  window.removeEventListener('resize', onResize)
-})
-
-// 打开时挂全局监听，关闭时摘除（随开随挂）。Attach global listeners while open, detach when closed.
-watch(open, (v) => {
-  if (v) {
-    document.addEventListener('pointerdown', onDocPointer)
-    window.addEventListener('scroll', onScroll, true)
-    window.addEventListener('resize', onResize)
-  } else {
-    document.removeEventListener('pointerdown', onDocPointer)
-    window.removeEventListener('scroll', onScroll, true)
-    window.removeEventListener('resize', onResize)
-  }
-})
 </script>
 
 <style scoped>
@@ -337,48 +240,5 @@ watch(open, (v) => {
   transform: translateY(-50%) rotate(180deg);
   color: var(--brand-c2);
   background: rgba(103, 232, 249, .12);
-}
-
-/* ── 自绘弹层：暗色玻璃 + hover 品牌高亮 + 选中打勾 ──
-   Custom panel: dark glass + brand hover highlight + check on selected. */
-.ui-select-menu {
-  position: fixed;
-  z-index: 1000;
-  margin: 0; padding: 4px;
-  list-style: none;
-  max-height: 260px;
-  overflow-y: auto;
-  background: rgba(10, 15, 28, .96);
-  backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-3);
-  animation: ui-sel-in .12s var(--ease-out);
-}
-@keyframes ui-sel-in {
-  from { opacity: 0; transform: translateY(-4px) scale(.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-@media (prefers-reduced-motion: reduce) { .ui-select-menu { animation: none; } }
-
-.ui-select-option {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 8px 10px;
-  border-radius: var(--r-md);
-  font-size: var(--fs-xs); color: var(--text-1);
-  cursor: pointer;
-  transition: background var(--dur-fast), color var(--dur-fast);
-}
-.ui-select-option-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ui-select-option:hover,
-.ui-select-option.on { background: rgba(103, 232, 249, .14); color: var(--brand-c2); }
-.ui-select-option.sel { background: rgba(103, 232, 249, .08); color: var(--brand-c2); }
-.ui-select-option.sel:hover,
-.ui-select-option.sel.on { background: rgba(103, 232, 249, .16); }
-.ui-select-check { flex-shrink: 0; color: var(--brand-c2); }
-.ui-select-empty {
-  padding: 10px; text-align: center;
-  font-size: var(--fs-2xs); color: var(--text-3);
 }
 </style>
