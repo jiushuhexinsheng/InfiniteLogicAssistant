@@ -29,16 +29,17 @@
 <!-- 起始页「实时状态」卡：能力配置一览 + 后端 ping。
      Start-page "实时状态" card: capability summary plus the backend ping.
 
-     ping 逻辑随卡一起搬进来（原先在 StartPage 的 `onMounted` 里与 `initConfig` 并列）。
+     ping 逻辑随卡一起搬进来，并抽到 `composables/usePing`（与控制台「状态」页共用同一实现 ——
+     两处原本逐行相同）。
      配置的拉取仍留在 StartPage —— `cfg` 是响应式的，晚到也会自动重渲染。
-     The ping moved in with the card (it used to sit alongside `initConfig` in StartPage's
-     `onMounted`). Config fetching stays in StartPage — `cfg` is reactive, so a late arrival
-     simply re-renders. -->
+     The ping moved in with the card and on into `composables/usePing` (shared with the console's
+     状态 tab — the two were line-for-line identical).
+     Config fetching stays in StartPage — `cfg` is reactive, so a late arrival simply re-renders. -->
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { api } from '../../api'
+import { computed, onMounted } from 'vue'
 import { useAssistant } from '../../composables/useAssistant'
 import { useConfig } from '../../composables/useApi'
+import { usePing } from '../../composables/usePing'
 import StartCard from './StartCard.vue'
 import { UiButton } from '../ui'
 
@@ -46,20 +47,8 @@ const asst = useAssistant()
 const app = useConfig()
 const cfg = computed(() => app.config.value)
 
-const pingOk = ref(false)
-const pingMs = ref<number | null>(null)
-
-async function checkPing() {
-  try {
-    const t0 = performance.now()
-    const r = await api.ping()
-    pingMs.value = Math.round(performance.now() - t0)
-    pingOk.value = r.ok === true
-  } catch {
-    pingOk.value = false
-    pingMs.value = null
-  }
-}
+/** 后端连通性探测。Backend reachability probe. */
+const { pingOk, pingMs, checkPing } = usePing()
 
 onMounted(() => { checkPing() })
 </script>

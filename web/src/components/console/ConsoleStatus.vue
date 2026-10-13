@@ -49,10 +49,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { api } from '../../api'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useAssistant } from '../../composables/useAssistant'
 import { useConfig } from '../../composables/useApi'
+import { usePing } from '../../composables/usePing'
 import { UiButton, UiCard, UiChip, UiStatusDot } from '../ui'
 
 /** 当前助手实例。Current assistant instance. */
@@ -67,25 +67,10 @@ const ww = computed(() => cfg.value?.wake_word)
 /** VAD（静音检测）配置。VAD (Voice Activity Detection) config. */
 const vad = computed(() => cfg.value?.vad)
 
-/** 后端 ping 是否成功。Whether backend ping succeeded. */
-const pingOk = ref(false)
-/** 后端 ping 延迟（毫秒）。Backend ping latency (ms). */
-const pingMs = ref<number | null>(null)
+/** 后端连通性探测（与起始页「实时状态」卡共用同一实现）。Backend reachability probe (shared with the start page's status card). */
+const { pingOk, pingMs, checkPing } = usePing()
 /** 定时 ping 计时器引用。Periodic ping timer reference. */
 let timer: ReturnType<typeof setInterval> | null = null
-
-/** 执行后端 ping 检测并记录延迟。Perform backend ping test and record latency. */
-async function checkPing() {
-  try {
-    const t0 = performance.now()
-    const r = await api.ping()
-    pingMs.value = Math.round(performance.now() - t0)
-    pingOk.value = r.ok === true
-  } catch {
-    pingOk.value = false
-    pingMs.value = null
-  }
-}
 
 onMounted(() => {
   if (!app.config.value) app.initConfig()
