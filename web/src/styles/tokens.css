@@ -33,7 +33,11 @@
   --panel-bg: rgba(17, 24, 39, .95);
   --glass-bg: rgba(17, 24, 39, .8);
   --glass-bg-strong: rgba(17, 24, 39, .9);
-  --glass-border: rgba(75, 85, 99, .3);
+  /* 玻璃描边：中性灰 → 品牌青（科技感）。卡片 / 弹层 / 模态 / 次级按钮 / 侧栏共用一个值，
+     所以「玻璃语言偏青」是一处编辑 —— 这也是选它而不是给 UiCard 加私有描边的原因。
+     Glass border: neutral grey → brand cyan. One value shared by cards / popovers / modals /
+     secondary buttons / the sidebar, so "the glass language leans cyan" is a single edit. */
+  --glass-border: rgba(103, 232, 249, .26);
   --border-base: #374151;
   --border-soft: rgba(75, 85, 99, .2);
   /* 输入类控件 hover 描边。**不是** --focus-glow（那是 .2 的光晕，值不同别混）。
