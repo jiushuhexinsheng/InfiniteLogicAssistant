@@ -69,6 +69,20 @@ const CONSOLE_TABS = [
 /** 设置页左侧 6 个菜单（configDefs.menuDefs 的 label）。Six settings menus. */
 const SETTINGS_MENUS = ['大模型', '语音识别', '语音合成', '语音唤醒', '权限', '高级设置']
 
+/** 空态截图：列表端点桩成空，拍那些有数据时不可见的分支。
+ *  Empty-state shots: list endpoints stubbed empty to capture branches invisible with data. */
+const EMPTY_SHOTS = [
+  ['empty-tools', '工具', { '**/api/tools': { ok: true, tools: [] } }],
+  ['empty-memory', '记忆', { '**/api/memory': { ok: true, facts: [] } }],
+  ['empty-env', '环境', { '**/api/env': { ok: true, content: '' } }],
+  ['empty-library', '任务库', { '**/api/library': { ok: true, tasks: [] } }],
+  ['empty-schedule', '定时', { '**/api/schedules': { ok: true, schedules: [] } }],
+  ['empty-history', '历史', { '**/api/sessions': { ok: true, sessions: [] } }],
+].map(([name, label, stub]) => ({
+  name, path: '/console', stub,
+  act: async (page) => { await clickNav(page, label) },
+}))
+
 /** 截图清单：每项一个 recipe。step 抛错只记录不中断 —— 一张拍失败不该让整轮泡汤。
  *  The shot list: one recipe per entry. A failing step is recorded, not fatal — one bad
  *  shot must not sink the whole run. */
@@ -98,6 +112,7 @@ const SHOTS = [
     path: '/console',
     act: async (page) => { await clickNav(page, '设置'); await clickSettingsMenu(page, label) },
   })),
+  ...EMPTY_SHOTS,
 ]
 
 /**
@@ -223,6 +238,16 @@ for (const shot of targets) {
   page.on('console', m => { if (m.type() === 'error') errs.push(m.text().slice(0, 200)) })
   let note = ''
   try {
+    // 空态桩：把指定端点换成空数据，用来截那些「有数据时根本不会渲染」的分支。
+    // 实测确认过这个必要性：工具 tab 的普通基线截到的是 11 个工具的列表，不是空态。
+    // Empty-state stubs: replace endpoints with empty payloads so branches that never render
+    // when data exists can still be captured. Verified as necessary — the plain tools baseline
+    // shows the 11-tool list, not the empty state.
+    for (const [pattern, body] of Object.entries(shot.stub || {})) {
+      await page.route(pattern, r => r.fulfill({
+        status: 200, contentType: 'application/json', body: JSON.stringify(body),
+      }))
+    }
     await page.goto(`${ARGS.url}${shot.path}`, { waitUntil: 'domcontentloaded' })
     await settle(page, ARGS.settle)
     if (shot.act) {
