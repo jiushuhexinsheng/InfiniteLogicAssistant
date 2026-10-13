@@ -52,19 +52,19 @@ const DOT_MENU_IDS = ['llm', 'asr', 'tts', 'voice']
 .cs-menu-item {
   display: flex; align-items: center; gap: 8px;
   font-size: var(--fs-xs); color: var(--text-2); text-align: left;
-  background: rgba(15, 23, 42, .55); border: 1px solid transparent;
+  background: var(--surface-menu); border: 1px solid transparent;
   border-radius: var(--r-sm); padding: 7px 10px; cursor: pointer;
   transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
 }
 .cs-menu-item:hover { color: var(--brand-c2); }
 .cs-menu-item.on {
   color: var(--brand-c2); border-color: var(--brand-c2);
-  background: rgba(11, 17, 32, .75);
+  background: var(--surface-menu-on);
 }
 .cs-menu-dot {
   margin-left: auto; width: 7px; height: 7px; border-radius: 50%;
   background: rgba(148, 163, 184, .25);
 }
-.cs-menu-dot.on { background: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, .6); }
+.cs-menu-dot.on { background: var(--dot-ready); box-shadow: 0 0 6px rgba(52, 211, 153, .6); }
 .cs-menu-extra { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-soft); }
 </style>

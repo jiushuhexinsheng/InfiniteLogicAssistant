@@ -92,7 +92,7 @@ function submit() {
 /* 排队徽标（可点击清空）。Queued badge (click to clear). */
 .ci-queue {
   align-self: flex-start;
-  border: 1px dashed rgba(251, 191, 36, .45);
+  border: 1px dashed var(--warn-border);
   background: rgba(251, 191, 36, .08);
   color: var(--text-2);
   font-size: var(--fs-2xs);

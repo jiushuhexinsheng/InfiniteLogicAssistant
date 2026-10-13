@@ -210,16 +210,16 @@ function onKeydown(e: KeyboardEvent) {
   font-size: var(--fs-sm); font-family: inherit;
   text-align: left; cursor: pointer;
   min-height: var(--min-target-size);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .35);
+  box-shadow: var(--shadow-inset);
   transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
 }
 /* hover 需避开 focus（同 UiInput：防止半透明边框盖掉 focus 实色边框）。
    hover yields to focus (same as UiInput: translucent border must not cover focus's solid border). */
-.ui-select:hover:not(:disabled):not(:focus) { border-color: rgba(103, 232, 249, .45); }
+.ui-select:hover:not(:disabled):not(:focus) { border-color: var(--border-hover); }
 .ui-select:focus {
   outline: none;
   border-color: var(--brand-c2);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .35), var(--focus-glow);
+  box-shadow: var(--shadow-inset), var(--focus-glow);
 }
 .ui-select:disabled { opacity: .5; cursor: not-allowed; }
 .ui-select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

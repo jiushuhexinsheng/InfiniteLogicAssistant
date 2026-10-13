@@ -101,7 +101,7 @@ function onKeydown(e: KeyboardEvent) {
   color: var(--text-1); padding: 10px 12px; font-size: var(--fs-sm);
   font-family: inherit;
   min-height: var(--min-target-size); /* 确保最小点击目标 */
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .35);
+  box-shadow: var(--shadow-inset);
   transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
 }
 .ui-input::placeholder { color: var(--text-3); }
@@ -109,13 +109,13 @@ function onKeydown(e: KeyboardEvent) {
    光晕旁的边框发暗，视觉上「光晕没贴合边框」。
    hover must yield to focus — the higher-specificity translucent hover border would
    otherwise cover focus's solid border, leaving the glow visually detached. */
-.ui-input:hover:not(:disabled):not(:focus) { border-color: rgba(103, 232, 249, .45); }
+.ui-input:hover:not(:disabled):not(:focus) { border-color: var(--border-hover); }
 
 /* 焦点：青色描边 + 光晕常驻（含鼠标点击）。Focus: brand border + glow, persistent (mouse included). */
 .ui-input:focus {
   outline: none;
   border-color: var(--brand-c2);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .35), var(--focus-glow);
+  box-shadow: var(--shadow-inset), var(--focus-glow);
 }
 
 .ui-input:disabled { opacity: .5; cursor: not-allowed; }
@@ -137,15 +137,15 @@ function onKeydown(e: KeyboardEvent) {
   background: var(--surface-input);
   border: 1px solid var(--border-base);
   border-radius: var(--r-lg);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .35);
+  box-shadow: var(--shadow-inset);
   transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
 }
 .ui-stepper:hover:not(:focus-within) {
-  border-color: rgba(103, 232, 249, .45);
+  border-color: var(--border-hover);
 }
 .ui-stepper:focus-within {
   border-color: var(--brand-c2);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .35), var(--focus-glow);
+  box-shadow: var(--shadow-inset), var(--focus-glow);
 }
 /* 内部输入透明化：外观全部交给外层，避免双层边框。
    The inner input is transparent: all appearance belongs to the wrapper (no double border). */

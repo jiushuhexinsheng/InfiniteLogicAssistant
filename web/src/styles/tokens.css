@@ -22,6 +22,16 @@
   --glass-border: rgba(75, 85, 99, .3);
   --border-base: #374151;
   --border-soft: rgba(75, 85, 99, .2);
+  /* 输入类控件 hover 描边。**不是** --focus-glow（那是 .2 的光晕，值不同别混）。
+     Input-control hover border. NOT --focus-glow (that is the .2 glow) — different value, do not conflate. */
+  --border-hover: rgba(103, 232, 249, .45);
+  /* 警示虚线框两档（原先 ChatInput / TtsMini·TtsEngineCard 各自的硬编码）。
+     用字面 rgba 而非 color-mix(var(--warn) …)：后者在预乘空间里合成，像素未必逐位相同。
+     Two strengths of warning dashed frame (previously hardcoded per component). Literal rgba
+     rather than color-mix(var(--warn) …): the latter blends in premultiplied space and is not
+     guaranteed to be pixel-identical. */
+  --warn-border: rgba(251, 191, 36, .45);
+  --warn-soft-border: rgba(251, 191, 36, .3);
 
   /* ── 文字（高对比度） ── */
   --text-1: #f9fafb;
@@ -73,6 +83,9 @@
   --shadow-1: 0 1px 3px rgba(0, 0, 0, .3);
   --shadow-2: 0 4px 12px rgba(0, 0, 0, .4);
   --shadow-3: 0 8px 24px rgba(0, 0, 0, .5);
+  /* 输入类控件的凹陷层次（UiInput / UiSelect / UiTextarea 共 8 处，原为逐处硬编码）。
+     Inset depth for input-like controls (8 sites across UiInput / UiSelect / UiTextarea). */
+  --shadow-inset: inset 0 1px 3px rgba(0, 0, 0, .35);
 
   /* ── 可访问性 ── */
   --focus-ring: 2px solid var(--brand-c2);
@@ -98,6 +111,11 @@
   --bubble-sys: rgba(127, 29, 29, .55);
   --bubble-sys-text: #fca5a5;
   --nav-width: 232px;
+  /* 设置页左菜单（原先内联在 ConsoleSettings 的 scoped 样式里，Batch 3 随菜单搬进 SettingsMenu）。
+     Settings left menu (was inlined in ConsoleSettings' scoped styles; moved with the menu in Batch 3). */
+  --surface-menu: rgba(15, 23, 42, .55);
+  --surface-menu-on: rgba(11, 17, 32, .75);
+  --dot-ready: var(--ok);
   --header-h: 56px; /* 全站统一顶栏高度（AppHeader 唯一使用者）。Shared header height (only AppHeader reads it). */
   --danger: var(--err);
 }

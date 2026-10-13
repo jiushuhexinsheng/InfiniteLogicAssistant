@@ -63,7 +63,7 @@ const { engine, apiAvailable, setEngine } = useTtsEngine()
 .cs-hint {
   font-size: var(--fs-2xs); color: var(--text-3); line-height: 1.6; margin: 0;
   background: rgba(251, 191, 36, .06);
-  border: 1px dashed rgba(251, 191, 36, .3);
+  border: 1px dashed var(--warn-soft-border);
   border-radius: var(--r-sm); padding: 7px 9px;
 }
 

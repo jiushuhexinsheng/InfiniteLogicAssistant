@@ -67,19 +67,19 @@ watch(() => props.modelValue, () => nextTick(autosize))
   color: var(--text-1); padding: 10px 12px; font-size: var(--fs-sm);
   font-family: inherit; line-height: 1.5;
   min-height: var(--min-target-size);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .35);
+  box-shadow: var(--shadow-inset);
   transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
 }
 .ui-textarea::placeholder { color: var(--text-3); }
 /* hover 需避开 focus（同 UiInput：防止半透明边框盖掉 focus 实色边框）。
    hover yields to focus (same as UiInput: translucent border must not cover focus's solid border). */
-.ui-textarea:hover:not(:disabled):not(:focus) { border-color: rgba(103, 232, 249, .45); }
+.ui-textarea:hover:not(:disabled):not(:focus) { border-color: var(--border-hover); }
 
 /* 焦点：青色描边 + 光晕常驻（含鼠标点击）。Focus: brand border + glow, persistent (mouse included). */
 .ui-textarea:focus {
   outline: none;
   border-color: var(--brand-c2);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .35), var(--focus-glow);
+  box-shadow: var(--shadow-inset), var(--focus-glow);
 }
 
 .ui-textarea:disabled { opacity: .5; cursor: not-allowed; }
