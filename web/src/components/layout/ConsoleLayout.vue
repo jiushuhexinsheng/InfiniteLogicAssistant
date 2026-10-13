@@ -38,9 +38,10 @@ const emit = defineEmits<{ select: [key: ConsoleTabKey] }>()
   height: 100%; min-height: 0; overflow: hidden;
   display: flex; flex-direction: column;
   padding-bottom: var(--sp-q120); /* 避免右下角悬浮球遮挡。Prevent bottom-right floating ball from overlapping. */
-  background:
-    radial-gradient(1000px 480px at 50% -5%, rgba(103, 232, 249, .06), transparent 60%),
-    var(--bg-0);
+  /* 与 body 共用同一份氛围底令牌（原先这里是一条 alpha .06 的独立径向光，弱到读作纯色）。
+     Shares the ambient token with body (this used to be its own .06-alpha radial, weak enough
+     to read as a solid colour). */
+  background: var(--bg-ambient);
   color: var(--text-1);
 }
 
