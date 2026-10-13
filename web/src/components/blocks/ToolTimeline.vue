@@ -77,11 +77,11 @@ function statusText(s: ToolStep['status']) { return STATUS_TEXT[s] || s }
 
 <style scoped>
 /* 工具时间线容器。Tool timeline container. */
-.tool-timeline { margin-top: 6px; display: flex; flex-direction: column; gap: var(--sp-1); }
+.tool-timeline { margin-top: var(--sp-q6); display: flex; flex-direction: column; gap: var(--sp-1); }
 /* 单个步骤。Single step. */
 .tt-step { position: relative; padding-left: var(--sp-6); }
 /* 步骤行布局。Step row layout. */
-.tt-row { display: flex; align-items: center; gap: 6px; font-size: 12px; min-height: 20px; }
+.tt-row { display: flex; align-items: center; gap: var(--sp-q6); font-size: var(--fs-xs); min-height: 20px; }
 /* 连接线。Connector rail. */
 .tt-rail {
   position: absolute; left: 5px; top: 16px; bottom: -6px; width: 2px;
@@ -101,24 +101,24 @@ function statusText(s: ToolStep['status']) { return STATUS_TEXT[s] || s }
 /* 步骤名称。Step name. */
 .tt-name { color: var(--text-1); }
 /* 状态文本（颜色随状态变化）。Status text (color changes with status). */
-.tt-status { font-size: 11px; color: var(--text-3); }
+.tt-status { font-size: var(--fs-2xs); color: var(--text-3); }
 .tt-step.running .tt-status { color: var(--brand-c2); }
 .tt-step.done .tt-status { color: #34d399; }
 .tt-step.failed .tt-status { color: #f87171; }
 /* 耗时显示。Duration display. */
-.tt-dur { font-size: 11px; color: var(--text-3); margin-left: auto; }
+.tt-dur { font-size: var(--fs-2xs); color: var(--text-3); margin-left: auto; }
 .tt-row :deep(.ui-icon-btn:hover:not(:disabled)) { color: var(--brand-c2); background: none; }
 .tt-row :deep(.rot) { transform: rotate(180deg); transition: transform var(--dur-base); }
 /* 详情面板。Details panel. */
 .tt-detail {
-  margin-top: var(--sp-1); font-size: 11px; color: var(--text-2);
-  background: #0f172a; padding: 6px 8px; border-radius: 6px;
+  margin-top: var(--sp-1); font-size: var(--fs-2xs); color: var(--text-2);
+  background: #0f172a; padding: var(--sp-q6) var(--sp-2); border-radius: 6px;
   margin-left: 0;
 }
 /* 参数代码块。Arguments code block. */
 .tool-args code {
-  display: block; background: #1e293b; padding: 4px 6px; border-radius: 4px;
-  margin-top: 2px; white-space: pre-wrap; word-break: break-all;
+  display: block; background: #1e293b; padding: var(--sp-1) var(--sp-q6); border-radius: 4px;
+  margin-top: var(--sp-q2); white-space: pre-wrap; word-break: break-all;
   color: #a5b4fc; max-height: 80px; overflow-y: auto;
 }
 /* 结果文本。Result text. */

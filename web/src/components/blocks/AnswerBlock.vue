@@ -34,6 +34,6 @@ const sourceLabel = computed(() => {
 .a-text { flex: 1; }
 .a-source {
   font-size: var(--fs-xs); color: var(--text-3);
-  border: 1px solid var(--bg-3); border-radius: var(--r-sm); padding: 1px 6px;
+  border: 1px solid var(--bg-3); border-radius: var(--r-sm); padding: var(--sp-q1) var(--sp-q6);
 }
 </style>

@@ -34,7 +34,7 @@ withDefaults(defineProps<{
   flex-shrink: 0;
   background: none; border: none;
   color: var(--text-2); cursor: pointer;
-  padding: 6px; border-radius: var(--r-md);
+  padding: var(--sp-q6); border-radius: var(--r-md);
   min-height: var(--min-target-size);
   min-width: var(--min-target-size);
   transition: color var(--dur-fast), background var(--dur-fast), opacity var(--dur-fast);
@@ -42,7 +42,7 @@ withDefaults(defineProps<{
 .ui-icon-btn:disabled { opacity: .4; cursor: not-allowed; }
 .ib-ghost:hover:not(:disabled) { background: rgba(51, 65, 85, .55); color: var(--text-1); }
 /* 紧凑：密集行微操作，豁免全局触达下限。Compact: micro-actions in dense rows, exempt from the global target floor. */
-.ui-icon-btn.compact { min-height: auto; min-width: auto; padding: 3px; border-radius: var(--r-sm); }
+.ui-icon-btn.compact { min-height: auto; min-width: auto; padding: var(--sp-q3); border-radius: var(--r-sm); }
 
 /* 品牌变体：渐变圆钮（如聊天发送键）。Brand variant: gradient circle (e.g. chat send key). */
 .ib-brand.circle {

@@ -55,10 +55,10 @@ onMounted(() => { loadMemory() })
 </script>
 
 <style scoped>
-.mem-head { display: flex; align-items: center; gap: 10px; }
-.mem-loading { font-size: 12px; color: var(--text-3); }
-.mem-item { display: flex; flex-direction: column; gap: 6px; }
+.mem-head { display: flex; align-items: center; gap: var(--sp-q10); }
+.mem-loading { font-size: var(--fs-xs); color: var(--text-3); }
+.mem-item { display: flex; flex-direction: column; gap: var(--sp-q6); }
 .mem-topic { font-size: 13px; font-weight: 600; color: var(--brand-c2); }
-.mem-ts { font-size: 11px; color: var(--text-3); font-weight: 400; margin-left: var(--sp-2); }
-.mem-content { font-size: 12px; color: var(--text-2); }
+.mem-ts { font-size: var(--fs-2xs); color: var(--text-3); font-weight: 400; margin-left: var(--sp-2); }
+.mem-content { font-size: var(--fs-xs); color: var(--text-2); }
 </style>

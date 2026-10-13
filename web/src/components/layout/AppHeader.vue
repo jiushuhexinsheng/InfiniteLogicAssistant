@@ -57,9 +57,9 @@ const route = useRoute()
 }
 /* 品牌名双行：中文 + 英文小字（与控制台侧栏 sb-name 同构）。
    Two-line brand: Chinese + English caption (mirrors sb-name in the console sidebar). */
-.ah-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; text-align: left; }
+.ah-name { display: flex; flex-direction: column; gap: var(--sp-q1); min-width: 0; text-align: left; }
 .ah-name b { font-size: var(--fs-lg); font-weight: 600; color: var(--text-1); line-height: 1.2; }
-.ah-name-en { font-size: 9px; letter-spacing: .1em; color: var(--text-3); line-height: 1.2; }
+.ah-name-en { font-size: var(--fs-4xs); letter-spacing: .1em; color: var(--text-3); line-height: 1.2; }
 .ah-nav {
   display: flex; gap: var(--sp-1); padding: var(--sp-1);
   border-radius: var(--r-full); background: var(--bg-2);

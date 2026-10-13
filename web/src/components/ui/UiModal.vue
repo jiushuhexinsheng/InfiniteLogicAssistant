@@ -38,7 +38,7 @@ defineEmits<{ 'update:modelValue': [v: boolean] }>()
 }
 .ui-modal-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 16px; border-bottom: 1px solid var(--border-soft);
+  padding: var(--sp-q14) var(--sp-4); border-bottom: 1px solid var(--border-soft);
 }
 .ui-modal-title { font-size: var(--fs-md); font-weight: 600; color: var(--text-1); }
 .ui-modal-close {

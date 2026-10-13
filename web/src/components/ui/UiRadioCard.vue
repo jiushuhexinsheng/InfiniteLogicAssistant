@@ -58,11 +58,11 @@ function pick(v: string) {
 </script>
 
 <style scoped>
-.ui-radio-cards { display: flex; gap: 10px; }
+.ui-radio-cards { display: flex; gap: var(--sp-q10); }
 .rc-card {
   flex: 1; min-width: 0;
-  display: flex; flex-direction: column; align-items: center; gap: 5px;
-  padding: 16px 10px 14px;
+  display: flex; flex-direction: column; align-items: center; gap: var(--sp-q5);
+  padding: var(--sp-4) var(--sp-q10) var(--sp-q14);
   border-radius: var(--r-lg);
   background: rgba(15, 23, 42, .6);
   border: 1px solid var(--border-soft);

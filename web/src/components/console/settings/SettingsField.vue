@@ -14,7 +14,7 @@ withDefaults(defineProps<{ label: string; row?: boolean; grow?: boolean }>(), { 
 </script>
 
 <style scoped>
-.sf { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.sf { display: flex; flex-direction: column; gap: var(--sp-q5); min-width: 0; }
 .sf.row { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--sp-3); }
 .sf.grow { flex: 1; }
 .sf-label { font-size: var(--fs-2xs); color: var(--text-3); flex-shrink: 0; }

@@ -88,7 +88,7 @@ const emit = defineEmits<{ clear: []; close: [] }>()
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 0 2px;
+  padding: 0 var(--sp-q2);
 }
 
 /* 移动端适配。Mobile responsive adaptation. */

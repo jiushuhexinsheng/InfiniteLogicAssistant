@@ -16,8 +16,8 @@ defineEmits<{ click: [] }>()
 
 <style scoped>
 .ui-nav-item {
-  display: flex; align-items: center; gap: 10px; width: 100%;
-  padding: 10px 12px; border: none; border-radius: var(--r-md);
+  display: flex; align-items: center; gap: var(--sp-q10); width: 100%;
+  padding: var(--sp-q10) var(--sp-3); border: none; border-radius: var(--r-md);
   background: none; color: var(--text-2); font-family: inherit; font-size: var(--fs-sm);
   cursor: pointer; text-align: left;
   min-height: var(--min-target-size);

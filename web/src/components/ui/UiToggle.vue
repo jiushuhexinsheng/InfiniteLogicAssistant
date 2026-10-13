@@ -28,7 +28,7 @@ defineEmits<{ 'update:modelValue': [v: boolean] }>()
 <style scoped>
 .ui-toggle {
   width: 44px; height: 24px; border-radius: 12px; border: none; cursor: pointer;
-  background: var(--bg-3); display: flex; align-items: center; padding: 3px;
+  background: var(--bg-3); display: flex; align-items: center; padding: var(--sp-q3);
   min-height: var(--min-target-size); min-width: var(--min-target-size);
   transition: background var(--dur-base), box-shadow var(--dur-base) var(--ease-out);
 }

@@ -79,7 +79,7 @@ async function onRegen(index: number) {
 /* 动作条固定在左上（不随消息滚动）。Action bar pinned top-left (does not scroll with messages). */
 .conv-top {
   display: flex; justify-content: flex-start; gap: var(--sp-2);
-  padding: 2px 4px 0;
+  padding: var(--sp-q2) var(--sp-1) 0;
   position: relative; z-index: 5;
 }
 .console-input { max-width: 880px; width: 100%; margin: 0 auto; padding-bottom: var(--sp-2); }

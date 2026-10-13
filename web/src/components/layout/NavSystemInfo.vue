@@ -60,7 +60,7 @@ const cfg = computed(() => app.config.value)
 .nsi-seg {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-q6);
   min-width: 0;
 }
 .nsi-label {

@@ -21,13 +21,13 @@ withDefaults(defineProps<{ title?: string; hover?: boolean; padded?: boolean }>(
   -webkit-backdrop-filter: blur(14px) saturate(140%);
   box-shadow: var(--shadow-2);
 }
-.ui-card.padded { padding: 16px 18px; }
+.ui-card.padded { padding: var(--sp-4) var(--sp-q18); }
 .ui-card::before {
   content: ''; position: absolute; top: 0; left: 14%; right: 14%; height: 1px;
   background: var(--hairline); pointer-events: none;
 }
 .ui-card-title {
-  display: block; margin-bottom: 10px;
+  display: block; margin-bottom: var(--sp-q10);
   font-family: var(--font-mono); font-size: var(--fs-2xs);
   letter-spacing: .16em; text-transform: uppercase; color: var(--text-3);
 }

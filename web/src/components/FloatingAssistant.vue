@@ -217,7 +217,7 @@ const panelStyle = computed(() => ({
   border-top: 1px solid var(--border-base);
 }
 .open-console-wrap :deep(.ui-btn) {
-  font-size: 12px;
+  font-size: var(--fs-xs);
   border-radius: 0;
   justify-content: flex-start;
 }

@@ -88,7 +88,7 @@ onMounted(async () => {
 <style scoped>
 .cs-subcard {
   display: flex; flex-direction: column; gap: var(--sp-2);
-  padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: var(--r-md);
+  padding: var(--sp-q10) var(--sp-3); border: 1px solid var(--border-soft); border-radius: var(--r-md);
   background: rgba(15, 23, 42, .4);
 }
 .cs-subcard-title { font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); letter-spacing: .02em; }

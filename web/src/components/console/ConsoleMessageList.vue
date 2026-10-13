@@ -72,8 +72,8 @@ onMounted(scrollToBottom)
   display: flex; flex-direction: column;
 }
 .console-msgs {
-  display: flex; flex-direction: column; gap: 14px;
-  padding: 4px 2px 10px; max-width: 860px; width: 100%; margin: 0 auto;
+  display: flex; flex-direction: column; gap: var(--sp-q14);
+  padding: var(--sp-1) var(--sp-q2) var(--sp-q10); max-width: 860px; width: 100%; margin: 0 auto;
 }
 .console-empty {
   flex: 1; display: flex; align-items: center; justify-content: center;

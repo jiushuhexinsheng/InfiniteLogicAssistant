@@ -221,7 +221,7 @@ watch(
 .empty-text {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-q6);
 }
 
 .empty-text b {
@@ -259,7 +259,7 @@ watch(
 .mini-bubble {
   position: relative;
   max-width: 85%;
-  padding: 10px 14px;
+  padding: var(--sp-q10) var(--sp-q14);
   border-radius: 16px;
   font-size: var(--fs-sm);
   line-height: 1.6;
@@ -324,7 +324,7 @@ watch(
 .tool-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--sp-q6);
   margin-top: var(--sp-2);
 }
 
@@ -332,13 +332,13 @@ watch(
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1);
-  font-size: 11px;
+  font-size: var(--fs-2xs);
   font-weight: 500;
   color: var(--brand-c2);
   background: rgba(103, 232, 249, .08);
   border: 1px solid rgba(103, 232, 249, .2);
   border-radius: 8px;
-  padding: 4px 10px;
+  padding: var(--sp-1) var(--sp-q10);
   transition: all .2s ease;
 }
 
@@ -348,21 +348,21 @@ watch(
 }
 
 .tool-icon {
-  font-size: 10px;
+  font-size: var(--fs-3xs);
 }
 
 /* ── 完整记录入口 ── */
 .mini-goto {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 10px;
-  font-size: 12px;
+  gap: var(--sp-q6);
+  margin-top: var(--sp-q10);
+  font-size: var(--fs-xs);
   font-weight: 500;
   color: var(--text-3);
   cursor: pointer;
   transition: all .2s ease;
-  padding: 6px 12px;
+  padding: var(--sp-q6) var(--sp-3);
   border-radius: 8px;
   background: rgba(148, 163, 184, .05);
   border: 1px solid transparent;

@@ -43,8 +43,8 @@ withDefaults(defineProps<{
 .h-danger:hover:not(:disabled) { color: var(--err); border-color: var(--err); }
 
 .s-sm { padding: var(--sp-2) var(--sp-4); font-size: var(--fs-xs); }
-.s-md { padding: 10px 22px; font-size: var(--fs-md); }
-.s-lg { padding: 12px 28px; font-size: var(--fs-lg); }
+.s-md { padding: var(--sp-q10) var(--sp-q22); font-size: var(--fs-md); }
+.s-lg { padding: var(--sp-3) var(--sp-q28); font-size: var(--fs-lg); }
 
 /* 主要按钮：渐变底 + 悬浮上浮 2px + 阴影加深。
    Primary: gradient base + 2px lift on hover + deeper shadow. */

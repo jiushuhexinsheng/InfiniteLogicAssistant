@@ -80,11 +80,11 @@ onMounted(() => { loadSchedules() })
 </script>
 
 <style scoped>
-.sched-form { display: flex; flex-direction: column; gap: 10px; }
+.sched-form { display: flex; flex-direction: column; gap: var(--sp-q10); }
 .form-row { display: flex; gap: var(--sp-2); align-items: center; }
 .cron-input { max-width: 150px; font-family: var(--font-mono); }
-.sched-item { display: flex; align-items: center; gap: var(--sp-3); padding: 12px 14px; }
-.sched-line { flex: 1; display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-.sched-line code { color: var(--brand-c2); font-family: var(--font-mono); font-size: 12px; }
+.sched-item { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-q14); }
+.sched-line { flex: 1; display: flex; align-items: baseline; gap: var(--sp-q10); min-width: 0; }
+.sched-line code { color: var(--brand-c2); font-family: var(--font-mono); font-size: var(--fs-xs); }
 .sched-prompt { color: var(--text-2); font-size: 13px; }
 </style>

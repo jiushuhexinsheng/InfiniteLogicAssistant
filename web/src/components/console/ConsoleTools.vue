@@ -58,13 +58,13 @@ onMounted(() => { loadTools() })
 </script>
 
 <style scoped>
-.tool-cards { display: flex; flex-direction: column; gap: 10px; }
-.tool-card { padding: 14px 16px; }
+.tool-cards { display: flex; flex-direction: column; gap: var(--sp-q10); }
+.tool-card { padding: var(--sp-q14) var(--sp-4); }
 .tool-head { display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; }
-.tool-name { font-family: var(--font-mono); font-size: 13px; color: var(--brand-c2); background: rgba(103, 232, 249, .08); border: 1px solid var(--border-base); border-radius: 6px; padding: 2px 8px; }
-.tool-desc { flex: 1; font-size: 12px; color: var(--text-2); }
+.tool-name { font-family: var(--font-mono); font-size: 13px; color: var(--brand-c2); background: rgba(103, 232, 249, .08); border: 1px solid var(--border-base); border-radius: 6px; padding: var(--sp-q2) var(--sp-2); }
+.tool-desc { flex: 1; font-size: var(--fs-xs); color: var(--text-2); }
 .tool-chev { color: var(--text-3); transition: transform .15s; }
 .tool-chev.rot { transform: rotate(180deg); }
-.tool-params { margin-top: 10px; }
-.tool-params pre { margin: 0; background: var(--surface-input); border: 1px solid var(--border-base); border-radius: 8px; padding: 10px 12px; font-size: 11px; line-height: 1.6; color: #a5b4fc; overflow-x: auto; max-height: 260px; overflow-y: auto; }
+.tool-params { margin-top: var(--sp-q10); }
+.tool-params pre { margin: 0; background: var(--surface-input); border: 1px solid var(--border-base); border-radius: 8px; padding: var(--sp-q10) var(--sp-3); font-size: var(--fs-2xs); line-height: 1.6; color: #a5b4fc; overflow-x: auto; max-height: 260px; overflow-y: auto; }
 </style>

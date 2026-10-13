@@ -26,9 +26,9 @@ const dotColor = computed(() => TONES[props.tone])
 
 <style scoped>
 .ui-chip {
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; gap: var(--sp-q6);
   font-family: var(--font-mono); font-size: var(--fs-2xs);
-  padding: 3px 10px; border-radius: var(--r-full);
+  padding: var(--sp-q3) var(--sp-q10); border-radius: var(--r-full);
   border: 1px solid var(--border-soft); color: var(--text-2);
   background: var(--surface-control);
 }
@@ -36,5 +36,5 @@ const dotColor = computed(() => TONES[props.tone])
 .ui-chip.t-warn { color: var(--warn); border-color: rgba(251, 191, 36, .35); background: rgba(251, 191, 36, .06); }
 .ui-chip.t-err { color: var(--err); border-color: rgba(248, 113, 113, .35); background: rgba(248, 113, 113, .06); }
 .ui-chip.t-info { color: var(--info); border-color: rgba(34, 211, 238, .35); background: rgba(34, 211, 238, .06); }
-.ui-chip-detail { color: var(--text-3); font-size: 10px; }
+.ui-chip-detail { color: var(--text-3); font-size: var(--fs-3xs); }
 </style>

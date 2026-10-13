@@ -206,7 +206,7 @@ function onKeydown(e: KeyboardEvent) {
   border: 1px solid var(--border-base);
   border-radius: var(--r-lg);
   color: var(--text-1);
-  padding: 10px 38px 10px 12px;
+  padding: var(--sp-q10) var(--sp-q38) var(--sp-q10) var(--sp-3);
   font-size: var(--fs-sm); font-family: inherit;
   text-align: left; cursor: pointer;
   min-height: var(--min-target-size);

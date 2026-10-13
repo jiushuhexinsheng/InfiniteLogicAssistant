@@ -226,7 +226,7 @@ function onKeydown(e: KeyboardEvent) {
 .ui-combo { position: relative; width: 100%; }
 /* 触发器右侧留出 chevron 底座位（与 UiSelect 触发器同款排版）。
    Reserve room for the chevron seat on the right (same trigger layout as UiSelect). */
-.ui-combo .ui-input { padding-right: 38px; }
+.ui-combo .ui-input { padding-right: var(--sp-q38); }
 
 /* chevron 底座：镜像 UiSelect 的 .ui-select-chevron（圆底座、开合旋转）。
    Chevron seat: mirrors UiSelect's .ui-select-chevron (round seat, rotates on toggle). */

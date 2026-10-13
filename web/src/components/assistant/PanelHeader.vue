@@ -50,8 +50,8 @@ const emit = defineEmits<{ clear: []; close: [] }>()
 .panel-header {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 11px 14px;
+  gap: var(--sp-q9);
+  padding: var(--sp-q11) var(--sp-q14);
   background: rgba(15, 23, 42, .9);
   border-bottom: 1px solid var(--border-soft);
 }
@@ -68,5 +68,5 @@ const emit = defineEmits<{ clear: []; close: [] }>()
   flex-shrink: 0;
 }
 /* 助手名称。Assistant name. */
-.ph-name { font-size: 14px; font-weight: 600; color: var(--text-1); white-space: nowrap; flex: 1; }
+.ph-name { font-size: var(--fs-sm); font-weight: 600; color: var(--text-1); white-space: nowrap; flex: 1; }
 </style>

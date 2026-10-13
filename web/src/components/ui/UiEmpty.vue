@@ -27,6 +27,6 @@ withDefaults(defineProps<{
   display: flex; justify-content: center; text-align: center;
   color: var(--text-3); font-size: 13px;
 }
-.ui-empty.pad-md { padding: 40px 0; }
-.ui-empty.pad-sm { padding: 30px 0; }
+.ui-empty.pad-md { padding: var(--sp-q40) 0; }
+.ui-empty.pad-sm { padding: var(--sp-q30) 0; }
 </style>

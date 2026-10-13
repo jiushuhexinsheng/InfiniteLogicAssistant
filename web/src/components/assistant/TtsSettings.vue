@@ -93,19 +93,19 @@ function pct(n: number) { return Math.round(n * 100) + '%' }
 <style scoped>
 /* 即时保存说明。Instant-save note. */
 .tts-instant {
-  font-size: 10px; color: var(--text-3); line-height: 1.5; margin: 0;
+  font-size: var(--fs-3xs); color: var(--text-3); line-height: 1.5; margin: 0;
 }
 
 /* 只读徽章行：当前 Profile / 模型。Read-only badges: active profile / model. */
-.tts-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.tts-badges { display: flex; gap: var(--sp-q6); flex-wrap: wrap; }
 .tts-badge {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 10px; font-family: var(--font-mono);
+  display: inline-flex; align-items: center; gap: var(--sp-q6);
+  font-size: var(--fs-3xs); font-family: var(--font-mono);
   color: var(--text-2);
   background: rgba(15, 23, 42, .6);
   border: 1px solid var(--border-soft);
   border-radius: var(--r-full);
-  padding: 3px 9px;
+  padding: var(--sp-q3) var(--sp-q9);
   max-width: 100%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }

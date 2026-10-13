@@ -76,8 +76,8 @@ const html = computed(() => {
 .md { line-height: 1.65; word-break: break-word; font-size: var(--fs-sm); }
 .md :deep(p) { margin: 0 0 var(--sp-2); }
 .md :deep(p:last-child) { margin-bottom: 0; }
-.md :deep(code) { background: rgba(148, 163, 184, .16); padding: 1px 5px; border-radius: 5px; font-size: .88em; font-family: var(--font-mono); }
-.md :deep(pre) { background: rgba(2, 6, 23, .7); padding: 10px 12px; border-radius: var(--r-md); overflow-x: auto; margin: var(--sp-2) 0; border: 1px solid var(--border-soft); }
+.md :deep(code) { background: rgba(148, 163, 184, .16); padding: var(--sp-q1) var(--sp-q5); border-radius: 5px; font-size: .88em; font-family: var(--font-mono); }
+.md :deep(pre) { background: rgba(2, 6, 23, .7); padding: var(--sp-q10) var(--sp-3); border-radius: var(--r-md); overflow-x: auto; margin: var(--sp-2) 0; border: 1px solid var(--border-soft); }
 .md :deep(pre code) { background: none; padding: 0; }
 .md :deep(a) { color: var(--brand-c2); text-decoration: underline; text-underline-offset: 2px; }
 .md :deep(ul) { padding-left: var(--sp-5); margin: var(--sp-1) 0 var(--sp-2); display: grid; gap: var(--sp-1); }

@@ -43,6 +43,8 @@
   --font-mono: ui-monospace, SFMono-Regular, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
 
   /* ── 字号（8 级） ── */
+  --fs-4xs: 9px;   /* 徽标/计数等辅助位在用（AppHeader / ConsoleSidebar）。Used by micro labels. */
+  --fs-3xs: 10px;  /* 同上。Whether to raise these to --fs-xs is a visual-batch call. */
   --fs-2xs: 11px;
   --fs-xs: 12px;
   --fs-sm: 14px;
@@ -70,6 +72,35 @@
   --sp-6: 24px;
   --sp-7: 32px;
   --sp-8: 48px;
+
+  /* ── 间距 · q 捕获层（临时） ──
+     4px 阶梯之外的**实际在用值**，1:1 捕获（`--sp-qN` 就是 N px），值与原硬编码完全相同
+     —— 这一步是零像素差异的「先收进令牌」。它在量上不是噪声：`--sp-q6`(45 处) 与
+     `--sp-q10`(53 处) 各散在 20+ 个文件里，说明 4px 网格对这个界面偏粗，大家在手写半格。
+     视觉批应当把它们**归一到 --sp-N 阶梯**（或据此调整阶梯本身），归一完成后**删掉本层**。
+
+     Spacing · q capture layer (temporary). Values actually in use off the 4px ladder, captured
+     1:1 (`--sp-qN` is exactly N px) so this step is pixel-neutral. Not noise: --sp-q6 (45 sites)
+     and --sp-q10 (53 sites) are each spread over 20+ files, i.e. the 4px grid is too coarse for
+     this UI and people were hand-writing half steps. The visual pass should normalise these
+     onto --sp-N (or adjust the ladder itself) and then **delete this layer**. */
+  --sp-q1: 1px;
+  --sp-q2: 2px;
+  --sp-q3: 3px;
+  --sp-q5: 5px;
+  --sp-q6: 6px;
+  --sp-q7: 7px;
+  --sp-q9: 9px;
+  --sp-q10: 10px;
+  --sp-q11: 11px;
+  --sp-q14: 14px;
+  --sp-q18: 18px;
+  --sp-q22: 22px;
+  --sp-q28: 28px;
+  --sp-q30: 30px;
+  --sp-q38: 38px;
+  --sp-q40: 40px;
+  --sp-q120: 120px;
 
   /* ── 圆角 ── */
   --r-sm: 6px;

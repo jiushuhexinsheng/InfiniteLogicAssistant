@@ -140,7 +140,7 @@ function formatTime(ts: number) {
 /* 消息头像。Message avatar. */
 .msg-avatar {
   width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center; margin-top: 2px;
+  display: flex; align-items: center; justify-content: center; margin-top: var(--sp-q2);
 }
 .msg-avatar.assistant { background: var(--brand-grad); color: var(--text-on-brand); }
 .msg-avatar.user { background: var(--bg-3); color: var(--text-2); }
@@ -148,9 +148,9 @@ function formatTime(ts: number) {
 /* 消息内容区域。Message body area. */
 .msg-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 /* 消息元信息行。Message meta line. */
-.msg-meta { display: flex; align-items: baseline; gap: 6px; padding: 0 4px 2px; }
-.msg-role { font-size: 11px; color: var(--text-3); }
-.msg-time { font-size: 10px; color: var(--text-3); opacity: .8; }
+.msg-meta { display: flex; align-items: baseline; gap: var(--sp-q6); padding: 0 var(--sp-1) var(--sp-q2); }
+.msg-role { font-size: var(--fs-2xs); color: var(--text-3); }
+.msg-time { font-size: var(--fs-3xs); color: var(--text-3); opacity: .8; }
 .msg-item.user .msg-meta { flex-direction: row-reverse; }
 
 /* 消息气泡。Message bubble. */
@@ -180,13 +180,13 @@ function formatTime(ts: number) {
 /* 系统气泡：居中红色警告风格（语义令牌 --bubble-sys-*）。System bubble: centered red warning style (semantic tokens). */
 .msg-bubble.system {
   align-self: center; background: var(--bubble-sys); color: var(--bubble-sys-text);
-  font-size: 12px; max-width: 80%; text-align: center;
+  font-size: var(--fs-xs); max-width: 80%; text-align: center;
 }
 .msg-text { white-space: pre-wrap; }
 
 /* 消息级操作条（hover 显示）。Message action bar (shown on hover). */
 .msg-actions {
-  display: flex; gap: 6px; margin-top: var(--sp-1); opacity: 0;
+  display: flex; gap: var(--sp-q6); margin-top: var(--sp-1); opacity: 0;
   transition: opacity var(--dur-fast, .15s) var(--ease-out, ease);
 }
 .msg-item:hover .msg-actions, .msg-actions:focus-within { opacity: 1; }
@@ -194,19 +194,19 @@ function formatTime(ts: number) {
 .ma-btn {
   border: 1px solid var(--border-soft); background: var(--bg-1, rgba(15, 23, 42, .5));
   color: var(--text-3); font-size: var(--fs-2xs); border-radius: 999px;
-  padding: 2px 9px; cursor: pointer;
+  padding: var(--sp-q2) var(--sp-q9); cursor: pointer;
 }
 .ma-btn:hover { color: var(--text-1); border-color: var(--brand-c3, #93c5fd); }
 .ma-btn:disabled { opacity: .5; cursor: default; }
 
 /* 内联编辑区。Inline edit area. */
-.msg-edit { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; min-width: 240px; }
+.msg-edit { display: flex; flex-direction: column; gap: var(--sp-q6); margin-top: var(--sp-q6); min-width: 240px; }
 .msg-item.user .msg-edit { align-items: flex-end; }
 .me-ta {
   width: 100%; min-width: 240px; resize: vertical;
   background: var(--bg-1, rgba(15, 23, 42, .6)); color: var(--text-1);
   border: 1px solid var(--border-soft); border-radius: var(--r-md, 8px);
-  padding: 6px 8px; font-size: var(--fs-sm); font-family: inherit; line-height: 1.5;
+  padding: var(--sp-q6) var(--sp-2); font-size: var(--fs-sm); font-family: inherit; line-height: 1.5;
 }
-.me-btns { display: flex; gap: 6px; }
+.me-btns { display: flex; gap: var(--sp-q6); }
 </style>

@@ -88,14 +88,14 @@ onMounted(() => { loadTasks() })
 </script>
 
 <style scoped>
-.lib-head { display: flex; align-items: center; gap: 10px; }
-.lib-loading { font-size: 12px; color: var(--text-3); }
-.lib-item { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
-.lib-row { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 12px; color: var(--text-3); }
-.lib-goal { font-size: 14px; font-weight: 600; color: var(--text-1); flex: 1; }
+.lib-head { display: flex; align-items: center; gap: var(--sp-q10); }
+.lib-loading { font-size: var(--fs-xs); color: var(--text-3); }
+.lib-item { padding: var(--sp-3) var(--sp-q14); display: flex; flex-direction: column; gap: var(--sp-q6); }
+.lib-row { display: flex; align-items: center; gap: var(--sp-q10); cursor: pointer; font-size: var(--fs-xs); color: var(--text-3); }
+.lib-goal { font-size: var(--fs-sm); font-weight: 600; color: var(--text-1); flex: 1; }
 .lib-time { white-space: nowrap; }
 .lib-count { white-space: nowrap; }
 .lib-detail { display: flex; flex-direction: column; gap: var(--sp-1); border-top: 1px dashed var(--border-soft); padding-top: var(--sp-2); }
 .lib-sec-title { font-size: var(--fs-2xs); color: var(--text-3); }
-.lib-detail pre { margin: 0 0 6px; background: var(--surface-input); border: 1px solid var(--border-base); border-radius: 8px; padding: 8px 10px; font-size: 11px; line-height: 1.6; color: var(--text-2); overflow-x: auto; max-height: 220px; overflow-y: auto; }
+.lib-detail pre { margin: 0 0 var(--sp-q6); background: var(--surface-input); border: 1px solid var(--border-base); border-radius: 8px; padding: var(--sp-2) var(--sp-q10); font-size: var(--fs-2xs); line-height: 1.6; color: var(--text-2); overflow-x: auto; max-height: 220px; overflow-y: auto; }
 </style>

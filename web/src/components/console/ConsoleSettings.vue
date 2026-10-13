@@ -103,7 +103,7 @@ onMounted(() => { s.load() })
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 14px; flex: 1; min-height: 0; overflow: hidden;}
+  gap: var(--sp-q14); flex: 1; min-height: 0; overflow: hidden;}
 .cs-head { display: flex; flex-direction: column; gap: var(--sp-1); flex-shrink: 0; }
 .cs-title {
   display: inline-flex; align-items: center; gap: var(--sp-2);
@@ -126,7 +126,7 @@ onMounted(() => { s.load() })
    move and the page stays put. */
 .cs-main {
   flex: 1; min-width: 0; min-height: 0; overflow: hidden;
-  display: flex; flex-direction: column; gap: 14px;
+  display: flex; flex-direction: column; gap: var(--sp-q14);
 }
 
 /* 卡片的布局（超高处收缩 / 卡头固定 / 卡体自滚）已随外壳一并搬进 settings/SettingsCard.vue ——
@@ -138,10 +138,10 @@ onMounted(() => { s.load() })
 /* 问题列表不参与收缩，让位给卡片。The issues list never yields space — the cards do. */
 .cs-issues { flex-shrink: 0; }
 
-.cs-issues { display: flex; flex-direction: column; gap: 6px; }
+.cs-issues { display: flex; flex-direction: column; gap: var(--sp-q6); }
 .cs-issues p {
   font-size: var(--fs-2xs); margin: 0; line-height: 1.5;
-  border-radius: var(--r-sm); padding: 6px 9px;
+  border-radius: var(--r-sm); padding: var(--sp-q6) var(--sp-q9);
 }
 .lv-error { color: #f87171; background: rgba(248, 113, 113, .07); }
 .lv-warning { color: #fbbf24; background: rgba(251, 191, 36, .07); }

@@ -79,10 +79,10 @@ function submit() {
 /* 聊天输入容器。Chat input container. */
 .chat-input {
   display: flex; flex-direction: column; gap: var(--sp-2);
-  padding: 9px 12px;
+  padding: var(--sp-q9) var(--sp-3);
   background: var(--surface-control);
   border: 1px solid var(--border-soft); border-radius: 16px;
-  margin: 0 10px 10px;
+  margin: 0 var(--sp-q10) var(--sp-q10);
   backdrop-filter: blur(12px) saturate(140%);
   -webkit-backdrop-filter: blur(12px) saturate(140%);
   box-shadow: var(--shadow-2);
@@ -97,7 +97,7 @@ function submit() {
   color: var(--text-2);
   font-size: var(--fs-2xs);
   border-radius: 999px;
-  padding: 3px 10px;
+  padding: var(--sp-q3) var(--sp-q10);
   cursor: pointer;
 }
 .ci-queue:hover { color: var(--text-1); border-color: rgba(251, 191, 36, .8); }
@@ -107,7 +107,7 @@ function submit() {
   flex: 1; resize: none; background: transparent; border: none;
   box-shadow: none; /* 清掉 UiTextarea 的凹陷阴影（容器已是透明设计）。Drop UiTextarea's inset shadow (container is transparent by design). */
   min-height: 32px; max-height: 80px; line-height: 20px;
-  padding: 6px 4px; color: var(--text-1); font-size: var(--fs-sm);
+  padding: var(--sp-q6) var(--sp-1); color: var(--text-1); font-size: var(--fs-sm);
 }
 .chat-input :deep(.ci-ta:hover:not(:disabled)) { border-color: transparent; box-shadow: none; }
 .chat-input :deep(.ci-ta:focus) { box-shadow: none; }

@@ -46,7 +46,7 @@ function onInput(e: Event) {
 </script>
 
 <style scoped>
-.ui-range { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.ui-range { display: flex; flex-direction: column; gap: var(--sp-q5); min-width: 0; }
 /* 标签行：左标签右值。Label row: label left, value right. */
 .ur-label {
   display: flex; justify-content: space-between; align-items: baseline;
@@ -54,7 +54,7 @@ function onInput(e: Event) {
 }
 .ur-label em {
   font-style: normal; font-family: var(--font-mono);
-  color: var(--brand-c2); font-size: 10px;
+  color: var(--brand-c2); font-size: var(--fs-3xs);
 }
 
 /* 滑轨：去原生外观，加粗渐变轨道 + 品牌描边拇指（带光晕）。

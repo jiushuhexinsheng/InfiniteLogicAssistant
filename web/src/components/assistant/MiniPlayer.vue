@@ -126,7 +126,7 @@ const showMini = computed(() =>
   align-items: center;
   gap: var(--sp-2);
   width: 210px;
-  padding: 6px 10px;
+  padding: var(--sp-q6) var(--sp-q10);
   border: 1px solid transparent;
   /* 品牌渐变描边 + 玻璃质感。Brand gradient border + glass effect. */
   background:
@@ -145,7 +145,7 @@ const showMini = computed(() =>
 .mini-eq {
   display: flex;
   align-items: flex-end;
-  gap: 2px;
+  gap: var(--sp-q2);
   height: 16px;
   flex-shrink: 0;
 }
@@ -167,12 +167,12 @@ const showMini = computed(() =>
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-q2);
 }
-.mini-role { font-size: 11px; color: var(--text-3); line-height: 1; }
+.mini-role { font-size: var(--fs-2xs); color: var(--text-3); line-height: 1; }
 /* 消息文本（单行截断）。Message text (single line truncation). */
 .mini-text {
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--text-1);
   line-height: 1.4;
   overflow: hidden;

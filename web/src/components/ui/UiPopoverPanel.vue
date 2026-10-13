@@ -125,7 +125,7 @@ function onRowDown(e: MouseEvent, i: number) {
 
 .ui-select-option {
   display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-q10);
   border-radius: var(--r-md);
   font-size: var(--fs-xs); color: var(--text-1);
   cursor: pointer;
@@ -139,7 +139,7 @@ function onRowDown(e: MouseEvent, i: number) {
 .ui-select-option.sel.on { background: rgba(103, 232, 249, .16); }
 .ui-select-check { flex-shrink: 0; color: var(--brand-c2); }
 .ui-select-empty {
-  padding: 10px; text-align: center;
+  padding: var(--sp-q10); text-align: center;
   font-size: var(--fs-2xs); color: var(--text-3);
 }
 </style>

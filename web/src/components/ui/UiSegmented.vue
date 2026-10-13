@@ -49,7 +49,7 @@ function pick(v: string) {
 
 <style scoped>
 .ui-segmented {
-  display: flex; gap: 6px;
+  display: flex; gap: var(--sp-q6);
   padding: var(--sp-1);
   background: var(--bg-2);
   border: 1px solid var(--border-base);

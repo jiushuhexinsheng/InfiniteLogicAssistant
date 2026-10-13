@@ -98,7 +98,7 @@ function onKeydown(e: KeyboardEvent) {
 .ui-input {
   width: 100%; background: var(--surface-input);
   border: 1px solid var(--border-base); border-radius: var(--r-lg);
-  color: var(--text-1); padding: 10px 12px; font-size: var(--fs-sm);
+  color: var(--text-1); padding: var(--sp-q10) var(--sp-3); font-size: var(--fs-sm);
   font-family: inherit;
   min-height: var(--min-target-size); /* 确保最小点击目标 */
   box-shadow: var(--shadow-inset);
@@ -124,7 +124,7 @@ function onKeydown(e: KeyboardEvent) {
    Number stepper: the wrapper IS the visible field (same look/focus glow as .ui-input),
    buttons flexed inside — they cannot escape the field's border. */
 .ui-stepper {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; gap: var(--sp-q6);
   width: 100%; flex: 1 1 auto; min-width: 0;
   /* 高度与文本输入严格同值（同一变量钉死）——内层不再自带纵向 padding，
      由外层统一决定，避免数字框比其它框高。
@@ -133,7 +133,7 @@ function onKeydown(e: KeyboardEvent) {
      taller than its siblings. */
   min-height: var(--min-target-size);
   height: var(--min-target-size);
-  padding: 0 6px 0 12px;
+  padding: 0 var(--sp-q6) 0 var(--sp-3);
   background: var(--surface-input);
   border: 1px solid var(--border-base);
   border-radius: var(--r-lg);

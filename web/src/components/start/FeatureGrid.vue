@@ -39,7 +39,7 @@ const features = [
 }
 
 .feature-icon {
-  font-size: 24px;
+  font-size: var(--fs-xl);
   flex-shrink: 0;
 }
 

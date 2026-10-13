@@ -37,7 +37,7 @@ const emit = defineEmits<{ select: [key: ConsoleTabKey] }>()
 .console-page {
   height: 100%; min-height: 0; overflow: hidden;
   display: flex; flex-direction: column;
-  padding-bottom: 120px; /* 避免右下角悬浮球遮挡。Prevent bottom-right floating ball from overlapping. */
+  padding-bottom: var(--sp-q120); /* 避免右下角悬浮球遮挡。Prevent bottom-right floating ball from overlapping. */
   background:
     radial-gradient(1000px 480px at 50% -5%, rgba(103, 232, 249, .06), transparent 60%),
     var(--bg-0);
@@ -46,7 +46,7 @@ const emit = defineEmits<{ select: [key: ConsoleTabKey] }>()
 
 .console-body {
   flex: 1; min-height: 0;
-  display: flex; gap: 18px; padding: 18px 22px;
+  display: flex; gap: var(--sp-q18); padding: var(--sp-q18) var(--sp-q22);
 }
 .console-main {
   flex: 1; min-width: 0; min-height: 0; overflow: hidden;

@@ -84,11 +84,11 @@ onUnmounted(() => {
 
 <style scoped>
 .console-status { max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: var(--sp-3); flex: 1; min-height: 0; overflow-y: auto;}
-.status-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.status-row .muted { color: var(--text-3); font-size: 12px; }
-.ping-ms { font-size: 11px; color: var(--text-3); }
-.hint { font-size: 11px; color: var(--text-3); margin-top: var(--sp-2); line-height: 1.6; }
-.kv { display: grid; grid-template-columns: 92px 1fr; gap: var(--sp-2) var(--sp-3); font-size: 12px; }
+.status-row { display: flex; align-items: center; gap: var(--sp-q10); flex-wrap: wrap; }
+.status-row .muted { color: var(--text-3); font-size: var(--fs-xs); }
+.ping-ms { font-size: var(--fs-2xs); color: var(--text-3); }
+.hint { font-size: var(--fs-2xs); color: var(--text-3); margin-top: var(--sp-2); line-height: 1.6; }
+.kv { display: grid; grid-template-columns: 92px 1fr; gap: var(--sp-2) var(--sp-3); font-size: var(--fs-xs); }
 .kv span { color: var(--text-3); }
 .kv b { color: var(--text-1); font-weight: 500; word-break: break-all; }
 </style>

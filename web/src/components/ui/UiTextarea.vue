@@ -64,7 +64,7 @@ watch(() => props.modelValue, () => nextTick(autosize))
 .ui-textarea {
   width: 100%; resize: vertical; background: var(--surface-input);
   border: 1px solid var(--border-base); border-radius: var(--r-lg);
-  color: var(--text-1); padding: 10px 12px; font-size: var(--fs-sm);
+  color: var(--text-1); padding: var(--sp-q10) var(--sp-3); font-size: var(--fs-sm);
   font-family: inherit; line-height: 1.5;
   min-height: var(--min-target-size);
   box-shadow: var(--shadow-inset);

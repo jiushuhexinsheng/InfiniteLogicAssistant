@@ -30,7 +30,7 @@ onMounted(() => { loadEnv() })
 </script>
 
 <style scoped>
-.env-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.env-loading { font-size: 12px; color: var(--text-3); }
-.env-pre { background: var(--surface-input); border: 1px solid var(--border-base); border-radius: 10px; padding: 14px 16px; font-size: 12px; line-height: 1.7; color: var(--text-1); overflow: auto; max-height: 60vh; white-space: pre-wrap; word-break: break-all; }
+.env-head { display: flex; align-items: center; gap: var(--sp-q10); margin-bottom: var(--sp-q10); }
+.env-loading { font-size: var(--fs-xs); color: var(--text-3); }
+.env-pre { background: var(--surface-input); border: 1px solid var(--border-base); border-radius: 10px; padding: var(--sp-q14) var(--sp-4); font-size: var(--fs-xs); line-height: 1.7; color: var(--text-1); overflow: auto; max-height: 60vh; white-space: pre-wrap; word-break: break-all; }
 </style>

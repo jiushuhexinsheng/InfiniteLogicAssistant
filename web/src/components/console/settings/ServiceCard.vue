@@ -225,17 +225,17 @@ function renameCompat(_i: number, oldKey: string, newKey: string) {
 
 /* 高级兼容编辑区：折叠密度 + 快捷 chip（与音色行同构的键值行）。Advanced compat editor:
    compact density + shortcut chips (key-value rows mirroring the voice row). */
-.cs-compat { border-top: 1px dashed var(--border-soft); padding-top: 9px; display: flex; flex-direction: column; gap: 7px; }
+.cs-compat { border-top: 1px dashed var(--border-soft); padding-top: var(--sp-q9); display: flex; flex-direction: column; gap: var(--sp-q7); }
 .cs-compat-head { display: flex; align-items: baseline; gap: var(--sp-2); }
 .cs-compat-title { font-size: var(--fs-2xs); font-weight: 600; color: var(--text-2); letter-spacing: .04em; }
 .cs-compat-hint { font-size: var(--fs-2xs); color: var(--text-3); }
-.cs-compat-shortcuts { display: flex; flex-wrap: wrap; gap: 6px; }
+.cs-compat-shortcuts { display: flex; flex-wrap: wrap; gap: var(--sp-q6); }
 /* 双类选择器压过 UiButton 基础样式（同 VendorPicker chip 的特异性手法）。
    Double-class selector outspecifies UiButton base styles (same trick as the VendorPicker chip). */
 .cs-compat-shortcuts .cs-compat-chip.ui-btn {
   font-size: var(--fs-2xs); font-family: var(--font-mono); color: var(--text-3);
   background: rgba(15, 23, 42, .6); border: 1px solid var(--border-soft);
-  border-radius: var(--r-full); padding: 3px 10px; cursor: pointer;
+  border-radius: var(--r-full); padding: var(--sp-q3) var(--sp-q10); cursor: pointer;
 }
 .cs-compat-shortcuts .cs-compat-chip.ui-btn:hover { color: var(--brand-c2); border-color: var(--brand-c2); }
 .cs-compat-shortcuts .cs-compat-chip.ui-btn.on { color: var(--brand-c2); border-color: var(--brand-c2); background: rgba(52, 211, 153, .08); }
@@ -245,12 +245,12 @@ function renameCompat(_i: number, oldKey: string, newKey: string) {
 /* 段级三选一的说明与警示（与 VoiceCard 同款尺寸；scoped 样式不跨组件，故各自定义）。
    Hint / warning for the section-level segmented control (same density as VoiceCard;
    scoped styles do not cross components, so each card defines its own). */
-.cs-mode-hint { font-size: var(--fs-2xs); color: var(--text-3); margin: 6px 0 0; line-height: 1.5; }
+.cs-mode-hint { font-size: var(--fs-2xs); color: var(--text-3); margin: var(--sp-q6) 0 0; line-height: 1.5; }
 .cs-note { font-size: var(--fs-2xs); color: var(--text-3); line-height: 1.6; margin: var(--sp-1) 0 0; }
 .cs-note strong { color: var(--text-2); }
 .cs-note code {
   font-family: var(--font-mono); font-size: inherit;
-  background: rgba(148, 163, 184, .12); border-radius: 3px; padding: 0 3px;
+  background: rgba(148, 163, 184, .12); border-radius: 3px; padding: 0 var(--sp-q3);
 }
 
 /* 测试中旋转动画（挂在 loader-2 图标上）。Spin animation while a connection test runs

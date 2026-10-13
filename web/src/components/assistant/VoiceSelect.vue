@@ -85,7 +85,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.voice-select { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.voice-select { display: flex; flex-direction: column; gap: var(--sp-q5); min-width: 0; }
 /* 标签：API 引擎时带后缀徽标。Label: suffixed with a badge on the API engine. */
 .vs-label {
   font-size: var(--fs-2xs); color: var(--text-3);
@@ -93,7 +93,7 @@ onMounted(() => {
 }
 .vs-label em {
   font-style: normal; font-family: var(--font-mono);
-  color: var(--brand-c2); font-size: 10px;
+  color: var(--brand-c2); font-size: var(--fs-3xs);
 }
 
 /* voiceclone 说明。Voiceclone note. */
@@ -101,6 +101,6 @@ onMounted(() => {
   font-size: var(--fs-2xs); color: var(--text-3); line-height: 1.5; margin: 0;
   background: rgba(103, 232, 249, .06);
   border: 1px dashed rgba(103, 232, 249, .25);
-  border-radius: var(--r-sm); padding: 6px 8px;
+  border-radius: var(--r-sm); padding: var(--sp-q6) var(--sp-2);
 }
 </style>

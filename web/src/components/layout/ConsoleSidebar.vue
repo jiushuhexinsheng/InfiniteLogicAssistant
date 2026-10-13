@@ -65,7 +65,7 @@ const { sidebarCollapsed, toggleSidebar } = useConsole()
 <style scoped>
 .console-sidebar {
   width: var(--nav-width); flex-shrink: 0;
-  display: flex; flex-direction: column; gap: 7px;
+  display: flex; flex-direction: column; gap: var(--sp-q7);
   padding: var(--sp-4) var(--sp-3);
   border: 1px solid var(--glass-border); border-radius: var(--r-xl);
   background: var(--surface-raised); backdrop-filter: blur(14px) saturate(140%);
@@ -76,7 +76,7 @@ const { sidebarCollapsed, toggleSidebar } = useConsole()
 }
 
 /* ── 折叠态：只留图标（导航/动作/状态点仍可用）。Collapsed: icons only (nav/actions/status stay usable). */
-.console-sidebar.collapsed { width: 62px; padding: 14px 8px; gap: 6px; }
+.console-sidebar.collapsed { width: 62px; padding: var(--sp-q14) var(--sp-2); gap: var(--sp-q6); }
 .console-sidebar.collapsed .sb-name { display: none; }
 .console-sidebar.collapsed .sb-foot-txt { display: none; }
 .console-sidebar.collapsed :deep(.ui-nav-label) { display: none; }
@@ -85,7 +85,7 @@ const { sidebarCollapsed, toggleSidebar } = useConsole()
 
 .sb-brand {
   display: flex; align-items: center; justify-content: space-between; gap: var(--sp-1);
-  padding: 0 6px 10px;
+  padding: 0 var(--sp-q6) var(--sp-q10);
 }
 /* 仅英文标识：等宽字 + 字距，作为侧栏标题。English-only caption: mono + tracking, sidebar title. */
 .sb-name {
@@ -107,19 +107,19 @@ const { sidebarCollapsed, toggleSidebar } = useConsole()
 
 .sb-nav {
   flex: 1; min-height: 0; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 7px;
+  display: flex; flex-direction: column; gap: var(--sp-q7);
 }
 .sb-foot-stack {
   margin-top: auto;
-  display: flex; flex-direction: column; gap: 7px;
+  display: flex; flex-direction: column; gap: var(--sp-q7);
 }
 .sb-foot {
   display: flex; align-items: center; gap: var(--sp-2);
-  padding: 11px 10px;
+  padding: var(--sp-q11) var(--sp-q10);
   border: 1px solid rgba(52, 211, 153, .3); border-radius: var(--r-md);
   background: rgba(52, 211, 153, .06);
 }
-.sb-foot-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.sb-foot-txt b { font-size: 11px; font-weight: 500; color: var(--ok); }
-.sb-foot-txt span { font-size: 9px; color: var(--text-3); }
+.sb-foot-txt { display: flex; flex-direction: column; gap: var(--sp-q1); min-width: 0; }
+.sb-foot-txt b { font-size: var(--fs-2xs); font-weight: 500; color: var(--ok); }
+.sb-foot-txt span { font-size: var(--fs-4xs); color: var(--text-3); }
 </style>

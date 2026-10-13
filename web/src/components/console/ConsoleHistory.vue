@@ -179,13 +179,13 @@ onMounted(() => { loadSessions() })
 .history-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 /* 本地覆盖全局 .hint（全局是 --fs-xs=12px，这里同值但独立声明，保持原样不改）。
    Local override of the global .hint (same 12px, declared separately — left as-is). */
-.hint { font-size: 12px; color: var(--text-3); }
-.history-list { display: flex; flex-direction: column; gap: 10px; }
-.history-item { padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; }
+.hint { font-size: var(--fs-xs); color: var(--text-3); }
+.history-list { display: flex; flex-direction: column; gap: var(--sp-q10); }
+.history-item { padding: var(--sp-3) var(--sp-q14); cursor: pointer; display: flex; flex-direction: column; gap: var(--sp-q6); }
 .history-item:hover { border-color: var(--brand-c2); }
-.hi-row { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-3); flex-wrap: wrap; }
-.hi-name { font-size: 14px; font-weight: 600; color: var(--text-1); }
-.hi-ops { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.hi-row { display: flex; align-items: center; gap: var(--sp-q10); font-size: var(--fs-xs); color: var(--text-3); flex-wrap: wrap; }
+.hi-name { font-size: var(--fs-sm); font-weight: 600; color: var(--text-1); }
+.hi-ops { margin-left: auto; display: flex; gap: var(--sp-q6); flex-wrap: wrap; }
 .hi-count { white-space: nowrap; }
 .hi-summary { font-size: 13px; color: var(--text-2); }
 </style>

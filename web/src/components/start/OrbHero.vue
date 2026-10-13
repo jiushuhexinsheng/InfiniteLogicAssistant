@@ -79,7 +79,7 @@ function gotoTtsSettings() {
 
 <style scoped>
 /* ── 光球 ── */
-.orb-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.orb-wrap { display: flex; flex-direction: column; align-items: center; gap: var(--sp-q10); }
 .orb {
   position: relative; width: 116px; height: 116px; border-radius: 50%;
   background: var(--brand-grad); display: grid; place-items: center;
@@ -120,7 +120,7 @@ function gotoTtsSettings() {
 }
 
 /* ── 操作按钮 ── */
-.actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; padding-top: 2px; }
+.actions { display: flex; gap: var(--sp-q10); flex-wrap: wrap; justify-content: center; padding-top: var(--sp-q2); }
 
 /* ── 入场动效（仅上半部分） ── */
 .orb-wrap, .title, .subtitle, .actions {
