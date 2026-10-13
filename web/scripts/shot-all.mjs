@@ -151,6 +151,21 @@ const SHOTS = [
     },
     waitFor: '.cs-card-body',
   },
+  {
+    // 下拉开态：UiSelect 的**选项列表**只在面板打开时才进 DOM，关态截图完全拍不到它。
+    // 等 `.ui-select-menu` 出现 —— 若 options 传空，openMenu 会告警且不开面板，这里会超时，
+    // 截图即暴露迁移漏配。
+    // Open dropdown: UiSelect's **option list** only enters the DOM once the panel opens, so no
+    // closed-state shot can see it. Waiting on `.ui-select-menu` doubles as the guard — with empty
+    // `options` openMenu warns and never opens, the wait times out, and the shot exposes it.
+    name: 'settings-select-open',
+    path: '/console',
+    act: async (page) => {
+      await clickNav(page, '设置')
+      await page.locator('.cs-main .ui-select').first().click()
+    },
+    waitFor: '.ui-select-menu',
+  },
   ...EMPTY_SHOTS,
 ]
 
