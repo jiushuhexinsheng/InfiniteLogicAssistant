@@ -13,7 +13,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import ToolTimeline from '../assistant/ToolTimeline.vue'
+import ToolTimeline from './ToolTimeline.vue'
 import type { Block, Skin } from '../../blocks/types'
 import type { ToolStep } from '../../types'
 
