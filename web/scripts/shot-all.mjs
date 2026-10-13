@@ -182,6 +182,78 @@ const SHOTS = [
     },
     waitFor: '.ui-select-menu',
   },
+  {
+    // 工具块：ToolTimeline 的唯一渲染出口（Batch 9 要把它搬去 blocks/）。**现有 30 张里一张
+    // 都没有它** —— 实测探针：对话 tab / 助手面板 / 历史 tab 的 .tool-timeline 全是 0，
+    // 也就是说这个文件的截图门禁是空的。走「历史 → 点会话 → 载入含块的消息」这条真实用户
+    // 路径（不是给产品代码开后门：后端数据打桩，前端代码一行不改），waitFor .blk-tool 兼作
+    // 护栏 —— 块没渲染出来就超时、截图即暴露。
+    // 刻意只用终态（ok / error）：running 态带 tt-blink 无限动画，截图落点不确定。
+    // Tool block: the only render outlet of ToolTimeline (which Batch 9 moves into blocks/).
+    // **None of the existing 30 shots contains one** — a probe showed .tool-timeline count 0 on
+    // the conversation tab, the assistant panel and the history tab, so this file had no visual
+    // guard at all. Drives the real user path (history → open a session → its blocks load) with
+    // stubbed backend data — no back door in product code. Only terminal statuses (ok / error):
+    // a `running` step carries the infinite tt-blink animation, whose screenshot phase is random.
+    name: 'conv-tool-block',
+    path: '/console',
+    stub: {
+      '**/api/sessions': {
+        ok: true,
+        sessions: [{
+          id: 'proto-1', name: '查天气（含工具调用）',
+          created: '2026-10-13T09:28:00', updated: '2026-10-13T09:31:00',
+          status: 'done', summary: '查了北京天气并尝试存档', message_count: 2, archived: false,
+        }],
+      },
+      '**/api/history/proto-1': {
+        ok: true,
+        conversation: {
+          id: 'proto-1', created: '2026-10-13T09:28:00', updated: '2026-10-13T09:31:00',
+          status: 'done', summary: '查了北京天气并尝试存档',
+          messages: [
+            {
+              role: 'user', content: '查一下北京今天的天气，再存成文件', ts: '2026-10-13T09:30:00',
+              blocks: [{
+                v: 1, id: 'p-u1', type: 'text', ts: '2026-10-13T09:30:00',
+                payload: { md: '查一下北京今天的天气，再存成文件' },
+              }],
+            },
+            {
+              role: 'assistant', content: '天气查到了，存档被拒绝。', ts: '2026-10-13T09:31:00',
+              blocks: [
+                {
+                  v: 1, id: 'p-t1', type: 'tool', ts: '2026-10-13T09:30:20', agent: 'main',
+                  payload: {
+                    call_id: 'c1', name: 'get_weather', status: 'ok', duration_ms: 420,
+                    args: { city: '北京', unit: 'celsius' },
+                    output_preview: '北京 晴 18°C 西北风 2 级',
+                  },
+                },
+                {
+                  v: 1, id: 'p-t2', type: 'tool', ts: '2026-10-13T09:30:24', agent: 'sub:file',
+                  payload: {
+                    call_id: 'c2', name: 'write_file', status: 'error', duration_ms: 88,
+                    args: { path: '~/weather.txt' },
+                    output_preview: 'PermissionError: 未获写入授权',
+                  },
+                },
+                {
+                  v: 1, id: 'p-a1', type: 'text', ts: '2026-10-13T09:31:00',
+                  payload: { md: '天气查到了，但存档被拒绝（未获写入授权）。' },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    act: async (page) => {
+      await clickNav(page, '历史')
+      await page.locator('.history-item').first().click()
+    },
+    waitFor: '.blk-tool',
+  },
   ...EMPTY_SHOTS,
 ]
 
@@ -311,6 +383,19 @@ const consoleErrors = []
 
 for (const shot of targets) {
   const page = await ctx.newPage()
+  // 每张图从干净存储起跑：所有图共用一个 browser context，**localStorage 会跨图泄漏**。
+  // 实测现场：新加的 conv-tool-block（切会话 → 助手消息落盘）之后，6 张 empty-* 的右下角
+  // 齐刷刷多出助手迷你条 —— 20604 像素、同一区域，而单跑 `--only empty` 全绿。
+  // addInitScript 在页面脚本之前执行：图内应用照常读写 localStorage，只是起点确定，
+  // 于是「图与图之间」互不影响，任意顺序、单独跑一张都得到同一产物。
+  // Every shot starts from clean storage: all shots share one browser context, so
+  // **localStorage leaks between them**. Observed: after the new conv-tool-block shot (switch
+  // session → assistant messages persisted), all six empty-* shots grew an assistant mini-bar
+  // in the bottom-right — 20604 pixels, identical region, while `--only empty` was fully green.
+  // addInitScript runs before page scripts: the app still reads/writes localStorage normally,
+  // only the starting point is fixed — so shots no longer affect each other and any single shot
+  // reproduces the same image alone or in sequence.
+  await page.addInitScript(() => { try { localStorage.clear() } catch { /* 存储不可用时忽略 */ } })
   const errs = []
   page.on('console', m => { if (m.type() === 'error') errs.push(m.text().slice(0, 200)) })
   let note = ''
