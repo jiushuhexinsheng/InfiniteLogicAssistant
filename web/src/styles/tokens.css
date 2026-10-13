@@ -60,7 +60,15 @@
   --ease-out: cubic-bezier(0, 0, .2, 1);
 
   /* ── 装饰 ── */
-  --hairline: rgba(148, 163, 184, .14);   /* 卡片顶部高光线。Card top hairline. */
+  --hairline: rgba(148, 163, 184, .14);   /* 中性高光线（UiDivider 与卡片顶部共用）。Neutral hairline. */
+  /* ── 科技感：卡片顶部**发光线** ──
+     卡片顶边那道 1px 高光线由中性灰改为品牌青，并给它一圈柔光 —— 卡片于是「通电」了。
+     与 --hairline（中性，留给分隔线）分开，是为了让「哪条线发光」是个可单独调的决定。
+     Tech pass: the card's top hairline goes brand-cyan and gains a soft bloom, so a card reads
+     as "powered". Kept separate from the neutral --hairline (dividers) so "which lines glow"
+     stays an independently tunable decision. */
+  --hairline-brand: rgba(103, 232, 249, .22);
+  --glow-hairline: 0 0 10px rgba(103, 232, 249, .5);
   --glow-brand: 0 0 6px rgba(34, 211, 238, .55); /* 品牌青色微光。Brand-cyan micro glow. */
 
   /* ── 间距（4px 网格） ── */

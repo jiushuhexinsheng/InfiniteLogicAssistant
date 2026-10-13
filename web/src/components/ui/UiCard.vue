@@ -22,9 +22,11 @@ withDefaults(defineProps<{ title?: string; hover?: boolean; padded?: boolean }>(
   box-shadow: var(--shadow-2);
 }
 .ui-card.padded { padding: var(--sp-4) var(--sp-q18); }
+/* 顶边发光线：品牌青 + 柔光（科技感批第一项）。原先是一道中性灰高光线。
+   Glowing top edge: brand cyan plus a soft bloom. Was a neutral grey hairline. */
 .ui-card::before {
   content: ''; position: absolute; top: 0; left: 14%; right: 14%; height: 1px;
-  background: var(--hairline); pointer-events: none;
+  background: var(--hairline-brand); box-shadow: var(--glow-hairline); pointer-events: none;
 }
 .ui-card-title {
   display: block; margin-bottom: var(--sp-q10);
