@@ -8,60 +8,46 @@
 
     <div class="cs-body">
       <!-- 左侧菜单：模块切换（LLM / ASR / TTS / 语音唤醒 / 高级设置）。Left sidebar menu: module switching (LLM / ASR / TTS / Voice Wake / Advanced). -->
-      <aside class="cs-menu">
-        <button
-          v-for="m in menuDefs"
-          :key="m.id"
-          class="cs-menu-item"
-          :class="{ on: s.activeMenu.value === m.id }"
-          @click="s.activeMenu.value = m.id"
-        >
-          <UiIcon :name="m.icon" :size="14" />
-          <span>{{ m.label }}</span>
-          <!-- 绿点只出现在有就绪语义的模块（LLM/ASR/TTS/语音）；权限与高级设置不渲染点。
-               The dot only renders for modules with a readiness semantic (LLM/ASR/TTS/
-               Voice); Permissions and Advanced get no dot at all. -->
-          <i v-if="DOT_MENU_IDS.includes(m.id)" class="cs-menu-dot" :class="{ on: s.menuDot(m.id) }" title="绿点 = 就绪（密钥已设 / 测试通过 / 唤醒启用）"></i>
-        </button>
-        <div class="cs-menu-extra">
-          <UiButton variant="secondary" size="sm" :disabled="s.detecting.value" @click="s.detectAll" block>
-            {{ s.detecting.value ? '检测中…' : '检测全部' }}
-          </UiButton>
-        </div>
-      </aside>
+      <SettingsMenu />
 
       <!-- 右侧内容区域：根据左侧菜单选择展示对应模块配置。Right content area: shows the module matching the left menu.
            检测结果不再占顶部条 —— toast 弹 3 秒 + 左侧菜单绿点（2026-10-11）。
            Test results no longer take a top bar — a 3s toast plus the left-menu green
            dot (2026-10-11). -->
       <div class="cs-main">
-        <!-- 服务模块：LLM / ASR（仅在 activeMenu 匹配时显示）。Service modules: LLM / ASR (shown when activeMenu matches).
-             必须同时等 editable 加载完成：activeMenu 初值即 'llm'，首屏若先渲染卡片会在 sec(key).profiles 上取到 undefined。
-             Must also wait for editable to load: activeMenu starts as 'llm', so rendering the card first would read .profiles off undefined. -->
-        <template v-for="def in sectionDefs" :key="def.key">
-          <ServiceCard v-if="def.key !== 'tts' && s.editable.value && s.activeMenu.value === def.key" :section="def" />
+        <!-- editable 未加载完成前一张卡都不渲染 —— 外层一次守卫，替代原先 5 处重复的
+             `s.editable.value &&` 前缀。activeMenu 初值即 'llm'，首屏若先渲染卡片会在
+             sec(key).profiles 上取到 undefined。
+             No card renders until editable has loaded — one outer guard replacing the 5 repeated
+             `s.editable.value &&` prefixes. activeMenu starts as 'llm', so rendering the card
+             first would read .profiles off undefined. -->
+        <template v-if="s.editable.value">
+          <!-- 服务模块：LLM / ASR（仅在 activeMenu 匹配时显示）。Service modules: LLM / ASR (shown when activeMenu matches). -->
+          <template v-for="def in sectionDefs" :key="def.key">
+            <ServiceCard v-if="def.key !== 'tts' && s.activeMenu.value === def.key" :section="def" />
+          </template>
+
+          <!-- 语音合成（两卡堆叠）：卡1 引擎选择 → 卡2 按引擎显示对应配置。
+               TTS (two stacked cards): card 1 engine picker → card 2 config per engine. -->
+          <template v-if="s.activeMenu.value === 'tts'">
+            <TtsEngineCard />
+            <ServiceCard v-if="engine === 'api'" :section="ttsDef">
+              <!-- API 分支：后端 Profile / Endpoint / 音色等 + 播报偏好（徽章 / 音色覆盖 / 音量）。
+                   API branch: backend profile/endpoint/voice etc + playback prefs (badges / voice override / volume). -->
+              <TtsSettings />
+            </ServiceCard>
+            <TtsLocalCard v-else />
+          </template>
+
+          <!-- 语音模块：唤醒词 + VAD（播报设置已移入「语音合成」卡）。Voice module: wake word + VAD (playback settings moved into the TTS card). -->
+          <VoiceCard v-if="s.activeMenu.value === 'voice'" />
+
+          <!-- 权限模块：工具权限策略（层级默认 + 规则覆盖）。Permission module: tool permission policy. -->
+          <PermissionsCard v-if="s.activeMenu.value === 'permissions'" />
+
+          <!-- 高级模块：Agent / LLM 客户端 / 工具 / 服务器 参数配置。Advanced module: Agent / LLM client / Tools / Server settings. -->
+          <AdvancedCard v-if="s.activeMenu.value === 'advanced'" />
         </template>
-
-        <!-- 语音合成（两卡堆叠）：卡1 引擎选择 → 卡2 按引擎显示对应配置。
-             TTS (two stacked cards): card 1 engine picker → card 2 config per engine. -->
-        <template v-if="s.editable.value && s.activeMenu.value === 'tts'">
-          <TtsEngineCard />
-          <ServiceCard v-if="engine === 'api'" :section="ttsDef">
-            <!-- API 分支：后端 Profile / Endpoint / 音色等 + 播报偏好（徽章 / 音色覆盖 / 音量）。
-                 API branch: backend profile/endpoint/voice etc + playback prefs (badges / voice override / volume). -->
-            <TtsSettings />
-          </ServiceCard>
-          <TtsLocalCard v-else />
-        </template>
-
-        <!-- 语音模块：唤醒词 + VAD（播报设置已移入「语音合成」卡）。Voice module: wake word + VAD (playback settings moved into the TTS card). -->
-        <VoiceCard v-if="s.editable.value && s.activeMenu.value === 'voice'" />
-
-        <!-- 权限模块：工具权限策略（层级默认 + 规则覆盖）。Permission module: tool permission policy. -->
-        <PermissionsCard v-if="s.editable.value && s.activeMenu.value === 'permissions'" />
-
-        <!-- 高级模块：Agent / LLM 客户端 / 工具 / 服务器 参数配置。Advanced module: Agent / LLM client / Tools / Server settings. -->
-        <AdvancedCard v-if="s.editable.value && s.activeMenu.value === 'advanced'" />
 
         <!-- 配置校验问题：检测到的错误和警告列表。Config validation issues: detected errors and warnings. -->
         <div v-if="s.issues.value.length" class="cs-issues">
@@ -87,16 +73,12 @@ import TtsLocalCard from './settings/TtsLocalCard.vue'
 import TtsSettings from '../assistant/TtsSettings.vue'
 import { useSettings } from './settings/useSettings'
 import { useTtsEngine } from '../../composables/assistant/useTtsEngine'
-import { menuDefs, sectionDefs } from './settings/configDefs'
-import { UiButton, UiChip, UiIcon } from '../ui'
+import SettingsMenu from './settings/SettingsMenu.vue'
+import { sectionDefs } from './settings/configDefs'
+import { UiIcon } from '../ui'
 
 /** 设置页单例状态与操作（保留对象引用以维持响应式）。Settings singleton (kept as an object to preserve reactivity). */
 const s = useSettings()
-
-/** 渲染绿点的菜单模块（权限/高级设置无就绪语义，不渲染点）。
- *  Menu modules that render the dot (Permissions/Advanced have no readiness semantic,
- *  so they get no dot). */
-const DOT_MENU_IDS = ['llm', 'asr', 'tts', 'voice']
 
 /** TTS 引擎选择（与卡1 同源，决定卡2 渲染哪个分支）。Engine choice (same source as card 1; picks card 2's branch). */
 const { engine } = useTtsEngine()
@@ -133,28 +115,8 @@ onMounted(() => { s.load() })
 
 /* ── 左菜单 + 右内容（内容区 = 唯一滚动容器） ── */
 .cs-body { display: flex; gap: 16px; align-items: stretch; flex: 1; min-height: 0; }
-.cs-menu {
-  width: 148px; flex-shrink: 0;
-  display: flex; flex-direction: column; gap: 3px;
-}
-.cs-menu-item {
-  display: flex; align-items: center; gap: 8px;
-  font-size: var(--fs-xs); color: var(--text-2); text-align: left;
-  background: rgba(15, 23, 42, .55); border: 1px solid transparent;
-  border-radius: var(--r-sm); padding: 7px 10px; cursor: pointer;
-  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
-}
-.cs-menu-item:hover { color: var(--brand-c2); }
-.cs-menu-item.on {
-  color: var(--brand-c2); border-color: var(--brand-c2);
-  background: rgba(11, 17, 32, .75);
-}
-.cs-menu-dot {
-  margin-left: auto; width: 7px; height: 7px; border-radius: 50%;
-  background: rgba(148, 163, 184, .25);
-}
-.cs-menu-dot.on { background: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, .6); }
-.cs-menu-extra { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-soft); }
+/* 左菜单样式（.cs-menu*）已随菜单组件搬进 settings/SettingsMenu.vue。
+   The left menu's styles (.cs-menu*) moved into settings/SettingsMenu.vue with the component. */
 
 /* 内容区不再整体滚动（2026-10-11 三轮裁定）：卡头固定在卡布局内、**卡体自己滚**——
    滚动轴落在每张卡「保存」行的正下方，标题/菜单/卡头都不随滚动移动，页面整体不动。

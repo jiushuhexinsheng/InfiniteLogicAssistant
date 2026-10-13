@@ -103,4 +103,27 @@ describe('ConsoleSettings 语音合成两卡结构', () => {
     expect(w.find('.ui-radio-cards').exists()).toBe(false)
     expect(w.text()).toContain('唤醒词')
   })
+
+  /**
+   * editable 未加载：一张卡都不渲染，且不得抛错。
+   *
+   * 回归靶子：activeMenu 的初值就是 'llm'，卡片若先于 editable 渲染，会在 sec('llm').profiles
+   * 上取到 undefined 直接抛错。Batch 3 把 5 处重复的 `s.editable.value &&` 前缀收敛成外层一次
+   * `<template v-if>` —— 这条断言守住那次收敛。
+   *
+   * Regression target: activeMenu starts as 'llm'; a card rendering before editable would read
+   * .profiles off undefined and throw. Batch 3 collapsed the 5 repeated `s.editable.value &&`
+   * prefixes into one outer `<template v-if>`; this guards that collapse.
+   */
+  it('editable 未加载时一张卡都不渲染且不抛错', async () => {
+    // 让配置拉取永不落定，editable 保持 null。Keep the config fetch pending so editable stays null.
+    vi.mocked(api.getConfigFull).mockReturnValue(new Promise(() => {}) as any)
+    editable.value = null
+    activeMenu.value = 'llm'
+    const w = mount(ConsoleSettings)
+    await flushPromises()
+    expect(w.findAll('.cs-card').length).toBe(0)
+    // 菜单不依赖 editable，仍应渲染。The menu doesn't depend on editable and must still render.
+    expect(w.find('.cs-menu').exists()).toBe(true)
+  })
 })
