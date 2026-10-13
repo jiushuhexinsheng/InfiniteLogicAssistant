@@ -1,0 +1,3 @@
+# 截图基线（重构期视觉回归用，勿入库）。
+# Screenshot baselines for visual regression during refactors (never committed).
+.shots/
