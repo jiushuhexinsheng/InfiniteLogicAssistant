@@ -37,7 +37,14 @@ const SHOTS_DIR = join(WEB_ROOT, '.shots')
  * @returns 参数对象。The parsed options object.
  */
 function parseArgs(argv) {
-  const out = { url: 'http://127.0.0.1:8520', mode: '', only: '', settle: 700, tolerance: 0 }
+  // tolerance 默认 8：浏览器的文字抗锯齿偶发产生 1-2 个像素的抖动（实测 console-tools 出现过
+  // 1 像素差异），这在 1.3M 像素里是 0.0001%，属渲染噪声而非变化。**不静默放宽** —— 落在容差内
+  // 的差异照样逐条打印实际像素数。
+  // tolerance defaults to 8: the browser's text antialiasing occasionally jitters a pixel or two
+  // (console-tools was observed differing by 1 pixel) — 0.0001% of 1.3M pixels, rendering noise
+  // rather than change. **Not a silent relaxation**: in-tolerance differences are still printed
+  // with their actual pixel counts.
+  const out = { url: 'http://127.0.0.1:8520', mode: '', only: '', settle: 1000, tolerance: 8 }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--baseline') out.mode = 'baseline'
@@ -111,6 +118,8 @@ const SHOTS = [
     name: `settings-${label}`,
     path: '/console',
     act: async (page) => { await clickNav(page, '设置'); await clickSettingsMenu(page, label) },
+    /** 设置卡由 config 驱动，等它真出现再拍（见 settle 的注释）。The settings card is config-driven; wait for it to actually appear. */
+    waitFor: '.cs-card',
   })),
   {
     // 滚动态：把设置卡体滚到底。抽取卡外壳时最容易弄坏的就是「卡体自滚、卡头不动、页面不动」
@@ -124,6 +133,7 @@ const SHOTS = [
       await clickNav(page, '设置')
       await page.locator('.cs-card-body').first().evaluate(el => { el.scrollTop = el.scrollHeight })
     },
+    waitFor: '.cs-card-body',
   },
   ...EMPTY_SHOTS,
 ]
@@ -160,6 +170,13 @@ async function clickSettingsMenu(page, label) {
  */
 async function settle(page, ms) {
   await page.emulateMedia({ reducedMotion: 'reduce' })
+  // 先给 SPA 一点时间挂载并**发出**首屏请求。少了这一步，networkidle 可能在请求发出之前就
+  // 判定空闲 —— 那正是 settings-高级设置 偶发拍成空白卡的根因（config 尚未回来，editable 仍为
+  // null，于是设置页一张卡都不渲染）。
+  // Give the SPA a beat to mount and *issue* its first requests. Without this, networkidle can
+  // resolve before they're sent — the root cause of the occasional blank settings-高级设置 shot
+  // (config hadn't returned, editable was still null, so no card rendered).
+  await page.waitForTimeout(400)
   await page.waitForLoadState('networkidle').catch(() => {})
   await page.waitForTimeout(ms)
   // 失焦，避免截图带上焦点环（与 screenshot.mjs 同策略）。
@@ -265,6 +282,12 @@ for (const shot of targets) {
     await settle(page, ARGS.settle)
     if (shot.act) {
       await shot.act(page)
+      // 内容就绪条件：等某个元素真正出现，别靠「等够久」赌它渲染完了。
+      // Readiness condition: wait for a specific element rather than betting a fixed delay was
+      // long enough.
+      if (shot.waitFor) {
+        await page.locator(shot.waitFor).first().waitFor({ timeout: 8000 }).catch(() => {})
+      }
       await settle(page, ARGS.settle)
     }
   } catch (e) {
@@ -294,6 +317,7 @@ if (ARGS.mode === 'baseline') {
   console.log(`  Re-run --baseline: the output must be byte-identical or the baseline is unusable.`)
 } else {
   const bad = []
+  const noisy = []
   for (const r of results) {
     const base = join(SHOTS_DIR, 'base', `${r.name}.png`)
     if (!existsSync(base)) { bad.push({ name: r.name, kind: 'no-baseline' }); continue }
@@ -302,6 +326,7 @@ if (ARGS.mode === 'baseline') {
     const d = await pixelDiff(browser, a, b)
     if (d.sizeMismatch) { bad.push({ name: r.name, kind: 'size', a: d.a, b: d.b }); continue }
     if (d.diff > ARGS.tolerance) bad.push({ name: r.name, kind: 'pixels', diff: d.diff, total: d.total, box: d.box })
+    else if (d.diff > 0) noisy.push({ name: r.name, diff: d.diff, total: d.total, box: d.box })
   }
   if (!bad.length) {
     console.log(`\n✓ ${results.length} 张全部与基线一致（容差 ${ARGS.tolerance} 像素）。`)
@@ -314,6 +339,13 @@ if (ARGS.mode === 'baseline') {
     }
     console.log(`\n  当前图在 ${outDir}/ ，基线在 ${join(SHOTS_DIR, 'base')}/ —— 逐张对照。`)
     process.exitCode = 1
+  }
+  // 容差内的差异也照实打印 —— 让「1 像素噪声」和「真变化」在报告里分得开。
+  // In-tolerance differences are printed too, so "1px noise" and "a real change" stay
+  // distinguishable in the report.
+  if (noisy.length) {
+    console.log(`\n~ ${noisy.length} 张有容差内噪声（≤ ${ARGS.tolerance} 像素，视为渲染抗锯齿抖动）：`)
+    for (const x of noisy) console.log(`  · ${x.name} —— ${x.diff}/${x.total} 像素，区域 ${x.box ? x.box.join(',') : '-'}`)
   }
 }
 
