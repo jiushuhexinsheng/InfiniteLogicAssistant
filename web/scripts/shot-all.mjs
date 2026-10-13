@@ -166,6 +166,22 @@ const SHOTS = [
     },
     waitFor: '.ui-select-menu',
   },
+  {
+    // 组合框开态：UiCombobox 与 UiSelect 共用弹层（Batch 8 抽 UiPopoverPanel），但**触发方式
+    // 不同** —— combobox 靠 focus 开、建议层走 mousedown 选（抢在输入框失焦前）。select-open
+    // 那张验不到这条路。大模型卡的「模型」框建议来自当前 profile 的 models（实测 8 条），
+    // 故必然能开；开不了 → 等待超时 → 截图即暴露。
+    // Combobox open: UiCombobox shares the panel with UiSelect but opens on focus and picks on
+    // mousedown. The LLM card's model field is fed by the active profile's `models` (8 entries in
+    // practice), so it always has suggestions to show; if it can't open, the wait times out.
+    name: 'settings-combobox-open',
+    path: '/console',
+    act: async (page) => {
+      await clickNav(page, '设置')
+      await page.locator('.cs-main .ui-combo input').first().click()
+    },
+    waitFor: '.ui-select-menu',
+  },
   ...EMPTY_SHOTS,
 ]
 
