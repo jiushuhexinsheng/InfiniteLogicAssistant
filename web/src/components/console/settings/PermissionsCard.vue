@@ -87,11 +87,11 @@ onMounted(async () => {
 
 <style scoped>
 .cs-subcard {
-  display: flex; flex-direction: column; gap: 8px;
+  display: flex; flex-direction: column; gap: var(--sp-2);
   padding: 10px 12px; border: 1px solid var(--border-soft); border-radius: var(--r-md);
   background: rgba(15, 23, 42, .4);
 }
 .cs-subcard-title { font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); letter-spacing: .02em; }
-.cs-profrow { display: flex; align-items: flex-end; gap: 8px; }
-.cs-note { font-size: var(--fs-2xs); color: var(--text-3); line-height: 1.6; margin: 4px 0 0; }
+.cs-profrow { display: flex; align-items: flex-end; gap: var(--sp-2); }
+.cs-note { font-size: var(--fs-2xs); color: var(--text-3); line-height: 1.6; margin: var(--sp-1) 0 0; }
 </style>

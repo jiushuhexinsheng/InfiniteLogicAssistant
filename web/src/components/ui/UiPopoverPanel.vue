@@ -105,7 +105,7 @@ function onRowDown(e: MouseEvent, i: number) {
 .ui-select-menu {
   position: fixed;
   z-index: 1000;
-  margin: 0; padding: 4px;
+  margin: 0; padding: var(--sp-1);
   list-style: none;
   max-height: 260px;
   overflow-y: auto;
@@ -124,7 +124,7 @@ function onRowDown(e: MouseEvent, i: number) {
 @media (prefers-reduced-motion: reduce) { .ui-select-menu { animation: none; } }
 
 .ui-select-option {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
   padding: 8px 10px;
   border-radius: var(--r-md);
   font-size: var(--fs-xs); color: var(--text-1);

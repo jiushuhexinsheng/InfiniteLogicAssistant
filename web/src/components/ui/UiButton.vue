@@ -28,7 +28,7 @@ withDefaults(defineProps<{
 
 <style scoped>
 .ui-btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
   font-family: inherit; font-weight: 500; line-height: 1;
   border: 1px solid transparent; border-radius: 999px; cursor: pointer;
   white-space: nowrap; user-select: none;
@@ -42,7 +42,7 @@ withDefaults(defineProps<{
 .ui-btn:disabled { opacity: .5; cursor: not-allowed; }
 .h-danger:hover:not(:disabled) { color: var(--err); border-color: var(--err); }
 
-.s-sm { padding: 8px 16px; font-size: var(--fs-xs); }
+.s-sm { padding: var(--sp-2) var(--sp-4); font-size: var(--fs-xs); }
 .s-md { padding: 10px 22px; font-size: var(--fs-md); }
 .s-lg { padding: 12px 28px; font-size: var(--fs-lg); }
 

@@ -77,9 +77,9 @@ function statusText(s: ToolStep['status']) { return STATUS_TEXT[s] || s }
 
 <style scoped>
 /* 工具时间线容器。Tool timeline container. */
-.tool-timeline { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+.tool-timeline { margin-top: 6px; display: flex; flex-direction: column; gap: var(--sp-1); }
 /* 单个步骤。Single step. */
-.tt-step { position: relative; padding-left: 24px; }
+.tt-step { position: relative; padding-left: var(--sp-6); }
 /* 步骤行布局。Step row layout. */
 .tt-row { display: flex; align-items: center; gap: 6px; font-size: 12px; min-height: 20px; }
 /* 连接线。Connector rail. */
@@ -111,7 +111,7 @@ function statusText(s: ToolStep['status']) { return STATUS_TEXT[s] || s }
 .tt-row :deep(.rot) { transform: rotate(180deg); transition: transform var(--dur-base); }
 /* 详情面板。Details panel. */
 .tt-detail {
-  margin-top: 4px; font-size: 11px; color: var(--text-2);
+  margin-top: var(--sp-1); font-size: 11px; color: var(--text-2);
   background: #0f172a; padding: 6px 8px; border-radius: 6px;
   margin-left: 0;
 }
@@ -122,7 +122,7 @@ function statusText(s: ToolStep['status']) { return STATUS_TEXT[s] || s }
   color: #a5b4fc; max-height: 80px; overflow-y: auto;
 }
 /* 结果文本。Result text. */
-.tool-result { margin-top: 4px; }
+.tool-result { margin-top: var(--sp-1); }
 /* 运行中闪烁动画。Running blink animation. */
 @keyframes tt-blink { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
 </style>

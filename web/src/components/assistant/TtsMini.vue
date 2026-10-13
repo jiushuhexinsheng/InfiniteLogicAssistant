@@ -62,7 +62,7 @@ const { engine, apiAvailable, setEngine } = useTtsEngine()
 
 <style scoped>
 /* 迷你卡容器。Mini card container. */
-.tts-mini { display: flex; flex-direction: column; gap: 12px; }
+.tts-mini { display: flex; flex-direction: column; gap: var(--sp-3); }
 
 /* API 未配置引导。API-unconfigured guidance. */
 .tm-hint {
@@ -73,6 +73,6 @@ const { engine, apiAvailable, setEngine } = useTtsEngine()
 }
 
 /* 角色行：左选择器右试听。Voice row: picker left, preview right. */
-.tm-row { display: flex; align-items: flex-end; gap: 8px; }
+.tm-row { display: flex; align-items: flex-end; gap: var(--sp-2); }
 .tm-voice { flex: 1; min-width: 0; }
 </style>

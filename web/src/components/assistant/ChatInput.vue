@@ -78,7 +78,7 @@ function submit() {
 <style scoped>
 /* 聊天输入容器。Chat input container. */
 .chat-input {
-  display: flex; flex-direction: column; gap: 8px;
+  display: flex; flex-direction: column; gap: var(--sp-2);
   padding: 9px 12px;
   background: var(--surface-control);
   border: 1px solid var(--border-soft); border-radius: 16px;
@@ -88,7 +88,7 @@ function submit() {
   box-shadow: var(--shadow-2);
 }
 /* 输入行布局。Input row layout. */
-.chat-input-row { display: flex; align-items: flex-end; gap: 8px; }
+.chat-input-row { display: flex; align-items: flex-end; gap: var(--sp-2); }
 /* 排队徽标（可点击清空）。Queued badge (click to clear). */
 .ci-queue {
   align-self: flex-start;

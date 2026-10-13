@@ -36,7 +36,7 @@ withDefaults(defineProps<{ title?: string }>(), { title: '' })
    the page never scrolls — title, menu and card heads stay fixed and only each card body
    (below the save row) scrolls, placing the scrollbar right under 保存. */
 .cs-card {
-  display: flex; flex-direction: column; gap: 12px;
+  display: flex; flex-direction: column; gap: var(--sp-3);
   /* 内容超出可用高度时收缩（不撑破内容区）；短卡保持自然高度。
      Shrink when content exceeds the available height (never bursting the region); short cards
      keep their natural height. */
@@ -44,13 +44,13 @@ withDefaults(defineProps<{ title?: string }>(), { title: '' })
 }
 /* 卡头永不收缩。The card head never shrinks. */
 .cs-card-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
   flex-shrink: 0;
 }
 .cs-card-title { font-size: var(--fs-sm); font-weight: 600; color: var(--text-1); letter-spacing: .02em; }
 .cs-card-body {
   flex: 1 1 auto; min-height: 0; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 12px;
-  padding-right: 4px;
+  display: flex; flex-direction: column; gap: var(--sp-3);
+  padding-right: var(--sp-1);
 }
 </style>

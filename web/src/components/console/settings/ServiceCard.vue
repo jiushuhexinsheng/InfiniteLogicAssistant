@@ -214,19 +214,19 @@ function renameCompat(_i: number, oldKey: string, newKey: string) {
 </script>
 
 <style scoped>
-.cs-card-btns { display: flex; align-items: center; gap: 8px; }
-.cs-profrow { display: flex; align-items: flex-end; gap: 8px; }
+.cs-card-btns { display: flex; align-items: center; gap: var(--sp-2); }
+.cs-profrow { display: flex; align-items: flex-end; gap: var(--sp-2); }
 /* 新增 Profile 按钮激活态（UiButton 透传 class）。Active state of the "add Profile" button (class passed through UiButton). */
 .cs-profrow :deep(.ui-btn.on) { color: var(--brand-c2); border-color: var(--brand-c2); }
-.cs-keyrow { display: flex; align-items: center; gap: 8px; }
+.cs-keyrow { display: flex; align-items: center; gap: var(--sp-2); }
 /* 音色列表行：一行一个音色 + 删除按钮（与唤醒词行同构）。Voice row: one voice plus a delete button (mirrors the wake-word row). */
-.cs-voicerow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.cs-voicerow { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
 .cs-voicerow :deep(.ui-input) { flex: 1; min-width: 0; }
 
 /* 高级兼容编辑区：折叠密度 + 快捷 chip（与音色行同构的键值行）。Advanced compat editor:
    compact density + shortcut chips (key-value rows mirroring the voice row). */
 .cs-compat { border-top: 1px dashed var(--border-soft); padding-top: 9px; display: flex; flex-direction: column; gap: 7px; }
-.cs-compat-head { display: flex; align-items: baseline; gap: 8px; }
+.cs-compat-head { display: flex; align-items: baseline; gap: var(--sp-2); }
 .cs-compat-title { font-size: var(--fs-2xs); font-weight: 600; color: var(--text-2); letter-spacing: .04em; }
 .cs-compat-hint { font-size: var(--fs-2xs); color: var(--text-3); }
 .cs-compat-shortcuts { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -239,14 +239,14 @@ function renameCompat(_i: number, oldKey: string, newKey: string) {
 }
 .cs-compat-shortcuts .cs-compat-chip.ui-btn:hover { color: var(--brand-c2); border-color: var(--brand-c2); }
 .cs-compat-shortcuts .cs-compat-chip.ui-btn.on { color: var(--brand-c2); border-color: var(--brand-c2); background: rgba(52, 211, 153, .08); }
-.cs-compat-row { display: flex; align-items: center; gap: 8px; }
+.cs-compat-row { display: flex; align-items: center; gap: var(--sp-2); }
 .cs-compat-row :deep(.ui-input) { flex: 1; min-width: 0; font-family: var(--font-mono); }
 
 /* 段级三选一的说明与警示（与 VoiceCard 同款尺寸；scoped 样式不跨组件，故各自定义）。
    Hint / warning for the section-level segmented control (same density as VoiceCard;
    scoped styles do not cross components, so each card defines its own). */
 .cs-mode-hint { font-size: var(--fs-2xs); color: var(--text-3); margin: 6px 0 0; line-height: 1.5; }
-.cs-note { font-size: var(--fs-2xs); color: var(--text-3); line-height: 1.6; margin: 4px 0 0; }
+.cs-note { font-size: var(--fs-2xs); color: var(--text-3); line-height: 1.6; margin: var(--sp-1) 0 0; }
 .cs-note strong { color: var(--text-2); }
 .cs-note code {
   font-family: var(--font-mono); font-size: inherit;

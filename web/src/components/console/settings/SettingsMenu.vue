@@ -50,7 +50,7 @@ const DOT_MENU_IDS = ['llm', 'asr', 'tts', 'voice']
   display: flex; flex-direction: column; gap: 3px;
 }
 .cs-menu-item {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: var(--sp-2);
   font-size: var(--fs-xs); color: var(--text-2); text-align: left;
   background: var(--surface-menu); border: 1px solid transparent;
   border-radius: var(--r-sm); padding: 7px 10px; cursor: pointer;

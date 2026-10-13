@@ -185,10 +185,10 @@ watch(
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 12px 8px 8px;
+  padding: var(--sp-3) var(--sp-2) var(--sp-2);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--sp-4);
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, .2) transparent;
 }
@@ -213,8 +213,8 @@ watch(
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 32px 16px;
+  gap: var(--sp-3);
+  padding: var(--sp-7) var(--sp-4);
   text-align: center;
 }
 
@@ -240,7 +240,7 @@ watch(
 .mini-turn {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
   animation: mini-in .4s var(--ease-out) both;
 }
 
@@ -316,7 +316,7 @@ watch(
 /* AI 摘要文本 */
 .mini-summary {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: var(--sp-2);
   line-height: 1.6;
 }
 
@@ -325,13 +325,13 @@ watch(
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 8px;
+  margin-top: var(--sp-2);
 }
 
 .mini-tool {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-1);
   font-size: 11px;
   font-weight: 500;
   color: var(--brand-c2);

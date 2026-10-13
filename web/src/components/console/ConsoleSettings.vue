@@ -104,9 +104,9 @@ onMounted(() => { s.load() })
   display: flex;
   flex-direction: column;
   gap: 14px; flex: 1; min-height: 0; overflow: hidden;}
-.cs-head { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+.cs-head { display: flex; flex-direction: column; gap: var(--sp-1); flex-shrink: 0; }
 .cs-title {
-  display: inline-flex; align-items: center; gap: 8px;
+  display: inline-flex; align-items: center; gap: var(--sp-2);
   font-size: var(--fs-lg); font-weight: 700; letter-spacing: .03em;
   color: var(--text-1); margin: 0;
 }
@@ -114,7 +114,7 @@ onMounted(() => { s.load() })
 .cs-sub { font-size: var(--fs-xs); color: var(--text-3); margin: 0; }
 
 /* ── 左菜单 + 右内容（内容区 = 唯一滚动容器） ── */
-.cs-body { display: flex; gap: 16px; align-items: stretch; flex: 1; min-height: 0; }
+.cs-body { display: flex; gap: var(--sp-4); align-items: stretch; flex: 1; min-height: 0; }
 /* 左菜单样式（.cs-menu*）已随菜单组件搬进 settings/SettingsMenu.vue。
    The left menu's styles (.cs-menu*) moved into settings/SettingsMenu.vue with the component. */
 

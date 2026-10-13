@@ -75,12 +75,12 @@ async function onRegen(index: number) {
 </script>
 
 <style scoped>
-.console-conv { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.console-conv { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
 /* 动作条固定在左上（不随消息滚动）。Action bar pinned top-left (does not scroll with messages). */
 .conv-top {
-  display: flex; justify-content: flex-start; gap: 8px;
+  display: flex; justify-content: flex-start; gap: var(--sp-2);
   padding: 2px 4px 0;
   position: relative; z-index: 5;
 }
-.console-input { max-width: 880px; width: 100%; margin: 0 auto; padding-bottom: 8px; }
+.console-input { max-width: 880px; width: 100%; margin: 0 auto; padding-bottom: var(--sp-2); }
 </style>

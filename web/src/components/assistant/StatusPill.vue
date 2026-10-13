@@ -113,7 +113,7 @@ const pillStyle = computed(() => ({
   align-items: center;
   gap: 7px;
   height: 32px;
-  padding: 0 12px;
+  padding: 0 var(--sp-3);
   border-radius: var(--r-full);
   background: var(--panel-bg);
   border: 1px solid var(--sp-border);

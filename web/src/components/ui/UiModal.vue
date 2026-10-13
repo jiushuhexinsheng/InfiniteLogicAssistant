@@ -27,7 +27,7 @@ defineEmits<{ 'update:modelValue': [v: boolean] }>()
   position: fixed; inset: 0; z-index: 9990;
   display: flex; align-items: center; justify-content: center;
   background: rgba(2, 6, 23, .6); backdrop-filter: blur(6px);
-  padding: 24px;
+  padding: var(--sp-6);
 }
 .ui-modal {
   width: min(520px, 92vw); max-height: 80vh; overflow: auto;
@@ -44,10 +44,10 @@ defineEmits<{ 'update:modelValue': [v: boolean] }>()
 .ui-modal-close {
   display: flex; align-items: center; justify-content: center;
   background: none; border: none; color: var(--text-2); cursor: pointer;
-  padding: 4px; border-radius: 6px;
+  padding: var(--sp-1); border-radius: 6px;
 }
 .ui-modal-close:hover { background: var(--bg-3); color: var(--text-1); }
-.ui-modal-body { padding: 16px; }
+.ui-modal-body { padding: var(--sp-4); }
 .ui-modal-enter-active, .ui-modal-leave-active { transition: opacity .2s ease, transform .2s ease; }
 .ui-modal-enter-from, .ui-modal-leave-to { opacity: 0; transform: translateY(12px) scale(.97); }
 </style>

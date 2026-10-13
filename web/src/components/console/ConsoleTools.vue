@@ -60,7 +60,7 @@ onMounted(() => { loadTools() })
 <style scoped>
 .tool-cards { display: flex; flex-direction: column; gap: 10px; }
 .tool-card { padding: 14px 16px; }
-.tool-head { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.tool-head { display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; }
 .tool-name { font-family: var(--font-mono); font-size: 13px; color: var(--brand-c2); background: rgba(103, 232, 249, .08); border: 1px solid var(--border-base); border-radius: 6px; padding: 2px 8px; }
 .tool-desc { flex: 1; font-size: 12px; color: var(--text-2); }
 .tool-chev { color: var(--text-3); transition: transform .15s; }

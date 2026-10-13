@@ -60,9 +60,9 @@ async function stop() {
 </script>
 
 <style scoped>
-.console-task { max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; overflow-y: auto;}
-.task-input { display: flex; flex-direction: column; gap: 8px; }
-.task-actions { display: flex; gap: 8px; }
+.console-task { max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: var(--sp-3); flex: 1; min-height: 0; overflow-y: auto;}
+.task-input { display: flex; flex-direction: column; gap: var(--sp-2); }
+.task-actions { display: flex; gap: var(--sp-2); }
 .task-log { display: flex; flex-direction: column; gap: 6px; }
 .log-entry { padding: 6px 10px; border-radius: 8px; background: var(--surface-control); word-break: break-word; }
 .log-entry.user { border-left: 2px solid var(--brand-c2); }

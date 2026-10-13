@@ -34,9 +34,9 @@ const s = useSettings()
 
 <style scoped>
 .cs-dialog-sub { font-size: var(--fs-2xs); color: var(--text-3); margin: 0; font-family: var(--font-mono); }
-.cs-key-input { display: flex; align-items: center; gap: 8px; }
+.cs-key-input { display: flex; align-items: center; gap: var(--sp-2); }
 .cs-key-input :deep(.ui-input) { flex: 1; min-width: 0; }
 .cs-dialog-env { font-size: var(--fs-2xs); color: var(--text-3); margin: 0; line-height: 1.6; }
 .cs-dialog-env code { font-family: var(--font-mono); color: var(--brand-c2); }
-.cs-dialog-btns { display: flex; justify-content: flex-end; gap: 8px; }
+.cs-dialog-btns { display: flex; justify-content: flex-end; gap: var(--sp-2); }
 </style>

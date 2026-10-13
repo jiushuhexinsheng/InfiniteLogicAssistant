@@ -66,7 +66,7 @@ const { sidebarCollapsed, toggleSidebar } = useConsole()
 .console-sidebar {
   width: var(--nav-width); flex-shrink: 0;
   display: flex; flex-direction: column; gap: 7px;
-  padding: 16px 12px;
+  padding: var(--sp-4) var(--sp-3);
   border: 1px solid var(--glass-border); border-radius: var(--r-xl);
   background: var(--surface-raised); backdrop-filter: blur(14px) saturate(140%);
   -webkit-backdrop-filter: blur(14px) saturate(140%);
@@ -84,7 +84,7 @@ const { sidebarCollapsed, toggleSidebar } = useConsole()
 .console-sidebar.collapsed .sb-foot { justify-content: center; padding-left: 0; padding-right: 0; }
 
 .sb-brand {
-  display: flex; align-items: center; justify-content: space-between; gap: 4px;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-1);
   padding: 0 6px 10px;
 }
 /* 仅英文标识：等宽字 + 字距，作为侧栏标题。English-only caption: mono + tracking, sidebar title. */
@@ -114,7 +114,7 @@ const { sidebarCollapsed, toggleSidebar } = useConsole()
   display: flex; flex-direction: column; gap: 7px;
 }
 .sb-foot {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: var(--sp-2);
   padding: 11px 10px;
   border: 1px solid rgba(52, 211, 153, .3); border-radius: var(--r-md);
   background: rgba(52, 211, 153, .06);

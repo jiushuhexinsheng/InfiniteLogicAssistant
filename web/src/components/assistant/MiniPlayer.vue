@@ -124,7 +124,7 @@ const showMini = computed(() =>
   flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   width: 210px;
   padding: 6px 10px;
   border: 1px solid transparent;

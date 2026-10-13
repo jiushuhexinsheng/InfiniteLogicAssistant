@@ -201,7 +201,7 @@ function onKeydown(e: KeyboardEvent) {
    Trigger shell: inset depth + larger radius + persistent brand focus glow. */
 .ui-select {
   width: 100%;
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
   background: var(--surface-input);
   border: 1px solid var(--border-base);
   border-radius: var(--r-lg);

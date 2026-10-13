@@ -133,7 +133,7 @@ function formatTime(ts: number) {
 
 <style scoped>
 /* 消息项容器及入场动画。Message item container and entrance animation. */
-.msg-item { display: flex; gap: 8px; align-items: flex-start; animation: msg-in .32s var(--ease-out) both; }
+.msg-item { display: flex; gap: var(--sp-2); align-items: flex-start; animation: msg-in .32s var(--ease-out) both; }
 .msg-item.system { justify-content: center; }
 @keyframes msg-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -156,7 +156,7 @@ function formatTime(ts: number) {
 /* 消息气泡。Message bubble. */
 .msg-bubble {
   position: relative; max-width: 90%;
-  padding: 8px 12px; border-radius: var(--r-lg);
+  padding: var(--sp-2) var(--sp-3); border-radius: var(--r-lg);
   font-size: var(--fs-sm); line-height: 1.5; word-break: break-word;
 }
 /* 用户气泡：右对齐品牌渐变。User bubble: right-aligned brand gradient. */
@@ -186,7 +186,7 @@ function formatTime(ts: number) {
 
 /* 消息级操作条（hover 显示）。Message action bar (shown on hover). */
 .msg-actions {
-  display: flex; gap: 6px; margin-top: 4px; opacity: 0;
+  display: flex; gap: 6px; margin-top: var(--sp-1); opacity: 0;
   transition: opacity var(--dur-fast, .15s) var(--ease-out, ease);
 }
 .msg-item:hover .msg-actions, .msg-actions:focus-within { opacity: 1; }

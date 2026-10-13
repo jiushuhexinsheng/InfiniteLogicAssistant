@@ -176,7 +176,7 @@ onMounted(() => { loadSessions() })
 </script>
 
 <style scoped>
-.history-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.history-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 /* 本地覆盖全局 .hint（全局是 --fs-xs=12px，这里同值但独立声明，保持原样不改）。
    Local override of the global .hint (same 12px, declared separately — left as-is). */
 .hint { font-size: 12px; color: var(--text-3); }

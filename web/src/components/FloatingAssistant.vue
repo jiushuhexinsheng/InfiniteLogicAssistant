@@ -196,7 +196,7 @@ const panelStyle = computed(() => ({
   z-index: 9999;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   pointer-events: none;
 }
 .asst-dock > * { pointer-events: auto; }

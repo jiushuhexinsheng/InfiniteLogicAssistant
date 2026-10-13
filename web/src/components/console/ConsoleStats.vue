@@ -118,10 +118,10 @@ const statCards = computed(() => [
 
 <style scoped>
 .console-stats { max-width: 720px; width: 100%; margin: 0 auto; flex: 1; min-height: 0; overflow-y: auto;}
-.stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--sp-3); }
 .stat { text-align: center; padding: 18px 12px; }
 .num { font-size: 26px; font-weight: 700; color: var(--brand-c2); }
-.lbl { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+.lbl { font-size: 12px; color: var(--text-3); margin-top: var(--sp-1); }
 .hint { font-size: 11px; color: var(--text-3); margin-top: 14px; line-height: 1.6; }
 .upload-stats { margin-top: 18px; }
 .upload-title { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 0 0 10px; }

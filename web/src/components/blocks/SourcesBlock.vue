@@ -61,7 +61,7 @@ function basename(p: string): string {
 }
 .bs-head {
   width: 100%; display: flex; align-items: center; justify-content: space-between;
-  gap: 8px; padding: 5px 10px; background: none; border: 0; cursor: pointer;
+  gap: var(--sp-2); padding: 5px 10px; background: none; border: 0; cursor: pointer;
   color: var(--text-3); font-size: inherit;
 }
 .bs-head:hover { color: var(--text-2); }

@@ -47,6 +47,6 @@ const sectionKey = props.sectionKey
 }
 .cs-vendor .cs-vendor-grid .cs-vendor-chip:hover { color: var(--brand-c2); border-color: var(--brand-c2); background: rgba(15, 23, 42, .6); }
 .cs-vendor .cs-vendor-grid .cs-vendor-chip.custom { border-style: dashed; color: var(--brand-c2); }
-.cs-vendor-custom { display: flex; align-items: center; gap: 8px; }
+.cs-vendor-custom { display: flex; align-items: center; gap: var(--sp-2); }
 .cs-vendor-custom :deep(.ui-input) { flex: 1; min-width: 0; }
 </style>
