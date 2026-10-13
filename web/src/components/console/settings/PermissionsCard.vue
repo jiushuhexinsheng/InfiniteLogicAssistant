@@ -14,17 +14,13 @@
     </p>
 
     <SettingsField label="默认动作（未命中任何规则时）">
-      <UiSelect v-model="perms.default_action">
-        <option v-for="a in ACTIONS" :key="a.value" :value="a.value">{{ a.label }}</option>
-      </UiSelect>
+      <UiSelect v-model="perms.default_action" :options="ACTIONS" />
     </SettingsField>
 
     <div class="cs-subcard">
       <div class="cs-subcard-title">按风险层级的默认动作</div>
       <SettingsField v-for="t in TIERS" :key="t.key" :label="t.label">
-        <UiSelect v-model="perms.tiers[t.key]">
-          <option v-for="a in ACTIONS" :key="a.value" :value="a.value">{{ a.label }}</option>
-        </UiSelect>
+        <UiSelect v-model="perms.tiers[t.key]" :options="ACTIONS" />
       </SettingsField>
       <p class="cs-note">
         把 <code>exec</code> 设为「允许」意味着所有执行类工具不再询问 —— 请确认你接受该风险。
@@ -38,9 +34,7 @@
           <UiCombobox v-model="r.match" :options="toolNames" placeholder="如 run_* 或 read_file" />
         </SettingsField>
         <SettingsField label="动作">
-          <UiSelect v-model="r.action">
-            <option v-for="a in ACTIONS" :key="a.value" :value="a.value">{{ a.label }}</option>
-          </UiSelect>
+          <UiSelect v-model="r.action" :options="ACTIONS" />
         </SettingsField>
         <UiButton variant="secondary" size="sm" hover="danger" @click="perms.rules.splice(i, 1)">删除</UiButton>
       </div>

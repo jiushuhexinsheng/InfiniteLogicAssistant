@@ -33,9 +33,9 @@
         role="listbox"
         :style="menuStyle"
       >
-        <li v-if="!items.length" class="ui-select-empty">无选项</li>
+        <li v-if="!options.length" class="ui-select-empty">无选项</li>
         <li
-          v-for="(it, i) in items"
+          v-for="(it, i) in options"
           :id="`${listId}-${i}`"
           :key="it.value"
           class="ui-select-option"
@@ -56,26 +56,32 @@
 
 <script setup lang="ts">
 /**
- * 自绘下拉框组件（API 与原生版一致：v-model + slot 内 `<option>` 提供选项）。
- * Custom select (same API as the native version: v-model + `<option>` items in the slot).
+ * 自绘下拉框组件：`options` 提供选项，v-model 绑定选中值。
+ * Custom select: `options` supplies the items, v-model binds the selection.
  *
- * 选项数据从 slot 的 option vnode 解析——调用方零改动。原生 select 的弹层是
- * 系统样式无法定制，故用 Teleport 到 body 的自绘面板：暗色玻璃、hover 高亮、
- * 选中打勾、空间不足向上翻转；键盘 ↑↓/Home/End/Enter/Esc 走 combobox 模式
+ * 原先选项是从 slot 里的 `<option>` vnode 解析出来的（在 JS 里递归拆 Fragment 再抽文本），
+ * 与 `UiSegmented` / `UiRadioCard` 的 `options` prop 家族风格冲突 —— 已统一到 `options`。
+ * 原生 select 的弹层是系统样式无法定制，故用 Teleport 到 body 的自绘面板：暗色玻璃、
+ * hover 高亮、选中打勾、空间不足向上翻转；键盘 ↑↓/Home/End/Enter/Esc 走 combobox 模式
  * （焦点留在触发器，aria-activedescendant 指向活动项）。
  *
- * Option data is parsed from the slot's option vnodes — zero call-site changes.
- * The native popup is OS-styled and cannot be customized, hence the teleported
- * custom panel: dark glass, hover highlight, check on selected, flips up when
- * space runs short; keyboard ↑↓/Home/End/Enter/Esc follow the combobox pattern
+ * Items used to be parsed out of `<option>` vnodes in the slot (recursively unwrapping Fragments
+ * and extracting text in JS), which clashed with the `options`-prop family in `UiSegmented` /
+ * `UiRadioCard` — now unified on `options`. The native popup is OS-styled and cannot be
+ * customized, hence the teleported custom panel: dark glass, hover highlight, check on selected,
+ * flips up when space runs short; keyboard ↑↓/Home/End/Enter/Esc follow the combobox pattern
  * (focus stays on the trigger, aria-activedescendant points at the active item).
  */
-import { ref, computed, useSlots, nextTick, onBeforeUnmount, watch } from 'vue'
-import type { VNode } from 'vue'
+import { ref, computed, nextTick, onBeforeUnmount, watch } from 'vue'
+import type { SegOption } from './UiSegmented.vue'
 import UiIcon from './UiIcon.vue'
 
-/** 组件 Props：当前值/禁用/占位文案。Component props: current value, disabled, placeholder. */
+/** 组件 Props：选项列表/当前值/禁用/占位文案。Component props: options, current value, disabled, placeholder.
+ *  `options` 复用 `SegOption` —— { value, label } 是本目录所有单选族组件共用的选项形状。
+ *  `options` reuses `SegOption` — { value, label } is the option shape every single-choice
+ *  primitive in this folder shares. */
 const props = withDefaults(defineProps<{
+  options: SegOption[]
   modelValue?: string
   disabled?: boolean
   placeholder?: string
@@ -83,8 +89,6 @@ const props = withDefaults(defineProps<{
 
 /** 事件：选中值变更。Event: selection changed. */
 const emit = defineEmits<{ 'update:modelValue': [v: string] }>()
-
-const slots = useSlots()
 
 /** 面板唯一 id（setup 内一次性生成）。Unique panel id (generated once in setup). */
 const listId = `ui-sel-${Math.random().toString(36).slice(2, 8)}`
@@ -105,79 +109,26 @@ const flipUp = ref(false)
 /** 面板定位样式（fixed，锚定触发器）。Panel position (fixed, anchored to the trigger). */
 const menuStyle = ref<Record<string, string>>({})
 
-/** 单条选项。One option. */
-interface SelItem {
-  value: string
-  label: string
-}
-
-/**
- * 递归提取 vnode 子树中的纯文本。Recursively extract plain text from a vnode subtree.
- *
- * @param c children（string | vnode 数组 | null）。Children (string | vnode array | null).
- * @returns 拼接后的文本。Concatenated text.
- */
-function vnodeText(c: unknown): string {
-  if (typeof c === 'string') return c
-  if (Array.isArray(c)) return c.map(vnodeText).join('')
-  if (c && typeof c === 'object' && 'children' in (c as any)) return vnodeText((c as any).children)
-  return ''
-}
-
-/**
- * 递归收集 slot 中的 `<option>`。Recursively collect `<option>` nodes from the slot.
- *
- * Vue 3 会把 v-for 的列表包进 Fragment（Symbol(v-fgt)），必须展开后才能取到 option。
- * Vue 3 wraps v-for lists in a Fragment (Symbol(v-fgt)); unwrap before reaching the options.
- *
- * @param nodes 当前层 vnode。Current-level vnodes.
- * @param out 收集结果（出参）。Accumulator (output param).
- */
-function collectOptions(nodes: VNode[], out: SelItem[]) {
-  for (const n of nodes) {
-    if (!n) continue
-    if (n.type === 'option') {
-      const label = vnodeText(n.children)
-      const raw = (n.props as Record<string, unknown> | null)?.value
-      out.push({ value: raw === undefined || raw === null ? label : String(raw), label })
-    } else if (Array.isArray(n.children)) {
-      // Fragment / 多子元素：递归展开。Fragment / multi-child: recurse.
-      collectOptions(n.children as VNode[], out)
-    }
-  }
-}
-
-/**
- * 从 slot 解析 `<option>` 列表。Parse `<option>` items out of the slot.
- *
- * @returns 选项列表。Option list.
- */
-const items = computed<SelItem[]>(() => {
-  const out: SelItem[] = []
-  collectOptions((slots.default?.() ?? []) as VNode[], out)
-  return out
-})
-
 /**
  * 触发器显示文本：命中选项显示其 label，否则回退原值。
  * Trigger text: the matched option's label, else the raw value.
  */
 const displayText = computed(() => {
-  const hit = items.value.find(i => i.value === props.modelValue)
+  const hit = props.options.find(i => i.value === props.modelValue)
   return hit ? hit.label : props.modelValue
 })
 
 /** 面板打开。Open the panel. */
 function openMenu() {
-  if (!items.value.length) {
-    // 选项解析为空 = slot 里的 <option> 没被收集到，静默 return 会让「点击无反应」极难排查。
-    // Empty parse = <option>s not collected from the slot; a silent return makes "click does nothing" impossible to debug.
-    console.warn('[UiSelect] 选项为空，面板不打开（检查 slot 中的 <option>）')
+  if (!props.options.length) {
+    // `options` 传空时静默 return 会让「点击无反应」极难排查。
+    // A silent return on empty `options` makes "click does nothing" impossible to debug.
+    console.warn('[UiSelect] options 为空，面板不打开')
     return
   }
   open.value = true
   openedAt = performance.now()
-  const sel = items.value.findIndex(i => i.value === props.modelValue)
+  const sel = props.options.findIndex(i => i.value === props.modelValue)
   activeIndex.value = sel >= 0 ? sel : 0
   positionMenu()
   nextTick(() => {
@@ -221,7 +172,7 @@ function positionMenu() {
  * @param i 选项索引。Option index.
  */
 function pick(i: number) {
-  const it = items.value[i]
+  const it = props.options[i]
   if (!it) return
   emit('update:modelValue', it.value)
   close()
@@ -234,7 +185,7 @@ function pick(i: number) {
  * @param d 步进方向（±1）。Step direction (±1).
  */
 function move(d: number) {
-  const n = items.value.length
+  const n = props.options.length
   if (!n) return
   activeIndex.value = (activeIndex.value + d + n) % n
   nextTick(() => {
@@ -256,13 +207,13 @@ function onKeydown(e: KeyboardEvent) {
       break
     case 'ArrowUp':
       e.preventDefault()
-      open.value ? move(-1) : (openMenu(), (activeIndex.value = items.value.length - 1))
+      open.value ? move(-1) : (openMenu(), (activeIndex.value = props.options.length - 1))
       break
     case 'Home':
       if (open.value) { e.preventDefault(); activeIndex.value = 0 }
       break
     case 'End':
-      if (open.value) { e.preventDefault(); activeIndex.value = items.value.length - 1 }
+      if (open.value) { e.preventDefault(); activeIndex.value = props.options.length - 1 }
       break
     case 'Enter':
     case ' ':

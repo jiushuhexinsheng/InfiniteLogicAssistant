@@ -43,9 +43,7 @@
     <!-- Profile 管理：切换 / 新增（自填） / 删除。Profile management: switch / add (self-filled) / delete. -->
     <div class="cs-profrow">
       <SettingsField label="Profile" grow>
-        <UiSelect :model-value="s.sec(section.key).active" @update:model-value="v => (s.sec(section.key).active = v)">
-          <option v-for="n in Object.keys(s.sec(section.key).profiles)" :key="n" :value="n">{{ n }}</option>
-        </UiSelect>
+        <UiSelect :model-value="s.sec(section.key).active" :options="profileOptions" @update:model-value="v => (s.sec(section.key).active = v)" />
       </SettingsField>
       <UiButton variant="secondary" size="sm" :class="{ on: s.addingSection.value === section.key }" @click="s.toggleAdding(section.key)">
         <UiIcon name="plus" :size="12" /> 新增
@@ -60,18 +58,10 @@
     <template v-for="f in section.fields" :key="f">
       <SettingsField :label="fieldLabel(f)">
         <!-- 协议下拉：选择 OpenAI 兼容 / Anthropic / Gemini。Protocol dropdown: choose OpenAI compatible / Anthropic / Gemini. -->
-        <UiSelect v-if="f === 'provider'" :model-value="s.sec(section.key).profiles[s.sec(section.key).active][f]" @update:model-value="v => (s.sec(section.key).profiles[s.sec(section.key).active][f] = v)">
-          <option value="openai">OpenAI 兼容</option>
-          <option value="anthropic">Anthropic（原生）</option>
-          <option value="gemini">Gemini（原生）</option>
-        </UiSelect>
+        <UiSelect v-if="f === 'provider'" :model-value="s.sec(section.key).profiles[s.sec(section.key).active][f]" :options="PROVIDERS" @update:model-value="v => (s.sec(section.key).profiles[s.sec(section.key).active][f] = v)" />
         <!-- 音频格式下拉：后端 TtsProfile.format 是 wav/mp3/pcm16 三值字面量，文本框能输非法值。
              Audio format dropdown: backend TtsProfile.format is a wav/mp3/pcm16 literal; a free-text box accepts invalid values. -->
-        <UiSelect v-else-if="f === 'format'" :model-value="s.sec(section.key).profiles[s.sec(section.key).active][f]" @update:model-value="v => (s.sec(section.key).profiles[s.sec(section.key).active][f] = v)">
-          <option value="wav">wav</option>
-          <option value="mp3">mp3</option>
-          <option value="pcm16">pcm16</option>
-        </UiSelect>
+        <UiSelect v-else-if="f === 'format'" :model-value="s.sec(section.key).profiles[s.sec(section.key).active][f]" :options="FORMATS" @update:model-value="v => (s.sec(section.key).profiles[s.sec(section.key).active][f] = v)" />
         <!-- 模型 / 音色：UiCombobox（可手输 + 项目风格建议层；替换原生 datalist 弹层）。
              Model / voice: UiCombobox (free typing + project-styled suggestions; replaces
              the native datalist popup). -->
@@ -140,6 +130,7 @@ import SettingsField from './SettingsField.vue'
 import VendorPicker from './VendorPicker.vue'
 import SettingsCard from './SettingsCard.vue'
 import { UiButton, UiChip, UiCombobox, UiIcon, UiInput, UiSegmented, UiSelect, UiToggle } from '../../ui'
+import type { SegOption } from '../../ui/UiSegmented.vue'
 import { useSettings } from './useSettings'
 import { fieldLabel, isNumericField, type SectionDef } from './configDefs'
 
@@ -148,6 +139,26 @@ const props = defineProps<{ section: SectionDef }>()
 
 /** 设置页单例状态与操作（保留对象引用以维持响应式）。Settings singleton (kept as an object to preserve reactivity). */
 const s = useSettings()
+
+/** 协议下拉选项（后端 provider 字面量的单一来源）。Provider options (single source for the backend's provider literals). */
+const PROVIDERS: SegOption[] = [
+  { value: 'openai', label: 'OpenAI 兼容' },
+  { value: 'anthropic', label: 'Anthropic（原生）' },
+  { value: 'gemini', label: 'Gemini（原生）' },
+]
+
+/** 音频格式下拉选项（后端 TtsProfile.format 是 wav/mp3/pcm16 三值字面量，文本框能输非法值）。
+ *  Audio format options (backend TtsProfile.format is a wav/mp3/pcm16 literal; a free-text box would accept invalid values). */
+const FORMATS: SegOption[] = [
+  { value: 'wav', label: 'wav' },
+  { value: 'mp3', label: 'mp3' },
+  { value: 'pcm16', label: 'pcm16' },
+]
+
+/** Profile 下拉选项：当前 section 已配置的 profile 名。Profile options: the section's configured profile names. */
+const profileOptions = computed<SegOption[]>(() =>
+  Object.keys(s.sec(props.section.key).profiles).map(n => ({ value: n, label: n })),
+)
 
 /** ASR 转写模式说明（仅 ASR 卡用）。ASR transcription-mode hint (ASR card only). */
 const asrModeHint = computed(() => {

@@ -18,25 +18,26 @@ afterEach(async () => {
 /**
  * 自绘下拉框：外壳触发器 + Teleport 弹层（原生 select 的系统弹层无法定制）。
  *
- * 回归靶子：选项从 slot 的 option vnode 解析（调用方 API 不变）；
+ * 回归靶子：选项由 `options` prop 提供；
  * 面板挂 body、选中写回 v-model、键盘 ↑↓/Enter/Esc、关闭复位。
  *
  * Custom select: trigger shell + teleported panel (the native popup cannot be styled).
  */
 describe('UiSelect（自绘下拉框）', () => {
+  /** 测试用选项。Options used by the tests. */
+  const OPTS = [
+    { value: 'a', label: '选项A' },
+    { value: 'b', label: '选项B' },
+    { value: 'c', label: '选项C' },
+  ]
+
   /** 挂一个受控的 UiSelect。Mount a controlled UiSelect. */
   function mountSelect(initial = '') {
     const model = ref(initial)
     const w = mount({
       components: { UiSelect },
-      template: `
-        <UiSelect v-model="model">
-          <option value="a">选项A</option>
-          <option value="b">选项B</option>
-          <option value="c">选项C</option>
-        </UiSelect>
-      `,
-      setup: () => ({ model }),
+      template: `<UiSelect v-model="model" :options="opts" />`,
+      setup: () => ({ model, opts: OPTS }),
     })
     lastWrapper = w
     return { w, model }
@@ -48,7 +49,7 @@ describe('UiSelect（自绘下拉框）', () => {
     expect(w.find('.ui-select').exists()).toBe(true)
     expect(w.find('.ui-select-value').text()).toBe('选项B')
     expect(w.find('.ui-select-menu').exists()).toBe(false)
-    // 选项未打开时不渲染 DOM（从 slot vnode 惰性解析）。Options are not in the DOM until open.
+    // 选项只在面板打开时才渲染到 DOM。Options only reach the DOM once the panel opens.
     expect(document.querySelector('.ui-select-menu')).toBeNull()
   })
 
@@ -106,8 +107,7 @@ describe('UiSelect（自绘下拉框）', () => {
   /** 禁用态不响应点击。Disabled ignores clicks. */
   it('禁用时不展开面板', async () => {
     const w = mount(UiSelect, {
-      props: { disabled: true, modelValue: '' },
-      slots: { default: '<option value="a">A</option>' },
+      props: { disabled: true, modelValue: '', options: [{ value: 'a', label: 'A' }] },
     })
     lastWrapper = w
     await w.find('.ui-select').trigger('click')
@@ -124,8 +124,7 @@ describe('UiSelect（自绘下拉框）', () => {
   /** 空值且无匹配：显示占位文案。Empty value with no match: shows placeholder. */
   it('空值显示占位文案', () => {
     const w = mount(UiSelect, {
-      props: { modelValue: '', placeholder: '请选择一个' },
-      slots: { default: '<option value="a">A</option>' },
+      props: { modelValue: '', placeholder: '请选择一个', options: [{ value: 'a', label: 'A' }] },
     })
     lastWrapper = w
     expect(w.find('.ui-select-value').text()).toBe('请选择一个')

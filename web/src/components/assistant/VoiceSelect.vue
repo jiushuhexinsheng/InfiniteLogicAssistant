@@ -9,19 +9,13 @@
     <span class="vs-label">{{ label }}<em v-if="engine === 'api'">API</em></span>
 
     <template v-if="engine === 'browser'">
-      <UiSelect v-model="ttsSettings.voiceName" @update:model-value="saveTts()">
-        <option value="">系统默认</option>
-        <option v-for="v in voices" :key="v.name" :value="v.name">{{ v.name }}</option>
-      </UiSelect>
+      <UiSelect v-model="ttsSettings.voiceName" :options="voiceItems" @update:model-value="saveTts()" />
     </template>
 
     <template v-else>
       <!-- voiceclone：声音由后端参考音频决定，无需前端选。Voiceclone: backend decides the voice. -->
       <p v-if="isVoiceClone" class="vs-clone">克隆 voice_ref 参考音频（控制台「参考音频」字段配置）</p>
-      <UiSelect v-else v-model="ttsSettings.apiVoice" @update:model-value="saveTts()">
-        <option value="">默认音色（后端配置）</option>
-        <option v-for="s in voiceOptions" :key="s" :value="s">{{ s }}</option>
-      </UiSelect>
+      <UiSelect v-else v-model="ttsSettings.apiVoice" :options="apiVoiceItems" @update:model-value="saveTts()" />
     </template>
   </div>
 </template>
@@ -30,6 +24,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { UiSelect } from '../ui'
+import type { SegOption } from '../ui/UiSegmented.vue'
 import { ttsSettings, saveTts, getVoices, loadVoices, API_VOICE_SUGGESTIONS } from '../../composables/assistant/useTts'
 import { useTtsEngine } from '../../composables/assistant/useTtsEngine'
 import { useConfig } from '../../composables/useApi'
@@ -70,6 +65,18 @@ const voiceOptions = computed(() => {
   if (cur && !list.includes(cur)) return [cur, ...list]
   return list
 })
+
+/** 本地引擎的系统语音下拉选项（含「系统默认」空值项，空值 = 跟随浏览器默认）。 */
+const voiceItems = computed<SegOption[]>(() => [
+  { value: '', label: '系统默认' },
+  ...voices.value.map(v => ({ value: v.name, label: v.name })),
+])
+
+/** API 引擎的音色下拉选项（含「默认音色」空值项，空值 = 走后端配置）。 */
+const apiVoiceItems = computed<SegOption[]>(() => [
+  { value: '', label: '默认音色（后端配置）' },
+  ...voiceOptions.value.map(s => ({ value: s, label: s })),
+])
 
 /** 挂载时加载浏览器语音列表。Load browser voices on mount. */
 onMounted(() => {
