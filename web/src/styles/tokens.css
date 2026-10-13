@@ -150,7 +150,7 @@
      Active-state glow: a 1px solid ring plus an outer bloom. **box-shadow rather than border** —
      a border changes the box size and would shove the neighbouring item in a flex row, while
      box-shadow stays out of layout. */
-  --glow-active: 0 0 0 1px rgba(103, 232, 249, .45), 0 0 18px -4px rgba(103, 232, 249, .65);
+  --glow-active: 0 0 0 1px rgba(103, 232, 249, .5);
   --min-target-size: 44px;
 }
 
