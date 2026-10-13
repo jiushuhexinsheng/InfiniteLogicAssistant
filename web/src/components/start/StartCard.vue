@@ -23,13 +23,28 @@ withDefaults(defineProps<{ title?: string }>(), { title: '' })
 </script>
 
 <style scoped>
+/* 科技感批：起始页卡片迁到**玻璃语言** —— 与控制台同款（半透明底 + 模糊 + 品牌青描边 +
+   顶部发光线）。原先是实心 `--bg-1` + 中性描边 + `--r-xl` 且无模糊/无发光线；控制台的卡片
+   全都发光之后，两种语言的落差比「有意共存」时大得多，起点页看着像另一个产品。
+   Glass language for the start page: translucent fill + blur + brand-cyan border + the glowing top
+   hairline, i.e. the same as the console. It used to be opaque --bg-1 with a neutral border and no
+   hairline; once the console cards all glow, the gap between the two languages reads as "a
+   different product" rather than "two coexisting card styles". */
 .card {
+  position: relative;
   flex: 1 1 400px;
   max-width: 480px;
-  background: var(--bg-1);
-  border: 1px solid var(--border-base);
-  border-radius: var(--r-xl);
+  background: var(--surface-card);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-2);
   overflow: hidden;
+}
+.card::before {
+  content: ''; position: absolute; top: 0; left: 14%; right: 14%; height: 1px;
+  background: var(--hairline-brand); box-shadow: var(--glow-hairline); pointer-events: none;
 }
 
 .card-header {
@@ -37,7 +52,9 @@ withDefaults(defineProps<{ title?: string }>(), { title: '' })
   align-items: center;
   justify-content: space-between;
   padding: var(--sp-4);
-  border-bottom: 1px solid var(--border-base);
+  /* 与新的玻璃描边同色 —— 漏了它，卡头分隔线会是这一页唯一的灰色线。
+     Same colour as the new glass border; leaving it grey would make this the only grey line here. */
+  border-bottom: 1px solid var(--glass-border);
 }
 
 .card-title {

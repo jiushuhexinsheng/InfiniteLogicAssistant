@@ -33,8 +33,12 @@ const features = [
   display: flex;
   gap: var(--sp-3);
   padding: var(--sp-4);
-  background: var(--bg-1);
-  border: 1px solid var(--border-base);
+  /* 玻璃语言（同 StartCard / 控制台卡片）：半透明底 + 模糊 + 品牌青描边。
+     Glass language, same as StartCard and the console cards. */
+  background: var(--surface-card);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid var(--glass-border);
   border-radius: var(--r-lg);
 }
 
