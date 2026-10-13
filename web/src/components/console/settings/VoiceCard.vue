@@ -1,16 +1,14 @@
 <template>
   <!-- 语音模块：唤醒词 + VAD。Voice module: wake word + VAD. -->
-  <UiCard class="cs-card">
-    <div class="cs-card-head">
-      <span class="cs-card-title">语音（唤醒 / 静音检测）</span>
+  <SettingsCard title="语音（唤醒 / 静音检测）">
+    <template #actions>
       <UiButton variant="primary" size="sm" :disabled="!s.editable.value || s.saving.value" @click="saveVoice()">
         {{ s.saving.value ? '保存中…' : '保存' }}
       </UiButton>
-    </div>
+    </template>
 
-    <!-- 卡体：唯一滚动面（卡头固定在其上方）。The card body: the only scrolling surface
-         (the card head stays fixed above it). -->
-    <div class="cs-card-body">
+    <!-- 卡体内容；卡头由 SettingsCard 固定在其上方。
+         Body content; the card head is held fixed above by SettingsCard. -->
     <!-- 隐私边界：spec 明确要求「必须写进 README 与设置页」。口径对齐 wiki/Security.md：
          云端模式（旁路闸门）无条件上传；自动/本地经后端 KWS 闸门（未命中不上云、命中才
          上传抬指令）；浏览器模式走浏览器识别（并不更私密）。旧文案「云端/自动都上传」
@@ -100,15 +98,15 @@
     <SettingsField v-if="s.editable.value" label="聆听空闲超时（秒，无实质信息转入静待；0=永不）">
       <UiInput type="number" min="0" :model-value="s.ed().vad.listen_idle_s" @update:model-value="v => (s.ed().vad.listen_idle_s = toNum(v))" />
     </SettingsField>
-    </div><!-- /cs-card-body -->
-  </UiCard>
+  </SettingsCard>
 </template>
 
 <!-- 语音模块卡：唤醒词 / VAD 参数。Voice module card: wake word / VAD params. -->
 <script setup lang="ts">
 import { computed } from 'vue'
 import SettingsField from './SettingsField.vue'
-import { UiButton, UiCard, UiInput, UiSegmented, UiToggle } from '../../ui'
+import SettingsCard from './SettingsCard.vue'
+import { UiButton, UiInput, UiSegmented, UiToggle } from '../../ui'
 import { useSettings } from './useSettings'
 import { notify } from '../../../composables/useToast'
 import { wakeMode, setWakeMode, type WakeMode } from '../../../composables/assistant/store'
@@ -199,12 +197,6 @@ function saveVoice() {
 </script>
 
 <style scoped>
-.cs-card { display: flex; flex-direction: column; gap: 12px; }
-.cs-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.cs-card-title {
-  font-size: var(--fs-sm); font-weight: 600; color: var(--text-1);
-  letter-spacing: .02em;
-}
 /* 隐私边界说明：与「权限」卡的同名段落保持一致的易读尺寸。
    Privacy note, matching the permissions card's note for readability. */
 .cs-note { font-size: var(--fs-2xs); color: var(--text-3); line-height: 1.6; margin: 0; }

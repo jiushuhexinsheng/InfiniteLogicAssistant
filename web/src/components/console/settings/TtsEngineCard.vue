@@ -1,17 +1,12 @@
 <template>
   <!-- 卡1：引擎选择（第一眼决定本地 / API），附播报总开关与试听。
        Card 1: engine choice (local vs API at first glance), plus the master switch and preview. -->
-  <UiCard class="cs-card">
-    <div class="cs-card-head">
-      <span class="cs-card-title">语音引擎</span>
+  <SettingsCard title="语音引擎">
+    <template #actions>
       <UiButton variant="ghost" size="sm" @click="testVoice()">
         <UiIcon name="play" :size="10" /> 试听
       </UiButton>
-    </div>
-
-    <!-- 卡体：唯一滚动面（卡头固定在其上方）。The card body: the only scrolling surface
-         (the card head stays fixed above it). -->
-    <div class="cs-card-body">
+    </template>
 
     <!-- 大选择卡：本地（浏览器）/ API（后端）。Large picker cards: local (browser) / API (backend). -->
     <UiRadioCard
@@ -36,8 +31,7 @@
         aria-label="启用语音播报"
       />
     </div>
-    </div><!-- /cs-card-body -->
-  </UiCard>
+  </SettingsCard>
 </template>
 
 <script setup lang="ts">
@@ -48,7 +42,8 @@
  * 引擎状态来自 useTtsEngine 单例（卡2 的配置卡与播报面板共用同一来源）。
  * Engine state comes from the useTtsEngine singleton (shared with card 2).
  */
-import { UiButton, UiCard, UiIcon, UiRadioCard, UiToggle } from '../../ui'
+import SettingsCard from './SettingsCard.vue'
+import { UiButton, UiIcon, UiRadioCard, UiToggle } from '../../ui'
 import type { RadioCardOption } from '../../ui'
 import { ttsSettings, testVoice, toggleSpeak } from '../../../composables/assistant/useTts'
 import type { TtsEngine } from '../../../composables/assistant/useTts'
@@ -64,10 +59,6 @@ const { engine, apiAvailable, setEngine } = useTtsEngine()
 </script>
 
 <style scoped>
-.cs-card { display: flex; flex-direction: column; gap: 12px; }
-.cs-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.cs-card-title { font-size: var(--fs-sm); font-weight: 600; color: var(--text-1); letter-spacing: .02em; }
-
 /* 引导提示。Guidance hint. */
 .cs-hint {
   font-size: var(--fs-2xs); color: var(--text-3); line-height: 1.6; margin: 0;

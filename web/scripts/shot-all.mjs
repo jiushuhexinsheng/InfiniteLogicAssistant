@@ -112,6 +112,19 @@ const SHOTS = [
     path: '/console',
     act: async (page) => { await clickNav(page, '设置'); await clickSettingsMenu(page, label) },
   })),
+  {
+    // 滚动态：把设置卡体滚到底。抽取卡外壳时最容易弄坏的就是「卡体自滚、卡头不动、页面不动」
+    // ——初始渲染的像素比对验不了这个，只有滚起来才看得出。
+    // Scrolled state: scroll the settings card body to the bottom. The thing most easily broken
+    // when extracting the card shell is "body scrolls, head stays put, page doesn't move" —
+    // a pixel diff of the initial render cannot see that; only scrolling reveals it.
+    name: 'settings-scrolled',
+    path: '/console',
+    act: async (page) => {
+      await clickNav(page, '设置')
+      await page.locator('.cs-card-body').first().evaluate(el => { el.scrollTop = el.scrollHeight })
+    },
+  },
   ...EMPTY_SHOTS,
 ]
 

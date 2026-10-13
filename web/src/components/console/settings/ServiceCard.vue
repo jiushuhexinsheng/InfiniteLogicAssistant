@@ -1,8 +1,7 @@
 <template>
   <!-- 服务模块卡：LLM / ASR / TTS 共用（字段表由 sectionDefs 驱动）。Service module card: shared by LLM / ASR / TTS, fields driven by sectionDefs. -->
-  <UiCard class="cs-card">
-    <div class="cs-card-head">
-      <span class="cs-card-title">{{ section.title }}</span>
+  <SettingsCard :title="section.title">
+    <template #actions>
       <div class="cs-card-btns">
         <!-- 测试连接：进行中显示旋转动画 +「测试中…」（按钮禁用防重复点）；结果走 toast。
              Test connection: spinning animation + "testing…" while running (disabled to
@@ -15,12 +14,10 @@
           {{ s.saving.value ? '保存中…' : '保存' }}
         </UiButton>
       </div>
-    </div>
+    </template>
 
-    <!-- 卡体：唯一滚动面（卡头含保存/测试连接固定在其上方）。
-         The card body: the only scrolling surface (the head — 保存/测试连接 — stays fixed above). -->
-    <div class="cs-card-body">
-
+    <!-- 卡体内容；卡头（含保存/测试连接）由 SettingsCard 固定在其上方。
+         Body content; the head (保存/测试连接) is held fixed above by SettingsCard. -->
     <SettingsField v-if="section.toggle" label="启用" row>
       <UiToggle :model-value="s.sec(section.key).enabled" @update:model-value="v => (s.sec(section.key).enabled = v)" />
     </SettingsField>
@@ -134,15 +131,15 @@
     <!-- 扩展插槽：TTS 卡在此挂载播报设置面板（引擎 / 音色 / 音量 / 试听）。
          Extension slot: the TTS card mounts the playback settings panel here (engine / voice / volume / preview). -->
     <slot />
-    </div><!-- /cs-card-body -->
-  </UiCard>
+  </SettingsCard>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import SettingsField from './SettingsField.vue'
 import VendorPicker from './VendorPicker.vue'
-import { UiButton, UiCard, UiChip, UiCombobox, UiIcon, UiInput, UiSegmented, UiSelect, UiToggle } from '../../ui'
+import SettingsCard from './SettingsCard.vue'
+import { UiButton, UiChip, UiCombobox, UiIcon, UiInput, UiSegmented, UiSelect, UiToggle } from '../../ui'
 import { useSettings } from './useSettings'
 import { fieldLabel, isNumericField, type SectionDef } from './configDefs'
 
@@ -206,12 +203,6 @@ function renameCompat(_i: number, oldKey: string, newKey: string) {
 </script>
 
 <style scoped>
-.cs-card { display: flex; flex-direction: column; gap: 12px; }
-.cs-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.cs-card-title {
-  font-size: var(--fs-sm); font-weight: 600; color: var(--text-1);
-  letter-spacing: .02em;
-}
 .cs-card-btns { display: flex; align-items: center; gap: 8px; }
 .cs-profrow { display: flex; align-items: flex-end; gap: 8px; }
 /* 新增 Profile 按钮激活态（UiButton 透传 class）。Active state of the "add Profile" button (class passed through UiButton). */

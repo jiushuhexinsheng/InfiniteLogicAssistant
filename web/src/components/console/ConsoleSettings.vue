@@ -167,29 +167,12 @@ onMounted(() => { s.load() })
   display: flex; flex-direction: column; gap: 14px;
 }
 
-/* 卡片：内容超出可用高度时收缩（不撑破内容区），短卡保持自然高度。
-   Cards shrink when their content exceeds the available height (never bursting the
-   region); short cards keep their natural height. */
-.cs-main :deep(.cs-card) {
-  flex: 0 1 auto;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-/* 卡头（标题/保存/测试连接）永不收缩。The card head never shrinks. */
-.cs-main :deep(.cs-card-head) { flex-shrink: 0; }
-/* 卡体：唯一的滚动面（滚动轴就在保存行下方）。The card body: the only scrolling surface
-   (its scrollbar sits right below the save row). */
-.cs-main :deep(.cs-card-body) {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding-right: 4px;
-}
+/* 卡片的布局（超高处收缩 / 卡头固定 / 卡体自滚）已随外壳一并搬进 settings/SettingsCard.vue ——
+   原先这里是 `:deep()` 反向穿透子组件，现在样式与被作用的元素同处一个组件，不再需要穿透。
+   The card layout (shrink when tall / fixed head / self-scrolling body) moved into
+   settings/SettingsCard.vue along with the shell — this used to be a `:deep()` reaching into
+   the children; the styles and the elements they target now live in the same component, so no
+   penetration is needed. */
 /* 问题列表不参与收缩，让位给卡片。The issues list never yields space — the cards do. */
 .cs-issues { flex-shrink: 0; }
 
