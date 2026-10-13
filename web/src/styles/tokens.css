@@ -144,6 +144,13 @@
   --focus-ring: 2px solid var(--brand-c2);
   --focus-offset: 2px;
   --focus-glow: 0 0 0 3px rgba(103, 232, 249, .2); /* 输入焦点光晕（收编硬编码色）。Input focus glow (de-hardcoded). */
+  /* ── 激活态发光环（科技感）──
+     1px 实色环 + 外发光。**用 box-shadow 而不是 border**：border 会改变盒尺寸，在 flex 行里
+     一激活就顶动旁边的项；box-shadow 不参与布局。
+     Active-state glow: a 1px solid ring plus an outer bloom. **box-shadow rather than border** —
+     a border changes the box size and would shove the neighbouring item in a flex row, while
+     box-shadow stays out of layout. */
+  --glow-active: 0 0 0 1px rgba(103, 232, 249, .45), 0 0 18px -4px rgba(103, 232, 249, .65);
   --min-target-size: 44px;
 }
 

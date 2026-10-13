@@ -26,7 +26,9 @@ defineEmits<{ click: [] }>()
 .ui-nav-item:hover { background: var(--surface-control); color: var(--text-1); }
 .ui-nav-item.active {
   background: var(--brand-grad); color: var(--text-on-brand); font-weight: 600;
-  box-shadow: 0 4px 14px -4px rgba(103, 232, 249, .5);
+  /* 发光环令牌（原先是单向下投影，读作「按钮浮起」；发光环读作「通电」）。
+     Glow-ring token (was a single down-shadow, which read as "raised button"; a ring reads as "powered"). */
+  box-shadow: var(--glow-active);
 }
 
 /* 焦点样式 */

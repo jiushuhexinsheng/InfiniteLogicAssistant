@@ -76,10 +76,15 @@ const route = useRoute()
   background: var(--surface-control-hover);
   color: var(--text-1);
 }
+/* 激活态：与侧栏 UiNavItem 统一到品牌渐变（原先顶栏是**实心平涂**、侧栏是渐变 —— 同一个
+   「当前在哪」的语义在两处长得不一样），并加发光环。
+   Active: unified onto the brand gradient with UiNavItem (the header used to be a flat solid
+   while the sidebar was a gradient — the same "where am I" read differently in the two places). */
 .ah-nav-item.active {
-  background: var(--brand-c2);
+  background: var(--brand-grad);
   color: var(--text-on-brand);
   font-weight: 600;
+  box-shadow: var(--glow-active);
 }
 
 /* 窄屏：先收起品牌文字，给导航与系统信息胶囊让位。
