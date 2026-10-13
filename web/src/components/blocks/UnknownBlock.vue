@@ -1,7 +1,7 @@
 <template>
   <!-- 未知块兜底：显示类型名 + 可展开原始 JSON（绝不丢数据）。
        Unknown block fallback: shows the type name + expandable raw JSON (never drops data). -->
-  <div class="blk-unknown" :class="skin">
+  <UiHint class="blk-unknown" :class="skin">
     <UiDisclosure v-model="open">
       <template #head>
         <UiIcon name="alert" :size="12" />
@@ -10,12 +10,12 @@
       </template>
       <pre class="u-raw">{{ raw }}</pre>
     </UiDisclosure>
-  </div>
+  </UiHint>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { UiDisclosure, UiIcon } from '../ui'
+import { UiDisclosure, UiHint, UiIcon } from '../ui'
 import type { Block, Skin } from '../../blocks/types'
 
 /**
@@ -35,10 +35,8 @@ const raw = computed(() => {
 </script>
 
 <style scoped>
-.blk-unknown {
-  border: 1px dashed var(--bg-3); border-radius: var(--r-md);
-  background: var(--bg-1);
-}
+/* 虚线框与底色由 UiHint 提供（本块无自有样式，故不再有 .blk-unknown 规则）。
+   Dashed border and fill come from UiHint (no own styles left, so no .blk-unknown rule). */
 .u-type { font-family: var(--font-mono); color: var(--text-2); }
 .u-hint { opacity: .8; }
 .u-raw {

@@ -1,19 +1,19 @@
 <template>
   <!-- 文件模块（占位）：协议预留 —— 显示文件名/路径/大小骨架卡。
        File block (placeholder): protocol reserved — renders a name/path/size skeleton. -->
-  <div class="blk-file" :class="skin">
+  <UiHint class="blk-file" :class="skin">
     <UiIcon name="file-text" :size="18" />
     <div class="f-meta">
       <div class="f-name">{{ block.payload.name || '文件' }}</div>
       <div class="f-path">{{ block.payload.path || '' }}</div>
     </div>
     <span v-if="block.payload.size != null" class="f-size">{{ sizeText }}</span>
-  </div>
+  </UiHint>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { UiIcon } from '../ui'
+import { UiHint, UiIcon } from '../ui'
 import type { Block, Skin } from '../../blocks/types'
 
 /**
@@ -32,10 +32,10 @@ const sizeText = computed(() => {
 </script>
 
 <style scoped>
+/* 虚线框与底色由 UiHint 提供（四个非文本块共用一份）。Dashed border and fill come from UiHint. */
 .blk-file {
   display: flex; align-items: center; gap: var(--sp-2);
-  border: 1px dashed var(--bg-3); border-radius: var(--r-md);
-  padding: var(--sp-2) var(--sp-3); background: var(--bg-1); color: var(--text-3);
+  padding: var(--sp-2) var(--sp-3); color: var(--text-3);
 }
 .f-meta { flex: 1; min-width: 0; }
 .f-name { font-size: var(--fs-sm); color: var(--text-2); }
