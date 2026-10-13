@@ -273,6 +273,72 @@ const SHOTS = [
     },
     waitFor: '.blk-tool',
   },
+  {
+    // 块渲染器：thinking / code / image / file / notice / 未知块。加这张图的理由是**实测发现的
+    // 覆盖缺口** —— FileBlock / ImageBlock / ThinkingBlock / UnknownBlock 这四个「虚线框」组件
+    // 在原有 31 张里**一张都没出现**（探针：.blk-file/.blk-image/.blk-thinking/.blk-unknown 计数全 0），
+    // 而 10.3 要抽 UiHint 把它们收敛成一份实现 —— 没有这张图，那次抽取是**不可验证**的。
+    // 同 conv-tool-block：真实路径（历史 → 点会话）+ 后端打桩，前端代码一行不改。
+    // Block renderers (thinking / code / image / file / notice / unknown). Added because of a
+    // measured coverage gap: the four dashed-frame components (FileBlock / ImageBlock /
+    // ThinkingBlock / UnknownBlock) appear in **none** of the original 31 shots (probe: their
+    // class counts are all 0) — and 10.3 extracts UiHint precisely to converge them, which would
+    // be unverifiable without this shot. Real path (history → open session) + stubbed backend.
+    name: 'conv-blocks',
+    path: '/console',
+    stub: {
+      '**/api/sessions': {
+        ok: true,
+        sessions: [{
+          id: 'proto-2', name: '块渲染器样本',
+          created: '2026-10-13T10:02:00', updated: '2026-10-13T10:03:00',
+          status: 'done', summary: '覆盖各块类型', message_count: 1, archived: false,
+        }],
+      },
+      '**/api/history/proto-2': {
+        ok: true,
+        conversation: {
+          id: 'proto-2', created: '2026-10-13T10:02:00', updated: '2026-10-13T10:03:00',
+          status: 'done', summary: '覆盖各块类型',
+          messages: [{
+            role: 'assistant', content: '各类块的渲染样本。', ts: '2026-10-13T10:03:00',
+            blocks: [
+              {
+                v: 1, id: 'q-th1', type: 'thinking', ts: '2026-10-13T10:02:10',
+                meta: { collapsed: true },
+                payload: { text: '先确认环境是否支持本地转写，再决定要不要回退云端。这一步不产生副作用。' },
+              },
+              {
+                v: 1, id: 'q-code', type: 'code', ts: '2026-10-13T10:02:20',
+                payload: { language: 'typescript', filename: 'src/greet.ts', code: 'export function greet(name: string) {\n  return `你好，${name}`\n}\n' },
+              },
+              {
+                v: 1, id: 'q-img', type: 'image', ts: '2026-10-13T10:02:30',
+                payload: { alt: '编排状态机示意图', src: 'docs/images/orchestrator.png' },
+              },
+              {
+                v: 1, id: 'q-file', type: 'file', ts: '2026-10-13T10:02:40',
+                payload: { name: '验收报告.pdf', path: '~/downloads/验收报告.pdf', size: 245760 },
+              },
+              {
+                v: 1, id: 'q-notice', type: 'notice', ts: '2026-10-13T10:02:50',
+                payload: { level: 'warn', text: '本地 ASR 模型未就位，本轮已回退云端转写。' },
+              },
+              {
+                v: 1, id: 'q-unknown', type: 'ext:chart', ts: '2026-10-13T10:03:00',
+                payload: { title: '趋势', series: [1, 2, 3] },
+              },
+            ],
+          }],
+        },
+      },
+    },
+    act: async (page) => {
+      await clickNav(page, '历史')
+      await page.locator('.history-item').first().click()
+    },
+    waitFor: '.blk-unknown',
+  },
   ...EMPTY_SHOTS,
 ]
 
