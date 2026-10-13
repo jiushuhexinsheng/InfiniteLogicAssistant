@@ -1,14 +1,12 @@
 <template>
-  <div class="console-library">
+  <ConsolePane stack :gap="10">
     <!-- 任务库头部：说明与刷新。Task-library header: description and refresh. -->
     <div class="lib-head">
       <UiButton variant="ghost" size="sm" @click="loadTasks">刷新</UiButton>
       <span v-if="loading" class="lib-loading">加载中…</span>
     </div>
     <UiErrorNote v-if="error" :error="error" />
-    <div v-else-if="!(tasks ?? []).length && !loading" class="console-empty">
-      暂无任务存档（任务模式下完成一个任务并确认「完成了」后会出现在这里）
-    </div>
+    <UiEmpty v-else-if="!(tasks ?? []).length && !loading" text="暂无任务存档（任务模式下完成一个任务并确认「完成了」后会出现在这里）" />
     <!-- 任务列表：展开可看参数与步骤（只读，不支持回放）。Task list: expand to view params and steps (read-only, no replay). -->
     <UiCard v-for="t in (tasks ?? [])" :key="t.id" class="lib-item">
       <div class="lib-row" @click="toggle(t.id)">
@@ -24,7 +22,7 @@
         <pre>{{ JSON.stringify(t.steps, null, 2) }}</pre>
       </div>
     </UiCard>
-  </div>
+  </ConsolePane>
 </template>
 
 <script setup lang="ts">
@@ -33,7 +31,8 @@ import { api } from '../../api'
 import { useAsync } from '../../composables/useAsync'
 import { notify } from '../../composables/useToast'
 import { formatError } from '../../errors'
-import { UiButton, UiCard, UiErrorNote } from '../ui'
+import { UiButton, UiCard, UiEmpty, UiErrorNote } from '../ui'
+import ConsolePane from './ConsolePane.vue'
 
 /** 任务库存档加载：统一错误捕获。Task-library loading with unified error capture. */
 const { data: tasks, error, loading, run: loadTasks } = useAsync(async () => {
@@ -85,10 +84,8 @@ onMounted(() => { loadTasks() })
 </script>
 
 <style scoped>
-.console-library { max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; overflow-y: auto; }
 .lib-head { display: flex; align-items: center; gap: 10px; }
 .lib-loading { font-size: 12px; color: var(--text-3); }
-.console-empty { display: flex; justify-content: center; color: var(--text-3); font-size: 13px; padding: 40px 0; text-align: center; }
 .lib-item { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
 .lib-row { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 12px; color: var(--text-3); }
 .lib-goal { font-size: 14px; font-weight: 600; color: var(--text-1); flex: 1; }

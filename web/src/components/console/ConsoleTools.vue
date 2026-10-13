@@ -1,10 +1,10 @@
 <template>
-  <div class="console-tools">
+  <ConsolePane :max-width="720">
     <!-- 首次加载尚未完成（tools 仍为 null 且无错误）时统一显示加载中，避免闪现空状态。
          Show the loading state until the first load completes (tools still null with no error), avoiding a flash of the empty state. -->
-    <div v-if="loading || (tools === null && !error)" class="console-empty">加载中…</div>
+    <UiEmpty v-if="loading || (tools === null && !error)" text="加载中…" />
     <UiErrorNote v-else-if="error" :error="error" />
-    <div v-else-if="!(tools ?? []).length" class="console-empty">后端没有注册工具</div>
+    <UiEmpty v-else-if="!(tools ?? []).length" text="后端没有注册工具" />
     <!-- 工具列表：展示每个工具的名称、描述，点击展开查看参数定义。Tool list: shows name and description of each tool, click to expand and view parameter definitions. -->
     <div v-else class="tool-cards">
       <UiCard v-for="t in (tools ?? [])" :key="t.function.name" class="tool-card" :padded="false">
@@ -18,14 +18,15 @@
         </div>
       </UiCard>
     </div>
-  </div>
+  </ConsolePane>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '../../api'
 import { useAsync } from '../../composables/useAsync'
-import { UiCard, UiErrorNote, UiIcon } from '../ui'
+import { UiCard, UiEmpty, UiErrorNote, UiIcon } from '../ui'
+import ConsolePane from './ConsolePane.vue'
 
 /** 当前展开的工具名称（用于折叠/展开切换）。Currently expanded tool name (for collapse/expand toggle). */
 const open = ref('')
@@ -51,8 +52,6 @@ onMounted(() => { loadTools() })
 </script>
 
 <style scoped>
-.console-tools { max-width: 720px; width: 100%; margin: 0 auto; flex: 1; min-height: 0; overflow-y: auto;}
-.console-empty { display: flex; align-items: center; justify-content: center; color: var(--text-3); font-size: 13px; padding: 40px 0; }
 .tool-cards { display: flex; flex-direction: column; gap: 10px; }
 .tool-card { padding: 14px 16px; }
 .tool-head { display: flex; align-items: center; gap: 12px; cursor: pointer; }

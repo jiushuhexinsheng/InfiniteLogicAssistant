@@ -1,5 +1,5 @@
 <template>
-  <div class="console-history">
+  <ConsolePane stack :gap="12">
     <!-- 操作栏：新建会话、切换归档/活跃视图、刷新列表。Action bar: create session, toggle archived/active view, refresh list. -->
     <div class="history-actions">
       <UiButton variant="primary" size="sm" @click="create">＋ 新建会话</UiButton>
@@ -26,11 +26,14 @@
         </div>
         <div class="hi-summary">{{ c.summary || '（暂无内容）' }}</div>
       </UiCard>
-      <p v-if="!(list ?? []).length && !loading" class="empty">
+      <!-- 空态内边距 30px（sm）——本视图的既有值，与其余列表视图的 40px 不同，勿归一化。
+           Empty-state pads at 30px (sm): this view's existing value, unlike the other list views'
+           40px. Don't normalise it. -->
+      <UiEmpty v-if="!(list ?? []).length && !loading" pad="sm">
         {{ showArchived ? '暂无归档会话' : '暂无会话，点「新建会话」开始对话' }}
-      </p>
+      </UiEmpty>
     </div>
-  </div>
+  </ConsolePane>
 </template>
 
 <script setup lang="ts">
@@ -40,7 +43,8 @@ import type { SessionItem } from '../../types'
 import { useAsync } from '../../composables/useAsync'
 import { notify } from '../../composables/useToast'
 import { formatError } from '../../errors'
-import { UiButton, UiCard, UiErrorNote } from '../ui'
+import { UiButton, UiCard, UiEmpty, UiErrorNote } from '../ui'
+import ConsolePane from './ConsolePane.vue'
 import { useConsole } from '../../composables/useConsole'
 import { createNewSession, switchSession } from '../../composables/assistant/store'
 
@@ -172,8 +176,9 @@ onMounted(() => { loadSessions() })
 </script>
 
 <style scoped>
-.console-history { max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; overflow-y: auto;}
 .history-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* 本地覆盖全局 .hint（全局是 --fs-xs=12px，这里同值但独立声明，保持原样不改）。
+   Local override of the global .hint (same 12px, declared separately — left as-is). */
 .hint { font-size: 12px; color: var(--text-3); }
 .history-list { display: flex; flex-direction: column; gap: 10px; }
 .history-item { padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; }
@@ -183,5 +188,4 @@ onMounted(() => { loadSessions() })
 .hi-ops { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
 .hi-count { white-space: nowrap; }
 .hi-summary { font-size: 13px; color: var(--text-2); }
-.empty { text-align: center; color: var(--text-3); font-size: 13px; padding: 30px 0; }
 </style>

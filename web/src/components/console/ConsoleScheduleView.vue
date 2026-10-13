@@ -1,5 +1,5 @@
 <template>
-  <div class="console-schedule">
+  <ConsolePane stack :gap="10">
     <!-- 定时任务注册表单：输入 cron 表达式和执行内容。Schedule registration form: input cron expression and prompt content. -->
     <UiCard title="注册定时任务" class="sched-form">
       <div class="form-row">
@@ -11,7 +11,7 @@
 
     <UiErrorNote v-if="error" :error="error" />
     <!-- 定时任务列表：展示每条任务的 cron 表达式和执行内容，支持删除。Schedule list: shows cron expression and prompt for each task, with delete support. -->
-    <div v-else-if="!(list ?? []).length && !loading" class="console-empty">暂无定时任务</div>
+    <UiEmpty v-else-if="!(list ?? []).length && !loading" text="暂无定时任务" />
     <UiCard v-for="s in (list ?? [])" :key="s.id" class="sched-item">
       <div class="sched-line">
         <code>{{ s.cron }}</code>
@@ -19,7 +19,7 @@
       </div>
       <UiButton variant="ghost" size="sm" hover="danger" @click="remove(s.id)">删除</UiButton>
     </UiCard>
-  </div>
+  </ConsolePane>
 </template>
 
 <script setup lang="ts">
@@ -28,7 +28,8 @@ import { api } from '../../api'
 import { useAsync } from '../../composables/useAsync'
 import { notify } from '../../composables/useToast'
 import { formatError } from '../../errors'
-import { UiButton, UiCard, UiErrorNote, UiInput } from '../ui'
+import { UiButton, UiCard, UiEmpty, UiErrorNote, UiInput } from '../ui'
+import ConsolePane from './ConsolePane.vue'
 
 /** cron 表达式输入。Cron expression input. */
 const cron = ref('')
@@ -36,7 +37,7 @@ const cron = ref('')
 const prompt = ref('')
 
 /** 定时任务列表加载：统一错误捕获（替代原先只写 console.error、界面上完全看不到失败的写法）。
- *  Schedule list loading with unified error capture (replaces the previous version that only logged to console.error, leaving the failure invisible in the UI). */
+ *  Schedule list loading with unified error capture (replaces the previous version that only logged to console.error, leaving the failure invisible). */
 const { data: list, error, loading, run: loadSchedules } = useAsync(async () => {
   const r = await api.getSchedules()
   return r.schedules || []
@@ -79,11 +80,9 @@ onMounted(() => { loadSchedules() })
 </script>
 
 <style scoped>
-.console-schedule { max-width: 720px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; overflow-y: auto;}
 .sched-form { display: flex; flex-direction: column; gap: 10px; }
 .form-row { display: flex; gap: 8px; align-items: center; }
 .cron-input { max-width: 150px; font-family: var(--font-mono); }
-.console-empty { display: flex; justify-content: center; color: var(--text-3); font-size: 13px; padding: 40px 0; }
 .sched-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
 .sched-line { flex: 1; display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .sched-line code { color: var(--brand-c2); font-family: var(--font-mono); font-size: 12px; }
