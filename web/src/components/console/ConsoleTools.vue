@@ -8,6 +8,12 @@
     <!-- 工具列表：展示每个工具的名称、描述，点击展开查看参数定义。Tool list: shows name and description of each tool, click to expand and view parameter definitions. -->
     <div v-else class="tool-cards">
       <UiCard v-for="t in (tools ?? [])" :key="t.function.name" class="tool-card" :padded="false">
+        <!-- 折叠触发器仍是 div（非 button）：加 role="button" 会命中 app.css 的全局
+             `[role="button"]{min-height:44px;min-width:44px}` 最小触达规则，把行撑高
+             —— 那是**外观变更**，归视觉批裁定，不在 a11y 批里偷偷做。
+             Still a div, not a button: role="button" would match app.css's global
+             `[role="button"]{min-height:44px}` touch-target rule and grow the row — a visual
+             change, for the visual batch to decide deliberately. -->
         <div class="tool-head" @click="toggle(t.function.name)">
           <code class="tool-name">{{ t.function.name }}</code>
           <span class="tool-desc">{{ t.function.description }}</span>

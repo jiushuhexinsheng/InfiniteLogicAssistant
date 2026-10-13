@@ -9,6 +9,10 @@
     <UiEmpty v-else-if="!(tasks ?? []).length && !loading" text="暂无任务存档（任务模式下完成一个任务并确认「完成了」后会出现在这里）" />
     <!-- 任务列表：展开可看参数与步骤（只读，不支持回放）。Task list: expand to view params and steps (read-only, no replay). -->
     <UiCard v-for="t in (tasks ?? [])" :key="t.id" class="lib-item">
+      <!-- 折叠触发器仍是 div（非 button）：见 ConsoleTools 同处注释 —— role="button"
+           会命中全局最小触达规则把行撑到 44px，属外观变更，归视觉批。
+           Still a div: role="button" would hit the global touch-target rule (44px) — a visual
+           change, deferred to the visual batch. -->
       <div class="lib-row" @click="toggle(t.id)">
         <span class="lib-goal">{{ t.goal }}</span>
         <span class="lib-time">{{ fmt(t.created) }}</span>

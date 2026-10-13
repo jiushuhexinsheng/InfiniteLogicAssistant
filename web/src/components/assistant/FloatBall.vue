@@ -4,12 +4,18 @@
     class="float-trigger"
     :class="[visual.fx, visual.grad === 'rainbow' ? 'fx-rainbow' : '', { active: expanded }]"
     :style="{ '--fx-color': visual.color }"
+    role="button"
+    tabindex="0"
+    :aria-label="expanded ? '收起助手面板' : '打开助手面板'"
+    :aria-expanded="expanded"
     @pointerdown="onDragStart"
     @touchstart.prevent="onTouchStart"
     @touchmove.prevent="onTouchMove"
     @touchend="onTouchEnd"
     @click="onClick"
     @dblclick="onDblClick"
+    @keydown.enter.prevent="onClick"
+    @keydown.space.prevent="onClick"
   >
     <!-- 状态环层：recording 时 conic 进度环；聆听时品牌色环。Status ring: conic progress during recording; brand-color ring during listening. -->
     <span class="ball-status-ring" :class="state" :style="ringStyle"></span>
@@ -20,6 +26,8 @@
       class="ball-mic"
       :class="{ on: wakeEnabled }"
       title="语音开关"
+      aria-label="语音开关"
+      :aria-pressed="wakeEnabled"
       @click.stop="emit('toggleWake')"
       @dblclick.stop
     >

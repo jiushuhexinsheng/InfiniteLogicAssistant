@@ -4,7 +4,7 @@
        RAG sources block (docs/designs/05 §3.2): numbered chips + collapse.
        Collapsed by default (backend meta.collapsed); click to reveal path/section/score. -->
   <div class="blk-sources">
-    <button type="button" class="bs-head" @click="open = !open">
+    <button type="button" class="bs-head" :aria-expanded="open" @click="open = !open">
       <span class="bs-title">📄 来源 {{ items.length }} 个</span>
       <span class="bs-caret">{{ open ? '▾' : '▸' }}</span>
     </button>
