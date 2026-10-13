@@ -104,6 +104,22 @@ const SHOTS = [
      *  nothing to do with design. */
     mask: ['.service-item:last-child'],
   },
+  {
+    // 整页截图：起始页在 900px 视口下只露到卡片中部，特性网格与页脚都在折叠线以下 ——
+    // 视口截图拍不到它们，而 Batch 5 恰恰动了这两块。
+    // 注意**不能用 fullPage**：滚动发生在 App.vue 的 `.app-view`（`height:100dvh` +
+    // `overflow-y:auto`）里，文档本身不滚，fullPage 只会原样返回视口尺寸。改用加高视口，
+    // 让整页一次入画。
+    // Full-page shot: at a 900px viewport the start page only shows down to the middle of the
+    // cards; the feature grid and footer sit below the fold — and Batch 5 changed exactly those.
+    // **fullPage does not work here**: scrolling happens inside App.vue's `.app-view`
+    // (`height:100dvh` + `overflow-y:auto`), the document itself never scrolls, so fullPage
+    // just returns the viewport size. A taller viewport brings the whole page into one frame.
+    name: 'start-full',
+    path: '/',
+    viewportHeight: 1400,
+    mask: ['.service-item:last-child'],
+  },
   { name: 'console-start-here', path: '/console' },
   ...CONSOLE_TABS.map(([key, label]) => ({
     name: `console-${key}`,
@@ -278,6 +294,8 @@ for (const shot of targets) {
         status: 200, contentType: 'application/json', body: JSON.stringify(body),
       }))
     }
+    // 每张图可以覆盖视口高度（宽度固定 1440，与基线一致）。Per-shot viewport height override (width stays 1440 to match the baselines).
+    if (shot.viewportHeight) await page.setViewportSize({ width: 1440, height: shot.viewportHeight })
     await page.goto(`${ARGS.url}${shot.path}`, { waitUntil: 'domcontentloaded' })
     await settle(page, ARGS.settle)
     if (shot.act) {
@@ -303,7 +321,7 @@ for (const shot of targets) {
     const loc = page.locator(sel)
     if ((await loc.count()) > 0) masks.push(loc)
   }
-  await page.screenshot({ path: file, mask: masks })
+  await page.screenshot({ path: file, mask: masks, fullPage: shot.fullPage === true })
   await page.close()
   if (errs.length) consoleErrors.push(`${shot.name}: ${errs.slice(0, 2).join(' | ')}`)
   results.push({ name: shot.name, file, note })
