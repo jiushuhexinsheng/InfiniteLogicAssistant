@@ -339,7 +339,7 @@ watch(
   border: 1px solid rgba(103, 232, 249, .2);
   border-radius: 8px;
   padding: var(--sp-1) var(--sp-q10);
-  transition: all .2s ease;
+  transition: all var(--dur-base) ease;
 }
 
 .mini-tool:hover {
@@ -361,7 +361,7 @@ watch(
   font-weight: 500;
   color: var(--text-3);
   cursor: pointer;
-  transition: all .2s ease;
+  transition: all var(--dur-base) ease;
   padding: var(--sp-q6) var(--sp-3);
   border-radius: 8px;
   background: rgba(148, 163, 184, .05);
@@ -375,7 +375,7 @@ watch(
 }
 
 .arrow {
-  transition: transform .2s ease;
+  transition: transform var(--dur-base) ease;
 }
 
 .mini-goto:hover .arrow {

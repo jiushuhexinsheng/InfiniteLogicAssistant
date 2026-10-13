@@ -63,7 +63,7 @@ onMounted(() => { loadTools() })
 .tool-head { display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; }
 .tool-name { font-family: var(--font-mono); font-size: 13px; color: var(--brand-c2); background: rgba(103, 232, 249, .08); border: 1px solid var(--border-base); border-radius: 6px; padding: var(--sp-q2) var(--sp-2); }
 .tool-desc { flex: 1; font-size: var(--fs-xs); color: var(--text-2); }
-.tool-chev { color: var(--text-3); transition: transform .15s; }
+.tool-chev { color: var(--text-3); transition: transform var(--dur-base); }
 .tool-chev.rot { transform: rotate(180deg); }
 .tool-params { margin-top: var(--sp-q10); }
 .tool-params pre { margin: 0; background: var(--surface-input); border: 1px solid var(--border-base); border-radius: 8px; padding: var(--sp-q10) var(--sp-3); font-size: var(--fs-2xs); line-height: 1.6; color: #a5b4fc; overflow-x: auto; max-height: 260px; overflow-y: auto; }

@@ -187,7 +187,8 @@ function formatTime(ts: number) {
 /* 消息级操作条（hover 显示）。Message action bar (shown on hover). */
 .msg-actions {
   display: flex; gap: var(--sp-q6); margin-top: var(--sp-1); opacity: 0;
-  transition: opacity var(--dur-fast, .15s) var(--ease-out, ease);
+  /* 兜底值写死字面量（原先 .15s）：var() 的 fallback 里不该再套 var() —— 归一后取 base。 */
+  transition: opacity var(--dur-base, .18s) var(--ease-out, ease);
 }
 .msg-item:hover .msg-actions, .msg-actions:focus-within { opacity: 1; }
 .msg-item.user .msg-actions { justify-content: flex-end; }

@@ -304,7 +304,7 @@ const ringStyle = computed(() => {
   cursor: pointer;
   user-select: none;
   touch-action: none;
-  transition: transform 0.2s, box-shadow 0.3s;
+  transition: transform var(--dur-base), box-shadow var(--dur-base);
   animation: ball-breathe 3s ease-in-out infinite;
 }
 .float-trigger:hover { transform: scale(1.08); }
@@ -343,7 +343,7 @@ const ringStyle = computed(() => {
   cursor: pointer;
   padding: 0;
   z-index: 2;
-  transition: all .2s;
+  transition: all var(--dur-base);
 }
 .ball-mic.on { color: #34d399; border-color: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, .5); }
 .ball-mic:hover { color: var(--brand-c2); }

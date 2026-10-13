@@ -176,6 +176,6 @@ const pillStyle = computed(() => ({
   height: 4px;               /* 基线；实际高度由 :style 随 micLevel 覆盖。Baseline; :style overrides with micLevel. */
   border-radius: 1px;
   background: var(--sp-color);
-  transition: height 90ms linear;
+  transition: height var(--dur-fast) linear;
 }
 </style>

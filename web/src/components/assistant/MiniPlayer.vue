@@ -154,7 +154,7 @@ const showMini = computed(() =>
   height: 4px;               /* 基线；实际高度由 :style 随 micLevel 覆盖。Baseline; :style overrides with micLevel. */
   border-radius: 1px;
   background: linear-gradient(180deg, var(--brand-c1), var(--brand-c3));
-  transition: height 90ms linear;
+  transition: height var(--dur-fast) linear;
 }
 /* 活跃状态换渐变色（高度已随音量，不再有定时动画）。Gradient when active (heights already follow volume; no timer animation). */
 .mini-player.active .mini-eq span {

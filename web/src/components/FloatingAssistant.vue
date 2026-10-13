@@ -204,12 +204,12 @@ const panelStyle = computed(() => ({
 .asst-dock.ball-left { flex-direction: row-reverse; }
 
 /* 面板过渡动画。Panel transition animation. */
-.panel-enter-active { transition: all 0.3s ease-out; }
-.panel-leave-active { transition: all 0.2s ease-in; }
+.panel-enter-active { transition: all var(--dur-base) ease-out; }
+.panel-leave-active { transition: all var(--dur-base) ease-in; }
 .panel-enter-from, .panel-leave-to { opacity: 0; transform: translateY(12px) scale(0.96); }
 
 /* 迷你条过渡动画。Mini bar transition animation. */
-.mini-enter-active, .mini-leave-active { transition: all .25s ease; }
+.mini-enter-active, .mini-leave-active { transition: all var(--dur-base) ease; }
 .mini-enter-from, .mini-leave-to { opacity: 0; transform: translateX(-8px); }
 
 /* 面板 footer：顶部分隔线 + 通栏按钮。Panel footer: top divider + full-width button. */

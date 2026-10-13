@@ -48,6 +48,6 @@ defineEmits<{ 'update:modelValue': [v: boolean] }>()
 }
 .ui-modal-close:hover { background: var(--bg-3); color: var(--text-1); }
 .ui-modal-body { padding: var(--sp-4); }
-.ui-modal-enter-active, .ui-modal-leave-active { transition: opacity .2s ease, transform .2s ease; }
+.ui-modal-enter-active, .ui-modal-leave-active { transition: opacity var(--dur-base) ease, transform var(--dur-base) ease; }
 .ui-modal-enter-from, .ui-modal-leave-to { opacity: 0; transform: translateY(12px) scale(.97); }
 </style>
