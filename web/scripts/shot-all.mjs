@@ -126,8 +126,27 @@ const SHOTS = [
     path: '/console',
     /** 点侧栏导航项。Click the sidebar nav item. */
     act: async (page) => { await clickNav(page, label) },
-    /** 状态 tab 的 `.ping-ms` 是同一份实测延迟，同理遮掉。 */
-    mask: key === 'status' ? ['.ping-ms'] : [],
+    /**
+     * 状态 tab 的实测延迟：**用 style 隐藏，而不是 mask**。
+     * mask 画的是元素**包围盒**，而 `.ping-ms` 是行内元素、盒宽随数值变（「9ms」/「44ms」）
+     * —— 盒边缘一挪，掩码框之外就露出底下的内容，于是同一份代码两次连跑能拍出不同的图
+     * （实测哈希 B66BB0… / CD6ED9… 不同，是**潜在不稳定**的图，此前只是碰巧宽度撞上基线）。
+     * visibility:hidden 既不画字也不动布局，背景恒为卡片底色 → 确定性。
+     * Live latency on the status tab: **hidden via style, not masked**. A mask paints the
+     * element's *bounding box*, and `.ping-ms` is inline whose box width tracks the value
+     * ("9ms" vs "44ms") — when the box edge moves, whatever sits outside the mask shows
+     * through, so two consecutive runs of the same code produced different images (measured
+     * hashes B66BB0… / CD6ED9…). visibility:hidden paints nothing and shifts no layout.
+     */
+    style: key === 'status' ? '.ping-ms { visibility: hidden !important }' : '',
+    /**
+     * ping 端点也打桩：`pingOk = r.ok === true`，而这张图每次挂载都真去 ping 后端 ——
+     * 并发跑多个浏览器时偶发超时会把 chip 从绿翻红（整块变色）。打桩后判定恒定。
+     * Latency is local (`performance.now` round-trip), so stubbing cannot pin the number —
+     * that is what the style above is for. But `pingOk` reads the response, so the stub pins
+     * the chip tone; without it a load-induced timeout flips the chip red and the shot varies.
+     */
+    stub: key === 'status' ? { '**/api/ping': { ok: true } } : undefined,
   })),
   { name: 'panel-expanded', path: '/console', act: async (page) => { await page.locator('.float-trigger').first().click() } },
   ...SETTINGS_MENUS.map((label) => ({
@@ -437,7 +456,7 @@ for (const shot of targets) {
     const loc = page.locator(sel)
     if ((await loc.count()) > 0) masks.push(loc)
   }
-  await page.screenshot({ path: file, mask: masks, fullPage: shot.fullPage === true })
+  await page.screenshot({ path: file, mask: masks, style: shot.style, fullPage: shot.fullPage === true })
   await page.close()
   if (errs.length) consoleErrors.push(`${shot.name}: ${errs.slice(0, 2).join(' | ')}`)
   results.push({ name: shot.name, file, note })
