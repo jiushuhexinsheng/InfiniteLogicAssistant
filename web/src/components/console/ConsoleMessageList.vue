@@ -5,9 +5,13 @@
          The welcome banner (衍衡 / online-status row) is removed (2026-10-11 user
          request: drop the identity header from the conversation page — status lives on
          the float-ball pill and the sidebar). -->
-    <div v-if="!messages.length" class="console-empty">
-      还没有对话 —— 点右下角悬浮球，或输入文字开始。
-    </div>
+    <!-- 对话区空态：**居中长满**（`fill`）而非列表页签的「上对齐」—— 这里没有工具栏，空态该占据
+         整个会话区。收编进 UiEmpty 后连图标徽章一起拿到（图标 = 侧栏「对话」页签的 messages-square）。
+         Conversation empty state: **centred and filling** (`fill`) rather than the list tabs'
+         top-aligned form — there is no toolbar here, so the state owns the whole pane. Collecting it
+         into UiEmpty also brings the icon badge (the 对话 sidebar tab's `messages-square`). -->
+    <UiEmpty v-if="!messages.length" fill icon="messages-square"
+      text="还没有对话" hint="点右下角悬浮球，或输入文字开始" />
     <!-- 消息列表：遍历渲染每条聊天消息，支持重试/取消工具与消息级 分叉/编辑/重生成（docs/designs/07）。
          Message list: renders each chat message with tool retry/cancel plus message-level
          fork/edit/regenerate (docs/designs/07). -->
@@ -31,6 +35,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
 import MessageItem from '../assistant/MessageItem.vue'
+import { UiEmpty } from '../ui'
 import type { ChatMessage } from '../../composables/useAssistant'
 
 /** 组件 props：消息列表、消息级动作开关（回合空闲且有会话）。
@@ -74,9 +79,5 @@ onMounted(scrollToBottom)
 .console-msgs {
   display: flex; flex-direction: column; gap: var(--sp-q14);
   padding: var(--sp-1) var(--sp-q2) var(--sp-q10); max-width: 860px; width: 100%; margin: 0 auto;
-}
-.console-empty {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  color: var(--text-3); font-size: var(--fs-sm);
 }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <div class="ui-empty">
+  <div class="ui-empty" :class="{ fill }">
     <!-- 图标徽章：给空态一个「入口级」的视觉锚点。图标名与侧栏该页签**同名**（wrench / globe /
          database / history / library / calendar-clock），所以空态读起来像「这一页」，而不是一段
          漂浮在大片深色里的灰字。
@@ -35,7 +35,13 @@ withDefaults(defineProps<{
   icon?: string
   /** 次级说明（`--fs-xs`、更暗），可选。Secondary hint at --fs-xs in a dimmer tone; optional. */
   hint?: string
-}>(), { text: '', icon: '', hint: '' })
+  /** 长满父容器并在其中**居中**（父容器需是 flex 列，如对话区的 `.console-messages`）。
+   *  不传时是「上对齐 + 40px 内边距」，用于列表页签（工具栏下方的空态）。
+   *  Grow to fill the parent and centre inside it (the parent must be a flex column, like the
+   *  conversation pane's `.console-messages`). Without it the state is top-aligned with 40px
+   *  padding, which is what the list tabs want (their empty state sits under a toolbar). */
+  fill?: boolean
+}>(), { text: '', icon: '', hint: '', fill: false })
 </script>
 
 <style scoped>
@@ -69,4 +75,9 @@ withDefaults(defineProps<{
    "the only text" into a heading. */
 .ui-empty-text { color: var(--text-2); }
 .ui-empty-hint { margin-top: var(--sp-1); color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
+/* `fill`：长满父容器。基类已经有 `justify-content: center`，高度一被撑起来它才真的生效 ——
+   这正是「上对齐」与「居中」两种空态的唯一差别。
+   `fill`: grow into the parent. The base rule already carries `justify-content: center`, which only
+   bites once the height is stretched — that is the whole difference between the two presentations. */
+.ui-empty.fill { flex: 1; }
 </style>
