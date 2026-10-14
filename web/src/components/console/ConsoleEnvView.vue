@@ -8,7 +8,7 @@
     <UiErrorNote v-if="error" :error="error" />
     <!-- 环境快照内容区域：有内容时显示 <pre>，否则显示空提示。Environment snapshot content: shows <pre> when content exists, otherwise an empty hint. -->
     <pre v-else-if="content" class="env-pre">{{ content }}</pre>
-    <UiEmpty v-else-if="!loading" text="暂无环境快照（首次运行会自动生成）" />
+    <UiEmpty v-else-if="!loading" icon="globe" text="暂无环境快照" hint="首次运行会自动生成" />
   </ConsolePane>
 </template>
 

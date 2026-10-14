@@ -6,7 +6,8 @@
       <span v-if="loading" class="lib-loading">加载中…</span>
     </div>
     <UiErrorNote v-if="error" :error="error" />
-    <UiEmpty v-else-if="!(tasks ?? []).length && !loading" text="暂无任务存档（任务模式下完成一个任务并确认「完成了」后会出现在这里）" />
+    <UiEmpty v-else-if="!(tasks ?? []).length && !loading" icon="library" text="暂无任务存档"
+      hint="任务模式下完成一个任务并确认「完成了」后会出现在这里" />
     <!-- 任务列表：展开可看参数与步骤（只读，不支持回放）。Task list: expand to view params and steps (read-only, no replay). -->
     <UiCard v-for="t in (tasks ?? [])" :key="t.id" class="lib-item">
       <!-- 折叠触发器仍是 div（非 button）：见 ConsoleTools 同处注释 —— role="button"

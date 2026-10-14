@@ -4,7 +4,7 @@
          Show the loading state until the first load completes (tools still null with no error), avoiding a flash of the empty state. -->
     <UiEmpty v-if="loading || (tools === null && !error)" text="加载中…" />
     <UiErrorNote v-else-if="error" :error="error" />
-    <UiEmpty v-else-if="!(tools ?? []).length" text="后端没有注册工具" />
+    <UiEmpty v-else-if="!(tools ?? []).length" icon="wrench" text="后端没有注册工具" hint="启动后端后这里会自动填充" />
     <!-- 工具列表：展示每个工具的名称、描述，点击展开查看参数定义。Tool list: shows name and description of each tool, click to expand and view parameter definitions. -->
     <div v-else class="tool-cards">
       <UiCard v-for="t in (tools ?? [])" :key="t.function.name" class="tool-card" :padded="false">

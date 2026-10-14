@@ -6,7 +6,7 @@
       <span v-if="loading" class="mem-loading">加载中…</span>
     </div>
     <UiErrorNote v-if="error" :error="error" />
-    <UiEmpty v-else-if="!(facts ?? []).length && !loading" text="暂无记忆（任务完成后会自动提取）" />
+    <UiEmpty v-else-if="!(facts ?? []).length && !loading" icon="database" text="暂无记忆" hint="任务完成后会自动提取" />
     <!-- 记忆列表：展示每条记忆的主题、时间、来源和内容，支持删除。Memory list: shows topic, time, source and content of each memory fact, with delete support. -->
     <UiCard v-for="f in (facts ?? [])" :key="f.topic" class="mem-item">
       <div class="mem-topic">

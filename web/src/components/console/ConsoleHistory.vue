@@ -27,10 +27,12 @@
         <div class="hi-summary">{{ c.summary || '（暂无内容）' }}</div>
       </UiCard>
       <!-- 空态内边距已统一到 40px（科技感批 10.5）：本视图原是 30px 的孤例，现随其余 5 个列表视图。
-           Empty-state padding is now unified at 40px: this view was the lone 30px outlier. -->
-      <UiEmpty v-if="!(list ?? []).length && !loading">
-        {{ showArchived ? '暂无归档会话' : '暂无会话，点「新建会话」开始对话' }}
-      </UiEmpty>
+           文案走 props 而非 slot（10.6 拆成主句 + hint）。
+           Padding unified to 40px (10.5): this view was the lone 30px outlier. The copy moved from the
+           slot into props when 10.6 split it into a main line plus a hint. -->
+      <UiEmpty v-if="!(list ?? []).length && !loading" icon="history"
+        :text="showArchived ? '暂无归档会话' : '暂无会话'"
+        :hint="showArchived ? '归档后会出现在这里' : '点「新建会话」开始对话'" />
     </div>
   </ConsolePane>
 </template>

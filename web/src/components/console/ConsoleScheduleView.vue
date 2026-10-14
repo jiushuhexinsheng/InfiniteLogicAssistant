@@ -11,7 +11,7 @@
 
     <UiErrorNote v-if="error" :error="error" />
     <!-- 定时任务列表：展示每条任务的 cron 表达式和执行内容，支持删除。Schedule list: shows cron expression and prompt for each task, with delete support. -->
-    <UiEmpty v-else-if="!(list ?? []).length && !loading" text="暂无定时任务" />
+    <UiEmpty v-else-if="!(list ?? []).length && !loading" icon="calendar-clock" text="暂无定时任务" hint="在上方填 cron 表达式注册一个" />
     <UiCard v-for="s in (list ?? [])" :key="s.id" class="sched-item">
       <div class="sched-line">
         <code>{{ s.cron }}</code>
