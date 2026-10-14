@@ -292,12 +292,23 @@ const ringStyle = computed(() => {
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: #1e293b;
-  /* 品牌渐变描边 + 慢呼吸光晕。Brand gradient border + slow breathing glow. */
+  /* 球体填充：平涂 #1e293b → 微径向渐变（上偏亮、边缘压暗），球体于是有体积而不像贴片。
+     ⚠️ **类名、尺寸、时序一字未动** —— `.float-trigger`/`.ball-mic`/`.ball-status-ring` 被
+     verify-voice.mjs 与 screenshot.mjs 直接选择驱动，拖拽 6px 阈值与 300ms 单击延迟有 6 条
+     jsdom 测试守着。这里只换视觉。
+     Fill: flat #1e293b → a subtle radial gradient (brighter top, darker rim) so the ball reads as
+     a sphere rather than a disc. Class names, geometry and timing are untouched (driven by the two
+     scripts and guarded by six jsdom tests). */
   border: 1px solid transparent;
   background:
-    linear-gradient(#1e293b, #1e293b) padding-box,
+    radial-gradient(circle at 50% 32%, #223046, #0e1526 72%) padding-box,
     var(--brand-grad) border-box;
+  /* 静态光晕 + 内壁微光：科技感，也让 reduced-motion 用户（动画被压成 0 帧、呼吸光晕不存在）
+     仍能看到球是「通电」的 —— 原先截图里球就是完全无光晕的。
+     Static glow plus an inner rim light: the tech read, and it also gives reduce-motion users
+     (whose animation collapses to zero frames, so the breathing glow never renders) a ball that
+     still looks powered — previously the ball had no glow at all in that case. */
+  box-shadow: 0 0 9px rgba(103, 232, 249, .3), inset 0 0 9px rgba(103, 232, 249, .12);
   display: flex;
   align-items: center;
   justify-content: center;
