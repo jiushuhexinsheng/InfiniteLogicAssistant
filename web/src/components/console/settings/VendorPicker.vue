@@ -32,6 +32,16 @@ const sectionKey = props.sectionKey
 </script>
 
 <style scoped>
+/* ⚠️ 这圈虚线**不并进 UiHint**（10.3 实测 + 本轮判定）。UiHint 框的是**非文本块的占位**
+   （思考/文件/图片/未知），那四值（--bg-3 / --r-md / --bg-1）是那类块的统一语言；这里框的是
+   **承载交互内容的内联面板**（名称输入 + 新增 chip），描边更弱（--border-soft）、圆角更小
+   （--r-sm）、底色更深且半透明（rgba(15,23,42,.4)）—— 四项全不同是两种用途，不是疏漏。
+   要强行合并，要么给 UiHint 加四个 prop（变配置袋），要么改这里的观感，两条都不划算。
+   ⚠️ This dashed ring does **not** fold into UiHint. UiHint frames non-text *placeholders*
+   (thinking/file/image/unknown) and its four values are that family's shared language; this one
+   wraps an *interactive inline panel* (name input + add chip) with a fainter border, smaller
+   radius and a darker translucent fill. All four differ on purpose — two different jobs, not an
+   oversight. Merging would either turn UiHint into a four-prop bag or change this panel's look. */
 .cs-vendor {
   border: 1px dashed var(--border-soft); border-radius: var(--r-sm);
   padding: var(--sp-2) var(--sp-q10); background: rgba(15, 23, 42, .4);

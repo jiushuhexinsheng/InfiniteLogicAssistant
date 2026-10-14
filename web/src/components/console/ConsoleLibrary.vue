@@ -96,7 +96,7 @@ onMounted(() => { loadTasks() })
 .lib-goal { font-size: var(--fs-sm); font-weight: 600; color: var(--text-1); flex: 1; }
 .lib-time { white-space: nowrap; }
 .lib-count { white-space: nowrap; }
-.lib-detail { display: flex; flex-direction: column; gap: var(--sp-1); border-top: 1px dashed var(--border-soft); padding-top: var(--sp-2); }
+.lib-detail { display: flex; flex-direction: column; gap: var(--sp-1); border-top: var(--divider-dashed); padding-top: var(--sp-2); }
 .lib-sec-title { font-size: var(--fs-2xs); color: var(--text-3); }
 .lib-detail pre { margin: 0 0 var(--sp-q6); background: var(--surface-input); border: 1px solid var(--border-base); border-radius: 8px; padding: var(--sp-2) var(--sp-q10); font-size: var(--fs-2xs); line-height: 1.6; color: var(--text-2); overflow-x: auto; max-height: 220px; overflow-y: auto; }
 </style>

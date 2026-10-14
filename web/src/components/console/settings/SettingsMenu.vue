@@ -66,5 +66,5 @@ const DOT_MENU_IDS = ['llm', 'asr', 'tts', 'voice']
   background: rgba(148, 163, 184, .25);
 }
 .cs-menu-dot.on { background: var(--dot-ready); box-shadow: 0 0 6px rgba(52, 211, 153, .6); }
-.cs-menu-extra { margin-top: var(--sp-q10); padding-top: var(--sp-q10); border-top: 1px dashed var(--border-soft); }
+.cs-menu-extra { margin-top: var(--sp-q10); padding-top: var(--sp-q10); border-top: var(--divider-dashed); }
 </style>

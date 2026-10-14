@@ -63,6 +63,15 @@
   /* 输入类控件 hover 描边。**不是** --focus-glow（那是 .2 的光晕，值不同别混）。
      Input-control hover border. NOT --focus-glow (that is the .2 glow) — different value, do not conflate. */
   --border-hover: rgba(103, 232, 249, .45);
+  /* 区块分隔虚线 —— ConsoleLibrary 的 .lib-detail / ServiceCard 的 .cs-compat / SettingsMenu 的
+     .cs-menu-extra 三处**逐字相同**。整条 border 简写做成令牌，理由与 --shadow-inset 相同：
+     重复的是**整条声明**，光抽颜色会漏掉「1px dashed」那半截。调用方各自保留 padding/margin
+     ——那三处的间距本就不同（--sp-2 / --sp-q10 / --sp-q10+margin）。
+     Section-divider dashes, verbatim in three places. The whole border shorthand is tokenised, for
+     the same reason as --shadow-inset: what repeats is the entire declaration, and a colour token
+     would leave the "1px dashed" half behind. Callers keep their own padding/margin, which
+     legitimately differ across the three. */
+  --divider-dashed: 1px dashed var(--border-soft);
   /* 警示虚线框两档（原先 ChatInput / TtsMini·TtsEngineCard 各自的硬编码）。
      用字面 rgba 而非 color-mix(var(--warn) …)：后者在预乘空间里合成，像素未必逐位相同。
      Two strengths of warning dashed frame (previously hardcoded per component). Literal rgba

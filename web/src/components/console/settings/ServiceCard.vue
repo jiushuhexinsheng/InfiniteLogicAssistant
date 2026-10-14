@@ -225,7 +225,7 @@ function renameCompat(_i: number, oldKey: string, newKey: string) {
 
 /* 高级兼容编辑区：折叠密度 + 快捷 chip（与音色行同构的键值行）。Advanced compat editor:
    compact density + shortcut chips (key-value rows mirroring the voice row). */
-.cs-compat { border-top: 1px dashed var(--border-soft); padding-top: var(--sp-q10); display: flex; flex-direction: column; gap: var(--sp-2); }
+.cs-compat { border-top: var(--divider-dashed); padding-top: var(--sp-q10); display: flex; flex-direction: column; gap: var(--sp-2); }
 .cs-compat-head { display: flex; align-items: baseline; gap: var(--sp-2); }
 .cs-compat-title { font-size: var(--fs-2xs); font-weight: 600; color: var(--text-2); letter-spacing: .04em; }
 .cs-compat-hint { font-size: var(--fs-2xs); color: var(--text-3); }
