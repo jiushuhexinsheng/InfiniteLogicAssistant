@@ -79,7 +79,28 @@ function gotoTtsSettings() {
 
 <style scoped>
 /* ── 光球 ── */
-.orb-wrap { display: flex; flex-direction: column; align-items: center; gap: var(--sp-q10); }
+.orb-wrap { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--sp-q10); }
+/* 光球背后的品牌主光（科技感：首屏「主屏感」）。
+   为什么挂 `.orb-wrap` 的 `::before` 而不是 `.orb` 的：`.orb` 自带**不透明**的 --brand-grad 底，
+   它自己的 `::before` 会画在那层底**之上**（伪元素是子节点，画在元素背景之后）；挂在父级、
+   绝对定位，才真的落在球背后。绝对定位同时让它**脱离 flex 流** —— 不会变成一个 flex 项、
+   不会挤动间距（这正是本组件顶部那条「不加包裹元素」警告的同一类坑）。
+   为什么是径向渐变而不是 box-shadow：低频、无 AA 采样问题。且它落在光球上方那一带，
+   **刻意不覆盖下方的玻璃卡**（高空间频率纹理 + backdrop-filter 正是 conv-blocks 那个已知抖动的成因）。
+   Brand key-light behind the orb (the "this is the main screen" cue). Hung on `.orb-wrap`'s
+   `::before`, not on `.orb`: the orb carries an opaque brand gradient, and a pseudo-element paints
+   after the element's own background — it would sit *on top*. Absolutely positioned on the parent
+   it lands behind the orb and leaves the flex flow entirely (so it cannot become a flex item and
+   disturb the spacing — the same trap the multi-root warning at the top of this file is about).
+   A radial gradient rather than a box-shadow: low frequency, no antialiasing-sampling risk. It sits
+   above the orb and deliberately does **not** reach the glass cards below (high-frequency texture
+   over a backdrop-filter surface is exactly the known conv-blocks flake). */
+.orb-wrap::before {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 640px; height: 360px; transform: translate(-50%, -50%);
+  background: radial-gradient(closest-side, rgba(103, 232, 249, .22), transparent 68%);
+  pointer-events: none;
+}
 .orb {
   position: relative; width: 116px; height: 116px; border-radius: 50%;
   background: var(--brand-grad); display: grid; place-items: center;
