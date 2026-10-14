@@ -15,6 +15,28 @@
      .06-alpha radial) but read as a solid colour; this turns it up to clearly visible and
      centralises it so "how strong is the ambience" is one edit. */
   --bg-ambient:
+    /* ── 网格（科技感）──
+       ⚠️ **已知代价：它会让截图门禁出现可复现的抖动**。高空间频率纹理被 `backdrop-filter`
+       模糊面采样时，逐像素合成的取整会随负载变化 → `conv-blocks` 底部「迷你条 + 球」那一条
+       偶发 ~4.9k 像素差异，全部是**每像素仅差 1~11** 的低强度散布（ASCII 图证实：元素都在、
+       只是合成值不同）。
+       实测：44px/.07 频繁抖；**88px/.04 也抖**（低频+弱并不能免）；去掉网格后连跑 2 次绿。
+       **沿用网格是用户的明确选择**（观感优先）。随之而来的判定规则：`conv-blocks` 报底部条带
+       差异时**先复跑**，两次都报同一张同一数值才算真实差异。
+       未验证的对症方向：让网格与模糊面**不重叠**（比调参更对症），或用无 AA 的 SVG 点阵。
+       ⚠️ **Known cost: this makes the screenshot gate flake reproducibly.** A high-frequency
+       texture sampled by backdrop-filter surfaces rounds per-pixel differently under load → the
+       mini-bar strip at the bottom of `conv-blocks` occasionally differs by ~4.9k pixels, all of
+       them low-intensity (1–11 per pixel) scatter — the elements are all there, only the
+       composited values differ. Measured: 44px/.07 flakes often; **88px/.04 flakes too** (lower
+       frequency and lower alpha do not save it); without the grid two consecutive runs were
+       green. **Keeping the grid is the user's explicit choice** (look over gate purity). Rule
+       that follows: when `conv-blocks` reports the bottom strip, **re-run** — only the same shot
+       with the same number twice counts as a real difference. Untested fix direction: keep the
+       grid from overlapping blurred surfaces (more to the point than tuning), or use an
+       unantialiased SVG dot pattern. */
+    repeating-linear-gradient(0deg, rgba(103, 232, 249, .07) 0 1px, transparent 1px 44px),
+    repeating-linear-gradient(90deg, rgba(103, 232, 249, .07) 0 1px, transparent 1px 44px),
     radial-gradient(1100px 520px at 50% -8%, rgba(103, 232, 249, .20), transparent 62%),
     radial-gradient(900px 620px at 100% 112%, rgba(129, 140, 248, .14), transparent 60%),
     var(--bg-0);
