@@ -98,5 +98,10 @@ onMounted(() => { loadTasks() })
 .lib-count { white-space: nowrap; }
 .lib-detail { display: flex; flex-direction: column; gap: var(--sp-1); border-top: var(--divider-dashed); padding-top: var(--sp-2); }
 .lib-sec-title { font-size: var(--fs-2xs); color: var(--text-3); }
+/* 与 ConsoleTools 的 `.tool-params pre` 是**最像的一对**（同底同描边同圆角），但仍有 3 处刻意不同：
+   内边距 8/10 vs 10/12、字色 --text-2 vs #a5b4fc、max-height 220 vs 260。完整判词与对照表见
+   ConsoleTools.vue 的 `.tool-params pre` 注释 —— 站内 5 处 JSON 呈现是刻意不合并的。
+   The closest pair to ConsoleTools' panel, yet still 3 deliberate differences. Full rationale and
+   comparison table in ConsoleTools.vue. */
 .lib-detail pre { margin: 0 0 var(--sp-q6); background: var(--surface-input); border: 1px solid var(--border-base); border-radius: 8px; padding: var(--sp-2) var(--sp-q10); font-size: var(--fs-2xs); line-height: 1.6; color: var(--text-2); overflow-x: auto; max-height: 220px; overflow-y: auto; }
 </style>

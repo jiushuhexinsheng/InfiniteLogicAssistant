@@ -39,6 +39,10 @@ const raw = computed(() => {
    Dashed border and fill come from UiHint (no own styles left, so no .blk-unknown rule). */
 .u-type { font-family: var(--font-mono); color: var(--text-2); }
 .u-hint { opacity: .8; }
+/* 与 ConsoleTools 的 JSON 面板刻意不同（无盒子，只有一道 top 分隔线）—— 因为它落在 UiHint 的
+   虚线框里，再套一层盒子就是盒中盒。完整判词见 ConsoleTools.vue 的 `.tool-params pre` 注释。
+   Deliberately unlike ConsoleTools' JSON panel — no box, just a top rule — because it already
+   sits inside UiHint's dashed frame; another box would be a box inside a box. */
 .u-raw {
   margin: 0; padding: var(--sp-2); overflow-x: auto;
   font-family: var(--font-mono); font-size: var(--fs-xs);

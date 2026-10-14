@@ -116,6 +116,10 @@ function statusText(s: ToolStep['status']) { return STATUS_TEXT[s] || s }
   margin-left: 0;
 }
 /* 参数代码块。Arguments code block. */
+/* 与 ConsoleTools 的 JSON 面板刻意不同（尺寸/底/圆角全不一样）—— 完整判词与对照表见
+   ConsoleTools.vue 的 `.tool-params pre` 注释。它嵌在已着色的 `.tt-detail` 里，只能小一号。
+   Deliberately unlike ConsoleTools' JSON panel; the full rationale and comparison table live in
+   ConsoleTools.vue. It nests inside the tinted `.tt-detail`, so it has to be a size smaller. */
 .tool-args code {
   display: block; background: #1e293b; padding: var(--sp-1) var(--sp-q6); border-radius: 4px;
   margin-top: var(--sp-q2); white-space: pre-wrap; word-break: break-all;
