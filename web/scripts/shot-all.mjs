@@ -90,6 +90,33 @@ const EMPTY_SHOTS = [
   act: async (page) => { await clickNav(page, label) },
 }))
 
+/** 云端上传统计的打桩值 —— 这张图**每天都会漂**，必须打桩。
+ *  趋势窗口是「近 7 日」，后端按**今天**算窗口，跨过午夜窗口整体挪一天 → 柱高变、总数不变。
+ *  实测 2026-10-15：窗口 10-09→10-15，而基线是 10-14 拍的 10-08→10-14；数字行**纹丝不动**，
+ *  只有柱状图那一行差 9442 像素（0.729%）—— 看着像真实回归，其实日历翻页而已。
+ *  日期用固定串（`:title` 只是 tooltip，不入画），计数照抄当时实测值，让柱高与既有基线一致。
+ *  Stub for the cloud-upload stats — this shot **drifts daily**. The trend window is "last 7 days",
+ *  anchored on *today* by the backend, so crossing midnight shifts the whole window: bar heights
+ *  move, totals do not. Measured 2026-10-15: window 10-09→10-15 against a baseline shot on 10-14
+ *  with 10-08→10-14 — the number row did not move at all, only the bar row differed by 9442 px
+ *  (0.729%), which reads as a real regression but is just the calendar turning.
+ *  Dates are fixed strings (the `:title` is only a tooltip and never painted); the counts are the
+ *  values measured at the time, keeping the bar heights in line with the existing baseline. */
+const UPLOAD_STATS_STUB = {
+  ok: true,
+  total: 596,
+  by_via: { wake: 310, transcribe: 48, 'call-segment': 238 },
+  days: [
+    { date: '2026-01-01', wake: 32, transcribe: 1, 'call-segment': 59 },
+    { date: '2026-01-02', wake: 2, transcribe: 0, 'call-segment': 4 },
+    { date: '2026-01-03', wake: 39, transcribe: 7, 'call-segment': 95 },
+    { date: '2026-01-04', wake: 14, transcribe: 0, 'call-segment': 35 },
+    { date: '2026-01-05', wake: 0, transcribe: 0, 'call-segment': 0 },
+    { date: '2026-01-06', wake: 1, transcribe: 1, 'call-segment': 1 },
+    { date: '2026-01-07', wake: 0, transcribe: 0, 'call-segment': 0 },
+  ],
+}
+
 /** 截图清单：每项一个 recipe。step 抛错只记录不中断 —— 一张拍失败不该让整轮泡汤。
  *  The shot list: one recipe per entry. A failing step is recorded, not fatal — one bad
  *  shot must not sink the whole run. */
@@ -146,7 +173,12 @@ const SHOTS = [
      * that is what the style above is for. But `pingOk` reads the response, so the stub pins
      * the chip tone; without it a load-induced timeout flips the chip red and the shot varies.
      */
-    stub: key === 'status' ? { '**/api/ping': { ok: true } } : undefined,
+    stub: {
+      ...(key === 'status' ? { '**/api/ping': { ok: true } } : {}),
+      // 统计 tab 的柱状图按「近 7 日」渲染，窗口跟今天走 —— 见 UPLOAD_STATS_STUB 的注释。
+      // The stats tab's bars render a "last 7 days" window that follows today — see UPLOAD_STATS_STUB.
+      ...(key === 'stats' ? { '**/api/voice/upload-stats': UPLOAD_STATS_STUB } : {}),
+    },
   })),
   { name: 'panel-expanded', path: '/console', act: async (page) => { await page.locator('.float-trigger').first().click() } },
   ...SETTINGS_MENUS.map((label) => ({
