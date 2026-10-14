@@ -2,6 +2,23 @@
   <!-- 折叠头：全宽触发按钮（aria-expanded）+ 旋转箭头 + 展开内容。
        Disclosure: full-width trigger (aria-expanded) + rotating chevron + expanded content. -->
   <div class="ui-disclosure">
+    <!-- ⚠️ 这里**刻意没有** `aria-controls`（10.4 提过、本轮定性不加）。
+         APG 的 Disclosure 模式里 `aria-expanded` 是**必需**项（本组件已有），而 `aria-controls` 是
+         **可选**项 —— 原文：「Optionally, the element with role `button` has a value specified for
+         `aria-controls` that refers to the element that contains all the content that is shown or
+         hidden」。键盘（Enter/Space）由原生 `<button>` 天然满足。
+         要加它就得给 slot 内容包一层带 id 的 div，而：
+           ① 收起态那一层**根本不在 DOM 里**，指的 id 会悬空；
+           ② 默认插槽允许多根，包一层在 flex/grid 父级下会改布局；
+           ③ 现有的 32 张截图里**没有任何一张展开过它**（`conv-blocks` 的 thinking 块是
+              `meta.collapsed: true`、UnknownBlock 硬编码 `open=false`）—— 改了也验不出来。
+         三条加起来：加了是负收益。若将来真需要，先补一张「展开态」截图再说。
+         ⚠️ No `aria-controls` here, deliberately. In the APG disclosure pattern `aria-expanded` is
+         required (present) while `aria-controls` is explicitly optional. Adding it would need an
+         extra id-carrying div around the slot content, and: (1) that div does not exist in the DOM
+         while collapsed, so the reference would dangle; (2) the default slot allows multiple roots,
+         and a wrapper changes layout under a flex/grid parent; (3) not one of the 32 shots ever
+         expands this component. Net negative — add a shot for the expanded state first. -->
     <button
       class="ud-head"
       type="button"
