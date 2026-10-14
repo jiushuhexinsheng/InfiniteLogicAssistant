@@ -10,11 +10,25 @@
       hint="任务模式下完成一个任务并确认「完成了」后会出现在这里" />
     <!-- 任务列表：展开可看参数与步骤（只读，不支持回放）。Task list: expand to view params and steps (read-only, no replay). -->
     <UiCard v-for="t in (tasks ?? [])" :key="t.id" class="lib-item">
-      <!-- 折叠触发器仍是 div（非 button）：见 ConsoleTools 同处注释 —— role="button"
-           会命中全局最小触达规则把行撑到 44px，属外观变更，归视觉批。
-           Still a div: role="button" would hit the global touch-target rule (44px) — a visual
-           change, deferred to the visual batch. -->
-      <div class="lib-row" @click="toggle(t.id)">
+      <!-- 折叠触发器：`role="button"` + `tabindex` + Enter/Space + `aria-expanded` —— 键盘可达了。
+           ⚠️ **必须带 `data-compact`**（它跳过全局 44px 最小触达规则，几何才与从前逐像素一致）。
+           判词与理由见 ConsoleTools 同处注释：这里不能做成真 `<button>`，因为行内嵌着一个
+           「删除」按钮（button 里不能再放 button），所以是 div + role，接受「可聚焦元素里
+           含一个按钮」这个已知形态（卡片带行内操作的标准做法）。
+           Disclosure trigger: keyboard reachable. ⚠️ `data-compact` is mandatory (it skips the
+           global 44px rule, keeping geometry pixel-identical). Rationale in ConsoleTools: this one
+           cannot be a real `<button>` because the row nests a 删除 button, so it is div + role,
+           accepting the known "focusable containing a button" shape. -->
+      <div
+        class="lib-row"
+        role="button"
+        tabindex="0"
+        data-compact
+        :aria-expanded="open === t.id"
+        @click="toggle(t.id)"
+        @keydown.enter.prevent="toggle(t.id)"
+        @keydown.space.prevent="toggle(t.id)"
+      >
         <span class="lib-goal">{{ t.goal }}</span>
         <span class="lib-time">{{ fmt(t.created) }}</span>
         <span class="lib-count">{{ Object.keys(t.params || {}).length }} 个参数</span>

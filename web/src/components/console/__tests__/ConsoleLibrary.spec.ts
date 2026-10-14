@@ -47,6 +47,28 @@ describe('ConsoleLibrary', () => {
     expect(w.find('.lib-detail').text()).toContain('write_file')
   })
 
+  /** 折叠触发器键盘可达：Enter / Space 都能开合，且带 `aria-expanded`。
+   *  ⚠️ `data-compact` 那条断言是**几何护栏** —— 触发器是 div + role="button"，少了它就会命中
+   *  app.css 的全局 44px 最小触达规则把行撑高（截图门禁能看出，但单元测试更快、更早）。
+   *  The trigger is keyboard reachable (Enter/Space) and carries aria-expanded. The `data-compact`
+   *  assertion is a **geometry guard**: the trigger is a div + role="button", and without that
+   *  attribute app.css's global 44px touch-target rule would grow the row. */
+  it('折叠触发器 Enter / Space 可开合（键盘可达）', async () => {
+    const w = mount(ConsoleLibrary)
+    await flushPromises()
+    const row = w.find('.lib-row')
+    expect(row.attributes('role')).toBe('button')
+    expect(row.attributes('tabindex')).toBe('0')
+    expect(row.attributes('data-compact')).toBeDefined()
+    expect(row.attributes('aria-expanded')).toBe('false')
+    await row.trigger('keydown', { key: 'Enter' })
+    expect(row.attributes('aria-expanded')).toBe('true')
+    expect(w.find('.lib-detail').exists()).toBe(true)
+    await row.trigger('keydown', { key: ' ' })
+    expect(row.attributes('aria-expanded')).toBe('false')
+    expect(w.find('.lib-detail').exists()).toBe(false)
+  })
+
   /** 加载失败展示错误提示（走统一错误处理）。A load failure surfaces the unified error note. */
   it('加载失败展示错误提示', async () => {
     vi.mocked(api.listLibrary).mockRejectedValue(new Error('库文件损坏'))

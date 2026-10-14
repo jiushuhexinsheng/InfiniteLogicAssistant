@@ -8,13 +8,30 @@
     <!-- 工具列表：展示每个工具的名称、描述，点击展开查看参数定义。Tool list: shows name and description of each tool, click to expand and view parameter definitions. -->
     <div v-else class="tool-cards">
       <UiCard v-for="t in (tools ?? [])" :key="t.function.name" class="tool-card" :padded="false">
-        <!-- 折叠触发器仍是 div（非 button）：加 role="button" 会命中 app.css 的全局
-             `[role="button"]{min-height:44px;min-width:44px}` 最小触达规则，把行撑高
-             —— 那是**外观变更**，归视觉批裁定，不在 a11y 批里偷偷做。
-             Still a div, not a button: role="button" would match app.css's global
-             `[role="button"]{min-height:44px}` touch-target rule and grow the row — a visual
-             change, for the visual batch to decide deliberately. -->
-        <div class="tool-head" @click="toggle(t.function.name)">
+        <!-- 折叠触发器：`role="button"` + `tabindex` + Enter/Space + `aria-expanded` —— 键盘可达了。
+             ⚠️ **必须带 `data-compact`**：不带会命中 app.css 的全局
+             `[role="button"]{min-height:44px;min-width:44px}`，把行从 ~24px 撑到 44px —— 那是外观
+             变更。`app.css` 注释写明 `data-compact` 的用途是「密集行内的**展开**钮」，正是这里；
+             带上之后几何与从前逐像素一致。
+             不做成真 `<button>`：行内除文字外还有 chevron，且**同款结构的任务库行里嵌着「删除」
+             按钮**（button 里不能再放 button）—— 两处统一走 div + role。
+             Disclosure trigger: role="button" + tabindex + Enter/Space + aria-expanded — keyboard
+             reachable. ⚠️ `data-compact` is mandatory: without it the global
+             `[role="button"]{min-height:44px}` rule grows the row from ~24px to 44px, a visual
+             change. app.css documents `data-compact` for exactly this ("expand triggers in dense
+             rows"); with it the geometry stays pixel-identical. Not a real `<button>` because the
+             row carries a chevron and the sibling task-library row nests a 删除 button (a button
+             cannot contain a button) — both use div + role. -->
+        <div
+          class="tool-head"
+          role="button"
+          tabindex="0"
+          data-compact
+          :aria-expanded="open === t.function.name"
+          @click="toggle(t.function.name)"
+          @keydown.enter.prevent="toggle(t.function.name)"
+          @keydown.space.prevent="toggle(t.function.name)"
+        >
           <code class="tool-name">{{ t.function.name }}</code>
           <span class="tool-desc">{{ t.function.description }}</span>
           <UiIcon name="chevron-down" :size="12" class="tool-chev" :class="{ rot: open === t.function.name }" />

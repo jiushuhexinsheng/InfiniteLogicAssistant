@@ -42,4 +42,30 @@ describe('ConsoleTools 加载状态', () => {
     await flushPromises()
     expect(w.find('.ui-errnote').text()).toBe('连接被拒绝')
   })
+
+  /** 折叠触发器键盘可达：Enter / Space 都能开合，且带 `aria-expanded`。
+   *  ⚠️ `data-compact` 那条断言是**几何护栏** —— 触发器是 div + role="button"，少了它就会命中
+   *  app.css 的全局 44px 最小触达规则把行撑高。
+   *  The trigger is keyboard reachable (Enter/Space) and carries aria-expanded. The `data-compact`
+   *  assertion is a **geometry guard**: without it app.css's global 44px touch-target rule would
+   *  grow the row. */
+  it('折叠触发器 Enter / Space 可开合（键盘可达）', async () => {
+    vi.mocked(api.getTools).mockResolvedValue({
+      ok: true,
+      tools: [{ function: { name: 'read_file', description: '读取文件', parameters: { path: 'x' } } }],
+    } as any)
+    const w = mount(ConsoleTools)
+    await flushPromises()
+    const head = w.find('.tool-head')
+    expect(head.attributes('role')).toBe('button')
+    expect(head.attributes('tabindex')).toBe('0')
+    expect(head.attributes('data-compact')).toBeDefined()
+    expect(head.attributes('aria-expanded')).toBe('false')
+    await head.trigger('keydown', { key: 'Enter' })
+    expect(head.attributes('aria-expanded')).toBe('true')
+    expect(w.find('.tool-params').exists()).toBe(true)
+    await head.trigger('keydown', { key: ' ' })
+    expect(head.attributes('aria-expanded')).toBe('false')
+    expect(w.find('.tool-params').exists()).toBe(false)
+  })
 })

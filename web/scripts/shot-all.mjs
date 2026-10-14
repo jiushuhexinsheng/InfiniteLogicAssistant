@@ -371,6 +371,41 @@ const SHOTS = [
     },
     waitFor: '.blk-unknown',
   },
+  {
+    // 任务库展开态。**加这张的理由是实测出来的覆盖缺口**：`.lib-row`（折叠触发器）与
+    // `.lib-detail`（分隔虚线 + JSON 面板）在原有 32 张里**一张都没出现** —— 真实后端的任务库
+    // 是空的，所以 `console-library` 渲染的是空态（实测：它与 empty-library 的差异签名完全一致）。
+    // 没有这张图，两处改动就是**不可验证**的：折叠触发器的 role/tabindex/data-compact（几何必须
+    // 逐像素不变）与 #9 收编的那道分隔虚线。手法同 conv-blocks：真实路径（点侧栏 → 点行）+ 后端打桩。
+    // Task-library expanded state. Added because of a **measured coverage gap**: neither `.lib-row`
+    // (the disclosure trigger) nor `.lib-detail` (the dashed divider + JSON panel) appears in any of
+    // the original 32 shots — the real backend's library is empty, so `console-library` renders the
+    // empty state (measured: its diff signature is identical to empty-library's). Without this shot
+    // two changes are unverifiable: the trigger's role/tabindex/data-compact (whose geometry must not
+    // move by a pixel) and the section divider collected in #9. Same recipe as conv-blocks: real
+    // path (sidebar → click the row) + stubbed backend.
+    name: 'library-detail',
+    path: '/console',
+    stub: {
+      '**/api/library': {
+        ok: true,
+        tasks: [{
+          id: 1, goal: '查一下济南天气并写入文件',
+          params: { city: '济南', path: '~/weather.txt' },
+          steps: [
+            { tool: 'search', args: { q: '济南天气' }, status: 'ok' },
+            { tool: 'write_file', args: { path: '~/weather.txt', content: '晴 22℃' }, status: 'ok' },
+          ],
+          status: 'done', created: '2026-10-13T10:02:00', session_id: 's1',
+        }],
+      },
+    },
+    act: async (page) => {
+      await clickNav(page, '任务库')
+      await page.locator('.lib-row').first().click()
+    },
+    waitFor: '.lib-detail',
+  },
   ...EMPTY_SHOTS,
 ]
 
