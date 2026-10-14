@@ -1,0 +1,29 @@
+<!-- 站点图标（favicon）。原先 web/public/ 整目录被删、index.html 也没有 link rel=icon，
+     于是每次加载都去请求 /favicon.ico 拿一个 404 —— 那条报错在每轮截图验证的输出里刷了很久。
+     Site icon. web/public/ had been deleted outright and index.html carried no icon link, so every
+     load requested /favicon.ico and got a 404 — the stray error that showed up in every screenshot
+     verification run.
+
+     形状照 AppHeader 的 `.ah-mark` 复刻：32×32、圆角 --r-md(8px)、底 --brand-grad、
+     图形用 --text-on-brand 的深墨。graphic 是 lucide `infinity`（= UiIcon name="infinity"）的原始
+     path，围绕其包围盒中心 (12,12) 放大 1.1 倍居中到 32×32。
+     Rect copied from AppHeader's `.ah-mark`: 32×32, --r-md(8px) radius, --brand-grad fill, glyph in
+     the --text-on-brand ink. The glyph is lucide `infinity`'s original path (UiIcon name="infinity"),
+     scaled 1.1× about its bbox centre and re-centred in the 32×32 box.
+
+     ⚠️ SVG 读不到 CSS 变量，所以下面的色值是**令牌值的字面副本**（--brand-c1 / --brand-c2 /
+     --text-on-brand）。改 --brand-grad 时要记得同步这里 —— 这是全仓唯一一处令牌字面副本。
+     ⚠️ An SVG cannot read CSS variables, so the colours below are literal copies of the token values.
+     If --brand-grad ever changes, this file must follow — it is the repo's only literal token copy. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="无限逻辑">
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#818cf8"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#brand)"/>
+  <path d="M6 16c5 0 7-8 12-8a4 4 0 0 1 0 8c-5 0-7-8-12-8a4 4 0 1 0 0 8"
+        fill="none" stroke="#0a0f1a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"
+        transform="translate(16 16) scale(1.1) translate(-12 -12)"/>
+</svg>
