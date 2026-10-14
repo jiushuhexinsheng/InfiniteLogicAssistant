@@ -308,7 +308,7 @@ const ringStyle = computed(() => {
      Static glow plus an inner rim light: the tech read, and it also gives reduce-motion users
      (whose animation collapses to zero frames, so the breathing glow never renders) a ball that
      still looks powered — previously the ball had no glow at all in that case. */
-  box-shadow: 0 0 9px rgba(103, 232, 249, .3), inset 0 0 9px rgba(103, 232, 249, .12);
+  box-shadow: 0 0 6px rgba(103, 232, 249, .34);
   display: flex;
   align-items: center;
   justify-content: center;
