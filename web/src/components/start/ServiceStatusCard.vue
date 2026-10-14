@@ -1,7 +1,7 @@
 <template>
   <StartCard title="实时状态">
     <template #badge>
-      <span class="status-badge" :style="{ background: asst.stateColor.value }">{{ asst.stateLabel.value }}</span>
+      <UiChip tone="solid" :color="asst.stateColor.value">{{ asst.stateLabel.value }}</UiChip>
     </template>
 
     <div class="service-grid">
@@ -41,7 +41,7 @@ import { useAssistant } from '../../composables/useAssistant'
 import { useConfig } from '../../composables/useApi'
 import { usePing } from '../../composables/usePing'
 import StartCard from './StartCard.vue'
-import { UiButton } from '../ui'
+import { UiButton, UiChip } from '../ui'
 
 const asst = useAssistant()
 const app = useConfig()
@@ -54,14 +54,6 @@ onMounted(() => { checkPing() })
 </script>
 
 <style scoped>
-.status-badge {
-  padding: var(--sp-1) var(--sp-3);
-  border-radius: var(--r-full);
-  font-size: var(--fs-xs);
-  color: var(--text-on-brand);
-  font-weight: 500;
-}
-
 .service-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
