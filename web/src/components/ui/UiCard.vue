@@ -1,5 +1,12 @@
 <template>
   <section class="ui-card" :class="{ hover, padded: padded }" v-bind="$attrs">
+    <!-- 带边框的标题行（`#header`）：起始页卡片原有一套 `.card-header`（标题 + 右侧徽章 +
+        下边框），与这里的 mono 小标 `title` 是两种表达。收进 UiCard 后「卡片外壳」只剩一份
+         实现（原先 UiCard 与 StartCard 各一套）。
+         Bordered header row: the start page's cards used to carry their own `.card-header`
+         (title + right-side badge + bottom border), a different expression from this mono caption.
+         Moving it in leaves a single card-shell implementation. -->
+    <div v-if="$slots.header" class="ui-card-head"><slot name="header" /></div>
     <span v-if="title || $slots.title" class="ui-card-title"><slot name="title">{{ title }}</slot></span>
     <slot />
   </section>
@@ -22,6 +29,14 @@ withDefaults(defineProps<{ title?: string; hover?: boolean; padded?: boolean }>(
   box-shadow: var(--shadow-2);
 }
 .ui-card.padded { padding: var(--sp-4) var(--sp-q18); }
+/* 标题行（`#header` 插槽）：左右分布 + 下边框，与起始页卡片原 `.card-header` 逐字一致。
+   Header row (`#header` slot): space-between plus a bottom border, matching the start page's
+   former `.card-header` verbatim. */
+.ui-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--sp-4);
+  border-bottom: 1px solid var(--glass-border);
+}
 /* 顶边发光线：品牌青 + 柔光（科技感批第一项）。原先是一道中性灰高光线。
    Glowing top edge: brand cyan plus a soft bloom. Was a neutral grey hairline. */
 .ui-card::before {
