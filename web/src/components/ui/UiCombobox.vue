@@ -30,7 +30,7 @@
     <!-- 装饰性 chevron 底座（对齐 UiSelect 触发器，标明「有建议层」；面板开合旋转）。
          Decorative chevron seat (matches the UiSelect trigger, signals "suggestions
          available"; rotates with the panel). -->
-    <span class="ui-combo-chevron" :class="{ open }"><UiIcon name="chevron-down" :size="14" /></span>
+    <UiFieldChevron :open="open" />
     <!-- 弹层：样式与定位由 UiPopoverPanel + useAnchoredPanel 提供（与 UiSelect 共用）。
          差异在于**没有 listbox 语义**（这是建议层，不是必须择一的列表框）、选中时机走
          mousedown（抢在输入框失焦前落地，否则先关后选）、且不因选空而渲染空态行。
@@ -71,7 +71,7 @@
  */
 import { computed, nextTick, ref } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
-import UiIcon from './UiIcon.vue'
+import UiFieldChevron from './UiFieldChevron.vue'
 import UiInput from './UiInput.vue'
 import UiPopoverPanel from './UiPopoverPanel.vue'
 import { useAnchoredPanel } from './useAnchoredPanel'
@@ -228,21 +228,4 @@ function onKeydown(e: KeyboardEvent) {
    Reserve room for the chevron seat on the right (same trigger layout as UiSelect). */
 .ui-combo .ui-input { padding-right: var(--sp-q38); }
 
-/* chevron 底座：镜像 UiSelect 的 .ui-select-chevron（圆底座、开合旋转）。
-   Chevron seat: mirrors UiSelect's .ui-select-chevron (round seat, rotates on toggle). */
-.ui-combo-chevron {
-  position: absolute; right: 6px; top: 50%;
-  transform: translateY(-50%);
-  width: 26px; height: 26px; border-radius: 50%;
-  display: grid; place-items: center;
-  background: var(--surface-control);
-  color: var(--text-3);
-  pointer-events: none;
-  transition: transform var(--dur-base) var(--ease-out), color var(--dur-fast), background var(--dur-fast);
-}
-.ui-combo-chevron.open {
-  transform: translateY(-50%) rotate(180deg);
-  color: var(--brand-c2);
-  background: rgba(103, 232, 249, .12);
-}
 </style>

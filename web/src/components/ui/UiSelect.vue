@@ -18,7 +18,7 @@
       v-bind="$attrs"
     >
       <span class="ui-select-value" :class="{ ph: !displayText }">{{ displayText || placeholder || '请选择' }}</span>
-      <span class="ui-select-chevron" :class="{ open }"><UiIcon name="chevron-down" :size="14" /></span>
+      <UiFieldChevron :open="open" />
     </button>
 
     <!-- 弹层挂 body：不受祖先 overflow 裁剪，空间不足时向上翻转。样式与定位由
@@ -68,7 +68,7 @@
  */
 import { computed, ref } from 'vue'
 import type { SegOption } from './UiSegmented.vue'
-import UiIcon from './UiIcon.vue'
+import UiFieldChevron from './UiFieldChevron.vue'
 import UiPopoverPanel from './UiPopoverPanel.vue'
 import { useAnchoredPanel } from './useAnchoredPanel'
 
@@ -225,20 +225,4 @@ function onKeydown(e: KeyboardEvent) {
 .ui-select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-select-value.ph { color: var(--text-3); }
 
-/* 自绘 chevron（圆底座）。Custom chevron (round base). */
-.ui-select-chevron {
-  position: absolute; right: 6px; top: 50%;
-  transform: translateY(-50%);
-  width: 26px; height: 26px; border-radius: 50%;
-  display: grid; place-items: center;
-  background: var(--surface-control);
-  color: var(--text-3);
-  pointer-events: none;
-  transition: transform var(--dur-base) var(--ease-out), color var(--dur-fast), background var(--dur-fast);
-}
-.ui-select-chevron.open {
-  transform: translateY(-50%) rotate(180deg);
-  color: var(--brand-c2);
-  background: rgba(103, 232, 249, .12);
-}
 </style>
