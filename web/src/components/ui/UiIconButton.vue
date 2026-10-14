@@ -42,7 +42,7 @@ withDefaults(defineProps<{
 .ui-icon-btn:disabled { opacity: .4; cursor: not-allowed; }
 .ib-ghost:hover:not(:disabled) { background: rgba(51, 65, 85, .55); color: var(--text-1); }
 /* 紧凑：密集行微操作，豁免全局触达下限。Compact: micro-actions in dense rows, exempt from the global target floor. */
-.ui-icon-btn.compact { min-height: auto; min-width: auto; padding: var(--sp-q3); border-radius: var(--r-sm); }
+.ui-icon-btn.compact { min-height: auto; min-width: auto; padding: var(--sp-1); border-radius: var(--r-sm); }
 
 /* 品牌变体：渐变圆钮（如聊天发送键）。Brand variant: gradient circle (e.g. chat send key). */
 .ib-brand.circle {

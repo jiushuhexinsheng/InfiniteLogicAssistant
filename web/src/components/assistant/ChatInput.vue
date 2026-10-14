@@ -79,7 +79,7 @@ function submit() {
 /* 聊天输入容器。Chat input container. */
 .chat-input {
   display: flex; flex-direction: column; gap: var(--sp-2);
-  padding: var(--sp-q9) var(--sp-3);
+  padding: var(--sp-q10) var(--sp-3);
   background: var(--surface-control);
   border: 1px solid var(--border-soft); border-radius: 16px;
   margin: 0 var(--sp-q10) var(--sp-q10);
@@ -97,7 +97,7 @@ function submit() {
   color: var(--text-2);
   font-size: var(--fs-2xs);
   border-radius: 999px;
-  padding: var(--sp-q3) var(--sp-q10);
+  padding: var(--sp-1) var(--sp-q10);
   cursor: pointer;
 }
 .ci-queue:hover { color: var(--text-1); border-color: rgba(251, 191, 36, .8); }

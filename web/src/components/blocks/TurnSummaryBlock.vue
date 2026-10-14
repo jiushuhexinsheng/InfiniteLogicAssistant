@@ -80,7 +80,7 @@ const statusIcon = computed(() => {
 .s-counts { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: var(--sp-1); }
 .s-chip {
   font-size: var(--fs-xs); color: var(--text-3);
-  border: 1px solid var(--bg-3); border-radius: var(--r-sm); padding: var(--sp-q1) var(--sp-q6);
+  border: 1px solid var(--bg-3); border-radius: var(--r-sm); padding: var(--sp-q2) var(--sp-q6);
 }
 .s-review { margin-top: var(--sp-2); border-top: 1px solid var(--bg-2); padding-top: var(--sp-2); }
 .s-review-hint { font-size: var(--fs-xs); color: var(--text-3); }

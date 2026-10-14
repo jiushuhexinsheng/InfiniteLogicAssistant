@@ -225,7 +225,7 @@ function renameCompat(_i: number, oldKey: string, newKey: string) {
 
 /* 高级兼容编辑区：折叠密度 + 快捷 chip（与音色行同构的键值行）。Advanced compat editor:
    compact density + shortcut chips (key-value rows mirroring the voice row). */
-.cs-compat { border-top: 1px dashed var(--border-soft); padding-top: var(--sp-q9); display: flex; flex-direction: column; gap: var(--sp-q7); }
+.cs-compat { border-top: 1px dashed var(--border-soft); padding-top: var(--sp-q10); display: flex; flex-direction: column; gap: var(--sp-2); }
 .cs-compat-head { display: flex; align-items: baseline; gap: var(--sp-2); }
 .cs-compat-title { font-size: var(--fs-2xs); font-weight: 600; color: var(--text-2); letter-spacing: .04em; }
 .cs-compat-hint { font-size: var(--fs-2xs); color: var(--text-3); }
@@ -235,7 +235,7 @@ function renameCompat(_i: number, oldKey: string, newKey: string) {
 .cs-compat-shortcuts .cs-compat-chip.ui-btn {
   font-size: var(--fs-2xs); font-family: var(--font-mono); color: var(--text-3);
   background: rgba(15, 23, 42, .6); border: 1px solid var(--border-soft);
-  border-radius: var(--r-full); padding: var(--sp-q3) var(--sp-q10); cursor: pointer;
+  border-radius: var(--r-full); padding: var(--sp-1) var(--sp-q10); cursor: pointer;
 }
 .cs-compat-shortcuts .cs-compat-chip.ui-btn:hover { color: var(--brand-c2); border-color: var(--brand-c2); }
 .cs-compat-shortcuts .cs-compat-chip.ui-btn.on { color: var(--brand-c2); border-color: var(--brand-c2); background: rgba(52, 211, 153, .08); }
@@ -250,7 +250,7 @@ function renameCompat(_i: number, oldKey: string, newKey: string) {
 .cs-note strong { color: var(--text-2); }
 .cs-note code {
   font-family: var(--font-mono); font-size: inherit;
-  background: rgba(148, 163, 184, .12); border-radius: 3px; padding: 0 var(--sp-q3);
+  background: rgba(148, 163, 184, .12); border-radius: 3px; padding: 0 var(--sp-1);
 }
 
 /* 测试中旋转动画（挂在 loader-2 图标上）。Spin animation while a connection test runs

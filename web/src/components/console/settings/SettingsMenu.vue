@@ -47,13 +47,13 @@ const DOT_MENU_IDS = ['llm', 'asr', 'tts', 'voice']
 <style scoped>
 .cs-menu {
   width: 148px; flex-shrink: 0;
-  display: flex; flex-direction: column; gap: var(--sp-q3);
+  display: flex; flex-direction: column; gap: var(--sp-1);
 }
 .cs-menu-item {
   display: flex; align-items: center; gap: var(--sp-2);
   font-size: var(--fs-xs); color: var(--text-2); text-align: left;
   background: var(--surface-menu); border: 1px solid transparent;
-  border-radius: var(--r-sm); padding: var(--sp-q7) var(--sp-q10); cursor: pointer;
+  border-radius: var(--r-sm); padding: var(--sp-2) var(--sp-q10); cursor: pointer;
   transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
 }
 .cs-menu-item:hover { color: var(--brand-c2); }

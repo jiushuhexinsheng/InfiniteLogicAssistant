@@ -195,7 +195,7 @@ function formatTime(ts: number) {
 .ma-btn {
   border: 1px solid var(--border-soft); background: var(--bg-1, rgba(15, 23, 42, .5));
   color: var(--text-3); font-size: var(--fs-2xs); border-radius: 999px;
-  padding: var(--sp-q2) var(--sp-q9); cursor: pointer;
+  padding: var(--sp-q2) var(--sp-q10); cursor: pointer;
 }
 .ma-btn:hover { color: var(--text-1); border-color: var(--brand-c3, #93c5fd); }
 .ma-btn:disabled { opacity: .5; cursor: default; }

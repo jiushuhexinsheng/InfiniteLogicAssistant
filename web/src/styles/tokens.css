@@ -110,15 +110,14 @@
      and --sp-q10 (53 sites) are each spread over 20+ files, i.e. the 4px grid is too coarse for
      this UI and people were hand-writing half steps. The visual pass should normalise these
      onto --sp-N (or adjust the ladder itself) and then **delete this layer**. */
-  --sp-q1: 1px;
+  /* 已归一：奇数档（1/3/5/7/9/11px）并到最近的偶数 —— 实测 222 处间距里 177 处本就是偶数值，
+     即这套界面事实上已在用 2px 网格，奇数属零散抖动而非有意档位。43 处各动 ±1px。
+     Normalised: odd steps (1/3/5/7/9/11px) merged into the nearest even one — 177 of 222 spacing
+     sites were already even, i.e. the UI was de-facto on a 2px grid and the odd ones were jitter,
+     not deliberate steps. 43 sites moved by ±1px. */
   --sp-q2: 2px;
-  --sp-q3: 3px;
-  --sp-q5: 5px;
   --sp-q6: 6px;
-  --sp-q7: 7px;
-  --sp-q9: 9px;
   --sp-q10: 10px;
-  --sp-q11: 11px;
   --sp-q14: 14px;
   --sp-q18: 18px;
   --sp-q22: 22px;

@@ -13,6 +13,6 @@ defineProps<{ error: string | null | undefined }>()
   font-size: var(--fs-xs); color: var(--err);
   background: rgba(248, 113, 113, .07);
   border: 1px solid rgba(248, 113, 113, .3);
-  border-radius: var(--r-sm); padding: var(--sp-q7) var(--sp-q10);
+  border-radius: var(--r-sm); padding: var(--sp-2) var(--sp-q10);
 }
 </style>

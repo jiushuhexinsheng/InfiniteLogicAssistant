@@ -61,7 +61,7 @@ function pick(v: string) {
 .ui-radio-cards { display: flex; gap: var(--sp-q10); }
 .rc-card {
   flex: 1; min-width: 0;
-  display: flex; flex-direction: column; align-items: center; gap: var(--sp-q5);
+  display: flex; flex-direction: column; align-items: center; gap: var(--sp-q6);
   padding: var(--sp-4) var(--sp-q10) var(--sp-q14);
   border-radius: var(--r-lg);
   background: rgba(15, 23, 42, .6);

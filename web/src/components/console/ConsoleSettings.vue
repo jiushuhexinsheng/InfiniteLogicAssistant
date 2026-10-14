@@ -141,7 +141,7 @@ onMounted(() => { s.load() })
 .cs-issues { display: flex; flex-direction: column; gap: var(--sp-q6); }
 .cs-issues p {
   font-size: var(--fs-2xs); margin: 0; line-height: 1.5;
-  border-radius: var(--r-sm); padding: var(--sp-q6) var(--sp-q9);
+  border-radius: var(--r-sm); padding: var(--sp-q6) var(--sp-q10);
 }
 .lv-error { color: #f87171; background: rgba(248, 113, 113, .07); }
 .lv-warning { color: #fbbf24; background: rgba(251, 191, 36, .07); }

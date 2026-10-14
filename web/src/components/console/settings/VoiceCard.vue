@@ -203,7 +203,7 @@ function saveVoice() {
 .cs-note strong { color: var(--text-2); }
 .cs-note code {
   font-family: var(--font-mono); font-size: inherit;
-  background: rgba(148, 163, 184, .12); border-radius: 3px; padding: 0 var(--sp-q3);
+  background: rgba(148, 163, 184, .12); border-radius: 3px; padding: 0 var(--sp-1);
 }
 /* 唤醒词行：一行一个关键词 + 删除按钮。Wake-keyword row: one keyword plus a delete button. */
 .cs-kwrow { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }

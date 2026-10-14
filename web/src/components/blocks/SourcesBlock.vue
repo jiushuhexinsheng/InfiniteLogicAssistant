@@ -61,12 +61,12 @@ function basename(p: string): string {
 }
 .bs-head {
   width: 100%; display: flex; align-items: center; justify-content: space-between;
-  gap: var(--sp-2); padding: var(--sp-q5) var(--sp-q10); background: none; border: 0; cursor: pointer;
+  gap: var(--sp-2); padding: var(--sp-q6) var(--sp-q10); background: none; border: 0; cursor: pointer;
   color: var(--text-3); font-size: inherit;
 }
 .bs-head:hover { color: var(--text-2); }
 .bs-caret { opacity: .7; }
-.bs-list { list-style: none; margin: 0; padding: var(--sp-q2) var(--sp-2) var(--sp-q7); display: flex; flex-direction: column; gap: var(--sp-q3); }
+.bs-list { list-style: none; margin: 0; padding: var(--sp-q2) var(--sp-2) var(--sp-2); display: flex; flex-direction: column; gap: var(--sp-1); }
 .bs-item {
   display: flex; align-items: baseline; gap: var(--sp-q6); min-width: 0;
   color: var(--text-2);

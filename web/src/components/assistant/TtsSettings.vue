@@ -105,7 +105,7 @@ function pct(n: number) { return Math.round(n * 100) + '%' }
   background: rgba(15, 23, 42, .6);
   border: 1px solid var(--border-soft);
   border-radius: var(--r-full);
-  padding: var(--sp-q3) var(--sp-q9);
+  padding: var(--sp-1) var(--sp-q10);
   max-width: 100%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }

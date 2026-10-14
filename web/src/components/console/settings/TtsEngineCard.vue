@@ -64,13 +64,13 @@ const { engine, apiAvailable, setEngine } = useTtsEngine()
   font-size: var(--fs-2xs); color: var(--text-3); line-height: 1.6; margin: 0;
   background: rgba(251, 191, 36, .06);
   border: 1px dashed var(--warn-soft-border);
-  border-radius: var(--r-sm); padding: var(--sp-q7) var(--sp-q9);
+  border-radius: var(--r-sm); padding: var(--sp-2) var(--sp-q10);
 }
 
 /* 播报总开关行：左文右开关。Master-switch row: label left, toggle right. */
 .cs-row {
   display: flex; align-items: center; justify-content: space-between; gap: var(--sp-q10);
-  padding: var(--sp-q9) var(--sp-q11);
+  padding: var(--sp-q10) var(--sp-3);
   background: rgba(15, 23, 42, .6);
   border: 1px solid var(--border-soft); border-radius: var(--r-sm);
 }

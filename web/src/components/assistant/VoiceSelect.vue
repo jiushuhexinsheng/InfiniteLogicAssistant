@@ -85,7 +85,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.voice-select { display: flex; flex-direction: column; gap: var(--sp-q5); min-width: 0; }
+.voice-select { display: flex; flex-direction: column; gap: var(--sp-q6); min-width: 0; }
 /* 标签：API 引擎时带后缀徽标。Label: suffixed with a badge on the API engine. */
 .vs-label {
   font-size: var(--fs-2xs); color: var(--text-3);

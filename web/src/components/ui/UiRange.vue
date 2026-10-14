@@ -46,7 +46,7 @@ function onInput(e: Event) {
 </script>
 
 <style scoped>
-.ui-range { display: flex; flex-direction: column; gap: var(--sp-q5); min-width: 0; }
+.ui-range { display: flex; flex-direction: column; gap: var(--sp-q6); min-width: 0; }
 /* 标签行：左标签右值。Label row: label left, value right. */
 .ur-label {
   display: flex; justify-content: space-between; align-items: baseline;

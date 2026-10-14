@@ -50,8 +50,8 @@ const emit = defineEmits<{ clear: []; close: [] }>()
 .panel-header {
   display: flex;
   align-items: center;
-  gap: var(--sp-q9);
-  padding: var(--sp-q11) var(--sp-q14);
+  gap: var(--sp-q10);
+  padding: var(--sp-3) var(--sp-q14);
   background: rgba(15, 23, 42, .9);
   border-bottom: 1px solid var(--border-soft);
 }

@@ -111,7 +111,7 @@ const pillStyle = computed(() => ({
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--sp-q7);
+  gap: var(--sp-2);
   height: 32px;
   padding: 0 var(--sp-3);
   border-radius: var(--r-full);

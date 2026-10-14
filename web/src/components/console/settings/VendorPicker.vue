@@ -36,14 +36,14 @@ const sectionKey = props.sectionKey
   border: 1px dashed var(--border-soft); border-radius: var(--r-sm);
   padding: var(--sp-2) var(--sp-q10); background: rgba(15, 23, 42, .4);
 }
-.cs-vendor-tip { font-size: var(--fs-2xs); color: var(--text-3); margin: 0 0 var(--sp-q7); }
+.cs-vendor-tip { font-size: var(--fs-2xs); color: var(--text-3); margin: 0 0 var(--sp-2); }
 .cs-vendor-grid { display: flex; flex-wrap: wrap; gap: var(--sp-q6); }
 /* 覆盖 UiButton 的 .ui-btn.s-sm（双类 + 容器层级保特异性胜出），保持紧凑 mono chip 观感。
    Overrides UiButton's .ui-btn.s-sm (container + double class keeps specificity ahead) for the compact mono chip look. */
 .cs-vendor .cs-vendor-grid .cs-vendor-chip {
   font-size: var(--fs-2xs); font-family: var(--font-mono); color: var(--text-2);
   background: rgba(15, 23, 42, .6); border: 1px solid var(--border-soft);
-  border-radius: var(--r-full); padding: var(--sp-q3) var(--sp-q10);
+  border-radius: var(--r-full); padding: var(--sp-1) var(--sp-q10);
 }
 .cs-vendor .cs-vendor-grid .cs-vendor-chip:hover { color: var(--brand-c2); border-color: var(--brand-c2); background: rgba(15, 23, 42, .6); }
 .cs-vendor .cs-vendor-grid .cs-vendor-chip.custom { border-style: dashed; color: var(--brand-c2); }

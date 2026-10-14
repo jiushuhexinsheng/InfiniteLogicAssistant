@@ -33,7 +33,7 @@ const dotColor = computed(() => TONES[props.tone])
 .ui-chip {
   display: inline-flex; align-items: center; gap: var(--sp-q6);
   font-family: var(--font-mono); font-size: var(--fs-2xs);
-  padding: var(--sp-q3) var(--sp-q10); border-radius: var(--r-full);
+  padding: var(--sp-1) var(--sp-q10); border-radius: var(--r-full);
   border: 1px solid var(--border-soft); color: var(--text-2);
   background: var(--surface-control);
 }

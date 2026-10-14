@@ -65,7 +65,7 @@ const { sidebarCollapsed, toggleSidebar } = useConsole()
 <style scoped>
 .console-sidebar {
   width: var(--nav-width); flex-shrink: 0;
-  display: flex; flex-direction: column; gap: var(--sp-q7);
+  display: flex; flex-direction: column; gap: var(--sp-2);
   padding: var(--sp-4) var(--sp-3);
   border: 1px solid var(--glass-border); border-radius: var(--r-xl);
   background: var(--surface-raised); backdrop-filter: blur(14px) saturate(140%);
@@ -107,19 +107,19 @@ const { sidebarCollapsed, toggleSidebar } = useConsole()
 
 .sb-nav {
   flex: 1; min-height: 0; overflow-y: auto;
-  display: flex; flex-direction: column; gap: var(--sp-q7);
+  display: flex; flex-direction: column; gap: var(--sp-2);
 }
 .sb-foot-stack {
   margin-top: auto;
-  display: flex; flex-direction: column; gap: var(--sp-q7);
+  display: flex; flex-direction: column; gap: var(--sp-2);
 }
 .sb-foot {
   display: flex; align-items: center; gap: var(--sp-2);
-  padding: var(--sp-q11) var(--sp-q10);
+  padding: var(--sp-3) var(--sp-q10);
   border: 1px solid rgba(52, 211, 153, .3); border-radius: var(--r-md);
   background: rgba(52, 211, 153, .06);
 }
-.sb-foot-txt { display: flex; flex-direction: column; gap: var(--sp-q1); min-width: 0; }
+.sb-foot-txt { display: flex; flex-direction: column; gap: var(--sp-q2); min-width: 0; }
 .sb-foot-txt b { font-size: var(--fs-2xs); font-weight: 500; color: var(--ok); }
 .sb-foot-txt span { font-size: var(--fs-4xs); color: var(--text-3); }
 </style>
