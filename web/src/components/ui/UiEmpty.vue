@@ -1,20 +1,16 @@
 <template>
-  <div class="ui-empty" :class="`pad-${pad}`"><slot>{{ text }}</slot></div>
+  <div class="ui-empty"><slot>{{ text }}</slot></div>
 </template>
 
 <!-- 空态 / 加载占位。Empty-state / loading placeholder.
      收编原先散在 6 个 console 视图里逐字重复的 `.console-empty`。
      Collects the `.console-empty` blocks that were duplicated verbatim across 6 console views. -->
 <script setup lang="ts">
-/** 空态 Props：文案与纵向内边距档位。Empty-state props: text and vertical padding tier. */
+/** 空态 Props：占位文案。Empty-state props: the placeholder text. */
 withDefaults(defineProps<{
   /** 占位文案（复杂节点走默认 slot）。Placeholder text (use the default slot for richer nodes). */
   text?: string
-  /** 纵向内边距：md=40px（多数视图），sm=30px（ConsoleHistory 的既有值，勿改成 md——那会改外观）。
-   *  Vertical padding: md=40px (most views), sm=30px (ConsoleHistory's existing value — don't
-   *  normalise it to md, that would change the look). */
-  pad?: 'sm' | 'md'
-}>(), { text: '', pad: 'md' })
+}>(), { text: '' })
 </script>
 
 <style scoped>
@@ -26,7 +22,13 @@ withDefaults(defineProps<{
 .ui-empty {
   display: flex; justify-content: center; text-align: center;
   color: var(--text-3); font-size: 13px;
+  /* 纵向内边距统一到 40px（科技感批 10.5）。本轮之前是 md=40 / sm=30 两档，而 30px 只有
+     ConsoleHistory 一个消费者 —— 结构批把「不统一 padding」写进了注释（那是对的，结构批
+     不动外观），视觉批来收它。40px 是 5/6 的既有值，所以动的只有 history 一张空态图。
+     Vertical padding unified to 40px. Previously two tiers, md=40 / sm=30, with 30px having a
+     single consumer (ConsoleHistory). The structural batch deliberately kept the split (right:
+     it did not touch looks); the visual batch collects it. 40px is the existing value in 5 of 6
+     views, so only the history empty-state shot moves. */
+  padding: var(--sp-q40) 0;
 }
-.ui-empty.pad-md { padding: var(--sp-q40) 0; }
-.ui-empty.pad-sm { padding: var(--sp-q30) 0; }
 </style>

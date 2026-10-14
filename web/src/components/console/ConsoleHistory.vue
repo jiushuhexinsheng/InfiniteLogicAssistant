@@ -26,10 +26,9 @@
         </div>
         <div class="hi-summary">{{ c.summary || '（暂无内容）' }}</div>
       </UiCard>
-      <!-- 空态内边距 30px（sm）——本视图的既有值，与其余列表视图的 40px 不同，勿归一化。
-           Empty-state pads at 30px (sm): this view's existing value, unlike the other list views'
-           40px. Don't normalise it. -->
-      <UiEmpty v-if="!(list ?? []).length && !loading" pad="sm">
+      <!-- 空态内边距已统一到 40px（科技感批 10.5）：本视图原是 30px 的孤例，现随其余 5 个列表视图。
+           Empty-state padding is now unified at 40px: this view was the lone 30px outlier. -->
+      <UiEmpty v-if="!(list ?? []).length && !loading">
         {{ showArchived ? '暂无归档会话' : '暂无会话，点「新建会话」开始对话' }}
       </UiEmpty>
     </div>
