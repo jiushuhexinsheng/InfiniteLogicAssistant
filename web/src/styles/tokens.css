@@ -15,8 +15,6 @@
      .06-alpha radial) but read as a solid colour; this turns it up to clearly visible and
      centralises it so "how strong is the ambience" is one edit. */
   --bg-ambient:
-    repeating-linear-gradient(0deg, rgba(103, 232, 249, .07) 0 1px, transparent 1px 44px),
-    repeating-linear-gradient(90deg, rgba(103, 232, 249, .07) 0 1px, transparent 1px 44px),
     radial-gradient(1100px 520px at 50% -8%, rgba(103, 232, 249, .20), transparent 62%),
     radial-gradient(900px 620px at 100% 112%, rgba(129, 140, 248, .14), transparent 60%),
     var(--bg-0);
