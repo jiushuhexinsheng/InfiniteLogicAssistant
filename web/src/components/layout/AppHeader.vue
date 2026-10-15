@@ -59,7 +59,7 @@ const route = useRoute()
    Two-line brand: Chinese + English caption (mirrors sb-name in the console sidebar). */
 .ah-name { display: flex; flex-direction: column; gap: var(--sp-q2); min-width: 0; text-align: left; }
 .ah-name b { font-size: var(--fs-lg); font-weight: 600; color: var(--text-1); line-height: 1.2; }
-.ah-name-en { font-size: var(--fs-4xs); letter-spacing: .1em; color: var(--text-3); line-height: 1.2; }
+.ah-name-en { font-size: var(--fs-2xs); letter-spacing: .1em; color: var(--text-3); line-height: 1.2; }
 .ah-nav {
   display: flex; gap: var(--sp-1); padding: var(--sp-1);
   border-radius: var(--r-full); background: var(--bg-2);

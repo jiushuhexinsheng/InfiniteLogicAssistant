@@ -121,5 +121,5 @@ const { sidebarCollapsed, toggleSidebar } = useConsole()
 }
 .sb-foot-txt { display: flex; flex-direction: column; gap: var(--sp-q2); min-width: 0; }
 .sb-foot-txt b { font-size: var(--fs-2xs); font-weight: 500; color: var(--ok); }
-.sb-foot-txt span { font-size: var(--fs-4xs); color: var(--text-3); }
+.sb-foot-txt span { font-size: var(--fs-2xs); color: var(--text-3); }
 </style>

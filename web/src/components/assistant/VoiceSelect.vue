@@ -93,7 +93,7 @@ onMounted(() => {
 }
 .vs-label em {
   font-style: normal; font-family: var(--font-mono);
-  color: var(--brand-c2); font-size: var(--fs-3xs);
+  color: var(--brand-c2); font-size: var(--fs-2xs);
 }
 
 /* voiceclone 说明。Voiceclone note. */

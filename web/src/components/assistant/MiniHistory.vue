@@ -348,7 +348,7 @@ watch(
 }
 
 .tool-icon {
-  font-size: var(--fs-3xs);
+  font-size: var(--fs-2xs);
 }
 
 /* ── 完整记录入口 ── */

@@ -78,5 +78,5 @@ const { engine, apiAvailable, setEngine } = useTtsEngine()
   display: flex; flex-direction: column; gap: var(--sp-q2);
   font-size: var(--fs-xs); color: var(--text-2);
 }
-.cs-row-sub { font-style: normal; font-size: var(--fs-3xs); color: var(--text-3); line-height: 1.4; }
+.cs-row-sub { font-style: normal; font-size: var(--fs-2xs); color: var(--text-3); line-height: 1.4; }
 </style>

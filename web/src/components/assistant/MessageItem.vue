@@ -150,7 +150,7 @@ function formatTime(ts: number) {
 /* 消息元信息行。Message meta line. */
 .msg-meta { display: flex; align-items: baseline; gap: var(--sp-q6); padding: 0 var(--sp-1) var(--sp-q2); }
 .msg-role { font-size: var(--fs-2xs); color: var(--text-3); }
-.msg-time { font-size: var(--fs-3xs); color: var(--text-3); opacity: .8; }
+.msg-time { font-size: var(--fs-2xs); color: var(--text-3); opacity: .8; }
 .msg-item.user .msg-meta { flex-direction: row-reverse; }
 
 /* 消息气泡。Message bubble. */

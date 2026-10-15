@@ -54,7 +54,7 @@ function onInput(e: Event) {
 }
 .ur-label em {
   font-style: normal; font-family: var(--font-mono);
-  color: var(--brand-c2); font-size: var(--fs-3xs);
+  color: var(--brand-c2); font-size: var(--fs-2xs);
 }
 
 /* 滑轨：去原生外观，加粗渐变轨道 + 品牌描边拇指（带光晕）。

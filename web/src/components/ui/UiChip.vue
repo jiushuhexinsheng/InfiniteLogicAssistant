@@ -62,7 +62,7 @@ const solidStyle = computed(() => (props.tone === 'solid' && props.color ? { bac
   box-shadow: 0 0 7px -2px rgba(248, 113, 113, .5); }
 .ui-chip.t-info { color: var(--info); border-color: rgba(34, 211, 238, .35); background: rgba(34, 211, 238, .06);
   box-shadow: 0 0 7px -2px rgba(34, 211, 238, .5); }
-.ui-chip-detail { color: var(--text-3); font-size: var(--fs-3xs); }
+.ui-chip-detail { color: var(--text-3); font-size: var(--fs-2xs); }
 /* 实心态（`tone="solid"`）：整块填充 = 动态状态色（`color` prop，走内联 style），文字用
    on-brand 的深墨。逐像素复刻起始页原先的 `.status-badge`（无边框 / sans 12px / 4px 12px 内边距）
    —— 收编的目标是「站内徽章只剩一份实现」，不是改观感。
