@@ -12,7 +12,10 @@
     <!-- 云端上传成本（audit 的 audio-upload via= 三前缀计数 + 近 7 日趋势；后端只回计数与日期）。
          Cloud upload cost (audio-upload via= counts + 7-day trend; the backend returns counts and dates only). -->
     <UiCard class="upload-stats">
-      <h3 class="upload-title">云端音频上传（成本口径）</h3>
+      <!-- `h2` 而非 `h3`（2026-10-15）：本视图内**没有前导 h2**，用 h3 会在大纲里留下一个孤立层级。
+           全站实测只有 h1（OrbHero）/ h2（FeatureGrid、ConsoleSettings）/ 此处，改 h2 后大纲连续。
+           观感不变：字号/字重/外边距都由 `.upload-title` 类给死，不走 UA 默认。 -->
+      <h2 class="upload-title">云端音频上传（成本口径）</h2>
       <div class="stats-grid">
         <div v-for="c in uploadCards" :key="c.lbl" class="stat">
           <div class="num">{{ c.num }}</div>
