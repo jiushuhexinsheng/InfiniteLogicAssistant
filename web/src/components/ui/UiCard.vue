@@ -43,6 +43,30 @@ withDefaults(defineProps<{ title?: string; hover?: boolean; padded?: boolean }>(
   content: ''; position: absolute; top: 0; left: 14%; right: 14%; height: 1px;
   background: var(--hairline-brand); box-shadow: var(--glow-hairline); pointer-events: none;
 }
+/* 上缘品牌微光（科技感）：卡片内侧一层自上而下淡出的青绿，读作「被从上方照亮」的层次。
+   为什么用伪元素而不是改描边：`tokens.css` 明确裁定过「玻璃描边共用一个值、不给 UiCard 加私有
+   描边」，那正是 `--glass-border` 偏青是一处编辑的原因 —— 本项不碰它，只往**内侧**加光。
+   `z-index: -1` 是关键：`.ui-card` 带 `backdrop-filter`，**本身即堆叠上下文**，所以负 z 的伪元素
+   落在「卡片底色之上、内容之下」，不会把标题和正文蒙上一层。（若哪天 backdrop-filter 被去掉，
+   它会掉到卡片底**下面**、整个效果消失 —— 那时改用 `::before` + z-index:1 即可。）
+   Top-edge brand sheen: a cyan wash fading downward inside the card, reading as "lit from above".
+   A pseudo-element rather than a border change on purpose — tokens.css explicitly ruled that the
+   glass border is one shared value and UiCard gets no private border (that is why "the glass leans
+   cyan" is a single edit). This adds light to the **inside** instead. `z-index: -1` matters: the
+   card carries `backdrop-filter`, so it is a stacking context, and a negative-z pseudo lands above
+   the card fill but below its content — it must not wash over the title and body. (If
+   backdrop-filter is ever dropped the sheen falls behind the fill and disappears; switch to
+   `::before` + z-index:1 then.) */
+.ui-card::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; z-index: -1;
+  /* 渐变的**长度按卡片高度算比例**，所以短卡（起始页那四块特性卡）会显得比长卡重 ——
+     36% 是照着「一条顶部光带」调的：短卡上占顶部小半，长卡上只够到标题行下方。
+     The gradient is a **percentage of the card height**, so short cards (the start page's four
+     feature cards) read heavier than tall ones. 36% is tuned for "a light band across the top":
+     a small upper slice on short cards, just past the title row on tall ones. */
+  background: linear-gradient(180deg, rgba(103, 232, 249, .12), transparent 36%);
+  pointer-events: none;
+}
 .ui-card-title {
   display: block; margin-bottom: var(--sp-q10);
   font-family: var(--font-mono); font-size: var(--fs-2xs);
