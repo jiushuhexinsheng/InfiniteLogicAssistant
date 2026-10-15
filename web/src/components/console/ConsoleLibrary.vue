@@ -1,5 +1,5 @@
 <template>
-  <ConsolePane stack :gap="10">
+  <ConsolePane :gap="10">
     <!-- 任务库头部：说明与刷新。Task-library header: description and refresh. -->
     <div class="lib-head">
       <UiButton variant="ghost" size="sm" @click="loadTasks">刷新</UiButton>

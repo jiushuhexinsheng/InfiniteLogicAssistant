@@ -75,7 +75,12 @@ onMounted(() => { loadTools() })
 </script>
 
 <style scoped>
-.tool-cards { display: flex; flex-direction: column; gap: var(--sp-q10); }
+/* `flex-shrink: 0`：ConsolePane 现在是 flex 列，flex 项默认会被压缩 —— 不加这行，工具多到
+   超出面板高度时卡片会被**压扁**，而不是让面板滚动。ConsoleEnvView 的 `.env-pre` 同款。
+   `flex-shrink: 0`: ConsolePane is a flex column now and flex items shrink by default — without
+   this the cards get squashed when there are more tools than fit, instead of the pane scrolling.
+   Same reason as ConsoleEnvView's `.env-pre`. */
+.tool-cards { display: flex; flex-direction: column; gap: var(--sp-q10); flex-shrink: 0; }
 .tool-card { padding: var(--sp-q14) var(--sp-4); }
 .tool-head { display: flex; align-items: center; gap: var(--sp-3); cursor: pointer; }
 .tool-name { font-family: var(--font-mono); font-size: 13px; color: var(--brand-c2); background: rgba(103, 232, 249, .08); border: 1px solid var(--border-base); border-radius: 6px; padding: var(--sp-q2) var(--sp-2); }

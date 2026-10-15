@@ -5,12 +5,10 @@
          The welcome banner (衍衡 / online-status row) is removed (2026-10-11 user
          request: drop the identity header from the conversation page — status lives on
          the float-ball pill and the sidebar). -->
-    <!-- 对话区空态：**居中长满**（`fill`）而非列表页签的「上对齐」—— 这里没有工具栏，空态该占据
-         整个会话区。收编进 UiEmpty 后连图标徽章一起拿到（图标 = 侧栏「对话」页签的 messages-square）。
-         Conversation empty state: **centred and filling** (`fill`) rather than the list tabs'
-         top-aligned form — there is no toolbar here, so the state owns the whole pane. Collecting it
-         into UiEmpty also brings the icon badge (the 对话 sidebar tab's `messages-square`). -->
-    <UiEmpty v-if="!messages.length" fill icon="messages-square"
+    <!-- 对话区空态：长满会话区并居中（UiEmpty 的默认行为）。图标 = 侧栏「对话」页签的 messages-square。
+         Conversation empty state: fills the pane and centres itself (UiEmpty's default now). The icon
+         is the 对话 sidebar tab's `messages-square`. -->
+    <UiEmpty v-if="!messages.length" icon="messages-square"
       text="还没有对话" hint="点右下角悬浮球，或输入文字开始" />
     <!-- 消息列表：遍历渲染每条聊天消息，支持重试/取消工具与消息级 分叉/编辑/重生成（docs/designs/07）。
          Message list: renders each chat message with tool retry/cancel plus message-level

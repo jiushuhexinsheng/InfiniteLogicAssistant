@@ -1,5 +1,5 @@
 <template>
-  <ConsolePane stack :gap="10">
+  <ConsolePane :gap="10">
     <!-- 记忆头部：刷新按钮和加载状态。Memory header: refresh button and loading state. -->
     <div class="mem-head">
       <UiButton variant="ghost" size="sm" @click="loadMemory">刷新</UiButton>

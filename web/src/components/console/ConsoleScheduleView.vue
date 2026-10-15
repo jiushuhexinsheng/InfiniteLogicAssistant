@@ -1,5 +1,5 @@
 <template>
-  <ConsolePane stack :gap="10">
+  <ConsolePane :gap="10">
     <!-- 定时任务注册表单：输入 cron 表达式和执行内容。Schedule registration form: input cron expression and prompt content. -->
     <UiCard title="注册定时任务" class="sched-form">
       <div class="form-row">

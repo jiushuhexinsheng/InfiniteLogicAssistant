@@ -32,5 +32,11 @@ onMounted(() => { loadEnv() })
 <style scoped>
 .env-head { display: flex; align-items: center; gap: var(--sp-q10); margin-bottom: var(--sp-q10); }
 .env-loading { font-size: var(--fs-xs); color: var(--text-3); }
-.env-pre { background: var(--surface-input); border: 1px solid var(--border-base); border-radius: 10px; padding: var(--sp-q14) var(--sp-4); font-size: var(--fs-xs); line-height: 1.7; color: var(--text-1); overflow: auto; max-height: 60vh; white-space: pre-wrap; word-break: break-all; }
+/* `flex-shrink: 0`：ConsolePane 现在是 flex 列。不加这行，这段带 `max-height: 60vh` 的
+   `<pre>` 会被当作可压缩的 flex 项 —— 这正是 ConsolePane 旧注释里那条警告（「flex 化会压扁
+   .env-pre」）的真正病根。声明不可压缩后，外观与块级流时逐像素相同。
+   `flex-shrink: 0`: ConsolePane is a flex column now. Without this, this max-height'd `<pre>`
+   would be treated as a squishable flex item — the real cause behind ConsolePane's old warning.
+   Declaring it unshrinkable keeps the look pixel-identical to the block-flow days. */
+.env-pre { background: var(--surface-input); border: 1px solid var(--border-base); border-radius: 10px; padding: var(--sp-q14) var(--sp-4); font-size: var(--fs-xs); line-height: 1.7; color: var(--text-1); overflow: auto; max-height: 60vh; white-space: pre-wrap; word-break: break-all; flex-shrink: 0; }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <div class="ui-empty" :class="{ fill }">
+  <div class="ui-empty">
     <!-- 图标徽章：给空态一个「入口级」的视觉锚点。图标名与侧栏该页签**同名**（wrench / globe /
          database / history / library / calendar-clock），所以空态读起来像「这一页」，而不是一段
          漂浮在大片深色里的灰字。
@@ -35,13 +35,7 @@ withDefaults(defineProps<{
   icon?: string
   /** 次级说明（`--fs-xs`、更暗），可选。Secondary hint at --fs-xs in a dimmer tone; optional. */
   hint?: string
-  /** 长满父容器并在其中**居中**（父容器需是 flex 列，如对话区的 `.console-messages`）。
-   *  不传时是「上对齐 + 40px 内边距」，用于列表页签（工具栏下方的空态）。
-   *  Grow to fill the parent and centre inside it (the parent must be a flex column, like the
-   *  conversation pane's `.console-messages`). Without it the state is top-aligned with 40px
-   *  padding, which is what the list tabs want (their empty state sits under a toolbar). */
-  fill?: boolean
-}>(), { text: '', icon: '', hint: '', fill: false })
+}>(), { text: '', icon: '', hint: '' })
 </script>
 
 <style scoped>
@@ -56,6 +50,14 @@ withDefaults(defineProps<{
   text-align: center;
   color: var(--text-3); font-size: 13px;
   padding: var(--sp-q40) 0;
+  /* 长满父容器后 `justify-content: center` 才真的生效 —— 空态因此在可用空间里**垂直居中**，
+     而不是吊在顶部。父容器是 flex 列（ConsolePane / 对话区的 `.console-messages`）；在块级
+     父容器里 `flex: 1` 是惰性的，退化成「上对齐 + 40px 内边距」。
+     Grow into the parent so the `justify-content: center` above actually bites — that is what
+     centres the empty state in the available space instead of hanging it from the top. The parent
+     is a flex column (ConsolePane / the conversation's `.console-messages`); inside a block parent
+     `flex: 1` is inert and it degrades to "top-aligned with 40px padding". */
+  flex: 1;
 }
 /* 徽章底/描边都复用既有令牌（品牌色的 .1 淡底 + 玻璃描边）。外发光没有令牌，量级**照抄
    UiChip 的 t-* 族**（`0 0 7px -2px`）—— 那是这套截图门禁里被证明稳的量级，别加大。
@@ -75,9 +77,4 @@ withDefaults(defineProps<{
    "the only text" into a heading. */
 .ui-empty-text { color: var(--text-2); }
 .ui-empty-hint { margin-top: var(--sp-1); color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
-/* `fill`：长满父容器。基类已经有 `justify-content: center`，高度一被撑起来它才真的生效 ——
-   这正是「上对齐」与「居中」两种空态的唯一差别。
-   `fill`: grow into the parent. The base rule already carries `justify-content: center`, which only
-   bites once the height is stretched — that is the whole difference between the two presentations. */
-.ui-empty.fill { flex: 1; }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <ConsolePane stack :gap="12">
+  <ConsolePane :gap="12">
     <!-- 操作栏：新建会话、切换归档/活跃视图、刷新列表。Action bar: create session, toggle archived/active view, refresh list. -->
     <div class="history-actions">
       <UiButton variant="primary" size="sm" @click="create">＋ 新建会话</UiButton>
@@ -181,7 +181,14 @@ onMounted(() => { loadSessions() })
 /* 本地覆盖全局 .hint（全局是 --fs-xs=12px，这里同值但独立声明，保持原样不改）。
    Local override of the global .hint (same 12px, declared separately — left as-is). */
 .hint { font-size: var(--fs-xs); color: var(--text-3); }
-.history-list { display: flex; flex-direction: column; gap: var(--sp-q10); }
+/* `flex: 1` 是给空态用的：本视图是唯一把 UiEmpty **包在列表容器里**的（其余 5 个视图它都是
+   ConsolePane 的直接子元素），所以不把这层撑起来，UiEmpty 的 `flex: 1` 就没有高度可长。
+   有卡片时内容本来就把容器撑满，这一行不改变任何东西。
+   `flex: 1` is for the empty state: this is the only view that nests UiEmpty **inside a list
+   container** (elsewhere it is a direct child of ConsolePane), so without stretching this layer the
+   UiEmpty's own `flex: 1` has no height to grow into. With cards present the content already fills
+   the container, so this line changes nothing. */
+.history-list { display: flex; flex-direction: column; gap: var(--sp-q10); flex: 1; }
 .history-item { padding: var(--sp-3) var(--sp-q14); cursor: pointer; display: flex; flex-direction: column; gap: var(--sp-q6); }
 .history-item:hover { border-color: var(--brand-c2); }
 .hi-row { display: flex; align-items: center; gap: var(--sp-q10); font-size: var(--fs-xs); color: var(--text-3); flex-wrap: wrap; }
