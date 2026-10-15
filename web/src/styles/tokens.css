@@ -23,7 +23,14 @@
        实测：44px/.07 频繁抖；**88px/.04 也抖**（低频+弱并不能免）；去掉网格后连跑 2 次绿。
        **沿用网格是用户的明确选择**（观感优先）。随之而来的判定规则：`conv-blocks` 报底部条带
        差异时**先复跑**，两次都报同一张同一数值才算真实差异。
-       未验证的对症方向：让网格与模糊面**不重叠**（比调参更对症），或用无 AA 的 SVG 点阵。
+       **「换无 AA 的 SVG 点阵」已试过（2026-10-15/16），结论是「半对」**：把上面两条
+       `repeating-linear-gradient` 换成**同一套 1px 网格**、同相位的 SVG data-URI
+       （`shape-rendering='crispEdges'`，即真·无 AA；观感不变，单变量），全量 **N=10 → 那个
+       ~5k 散布一次都没出现**（gradient 版是 1/10）→ 方向**被证实有效**。但它同时**扰动出**一个
+       新的、更频繁的小差异：`console-status` 的 (652,132)-(654,144) 一带（一条 1px 竖线 +
+       一段文字宽度级的高强度差异），**7/10 轮复现** → 按事先定的「N=10 必须 0/10」判据**不成**，
+       已回退（无残留提交）。**下一步该查的是那处 console-status 到底是什么**，而不是继续调网格。
+
        ⚠️ **Known cost: this makes the screenshot gate flake reproducibly.** A high-frequency
        texture sampled by backdrop-filter surfaces rounds per-pixel differently under load → the
        mini-bar strip at the bottom of `conv-blocks` occasionally differs by ~4.9k pixels, all of
@@ -32,9 +39,8 @@
        frequency and lower alpha do not save it); without the grid two consecutive runs were
        green. **Keeping the grid is the user's explicit choice** (look over gate purity). Rule
        that follows: when `conv-blocks` reports the bottom strip, **re-run** — only the same shot
-       with the same number twice counts as a real difference. Untested fix direction: keep the
-       grid from overlapping blurred surfaces (more to the point than tuning), or use an
-       unantialiased SVG dot pattern. */
+       with the same number twice counts as a real difference. (The unantialiased-SVG direction has
+       since been tested — see above.) */
     repeating-linear-gradient(0deg, rgba(103, 232, 249, .07) 0 1px, transparent 1px 44px),
     repeating-linear-gradient(90deg, rgba(103, 232, 249, .07) 0 1px, transparent 1px 44px),
     radial-gradient(1100px 520px at 50% -8%, rgba(103, 232, 249, .20), transparent 62%),
