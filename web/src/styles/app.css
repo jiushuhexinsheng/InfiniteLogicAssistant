@@ -28,10 +28,24 @@ body {
 /* 选中 / 焦点环 */
 ::selection { background: rgba(34, 211, 238, .3); color: #fff; }
 
+/* 键盘焦点：实色描边环 + 品牌外发光（科技感）。光晕用的是输入框那枚 `--focus-glow`,
+   所以「键盘焦点」与「输入框焦点」现在是同一种光。
+   ⚠️ 这是**低特异性**规则（0,1,0）：组件若自带 `box-shadow`（`.v-primary` 的 `--glow-brand`、
+   `.ui-input:focus` 的 `--shadow-inset, --focus-glow`…），会盖过它 —— 那些控件只有描边、没有
+   这一圈光。**这是有意的**：想全站一刀切就得 `!important`，而那会连带干掉输入框的凹陷层次
+   （`--shadow-inset`）、换掉主按钮的常态发光。别用 !important 图省事。
+   Keyboard focus: solid ring plus a brand bloom, reusing the same `--focus-glow` token the inputs
+   use, so keyboard focus and input focus now glow the same way.
+   ⚠️ This is a **low-specificity** rule (0,1,0): any component that sets its own `box-shadow`
+   (`.v-primary`'s `--glow-brand`, `.ui-input:focus`'s `--shadow-inset, --focus-glow`, …) overrides
+   it, so those controls get the ring but not this bloom. That is deliberate — forcing it with
+   `!important` would also strip the inputs' inset depth and replace the primary button's resting
+   glow. Don't reach for `!important` here. */
 :focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-offset);
   border-radius: var(--r-sm);
+  box-shadow: var(--focus-glow);
 }
 
 /* 确保所有交互元素有最小点击目标（排除特殊小徽章与显式紧凑控件）。
