@@ -128,17 +128,26 @@
   --sp-7: 32px;
   --sp-8: 48px;
 
-  /* ── 间距 · q 捕获层（临时） ──
-     4px 阶梯之外的**实际在用值**，1:1 捕获（`--sp-qN` 就是 N px），值与原硬编码完全相同
-     —— 这一步是零像素差异的「先收进令牌」。它在量上不是噪声：`--sp-q6`(45 处) 与
-     `--sp-q10`(53 处) 各散在 20+ 个文件里，说明 4px 网格对这个界面偏粗，大家在手写半格。
-     视觉批应当把它们**归一到 --sp-N 阶梯**（或据此调整阶梯本身），归一完成后**删掉本层**。
+  /* ── 间距 · q 层（2px 网格的半格，**不是临时捕获层**） ──
+     原立项把这里写成「4px 阶梯之外的临时捕获，归一到 --sp-N 后删掉本层」。**2026-10-15 实测定论**：
+     11 档共 **175 处**，取值**全是偶数**（2 · 6 · 10 · 14 · 18 · 22 · 28 · 30 · 38 · 40 · 120），
+     一档都不例外。而 4px 阶梯是 4 · 8 · 12 · 16 · 20 · 24 · 32 · 48 —— 正好是 2px 网格的
+     **隔一取值**。也就是说这里的每一档都恰好是阶梯的半格：它不是「还没归一的临时状态」，
+     而是**这套界面真实的刻度**（4px 网格对它偏粗）。
+     再往前那轮（奇数档并到偶数，222 处里 177 处本就偶数）是同一结论的另一半证据。
+     **结论：本层保留，不再列作待办。** 真要动，该动的是把阶梯改成 2px 制，而不是把这 175 处
+     各挪 ±2px 去迁就一个更粗的网格 —— 那是逆着证据改。
 
-     Spacing · q capture layer (temporary). Values actually in use off the 4px ladder, captured
-     1:1 (`--sp-qN` is exactly N px) so this step is pixel-neutral. Not noise: --sp-q6 (45 sites)
-     and --sp-q10 (53 sites) are each spread over 20+ files, i.e. the 4px grid is too coarse for
-     this UI and people were hand-writing half steps. The visual pass should normalise these
-     onto --sp-N (or adjust the ladder itself) and then **delete this layer**. */
+     Spacing · the q layer, half-steps of a 2px grid, **not a temporary capture layer**. The plan
+     framed it as a temporary capture to be normalised onto --sp-N and deleted. Measured 2026-10-15:
+     11 tiers, **175 sites**, every value **even** (2 · 6 · 10 · 14 · 18 · 22 · 28 · 30 · 38 · 40 ·
+     120) with no exception. The 4px ladder (4 · 8 · 12 · 16 · 20 · 24 · 32 · 48) is every other
+     value of that 2px grid, so each tier here is exactly a half step of it: not "normalisation
+     pending", but **the scale this UI actually uses** (the 4px grid is too coarse for it). The
+     earlier odd-into-even pass (177 of 222 sites were already even) is the other half of the same
+     evidence. **Conclusion: this layer stays and is no longer a to-do.** If it is ever revisited,
+     the right move is to make the ladder 2px-based — not to nudge 175 sites by ±2px onto a coarser
+     grid, which would be arguing with the evidence. */
   /* 已归一：奇数档（1/3/5/7/9/11px）并到最近的偶数 —— 实测 222 处间距里 177 处本就是偶数值，
      即这套界面事实上已在用 2px 网格，奇数属零散抖动而非有意档位。43 处各动 ±1px。
      Normalised: odd steps (1/3/5/7/9/11px) merged into the nearest even one — 177 of 222 spacing
