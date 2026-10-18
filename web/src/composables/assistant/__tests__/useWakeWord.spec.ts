@@ -891,7 +891,9 @@ describe('useWakeWord 播报门控', () => {
     expect(getUserMedia).toHaveBeenCalledTimes(2)      // 首次启动 + 播报后恢复。Initial start plus post-playback resume.
     expect(handles).toHaveLength(2)                    // 新建而非复用旧实例。Fresh instance, not the stopped one.
     expect(handles[1].start).toHaveBeenCalledTimes(1)
-    expect(store.state.value).toBe('listening')
+    // 电源开/播报后的静止态是静待（2026-10-11 单链条），不再是 listening。
+    // The resting state after power-on / playback is standby (single chain), not listening.
+    expect(store.state.value).toBe('standby')
   })
 
   /** 播报结束且**有待答提问** → 回到待答并恢复监听（既有语义，不得丢）。
@@ -1262,7 +1264,10 @@ describe('useWakeWord 开启路径', () => {
     expect(getUserMedia).toHaveBeenCalledTimes(1)   // 不得再取一条流。No second acquisition.
     expect(handles).toHaveLength(1)                 // 不得再建一台录音器。No second recorder.
     expect(handles[0].start).toHaveBeenCalledTimes(1)
-    expect(store.state.value).toBe('listening')     // 回到聆听，而不是空闲。Back to listening.
+    // 回到静待（唤醒前静止态），而不是空闲 —— 单链条状态图里电源开 = 静待。
+    // Back to standby (the pre-wake rest state), not idle — power-on is standby in the
+    // single-chain diagram.
+    expect(store.state.value).toBe('standby')
 
     await ww.toggleWake()                    // 关掉唤醒。Switch wake off.
 
@@ -1381,5 +1386,75 @@ describe('useWakeWord barge-in 打断播报', () => {
     speaking.value = false
     await nextTick()
     expect(handle.stop).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * 语音开关入口一致（徽章 / 起始页按钮）——它们和双击是同一个「语音电源」。
+ *
+ * 2026-10-11 单链条状态图：电源开 = 唤醒前 = 静待。徽章/起始页若仍落 listening，
+ * 从 listening 唤醒会走不到通话（守卫只认 standby）→ 回退指令窗 → 悬浮球「录音中…」。
+ * 这正是用户报告的「回答时/回答后冒出录音效果」的入口侧根因。
+ *
+ * Voice-switch entry consistency (badge / start-page button) — the same voice POWER as
+ * the double-click. Under the 2026-10-11 single-chain diagram, power-on lands in standby
+ * (pre-wake). Leaving these entries on `listening` made a wake miss the call guard and
+ * fall back to the command window (rendered as 「录音中…」).
+ */
+describe('语音开关入口一致（徽章/起始页）', () => {
+  beforeEach(() => { vi.resetModules(); localStorage.clear() })
+
+  it('徽章/起始页开语音 → 电源开落静待（与双击同一落点）', async () => {
+    const { store, ww } = await setupWake()
+    await ww.toggleWake()
+    expect(store.wakeEnabled.value).toBe(true)
+    expect(store.state.value).toBe('standby')
+  })
+})
+
+/**
+ * 通话态不得落「录音中」（2026-10-11 单链条状态图：录音中作为过程态已废弃，
+ * 通话中保持通话中）。
+ *
+ * HEAD 里仍会写 recording 的路径都要求转写文本命中唤醒词：待答期间说中唤醒词
+ * （弃题开新窗）、续聊窗口里说中唤醒词。通话态下这两处必须仍然落 listening
+ * （文案 =「通话聆听中」），否则悬浮球会冒出录音环形效果。
+ *
+ * Call mode must never enter 「录音中」 (the single-chain diagram retired the recording
+ * process; a call stays a call). The remaining `recording` writers are wake-word hits
+ * while awaiting an answer / inside the follow-up window; inside a call both must land
+ * on `listening` instead, or the float ball shows the recording ring again.
+ */
+describe('通话态不落「录音中」', () => {
+  beforeEach(() => { vi.resetModules(); localStorage.clear() })
+
+  it('通话待答时说中唤醒词 → 弃题，但状态保持通话聆听中', async () => {
+    const { store, ww } = await setupWake()
+    const { api } = await import('../../../api')
+    vi.mocked(api.transcribe).mockResolvedValue({ ok: true, text: '衍衡' } as any)
+    store.wakeEnabled.value = true
+    store.callActive.value = true
+    store.state.value = 'awaiting_answer'
+    store.pendingQuestion.value = { text: '确认执行吗？', kind: 'choice', options: [{ value: 'yes', label: '允许' }] }
+
+    await ww.handleSegment(new Blob(['x']))
+
+    expect(store.pendingQuestion.value).toBeNull()   // 弃题照旧生效。Abandon still works.
+    expect(store.state.value).toBe('listening')      // 不得落 recording。Never `recording`.
+  })
+
+  it('通话中播报结束且有待答 → 保持通话聆听中（不落 awaiting_answer 的录音环）', async () => {
+    const { store, speaking } = await setupWake()
+    store.wakeEnabled.value = true
+    store.callActive.value = true
+    store.state.value = 'responding'
+    store.pendingQuestion.value = { text: '确认执行吗？', kind: 'choice', options: [{ value: 'yes', label: '允许' }] }
+
+    speaking.value = true
+    await flush()
+    speaking.value = false
+    await flush()
+
+    expect(store.state.value).toBe('listening')
   })
 })

@@ -56,6 +56,18 @@ export function registerWatches() {
     if (state.value === 'followup') armFollowupTimer()
     const q = pendingQuestion.value
     if (q) {
+      // 通话态保持「通话聆听中」：awaiting_answer 复用的是录音视觉（mic + 10 秒扇形
+      // 进度环，那是已删除的回答超时倒计时），通话中冒出它就读成了「录音中」。
+      // 作答路由只看 pendingQuestion，与 state 无关，所以这里保持 listening 不影响作答。
+      // Inside a call stay on call listening: awaiting_answer reuses the recording visuals
+      // (mic + the 10s conic ring, the countdown of the deleted answer timeout), so showing
+      // it in a call reads as 「录音中」. Answer routing keys off pendingQuestion, not the
+      // state, so staying on listening does not affect answering.
+      if (callActive.value) {
+        if (state.value !== 'listening') state.value = 'listening'
+        void ensureListening()
+        return
+      }
       const ns = nextState(state.value, 'question_ready')
       if (ns !== 'awaiting_answer') return
       state.value = ns

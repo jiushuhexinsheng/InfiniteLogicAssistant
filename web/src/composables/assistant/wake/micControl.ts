@@ -199,6 +199,13 @@ export async function toggleWake() {
     st.startingWake = true   // 置位留在 toggleWake；startListening 的 finally 只负责清位。
     const r = await startListening()
     if (r === 'ok') {
+      // 与双击电源同一落点：开机 = 唤醒前 = 静待（2026-10-11 单链条状态图）。
+      // 徽章/起始页按钮若停在 listening，唤醒会走不到通话守卫（只认 standby）→
+      // 回退指令窗 → 悬浮球「录音中…」。两条开启入口必须同源。
+      // Same landing as the double-click power switch: powered-on = pre-wake = standby.
+      // Left on `listening`, the wake word could not satisfy the call guard (standby
+      // only) and fell back to the command window — the 「录音中…」 ring.
+      state.value = 'standby'
       console.log('[wake] listening started!')
     } else if (r === START_ABORTED_MSG) {
       statusLine.value = r   // 打断是良性竞态：原样提示，不进错误态（行为同提取前）。

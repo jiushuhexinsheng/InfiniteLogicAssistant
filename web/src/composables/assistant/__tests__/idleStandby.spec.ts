@@ -189,4 +189,39 @@ describe('静待中重新唤醒', () => {
     expect(store.state.value).toBe('listening')    // 文案 =「通话聆听中」
     expect(orch.st.awaitingCommand).toBe(false)    // 没落指令窗
   })
+  /**
+   * 徽章/起始页开的语音落在 listening（不是 standby）——它同样是「唤醒前静止态」，
+   * 裸唤醒必须进通话，而不是落指令窗（录音中）。
+   *
+   * Badge / start-page power-on leaves `listening` (not `standby`) — still a pre-wake rest
+   * state, so a bare wake must enter the call rather than fall back to the command window
+   * (rendered as 「录音中…」).
+   */
+  it('listening（徽章/起始页开的语音）裸唤醒且 callStart 成功 → 通话聆听中', async () => {
+    vi.doMock('../../../api', () => ({
+      api: {
+        wakeCheck: vi.fn(async () => ({ ok: true, hit: true, bypass: false })),
+        wakeDetect: vi.fn(async () => ({ ok: true, matched: true, command: '', text: '衍衡。' })),
+        transcribe: vi.fn(async () => ({ ok: true, text: '' })),
+        callStart: vi.fn(async () => ({ ok: true, open_window_s: 8 })),
+        callStop: vi.fn(async () => ({ ok: true })),
+      },
+    }))
+    vi.doMock('../useChat', () => ({ sendText: vi.fn(), sendAnswer: vi.fn(), runTurn: vi.fn() }))
+    vi.doMock('../useTts', () => ({ speaking: { value: false }, speakAuto: vi.fn(), stopSpeak: vi.fn() }))
+    const store = await import('../store')
+    const orch = await import('../wake/orchState')
+    const mod = await import('../useWakeWord')
+    store.vadConfig.listen_idle_s = 0           // 不跑空闲超时，单独验唤醒入口。Idle timeout off: wake entry only.
+    store.wakeEnabled.value = true
+    store.state.value = 'listening'
+    await nextTick()
+
+    await mod.handleSegment(new Blob(['x']))
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(store.callActive.value).toBe(true)      // 漏斗已接管。Funnel took over.
+    expect(store.state.value).toBe('listening')    // 文案 =「通话聆听中」。Call listening copy.
+    expect(orch.st.awaitingCommand).toBe(false)    // 没落指令窗。No command window.
+  })
 })

@@ -82,6 +82,18 @@ const MISS_STATUS: Record<string, string> = {
   error: '语音判定出错，请重试',
 }
 
+/** 指令窗的可见状态：通话中保持「通话聆听中」，非通话才落 recording。
+ *  2026-10-11 单链条状态图把「录音中」当作过程态废弃了 —— 通话中的任何窗口都必须
+ *  读作通话（否则悬浮球冒出录音环形效果）。
+ *
+ *  Visible state for the command window: stay in call listening inside a call; only a
+ *  non-call setup uses `recording`. The 2026-10-11 single-chain diagram retired the
+ *  recording process state — any window inside a call must read as a call.
+ */
+function commandWindowState() {
+  state.value = callActive.value ? 'listening' : 'recording'
+}
+
 /** 按 stage/reason 得到 miss 文案；未知组合给中性兜底。Miss copy from stage/reason. */
 function missStatusLine(stage?: string, reason?: string): string {
   if (!reason) return '未识别'
@@ -132,7 +144,7 @@ async function processSegment(blob: Blob) {
       } else {
         st.awaitingCommand = true
         statusLine.value = '已唤醒，请说指令…'
-        state.value = 'recording'
+        commandWindowState()
         armCommandTimer()
       }
       return
@@ -229,7 +241,7 @@ async function processSegment(blob: Blob) {
       } else {
         st.awaitingCommand = true
         statusLine.value = '已唤醒，请说指令…'
-        state.value = 'recording'
+        commandWindowState()
         armCommandTimer()
       }
       return

@@ -27,7 +27,9 @@ export async function handleLocalResult(text: string) {
       } else {
         st.awaitingCommand = true
         statusLine.value = '已唤醒，请说指令…'
-        state.value = 'recording'
+        // 指令窗可见状态：通话中保持「通话聆听中」，非通话才落 recording（单链条状态图）。
+        // Command-window state: a call stays a call; only non-call setups use recording.
+        state.value = callActive.value ? 'listening' : 'recording'
         armCommandTimer()
       }
       return
@@ -65,7 +67,9 @@ export async function handleLocalResult(text: string) {
       } else {
         st.awaitingCommand = true
         statusLine.value = '已唤醒，请说指令…'
-        state.value = 'recording'
+        // 指令窗可见状态：通话中保持「通话聆听中」，非通话才落 recording（单链条状态图）。
+        // Command-window state: a call stays a call; only non-call setups use recording.
+        state.value = callActive.value ? 'listening' : 'recording'
         armCommandTimer()
       }
       return

@@ -234,7 +234,15 @@ export function resetIdleDeadline() {
  * back to the command-window semantics (the wake is never lost).
  */
 export async function tryEnterCallFromStandby(): Promise<boolean> {
-  if (state.value !== 'standby') return false
+  // 唤醒前静止态有两个：静待（电源开的正规落点）与 listening（徽章/起始页开的语音、
+  // 回合结束后回落）。两者都不是通话中的中间态（通话中的段走漏斗分支，到不了这里），
+  // 裸唤醒都应进通话 —— 只认 standby 会让 listening 一路回退指令窗（录音中…）。
+  // Two pre-wake rest states exist: standby (the canonical power-on landing) and
+  // `listening` (badge/start-page power-on, post-turn fallback). Neither is an in-call
+  // intermediate (call segments take the funnel branch and never reach here), so a bare
+  // wake must enter the call from both — accepting only standby sent `listening` into
+  // the command window (the 「录音中…」 ring).
+  if (state.value !== 'standby' && state.value !== 'listening') return false
   if (!st.deps?.enterCall) return false
   try {
     if (!(await st.deps.enterCall())) return false
