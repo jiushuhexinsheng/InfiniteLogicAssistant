@@ -63,6 +63,71 @@ def _recent_dialog(messages: list[dict], n: int) -> str:
     return "最近对话：\n" + "\n".join(lines) + "\n"
 
 
+def _snippet(value, limit: int = 300) -> str:
+    """载荷片段（日志用，避免整段刷屏）。Payload snippet for logs (never dump the whole body)."""
+    return str(value)[:limit].replace("\n", " ")
+
+
+def _decode_json_layers(value, layers: int = 2):
+    """把可能是 JSON 字符串的值解包（最多 layers 层）。解不出返回 None。
+
+    Unwrap a value that may itself be JSON-encoded (up to `layers` levels); None on failure.
+    """
+    for _ in range(layers):
+        if not isinstance(value, str):
+            return value
+        try:
+            value = json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return None
+    return value
+
+
+def _parse_facts(raw) -> list[dict]:
+    """把 extract_facts 的 arguments 载荷归一成事实对象列表，形状漂移时容错并留痕。
+
+    2026-10-18 生产故障：miMo 偶发把 facts 数组整个编码成 JSON 字符串
+    （`{"facts": "[{...}]"}`），旧实现逐字符迭代字符串 → `'str' object has no
+    attribute 'get'`，整批事实丢失，日志只有一行不带载荷的异常。这里统一归一：
+    - arguments 允许多一层编码（`"{\"facts\":...}"`）；
+    - facts 可以是数组，也可以是 JSON 字符串；
+    - 单条事实可以是对象，也可以是 JSON 字符串。
+    归一不了就返回空列表，并把载荷片段写进日志（排障时能看出模型到底返回了什么）。
+
+    Normalize the extract_facts arguments into a list of fact objects, tolerating shape
+    drift and leaving a trace. Production failure on 2026-10-18: the model occasionally
+    JSON-encodes the whole facts array as a string; the old parser iterated the string
+    character by character and crashed, losing the whole batch with no payload in the log.
+    """
+    data = _decode_json_layers(raw)
+    if data is None:
+        logger.warning("extract_and_store 载荷不是合法 JSON（{}）: {}", type(raw).__name__, _snippet(raw))
+        return []
+    if isinstance(data, list):
+        facts = data
+    elif isinstance(data, dict):
+        facts = data.get("facts")
+        if isinstance(facts, str):
+            logger.debug("extract_and_store facts 是 JSON 字符串（模型形状漂移），已容错解析")
+            facts = _decode_json_layers(facts, 1)
+    else:
+        logger.warning("extract_and_store 载荷形状异常（{}）: {}", type(data).__name__, _snippet(raw))
+        return []
+    if facts is None:
+        return []
+    if not isinstance(facts, list):
+        logger.warning("extract_and_store facts 不是数组（{}）: {}", type(facts).__name__, _snippet(raw))
+        return []
+    out: list[dict] = []
+    for item in facts:
+        f = _decode_json_layers(item, 1) if isinstance(item, str) else item
+        if isinstance(f, dict):
+            out.append(f)
+        else:
+            logger.warning("extract_and_store 跳过非对象事实（{}）: {}", type(item).__name__, _snippet(item))
+    return out
+
+
 async def extract_and_store(task: Task, result: dict, store: FactStore,
                             session=None) -> None:
     """任务结束后提取用户事实写入记忆；非 done/failed 或 LLM 失败时静默跳过。
@@ -123,8 +188,7 @@ async def extract_and_store(task: Task, result: dict, store: FactStore,
                 msg = evt["message"]
                 tc = (msg.get("tool_calls") or [{}])[0]
                 raw = tc.get("function", {}).get("arguments") or "{}"
-                data = json.loads(raw) if isinstance(raw, str) else raw
-                for f in data.get("facts") or []:
+                for f in _parse_facts(raw):
                     topic = str(f.get("topic") or "").strip()
                     content = str(f.get("content") or "").strip()
                     if topic and content:

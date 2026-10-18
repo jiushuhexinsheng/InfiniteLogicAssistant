@@ -118,3 +118,114 @@ async def test_extract_without_session_still_works(tmp_path, monkeypatch):
     rows = await store.get("k")
     assert rows and rows[0]["content"] == "v"
     assert rows[0]["origin"] is None
+
+
+class _CaptureLogger:
+    """记录并格式化 loguru 调用（caplog 抓不到 loguru）。Captures formatted loguru calls."""
+
+    def __init__(self):
+        self.lines: list[tuple[str, str]] = []
+
+    def _rec(self, level: str, msg, args):
+        try:
+            text = msg.format(*args) if args else msg
+        except Exception:
+            text = str(msg) + " " + " ".join(map(str, args))
+        self.lines.append((level, text))
+
+    def debug(self, msg, *a):
+        self._rec("debug", msg, a)
+
+    def warning(self, msg, *a):
+        self._rec("warning", msg, a)
+
+    def text(self) -> str:
+        return "\n".join(t for _, t in self.lines)
+
+
+def _done_with_raw_arguments(raw: str):
+    """直接给定 tool_call 的 arguments 原文（用于构造非标准形状）。"""
+    return {
+        "type": "done",
+        "message": {
+            "role": "assistant", "content": "",
+            "tool_calls": [{
+                "id": "e", "type": "function",
+                "function": {"name": "extract_facts", "arguments": raw},
+            }],
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_extract_facts_as_json_string(tmp_path, monkeypatch):
+    """复现 2026-10-18 真实故障：模型把 facts 整个编码成 JSON 字符串。
+
+    miMo 会偶发返回 {"facts": "[{...}]"}（数组被双重编码）。旧实现直接遍历字符串
+    → 逐字符取 .get → "'str' object has no attribute 'get'"，整批事实丢失。
+    The model occasionally double-encodes the facts array as a JSON string; the old
+    parser iterated the string character by character and crashed.
+    """
+    facts_str = json.dumps([{"topic": "常用网站", "content": "用户常用 B 站", "path": "偏好"}],
+                           ensure_ascii=False)
+    raw = json.dumps({"facts": facts_str}, ensure_ascii=False)
+    fake = _FakeLLM([[ _done_with_raw_arguments(raw) ]])
+    monkeypatch.setattr("core.memory.extract.get_llm_client", lambda: fake)
+    import core.memory.extract as extract_mod
+    cap = _CaptureLogger()
+    monkeypatch.setattr(extract_mod, "logger", cap)
+    store = FactStore(tmp_path / "f.sqlite")
+
+    await extract_and_store(
+        Task("t", "帮我打开一个网页。", risk="read"),
+        {"status": "done", "summary": "已打开 B 站", "steps": []},
+        store,
+    )
+
+    rows = await store.get("常用网站")
+    assert rows and rows[0]["content"] == "用户常用 B 站"
+    assert "失败" not in cap.text()            # 容错解析不得再报整体失败
+
+
+@pytest.mark.asyncio
+async def test_extract_double_encoded_arguments(tmp_path, monkeypatch):
+    """arguments 本身被编码成「JSON 字符串的 JSON 字符串」也可解。"""
+    payload = json.dumps({"facts": [{"topic": "项目", "content": "项目使用 Python 3.14"}]},
+                         ensure_ascii=False)
+    raw = json.dumps(payload, ensure_ascii=False)   # 多一层编码
+    fake = _FakeLLM([[ _done_with_raw_arguments(raw) ]])
+    monkeypatch.setattr("core.memory.extract.get_llm_client", lambda: fake)
+    store = FactStore(tmp_path / "f.sqlite")
+
+    await extract_and_store(
+        Task("t", "整理环境", risk="read"),
+        {"status": "done", "summary": "完成", "steps": []},
+        store,
+    )
+
+    rows = await store.get("项目")
+    assert rows and rows[0]["content"] == "项目使用 Python 3.14"
+
+
+@pytest.mark.asyncio
+async def test_extract_malformed_payload_does_not_raise(tmp_path, monkeypatch):
+    """载荷不是合法 JSON：不抛异常、不写入，但必须留下带形状线索的日志。
+
+    旧实现把 JSONDecodeError 吞成一行「extract_and_store 失败: ...」，看不出载荷
+    长什么样；这里钉住「可诊断」：日志里要有原始载荷片段。
+    """
+    fake = _FakeLLM([[ _done_with_raw_arguments('{"facts": [oops') ]])
+    monkeypatch.setattr("core.memory.extract.get_llm_client", lambda: fake)
+    import core.memory.extract as extract_mod
+    cap = _CaptureLogger()
+    monkeypatch.setattr(extract_mod, "logger", cap)
+    store = FactStore(tmp_path / "f.sqlite")
+
+    await extract_and_store(
+        Task("t", "x", risk="read"),
+        {"status": "done", "summary": "y", "steps": []},
+        store,
+    )
+
+    assert await store.all() == []
+    assert "oops" in cap.text()       # 载荷片段进了日志（可追因）
