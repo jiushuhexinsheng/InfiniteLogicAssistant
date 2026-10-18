@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """任务后事实提取 — LLM 结构化输出 facts → FactStore（失败不阻塞主流程，但**必留日志痕迹**）。Post-task fact extraction — LLM structured-output facts → FactStore (failures never block the main flow, but always leave a log trace)."""
 import json
+from typing import Any
 
 from core import config
 from core.llm.client import get_llm_client
@@ -103,6 +104,7 @@ def _parse_facts(raw) -> list[dict]:
     if data is None:
         logger.warning("extract_and_store 载荷不是合法 JSON（{}）: {}", type(raw).__name__, _snippet(raw))
         return []
+    facts: Any = None
     if isinstance(data, list):
         facts = data
     elif isinstance(data, dict):
