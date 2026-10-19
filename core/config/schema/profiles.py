@@ -115,7 +115,14 @@ class AsrSection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mode: Literal["local", "cloud", "hybrid"] = "cloud"
-    local_model: str = "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
+    local_model: str = "models/asr/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
+    # 本地 ASR 是否走流式（True = 边说边出字；False = 按 VAD 段整段识别）。
+    # Whether local ASR streams (True = partials while speaking; False = one shot per VAD segment).
+    streaming: bool = True
+    # 推理硬件：每个模型可独立选 CPU/GPU。Inference hardware, per model.
+    provider: Literal["cpu", "cuda", "coreml"] = "cpu"
+    device: int = Field(0, ge=0)
+    num_threads: int = Field(0, ge=0)   # 0 = 自动
     active: str = ""   # 空 = 取第一个 profile（目录退役后无内置默认名）
     profiles: dict[str, AsrProfile] = Field(default_factory=dict)
 
@@ -128,6 +135,17 @@ class TtsSection(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # api = 云端 profile（enabled 仍决定可用性）；local = 本地 Kokoro。
+    # api = cloud profile (enabled still gates availability); local = on-device Kokoro.
+    mode: Literal["local", "api"] = "api"
+    local_model: str = "models/tts/kokoro-multi-lang-v1_1"
+    # 推理硬件：每个模型可独立选 CPU/GPU。Inference hardware, per model.
+    provider: Literal["cpu", "cuda", "coreml"] = "cpu"
+    device: int = Field(0, ge=0)
+    num_threads: int = Field(0, ge=0)   # 0 = 自动
+    speaker: int = Field(0, ge=0)
+    speed: float = Field(1.0, gt=0.0, le=4.0)
+    lang: str = ""
     enabled: bool = False
     active: str = ""   # 空 = 取第一个 profile（目录退役后无内置默认名）
     profiles: dict[str, TtsProfile] = Field(default_factory=dict)

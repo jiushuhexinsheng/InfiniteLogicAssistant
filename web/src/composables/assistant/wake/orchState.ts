@@ -7,25 +7,16 @@ import {
   state, statusLine, vadConfig, pendingQuestion, wakeEnabled, currentSessionId, callActive,
 } from '../store'
 import type { AsstState, PendingQuestion } from '../store'
-import type { SegmentRecorder } from '../useSegmentRecorder'
-import type { WakeProvider } from './types'
+import type { VoiceStreamHandle } from '../stream/streamClient'
 import type { BargeInMonitor } from '../bargeIn'
 
 // ── 可注入依赖（由 useWakeWord.ts 注入）──
 
-/** API 客户端（wakeCheck + wakeDetect + transcribe）。API client (wakeCheck + wakeDetect + transcribe). */
+/** 编排器仍需的少量 API（其余语音调用已由 WebSocket 会话承担）。 */
 interface OrchestratorApi {
-  /** 本地 KWS 快检：仅判定有没有唤醒词（毫秒级、零云端）。Local KWS quick check. */
-  wakeCheck(blob: Blob): Promise<{ ok?: boolean; hit?: boolean; bypass?: boolean }>
-  wakeDetect(blob: Blob, opts?: { mode?: string }): Promise<{ ok?: boolean; matched?: boolean; command?: string; text?: string }>
-  transcribe(blob: Blob): Promise<{ ok?: boolean; text?: string }>
-  /** 通话模式段落漏斗（Task 12 起接线；可选以保持既有测试假件兼容）。Call-mode segment funnel (wired in Task 12; optional so existing test doubles stay valid). */
-  callSegment?(blob: Blob, meta: { tabFocused: boolean; inOpenWindow: boolean }): Promise<{ ok?: boolean; hit?: boolean; text?: string; stage?: string; reason?: string }>
-  /** 停止任务并弃掉待答问题（T1 stop 端点毒丸；可选以保持既有测试假件兼容）。Stop the task and abandon the pending question (the T1 stop-endpoint poison pill; optional so existing test doubles stay valid). */
+  /** 停止任务并弃掉待答问题（T1 stop 端点毒丸）。Stop the task and abandon the pending question. */
   stopTask?(sid: string): Promise<unknown>
-  /** 退出通话会话（静止超时自动退通话用；useWakeWord 注入的完整 api 自带，测试桩可缺省）。
-   *  Exit the call session (used by the idle-timeout auto-exit; the full api injected by
-   *  useWakeWord carries it, test doubles may omit it). */
+  /** 退出通话会话（静止超时自动退通话用）。Exit the call session. */
   callStop?(): Promise<unknown>
 }
 
@@ -50,8 +41,8 @@ interface OrchestratorDeps {
  *  All module-level mutable state (one instance shared by every split module). */
 export const st: {
   deps: OrchestratorDeps | null
-  segmenter: SegmentRecorder | null
-  micStream: MediaStream | null
+  /** 流式语音会话（唯一麦克风链路）。The streaming voice session (the only mic path). */
+  voiceStream: VoiceStreamHandle | null
   awaitingCommand: boolean
   failures: number
   breakerTrippedAt: number
@@ -65,13 +56,10 @@ export const st: {
   idleDeadline: number
   echoGuardUntil: number
   turnToken: number
-  currentChain: WakeProvider[]
-  lastMode: string | null
   bargeMonitor: BargeInMonitor | null
 } = {
   deps: null,
-  segmenter: null,
-  micStream: null,
+  voiceStream: null,
   awaitingCommand: false,
   failures: 0,
   breakerTrippedAt: 0,
@@ -85,8 +73,6 @@ export const st: {
   idleDeadline: 0,
   echoGuardUntil: 0,
   turnToken: 0,
-  currentChain: [],
-  lastMode: null,
   bargeMonitor: null,
 }
 

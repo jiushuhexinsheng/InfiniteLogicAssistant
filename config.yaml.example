@@ -66,7 +66,7 @@ voice:
   # 判定有没有唤醒词，未命中直接丢弃。模型目录缺失时闸门自动旁路并在启动日志注明。
   kws:
     enabled: true
-    model_dir: "models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
+    model_dir: "models/kws/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
     keywords_threshold: 0.25    # 检测阈值：越低越灵敏（漏报少、误报多）
     keywords_score: 1.0         # 关键词得分加成：越高越易命中
   # 静音检测（自动停止录音）
@@ -110,7 +110,7 @@ voice:
     l0_min_seconds: 0.5     # 短于此的段本机丢弃
     smart_turn_enabled: true
     # 已迁移到 voice.asr.local_model（2026-10-12），本键不再读取；保留仅为兼容旧配置
-    local_asr_model: "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
+    local_asr_model: "models/asr/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
     # L2 合并调用：单次云端同时转写+四分类。默认关 —— 小米 ASR 网关拒绝请求携带 text
     # 部件（提示词由网关注入），合并形状对其 400；两步路径功能零损失。支持指令+音频
     # 同发的网关（OpenAI 系）可开。
@@ -124,7 +124,7 @@ voice:
     mode: cloud
     # 本地流式转写模型目录（sherpa-onnx streaming zipformer）；模型不入库，
     # 首次使用先运行: python scripts/fetch_local_asr_model.py
-    local_model: "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
+    local_model: "models/asr/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
     active: openai
     profiles:
       openai:

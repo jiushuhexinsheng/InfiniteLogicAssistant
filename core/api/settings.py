@@ -68,7 +68,7 @@ def _normalize_patch(patch: dict) -> dict:
     settings used to return 400.
     """
     voice: dict = {}
-    for key in ("asr", "tts", "wake_word", "vad"):
+    for key in ("asr", "tts", "wake_word", "vad", "kws", "streaming", "hardware"):
         if key in patch:
             voice[key] = patch.pop(key)
     if voice:

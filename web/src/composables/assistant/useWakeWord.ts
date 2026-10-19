@@ -1,18 +1,19 @@
 /**
- * 唤醒链路 — 瘦包装层。
+ * 语音链路 — 瘦包装层。
  *
- * 保持对外 API 不变（`toggleWake` / `stopWake` / `handleSegment` / `handleLocalResult` / `describeMicError`），
- * 内部全部委托给模块化的 `wake/wakeOrchestrator`。
+ * 对外导出 `toggleWake` / `stopWake` / `describeMicError`；内部委托给
+ * `wake/wakeOrchestrator`（麦克风流 + 流式会话 + 模块级 watch）。
  *
- * **依赖注入点**：本模块是 `api` / `sendText` / `sendAnswer` / `speaking` 的唯一导入者，
- * 通过 `configureOrchestrator()` 注入到编排器 —— 测试只需 mock 本模块的导入路径即可。
+ * **依赖注入点**：本模块把 `api` / `sendText` / `sendAnswer` / `speaking` /
+ * `stopSpeak` / `enterCall` 注入编排器 —— 测试只需 mock 本模块的导入路径即可。
  *
- * Wake pipeline — thin wrapper layer.
- * Preserves the public API surface; all logic is delegated to `wake/wakeOrchestrator`.
+ * Voice pipeline — thin wrapper layer. It exports toggleWake / stopWake /
+ * describeMicError and delegates to `wake/wakeOrchestrator` (mic stream + streaming
+ * session + module-level watches).
  *
- * **Dependency injection point**: this module is the sole importer of `api` / `sendText` /
- * `sendAnswer` / `speaking`, injected into the orchestrator via `configureOrchestrator()` —
- * tests only need to mock this module's import paths.
+ * **Dependency injection point**: this module injects api / sendText / sendAnswer /
+ * speaking / stopSpeak / enterCall into the orchestrator — tests only need to mock this
+ * module's import paths.
  */
 
 import { api } from '../../api'
@@ -21,8 +22,6 @@ import { sendText, sendAnswer } from './useChat'
 import { enterCallFromWake } from './callMode'
 import {
   configureOrchestrator,
-  handleSegment as _handleSegment,
-  handleLocalResult as _handleLocalResult,
   describeMicError as _describeMicError,
   toggleWake as _toggleWake,
   stopWake as _stopWake,
@@ -39,12 +38,6 @@ configureOrchestrator({ api, sendText, sendAnswer, speaking, stopSpeak, enterCal
 // 注册模块级 watch（幂等，首次 import 时执行一次）
 // Register module-level watches (idempotent, runs once on first import)
 registerWatches()
-
-/** 处理一段音频（云端链路）。导出供测试。Handle one audio segment (cloud path). Exported for tests. */
-export const handleSegment = _handleSegment
-
-/** 处理本地识别结果（Web Speech API 路径）。导出供测试。Handle a local recognition result. Exported for tests. */
-export const handleLocalResult = _handleLocalResult
 
 /** 麦克风错误 → 用户可理解的中文提示。Microphone error → user-friendly Chinese message. */
 export const describeMicError = _describeMicError

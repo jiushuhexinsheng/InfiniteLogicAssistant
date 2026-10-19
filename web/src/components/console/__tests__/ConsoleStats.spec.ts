@@ -10,20 +10,20 @@ import ConsoleStats from '../ConsoleStats.vue'
 const STATS = {
   ok: true,
   total: 4,
-  by_via: { wake: 2, transcribe: 1, 'call-segment': 1 },
+  by_via: { stream: 4 },
   days: [
-    { date: '2026-10-01', wake: 1, transcribe: 1, 'call-segment': 0 },
-    { date: '2026-10-02', wake: 0, transcribe: 0, 'call-segment': 1 },
-    { date: '2026-10-03', wake: 0, transcribe: 0, 'call-segment': 0 },
-    { date: '2026-10-04', wake: 0, transcribe: 0, 'call-segment': 0 },
-    { date: '2026-10-05', wake: 0, transcribe: 0, 'call-segment': 0 },
-    { date: '2026-10-06', wake: 0, transcribe: 0, 'call-segment': 0 },
-    { date: '2026-10-07', wake: 1, transcribe: 0, 'call-segment': 0 },
+    { date: '2026-10-01', stream: 2 },
+    { date: '2026-10-02', stream: 1 },
+    { date: '2026-10-03', stream: 0 },
+    { date: '2026-10-04', stream: 0 },
+    { date: '2026-10-05', stream: 0 },
+    { date: '2026-10-06', stream: 0 },
+    { date: '2026-10-07', stream: 1 },
   ],
 }
 
-/** 成本仪表：audio-upload via= 三前缀计数 + 近 7 日趋势挂进统计页。Cost dashboard:
- *  the three audio-upload via= counts + 7-day trend on the stats tab. */
+/** 成本仪表：audio-upload via=stream 计数 + 近 7 日趋势挂进统计页。Cost dashboard:
+ *  the streaming upload count + 7-day trend on the stats tab. */
 describe('ConsoleStats 成本仪表', () => {
   beforeEach(() => {
     vi.mocked(api.getUploadStats).mockReset()
@@ -31,15 +31,13 @@ describe('ConsoleStats 成本仪表', () => {
   })
 
   /** 挂载即拉取统计数据。Fetches stats on mount. */
-  it('挂载时加载上传统计并渲染三前缀计数与合计', async () => {
+  it('挂载时加载上传统计并渲染流式计数与合计', async () => {
     vi.mocked(api.getUploadStats).mockResolvedValue(STATS as any)
     const w = mount(ConsoleStats)
     await flushPromises()
     expect(api.getUploadStats).toHaveBeenCalledTimes(1)
     const t = w.text()
-    expect(t).toContain('唤醒上传') && expect(t).toContain('2')
-    expect(t).toContain('转写上传')
-    expect(t).toContain('通话上传')
+    expect(t).toContain('流式上传')
     expect(t).toContain('上传合计')
     expect(t).toContain('4')   // total
   })
@@ -52,7 +50,7 @@ describe('ConsoleStats 成本仪表', () => {
     await flushPromises()
     expect(w.findAll('.trend-bar')).toHaveLength(7)
     expect(w.findAll('.trend-bar').map((b) => (b.element as HTMLElement).title))
-      .toEqual(STATS.days.map((d) => `${d.date}：${d.wake + d.transcribe + d['call-segment']} 次`))
+      .toEqual(STATS.days.map((d) => `${d.date}：${d.stream} 次`))
   })
 
   /** 拉取失败：上传区块降级为 —，既有会话统计不受影响。

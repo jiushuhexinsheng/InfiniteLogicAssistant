@@ -33,7 +33,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2"
-DEST = ROOT / "models" / "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
+DEST = ROOT / "models" / "asr" / "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
 TMP = ROOT / "models" / "_asr_download.tar.bz2"
 KEEP_PREFIXES = ("encoder-", "decoder-", "joiner-")
 # 官方包字节数（GitHub API 实测）；下载前后完整性校验用。

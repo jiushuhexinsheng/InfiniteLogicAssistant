@@ -83,8 +83,8 @@ def validate(settings: Settings) -> ConfigHealth:
     # `local` (on-device was chosen and cannot work; it must never silently upload), a
     # warning under `hybrid` (cloud rescues it, but "local first" is then nominal).
     if settings.voice.asr.mode in ("local", "hybrid"):
-        from core.voice.local_asr import local_model_present
-        if not local_model_present(settings.voice.asr.local_model):
+        from core.voice.local.sherpa_onnx import registry
+        if not registry.present("asr", settings.voice.asr.local_model):
             mode = settings.voice.asr.mode
             issues.append(Issue(
                 "error" if mode == "local" else "warning",

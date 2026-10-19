@@ -87,7 +87,7 @@ const lastMsg = computed<ChatMessage | null>(() => props.messages[props.messages
  */
 const miniText = computed(() => {
   const p = props.partialText
-  if (p && ['recording', 'listening', 'awaiting_answer'].includes(props.state)) return p
+  if (p && ['recording', 'listening', 'awaiting_answer', 'transcribing'].includes(props.state)) return p
   if (props.statusLine) return props.statusLine
   if (lastMsg.value) return lastMsg.value.text
   return ''
@@ -97,6 +97,7 @@ const miniText = computed(() => {
  * 计算迷你播放器角色名。Compute mini player role name.
  */
 const miniRole = computed(() => {
+  if (props.state === 'transcribing' && props.partialText) return '正在识别'
   if (!lastMsg.value) return 'AI 助手'
   if (lastMsg.value.role === 'user') return '你说'
   if (lastMsg.value.role === 'assistant') return '衍衡'

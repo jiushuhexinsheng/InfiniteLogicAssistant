@@ -12,15 +12,17 @@ from fastapi import APIRouter
 
 from .call import router as _call_router
 from .meta import router as _meta_router
+from .models import router as _models_router
 from .run import router as _run_router
 from .stats import router as _stats_router
+from .stream import router as _stream_router
 from .tts import router as _tts_router
-from .wake import router as _wake_router
 
 router = APIRouter()
 router.include_router(_meta_router)
+router.include_router(_models_router)
+router.include_router(_stream_router)
 router.include_router(_tts_router)
-router.include_router(_wake_router)
 router.include_router(_run_router)
 router.include_router(_call_router)
 router.include_router(_stats_router)

@@ -20,21 +20,13 @@ mcp==2.0.0
 pyautogui==0.9.54
 pygetwindow==0.0.9
 pillow==12.3.0
-# 语音唤醒（本地 KWS 前置闸门 + 拼音级判定）：
-# sherpa-onnx 关键词检测引擎；3.3M 模型已随仓库入库（models/），来源：
-# https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/
-# sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01.tar.bz2 （缺模型时闸门自动旁路，
-# 回退云端判定，不阻塞唤醒）。sentencepiece 是 sherpa text2token 生成关键词文件的依赖；
-# pypinyin 提供无声调拼音。
-# Voice wake (local KWS pre-gate + pinyin-level matching): sherpa-onnx keyword
-# spotting; the 3.3M model ships in-repo under models/ (source: the github release
-# above; a missing model auto-bypasses the gate to cloud judging, never blocking
-# wake). sentencepiece backs sherpa's text2token; pypinyin provides toneless pinyin.
+# 本地语音（WebSocket 流式链路）：sherpa-onnx 提供 VAD / KWS / ASR / TTS 四类引擎。
+# 模型按能力放在 models/{vad,kws,asr,tts}（scripts/fetch_models.py 下载；KWS 小模型随仓库）。
+# sentencepiece 是 sherpa text2token 生成关键词文件的依赖；pypinyin 提供无声调拼音。
+# Local speech (WebSocket streaming): sherpa-onnx supplies VAD / KWS / ASR / TTS.
+# Models live under models/{vad,kws,asr,tts} (fetched by scripts/fetch_models.py; the
+# small KWS model ships in-repo). sentencepiece backs text2token; pypinyin provides
+# toneless pinyin for wake matching.
 sherpa-onnx==1.13.8
 sentencepiece==0.2.2
 pypinyin==0.55.0
-# 通话模式「说完没」复核（Smart Turn v3.2，ONNX 模型随包内置，本地 CPU）——只按件采购
-# 这一个分析器，不引入 pipecat 框架本体。
-# Call-mode end-of-turn check (Smart Turn v3.2, bundled ONNX model, local CPU) — a la carte;
-# the pipecat framework itself is NOT adopted.
-pipecat-ai==1.12.0

@@ -54,6 +54,8 @@ onMounted(async () => {
     wake: app.config.value?.wake_word,
     vad: app.config.value?.vad,
     call: app.config.value?.call,
+    hardware: app.config.value?.hardware as any,
+    streaming: app.config.value?.streaming,
   })
   // 监听页面卸载事件 / Listen for page unload event
   window.addEventListener('beforeunload', teardown)

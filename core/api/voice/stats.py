@@ -18,10 +18,10 @@ from core.api.schemas import UploadStatsResponse
 
 router = APIRouter()
 
-# 三个上传来源前缀（与 wiki/Security.md 成本口径一致；kws-gate/call-funnel 不算上传）。
-# The three upload sources (aligned with wiki/Security.md cost accounting; kws-gate /
-# call-funnel lines are not uploads).
-_VIAS = ("wake", "transcribe", "call-segment")
+# 流式链路是唯一的上传来源（旧 wake/transcribe/call-segment 链路已删除）。
+# The streaming pipeline is the only upload source (the legacy wake / transcribe /
+# call-segment pipeline is gone).
+_VIAS = ("stream",)
 
 # loguru 行首 `YYYY-MM-DD HH:MM:SS.mmm | …`；取日期与 via（只认三前缀，其余行忽略）。
 # loguru line head `YYYY-MM-DD HH:MM:SS.mmm | …`; take the date and via (whitelist only).

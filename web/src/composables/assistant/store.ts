@@ -9,9 +9,10 @@ import { saveState, loadState } from './storePersist'
 // original import path and export surface are unchanged (pure move).
 export {
   wakeConfig, vadConfig, callConfig, callActive, callWindowUntil, inOpenWindow, markTurnEnded,
-  callBargeInEnabled, wakeKeywords, wakeMode, setWakeMode, wakeHint,
+  callBargeInEnabled, wakeKeywords, wakeHint,
+  hardwareConfig, streamingEnabled,
 } from './storeConfig'
-export type { WakeMode } from './storeConfig'
+export type { HardwareConfig } from './storeConfig'
 export {
   genId, textProjection, addMessage, addBlocks, clearMessages, failWake,
   buildHistory, createNewSession, switchSession,
@@ -115,7 +116,7 @@ export type AssistantMode = 'chat' | 'task'
 
 /** 模式的本地存储键。localStorage key for the mode.
  *  注：本文件持久化键统一用「xluo.」历史前缀（旧内部代号），**保留不迁移** ——
- *  换前缀会丢掉老用户已存的 history/wakeMode/assistantMode。 */
+ *  换前缀会丢掉老用户已存的 history/assistantMode。 */
 const MODE_KEY = 'xluo.assistantMode'
 
 /**

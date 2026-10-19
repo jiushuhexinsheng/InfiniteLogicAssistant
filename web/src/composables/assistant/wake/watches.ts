@@ -25,7 +25,11 @@ export function registerWatches() {
       // on sustained speech (silence_threshold × 2 for 400ms). A stream failure
       // degrades silently to plain mic-off — unavailable never breaks.
       stopBargeIn()
-      stopListening()
+      // 流式链路：不关麦，只暂停发帧（TTS 回声不能进 ASR/KWS）；旧链路仍停录。
+      // Streaming: keep the mic open but pause frames (TTS echo must not reach ASR/KWS);
+      // the legacy path still stops recording.
+      if (st.voiceStream) st.voiceStream.setMuted(true)
+      else stopListening()
       if (callBargeInEnabled(bargeInEnabled()) && st.deps?.stopSpeak) {
         const stopSpeak = st.deps.stopSpeak
         st.bargeMonitor = startBargeInMonitor({
@@ -46,6 +50,7 @@ export function registerWatches() {
     // guard: segments inside the window are dropped (speaker tail/echo must neither
     // wake nor answer; a barge-in's residual audio is caught by the same 1.2s).
     stopBargeIn()
+    if (st.voiceStream) st.voiceStream.setMuted(false)
     st.echoGuardUntil = Date.now() + ECHO_GUARD_MS
     if (callActive.value) markTurnEnded()   // 通话态：播报真正结束 → 开放窗口起点
     // 续聊窗口从「播报真正结束」起重新计满（docs/designs/03-A：窗口 = 播报完后的 N 毫秒，

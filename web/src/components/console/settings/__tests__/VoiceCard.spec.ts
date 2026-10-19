@@ -97,17 +97,17 @@ describe('VoiceCard', () => {
   })
 
   /** spec 要求：隐私边界必须写进设置页。Spec: the privacy boundary must be stated on the settings page.
-   *  P3-8：边界必须与 KWS 闸门后的真实行为一致——只有**云端模式**（旁路闸门）才无条件上传；
-   *  自动/本地经后端 KWS 闸门（未命中不上云、命中才上传抬指令）；浏览器模式交给 Web Speech。
-   *  不得再写「云端/自动都上传」「音频不出本机」这类与实现相反的承诺。 */
+   *  流式链路下：云端模式每个 VAD 段都上传；本地模式不出本机；混合仅兜底上传。
+   *  Under the streaming pipeline: cloud uploads every VAD segment, local never leaves
+   *  the machine, and hybrid uploads only as a fallback. */
   it('写明云端上传的隐私边界', () => {
     const w = mount(VoiceCard)
     const t = w.text()
-    expect(t).toContain('云端 ASR')
+    expect(t).toContain('ASR 服务商')
     expect(t).toContain('无论是否说出唤醒词')
-    expect(t).toContain('KWS 闸门')              // 自动/本地的闸门语义。Gate semantics for auto/local.
-    expect(t).not.toContain('音频不出本机')       // local 命中段会上云抬指令，此承诺为假。Hit segments do upload.
-    expect(t).not.toContain('云端/自动模式')       // 上传口径按模式分开写。Upload scope differs per mode.
+    expect(t).toContain('本地模式音频不出本机')
+    expect(t).not.toContain('KWS 闸门')       // 旧闸门文案已随链路删除。Old gate copy is gone.
+    expect(t).not.toContain('云端/自动模式')
   })
 
   /** 取消限时回答：answer_timeout_ms 现在只武装「裸唤醒后的等指令窗」—— label 不得
@@ -129,34 +129,5 @@ describe('VoiceCard', () => {
   it('不再内嵌播报设置面板', () => {
     const w = mount(VoiceCard)
     expect(w.find('.tts-settings').exists()).toBe(false)
-  })
-})
-
-describe('VoiceCard 唤醒模式说明文案', () => {
-  beforeEach(() => {
-    editable.value = structuredClone(snapshot()) as any
-  })
-
-  /** P3-8：local/auto 的说明必须与真实链路一致——判定在**后端 KWS 闸门**
-   *  （sherpa-onnx 跑在本机后端，未命中不上云），浏览器侧 WASM 占位已按 No-Go
-   *  评估移除。文案不得再写「音频不出本机」「优先本地 Sherpa-ONNX」这种与实现
-   *  相反的承诺（用户照做会误判隐私边界）。 */
-  it('local 模式说明写后端 KWS 闸门，不再承诺音频不出本机', async () => {
-    const { setWakeMode, wakeMode } = await import('../../../../composables/assistant/store')
-    setWakeMode('local')
-    const w = mount(VoiceCard)
-    const t = w.text()
-    expect(t).toContain('后端 KWS')
-    expect(t).not.toContain('Sherpa-ONNX KWS 本地检测')
-    expect(t).not.toContain('音频不出本机')
-    setWakeMode('auto')  // 还原（模块单例跨用例）。Restore (module singleton leaks across tests).
-  })
-
-  it('auto 模式说明不再声称「优先本地 Sherpa-ONNX」', async () => {
-    const { setWakeMode } = await import('../../../../composables/assistant/store')
-    setWakeMode('auto')
-    const w = mount(VoiceCard)
-    expect(w.text()).not.toContain('优先本地 Sherpa-ONNX')
-    expect(w.text()).toContain('KWS')
   })
 })

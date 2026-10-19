@@ -8,11 +8,13 @@
     <!-- 对话区空态：长满会话区并居中（UiEmpty 的默认行为）。图标 = 侧栏「对话」页签的 messages-square。
          Conversation empty state: fills the pane and centres itself (UiEmpty's default now). The icon
          is the 对话 sidebar tab's `messages-square`. -->
-    <UiEmpty v-if="!messages.length" icon="messages-square"
+    <UiEmpty v-if="!messages.length && !showInterim" icon="messages-square"
       text="还没有对话" hint="点右下角悬浮球，或输入文字开始" />
     <!-- 消息列表：遍历渲染每条聊天消息，支持重试/取消工具与消息级 分叉/编辑/重生成（docs/designs/07）。
+         末尾追加流式识别的临时气泡（正在识别 / 未进入对话的旁白）。
          Message list: renders each chat message with tool retry/cancel plus message-level
-         fork/edit/regenerate (docs/designs/07). -->
+         fork/edit/regenerate (docs/designs/07). A streaming interim bubble (recognizing, or a
+         discarded ghost) is appended at the end. -->
     <div v-else class="console-msgs">
       <MessageItem
         v-for="(m, i) in messages"
@@ -26,15 +28,19 @@
         @edit="(idx, text) => emit('edit', idx, text)"
         @regen="emit('regen', $event)"
       />
+      <InterimBubble v-if="showInterim" :text="interimText" />
+      <InterimBubble v-else-if="ghostText" :text="ghostText" ghost />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import MessageItem from '../assistant/MessageItem.vue'
+import InterimBubble from '../assistant/InterimBubble.vue'
 import { UiEmpty } from '../ui'
 import type { ChatMessage } from '../../composables/useAssistant'
+import { liveTranscript } from '../../composables/assistant/storeTranscript'
 
 /** 组件 props：消息列表、消息级动作开关（回合空闲且有会话）。
  *  Component props: message list, message-level action switch. */
@@ -51,6 +57,14 @@ const emit = defineEmits<{
   regen: [index: number]
 }>()
 
+/** 正在识别的中间稿。The in-flight interim transcript. */
+const interimText = computed(() =>
+  liveTranscript.value.status === 'recognizing' ? liveTranscript.value.interim : '')
+/** 是否显示中间稿气泡。Whether the interim bubble is shown. */
+const showInterim = computed(() => !!interimText.value)
+/** 未进入聊天记录的旁白（短暂显示）。Discarded ghost text (brief). */
+const ghostText = computed(() => liveTranscript.value.ghostText)
+
 /** 滚动容器 DOM 引用。Scroll container DOM reference. */
 const scrollEl = ref<HTMLElement | null>(null)
 
@@ -63,7 +77,11 @@ function scrollToBottom() {
 
 /** 监听消息数量和最后一条消息长度变化，自动滚到底部。Watch message count and last message length changes, auto-scroll to bottom. */
 watch(
-  () => [props.messages.length, props.messages[props.messages.length - 1]?.text?.length],
+  () => [
+    props.messages.length,
+    props.messages[props.messages.length - 1]?.text?.length,
+    interimText.value.length,
+  ],
   scrollToBottom
 )
 onMounted(scrollToBottom)

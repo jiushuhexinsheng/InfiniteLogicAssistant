@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { splitSentences } from '../../blocks/speech'
+import { hardwareConfig } from './store'
 
 /** 语音播报（双引擎，句级队列）。
  *  Voice broadcast (dual engine, sentence queue).
@@ -11,7 +12,7 @@ import { splitSentences } from '../../blocks/speech'
  *  Long text is split into sentences and queued: earlier first audio, interruptible
  *  via stopSpeak at any time; the API engine prefetches with a window of 2 (out-of-
  *  order completion, in-order playback). */
-export type TtsEngine = 'browser' | 'api'
+export type TtsEngine = 'browser' | 'local' | 'api'
 
 /** TTS 设置接口。TTS settings interface. */
 export interface TtsSettings {
@@ -64,7 +65,7 @@ function load(): TtsSettings {
     if (raw) {
       const p = JSON.parse(raw)
       return {
-        engine: p.engine === 'api' ? 'api' : 'browser',
+        engine: p.engine === 'api' ? 'api' : p.engine === 'local' ? 'local' : 'browser',
         speakEnabled: p.speakEnabled !== false,
         volume: clamp(p.volume ?? 1, 0, 1),
         rate: clamp(p.rate ?? 1, 0.1, 10),
@@ -268,7 +269,11 @@ async function fetchSentence(text: string, gen: number): Promise<Blob | null> {
     const res = await fetch('/api/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, voice: ttsSettings.value.apiVoice || undefined }),
+      body: JSON.stringify({
+        text,
+        voice: ttsSettings.value.apiVoice || undefined,
+        engine: ttsSettings.value.engine,
+      }),
     })
     if (!res.ok) throw new Error(`TTS HTTP ${res.status}`)
     const blob = await res.blob()
@@ -312,6 +317,12 @@ async function playApi(text: string, idx: number, gen: number): Promise<void> {
       audio.onended = finish
       audio.onerror = finish
       currentDone = finish
+      // 输出设备（Chromium 支持 setSinkId；不支持就回退系统默认）。
+      // Output device (setSinkId on Chromium; fall back to the system default otherwise).
+      const sink = hardwareConfig.output_device
+      if (sink && typeof (audio as any).setSinkId === 'function') {
+        void (audio as any).setSinkId(sink).catch(() => { /* 回退默认设备 */ })
+      }
       audio.play().catch(finish)
     } catch { finish() }
   })
@@ -332,14 +343,16 @@ function seedPrefetch(gen: number) {
  *  sentence until the queue empties or a newer generation takes over.
  *  @param gen - 本轮代际。Round generation. */
 async function runPump(gen: number) {
-  const api = ttsSettings.value.engine === 'api'
+  // browser = 浏览器 SpeechSynthesis；local / api = 后端 /api/tts（由后端按 engine 分派）。
+  // browser = SpeechSynthesis; local / api = backend /api/tts (the backend dispatches by engine).
+  const backend = ttsSettings.value.engine !== 'browser'
   speaking.value = true
   while (gen === speakGen && queueIdx < speakQueue.length) {
     const i = queueIdx
     const text = speakQueue[i]
     queueIdx = i + 1
-    if (api) seedPrefetch(gen)  // 播本句期间预取后续。Prefetch upcoming while this plays.
-    await (api ? playApi(text, i, gen) : playBrowser(text, gen))
+    if (backend) seedPrefetch(gen)  // 播本句期间预取后续。Prefetch upcoming while this plays.
+    await (backend ? playApi(text, i, gen) : playBrowser(text, gen))
     if (gen === speakGen) spokenChars.value += text.length
   }
   if (gen === speakGen) speaking.value = false

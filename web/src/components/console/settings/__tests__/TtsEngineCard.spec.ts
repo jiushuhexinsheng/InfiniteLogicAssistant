@@ -29,13 +29,14 @@ describe('TtsEngineCard（引擎选择卡）', () => {
     configRef.value = { tts_available: true }
   })
 
-  /** 两枚大按钮都渲染且可点。Both large buttons render and are clickable. */
-  it('渲染本地 / API 两枚引擎按钮', () => {
+  /** 三枚大按钮都渲染且可点。All three large buttons render and are clickable. */
+  it('渲染本地模型 / API / 浏览器三枚引擎按钮', () => {
     const w = mount(TtsEngineCard)
     const btns = w.findAll('.rc-card')
-    expect(btns.length).toBe(2)
-    expect(btns[0].text()).toContain('本地语音')
+    expect(btns.length).toBe(3)
+    expect(btns[0].text()).toContain('本地模型')
     expect(btns[1].text()).toContain('API 语音')
+    expect(btns[2].text()).toContain('浏览器语音')
     expect(btns[0].attributes('disabled')).toBeUndefined()
     expect(btns[1].attributes('disabled')).toBeUndefined()
     // 无障碍语义随 UiRadioCard 迁移保留。A11y semantics preserved via UiRadioCard.

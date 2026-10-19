@@ -15,13 +15,46 @@ TTS speech synthesis — supports two OpenAI-compatible protocols:
           - mimo-v2.5-tts-voiceclone (voice cloning): voice = reference audio base64 (voice_ref required)
           - mimo-v2.5-tts-voicedesign (voice design): voice unsupported; the user message carries the style description
 """
+import asyncio
 import base64
 from pathlib import Path
+from typing import Any
 
 import httpx
 
-from core.config import is_tts_enabled, resolve_tts_profile
+from core import config as config_mod
+from core.config import add_reload_hook, is_tts_enabled, resolve_tts_profile
 from core.logger import logger
+
+# 本地 Kokoro 单例（配置热重载后重建）。Local Kokoro singleton (rebuilt on config reload).
+_local_engine: Any | None = None
+
+
+def _get_local_engine():
+    """取本地 TTS 引擎（懒加载单例）。Get the local TTS engine (lazy singleton)."""
+    global _local_engine
+    if _local_engine is None:
+        from core.voice.local.sherpa_onnx import TtsEngine, TtsOptions
+        t = config_mod.settings.voice.tts
+        _local_engine = TtsEngine(TtsOptions(
+            model_dir=t.local_model,
+            provider=t.provider,
+            device=t.device,
+            num_threads=t.num_threads,
+            speaker=t.speaker,
+            speed=t.speed,
+            lang=t.lang,
+        ))
+    return _local_engine
+
+
+def _reset_local_tts() -> None:
+    """配置热重载后丢弃本地引擎。Drop the local engine after a config reload."""
+    global _local_engine
+    _local_engine = None
+
+
+add_reload_hook(_reset_local_tts)
 
 # 输出格式 → 媒体类型
 _MEDIA_TYPES = {"wav": "audio/wav", "mp3": "audio/mpeg", "pcm16": "audio/pcm"}
@@ -34,7 +67,7 @@ class TtsConfigError(RuntimeError):
     """
 
 
-async def synthesize(text: str, voice: str | None = None) -> tuple[bytes, str]:
+async def synthesize(text: str, voice: str | None = None, mode: str | None = None) -> tuple[bytes, str]:
     """调用配置的 TTS 端点合成语音，返回 (音频字节, media_type)。
 
     Call the configured TTS endpoint to synthesize speech and return (audio bytes, media_type).
@@ -55,19 +88,45 @@ async def synthesize(text: str, voice: str | None = None) -> tuple[bytes, str]:
         TtsConfigError: TTS 未启用或配置缺失。 / TTS is not enabled or the configuration is missing.
         RuntimeError: 文本为空、网络或端点错误。 / Empty text, or network/endpoint errors.
     """
+    if not text.strip():
+        raise RuntimeError("合成文本为空")
+
+    # 前端可显式指定引擎（设置页的 local/api 选择）；缺省用配置默认值。
+    # The frontend may name the engine (settings-page local/api choice); default to config.
+    selected = (mode or "").strip().lower()
+    if selected not in ("local", "api"):
+        selected = getattr(config_mod.settings.voice.tts, "mode", "api")
+    if selected == "local":
+        return await _synthesize_local(text)
+
     if not is_tts_enabled():
         raise TtsConfigError(
             "TTS 未启用：voice.tts.enabled=false 或未配置 endpoint。"
             "如需后端 TTS 请在 config.yaml 配置，否则保持关闭（浏览器本地语音播报）"
         )
-    if not text.strip():
-        raise RuntimeError("合成文本为空")
 
     _, profile = resolve_tts_profile()
     path = profile.get("chat_path") or "/v1/audio/speech"
     if "chat/completions" in path:
         return await _synthesize_chat(text, profile, voice)
     return await _synthesize_speech(text, voice, profile)
+
+
+async def _synthesize_local(text: str) -> tuple[bytes, str]:
+    """本地 Kokoro 合成；不可用时明确报错，不静默回落云端。
+
+    Local Kokoro synthesis; raises clearly when unavailable — never silently falls back
+    to the cloud (the user explicitly chose local).
+    """
+    engine = _get_local_engine()
+    ok, reason = await asyncio.to_thread(engine.status)
+    if not ok:
+        raise TtsConfigError(
+            f"本地 TTS 不可用：{reason}。请检查 voice.tts.local_model，"
+            "或将 voice.tts.mode 改为 api"
+        )
+    wav = await asyncio.to_thread(engine.synthesize_wav, text)
+    return wav, "audio/wav"
 
 
 def _build_url(profile: dict, path: str) -> str:

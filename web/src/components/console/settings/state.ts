@@ -104,7 +104,37 @@ export function moduleBody(id: string): Record<string, any> {
       mcp: e.mcp,
     }
   }
-  if (id === 'tts') return { tts: { enabled: e.tts.enabled, active: e.tts.active, profiles: e.tts.profiles } }
+  if (id === 'models') {
+    // 本地模型 / 硬件卡：四能力 + 流式 + 浏览器设备。ASR 显式挑字段，避免把只读的
+    // local_model_present / api_key_set 回送（extra=forbid → 400）。
+    // Local-models card: four capabilities + streaming + browser devices. ASR is built
+    // explicitly so read-only fields never ride back (extra=forbid → 400).
+    return {
+      vad: e.vad,
+      kws: e.kws,
+      asr: {
+        mode: e.asr.mode, local_model: e.asr.local_model, streaming: e.asr.streaming,
+        provider: e.asr.provider, device: e.asr.device, num_threads: e.asr.num_threads,
+        active: e.asr.active, profiles: e.asr.profiles,
+      },
+      tts: {
+        enabled: e.tts.enabled, active: e.tts.active, profiles: e.tts.profiles,
+        mode: e.tts.mode, local_model: e.tts.local_model, provider: e.tts.provider,
+        device: e.tts.device, num_threads: e.tts.num_threads, speaker: e.tts.speaker,
+        speed: e.tts.speed, lang: e.tts.lang,
+      },
+      streaming: e.streaming,
+      hardware: e.hardware,
+    }
+  }
+  if (id === 'tts') return {
+    tts: {
+      enabled: e.tts.enabled, active: e.tts.active, profiles: e.tts.profiles,
+      mode: e.tts.mode, local_model: e.tts.local_model, provider: e.tts.provider,
+      device: e.tts.device, num_threads: e.tts.num_threads, speaker: e.tts.speaker,
+      speed: e.tts.speed, lang: e.tts.lang,
+    },
+  }
   // 权限段不是 profile 形状，必须单独分支 —— 否则会落到下面的兜底分支，
   // PATCH 出 {active: undefined, profiles: undefined} 这样的垃圾数据。
   // The permissions section is not profile-shaped, so it needs its own branch; the
@@ -116,7 +146,13 @@ export function moduleBody(id: string): Record<string, any> {
   // The ASR section is not plain profile-shaped: the transcription mode and the local
   // model dir must ride along, or the fall-through below would silently drop the user's
   // mode selection. The read-only local_model_present is never sent back.
-  if (id === 'asr') return { asr: { active: e.asr.active, profiles: e.asr.profiles, mode: e.asr.mode, local_model: e.asr.local_model } }
+  if (id === 'asr') return {
+    asr: {
+      active: e.asr.active, profiles: e.asr.profiles, mode: e.asr.mode,
+      local_model: e.asr.local_model, streaming: e.asr.streaming,
+      provider: e.asr.provider, device: e.asr.device, num_threads: e.asr.num_threads,
+    },
+  }
   return { [id]: { active: e[id].active, profiles: e[id].profiles } }
 }
 

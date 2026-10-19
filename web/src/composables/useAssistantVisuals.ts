@@ -38,7 +38,7 @@ export const STATE_VISUALS: Record<AsstState, StateVisual> = {
   followup:     { icon: 'chat',       label: hint => callActive.value ? '可直接开口' : `可直接开口，或说${hint}`, color: '#34d399', fx: 'fx-listening', grad: 'brand' },
   standby:      { icon: 'moon',       label: hint => `静待中…说${hint}唤醒`,              color: '#9ca3af', fx: 'fx-idle',      grad: 'brand' },
   recording:    { icon: 'mic',        label: '录音中…',                   color: '#f87171', fx: 'fx-recording',     grad: 'rainbow' },
-  transcribing: { icon: 'sparkles',   label: '识别中…',                   color: '#c084fc', fx: 'fx-transcribing',  grad: 'brand' },
+  transcribing: { icon: 'sparkles',   label: '正在识别…',                 color: '#c084fc', fx: 'fx-transcribing',  grad: 'brand' },
   thinking:     { icon: 'brain',      label: '思考中…',                   color: '#fb923c', fx: 'fx-thinking',      grad: 'brand' },
   tool_calling: { icon: 'wrench',     label: '执行中…',                   color: '#22d3ee', fx: 'fx-tool_calling',  grad: 'brand' },
   responding:   { icon: 'chat',       label: '',                          color: '#818cf8', fx: 'fx-responding',    grad: 'brand' },

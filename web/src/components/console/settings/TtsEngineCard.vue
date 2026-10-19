@@ -20,6 +20,10 @@
     <p v-if="engine === 'api' && !apiAvailable" class="cs-hint">
       后端 TTS 未启用 —— 请在下方「TTS 语音合成」卡打开「启用」、配好 Profile / Endpoint / API Key 并保存；期间播报自动回退本地。
     </p>
+    <p v-if="engine === 'local'" class="cs-hint">
+      本地 TTS 使用 sherpa-onnx Kokoro：模型放在 <code>models/tts/kokoro-multi-lang-v1_1</code>，
+      可用 <code>python scripts/fetch_models.py --kind tts</code> 下载；模型缺失时播报会明确报错，不静默上云。
+    </p>
 
     <!-- 播报总开关：关 = 回复仅文本不朗读（试听不受影响）。localStorage 即时生效，两引擎共用。
          Master switch: off = text-only replies (preview unaffected). Instant localStorage, shared by both engines. -->
@@ -51,8 +55,9 @@ import { useTtsEngine } from '../../../composables/assistant/useTtsEngine'
 
 /** 引擎选项（与 UiRadioCard 契约）。Engine options (UiRadioCard contract). */
 const ENGINE_OPTIONS: RadioCardOption[] = [
-  { value: 'browser', icon: 'wave', label: '本地语音', hint: '浏览器朗读 · 零配置' },
-  { value: 'api', icon: 'bot', label: 'API 语音', hint: '后端合成 · 更自然' },
+  { value: 'local', icon: 'sparkles', label: '本地模型', hint: 'Kokoro · 后端合成 · 不出本机' },
+  { value: 'api', icon: 'bot', label: 'API 语音', hint: '云端合成 · 更自然' },
+  { value: 'browser', icon: 'wave', label: '浏览器语音', hint: 'SpeechSynthesis · 零配置' },
 ]
 
 const { engine, apiAvailable, setEngine } = useTtsEngine()

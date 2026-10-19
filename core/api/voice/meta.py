@@ -42,4 +42,10 @@ async def config_endpoint():
         "wake_word": config.settings.voice.wake_word.model_dump(),
         "vad": config.settings.voice.vad.model_dump(),
         "call": config.settings.voice.call.model_dump(),
+        "streaming": config.settings.voice.streaming.enabled,
+        "asr_mode": config.settings.voice.asr.mode,
+        "vad_mode": config.settings.voice.vad.mode,
+        "kws_mode": config.settings.voice.kws.mode,
+        "tts_mode": config.settings.voice.tts.mode,
+        "hardware": config.settings.voice.hardware.model_dump(),
     }

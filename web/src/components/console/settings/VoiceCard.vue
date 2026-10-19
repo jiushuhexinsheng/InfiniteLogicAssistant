@@ -22,24 +22,12 @@
       🎙️ <strong>转写模式</strong>（「语音识别」卡）＝<strong>{{ asrModeLabel }}</strong>：{{ asrPrivacyLine }}。
     </p>
     <p class="cs-note">
-      ⚠️ <strong>唤醒模式＝云端</strong>时，每次 VAD 判到人声都会上传音频到云端 ASR —— <strong>无论是否说出唤醒词</strong>。
-      <strong>自动/本地</strong>经后端 KWS 闸门：没说唤醒词的段在本机丢弃、不上云，命中才上传抬取指令文本；
-      <strong>浏览器</strong>走浏览器识别（Chrome 中文经 Google 服务器，并不更私密）。
-      关闭下方「唤醒启用」即停止取麦；不接受音频上传请改用文字输入。
+      ⚠️ <strong>转写模式＝云端</strong>时，每个 VAD 判到的人声段都会上传到 ASR 服务商 —— <strong>无论是否说出唤醒词</strong>。
+      <strong>本地</strong>模式音频不出本机（VAD/KWS/ASR 都在本机）；<strong>混合</strong>仅在本机失败或转写为空时上传兜底。
+      不接受音频上传请把「语音识别」卡切到本地，或改用文字输入。
     </p>
     <SettingsField v-if="s.editable.value" label="唤醒启用" row>
       <UiToggle :model-value="s.ed().wake_word.enabled" @update:model-value="v => (s.ed().wake_word.enabled = v)" />
-    </SettingsField>
-    <!-- 唤醒模式切换：自动/本地 = 后端 KWS 闸门判定；云端 = 旁路闸门纯云端；浏览器 = Web Speech API。
-         Auto/local = backend KWS gate; cloud = bypass gate, full cloud; browser = Web Speech API. -->
-    <SettingsField label="唤醒模式">
-      <UiSegmented
-        :model-value="currentMode"
-        :options="modeOptions"
-        aria-label="唤醒模式"
-        @update:model-value="v => switchMode(v as WakeMode)"
-      />
-      <p class="cs-mode-hint">{{ modeHint }}</p>
     </SettingsField>
     <!-- 唤醒词是**列表**（命中任意一个即唤醒）：绑定 singular `keyword` 会读到 undefined
          （输入框空白、看起来「没配」），保存时又被 `keywords` 盖掉 —— 界面等于改不动唤醒词。
@@ -106,28 +94,14 @@
 import { computed } from 'vue'
 import SettingsField from './SettingsField.vue'
 import SettingsCard from './SettingsCard.vue'
-import { UiButton, UiInput, UiSegmented, UiToggle } from '../../ui'
+import { UiButton, UiInput, UiToggle } from '../../ui'
 import { useSettings } from './useSettings'
 import { notify } from '../../../composables/useToast'
-import { wakeMode, setWakeMode, type WakeMode } from '../../../composables/assistant/store'
 
 /** 设置页单例状态与操作（保留对象引用以维持响应式）。Settings singleton (kept as an object to preserve reactivity). */
 const s = useSettings()
 
-/** 唤醒模式选项。Wake mode options. */
-const modeOptions: { value: WakeMode; label: string }[] = [
-  { value: 'auto', label: '自动' },
-  { value: 'local', label: '本地' },
-  { value: 'cloud', label: '云端' },
-  { value: 'webspeech', label: '浏览器' },
-]
-
-/** 当前唤醒模式。Current wake mode. */
-const currentMode = computed(() => wakeMode.value)
-
-/** ASR 转写模式标签（区分于「唤醒模式」：那个是本地/云端 KWS 判定，这个是音频去哪转写）。
- *  ASR transcription-mode label (distinct from the wake mode: that one is the KWS
- *  judging location, this one is where audio gets transcribed). */
+/** ASR 转写模式标签（音频去哪转写）。ASR transcription-mode label (where audio is transcribed). */
 const asrModeLabel = computed(() => {
   const m = s.sec('asr')?.mode
   return m === 'local' ? '本地' : m === 'hybrid' ? '混合' : '云端'
@@ -141,22 +115,6 @@ const asrPrivacyLine = computed(() => {
     default: return '音频上传到当前 ASR profile 的服务商；下面的唤醒模式口径以此为前提'
   }
 })
-
-/** 模式说明文案。Mode description text. */
-const modeHint = computed(() => {
-  switch (wakeMode.value) {
-    case 'local': return '⚡ 本地模式：经后端 KWS 闸门判定（sherpa-onnx 跑在本机后端），未命中不上云、零 LLM 成本'
-    case 'cloud': return '☁️ 云端模式：跳过 KWS 闸门直接云端转写判定，延迟较高但识别率高'
-    case 'webspeech': return '🌐 浏览器模式：Web Speech API 直接识别，免费但识别率较低'
-    default: return '🔄 自动模式：经后端 KWS 闸门判定（未命中不上云），链路失败回退 Web Speech API'
-  }
-})
-
-/** 切换唤醒模式。Switch the wake mode. */
-function switchMode(m: WakeMode) {
-  setWakeMode(m)
-  notify.ok(`唤醒模式已切换为「${modeOptions.find(o => o.value === m)?.label}」，重新开启唤醒后生效`)
-}
 
 /**
  * 数值输入：保留空串（清空），其余转 number（与原生 v-model.number 行为一致）。

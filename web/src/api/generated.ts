@@ -62,6 +62,99 @@ export interface paths {
         patch: operations["patch_config_api_config_patch"];
         trace?: never;
     };
+    "/api/voice/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Voice Models
+         * @description 列出模型；``kind`` 为空时返回全部能力。
+         *
+         *     List models; an empty ``kind`` returns every capability.
+         *
+         *     Args:
+         *         kind: ``vad`` / ``kws`` / ``asr`` / ``tts`` / ``llm``。
+         */
+        get: operations["voice_models_api_voice_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/models/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Voice Models Refresh
+         * @description 刷新模型列表（扫描本身无缓存，此端点只为前端语义清晰）。
+         *
+         *     Refresh the model list (scanning is uncached; this endpoint exists for UI clarity).
+         */
+        post: operations["voice_models_refresh_api_voice_models_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/hardware": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Voice Hardware
+         * @description 推理硬件快照：CPU 核数、可用 provider、sherpa 版本、默认线程数。
+         *
+         *     Inference hardware snapshot: CPU cores, available providers, sherpa version and the
+         *     default thread count.
+         */
+        get: operations["voice_hardware_api_voice_hardware_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Voice Capabilities
+         * @description 四能力的当前模式 + 本地模型是否就位 + API 是否配置。
+         *
+         *     Current mode of each capability, whether its local model is present, and whether the
+         *     cloud API is configured.
+         */
+        get: operations["voice_capabilities_api_voice_capabilities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tts": {
         parameters: {
             query?: never;
@@ -82,104 +175,6 @@ export interface paths {
          *     defaults to the voice from config"}
          */
         post: operations["tts_synthesize_api_tts_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/voice/transcribe": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Voice Transcribe
-         * @description 语音转写：接收 base64 音频 → 返回识别文本。
-         *
-         *     ⚠️ **本端点同样会把音频送上云**（作答与指令两条通道都经它，见前端 `transcribeSegment`），
-         *     所以它和 `/voice/wake` 一样逐条写审计 —— 否则「数审计行 = 数上传次数」不成立，
-         *     按 `wake` 行估算成本会**显著偏低**（作答复用这条通道，而那正是使用最频繁的一段）。
-         *
-         *     ASR transcription: accept base64 audio and return the recognized text.
-         *
-         *     NOTE: this endpoint sends audio to the cloud too (both the answer and the command channels go
-         *     through it — see the frontend's `transcribeSegment`), so it is audited line-by-line just like
-         *     `/voice/wake`. Without that, "count audit lines = count uploads" would not hold and estimating
-         *     cost from `wake` lines alone would come out **far too low** (answering reuses this channel, and
-         *     that is the most frequently used path).
-         *
-         *     Args:
-         *         request: FastAPI 请求，JSON 体含 audio_base64。The FastAPI request with
-         *             audio_base64 in the JSON body.
-         *
-         *     Returns:
-         *         {"ok": True, "text": ...}，或错误响应。{"ok": True, "text": ...}, or an error response.
-         */
-        post: operations["voice_transcribe_api_voice_transcribe_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/voice/wake/check": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Voice Wake Check
-         * @description 本地 KWS 快检：只回答「这段音频里有没有唤醒词」，毫秒级、不出本机、零云端调用。
-         *
-         *     判定与提取分离的前半段：命中 → 前端**立即**提示音 + 进入等指令窗口（动作先行，
-         *     不等任何「二次确认」）；指令文本的提取由完整 /voice/wake 在后台异步完成。
-         *
-         *     Local KWS quick check: answers only "does this clip contain a wake word" —
-         *     milliseconds, no cloud call, audio never leaves the machine. First half of
-         *     "verdict first, extraction later": on a hit the frontend acts **immediately**
-         *     (chime + command window) with no re-confirmation; command extraction happens
-         *     asynchronously via the full /voice/wake.
-         */
-        post: operations["voice_wake_check_api_voice_wake_check_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/voice/wake": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Voice Wake
-         * @description 唤醒检测：接收音频片段 → 转写 → 判定唤醒词 → 切出指令。
-         *
-         *     与 /voice/transcribe 分开而不是复用：这一步的产物是**判定**（matched / command），
-         *     不是文本 —— 前端据此决定「直接发起任务」还是「提示音后等指令」，把判定放后端
-         *     可以让它被 pytest 单测，前端保持薄。
-         *
-         *     Wake detection: accept an audio clip, transcribe it, judge the wake word and split out the
-         *     command. Kept separate from /voice/transcribe because the product here is a **judgement**
-         *     (matched / command) rather than text: the frontend decides between "start the task now" and
-         *     "chime, then wait for the command", and putting that judgement server-side makes it unit
-         *     testable while keeping the frontend thin.
-         */
-        post: operations["voice_wake_api_voice_wake_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -333,7 +328,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/voice/call/segment": {
+    "/api/voice/call/judge": {
         parameters: {
             query?: never;
             header?: never;
@@ -343,12 +338,17 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Call Segment
-         * @description 段落进漏斗：L0 规则 → L1 本地 → L2 云端精判；hit 才由前端送编排。
+         * Call Judge
+         * @description 通话模式纯文本判定：流式 ASR 已给出文本，只跑 L0 规则 + L1 快筛 + L2 闸门。
          *
-         *     Segment into the funnel; only a hit is sent to the orchestrator by the frontend.
+         *     Text-only call judging: streaming ASR already produced the transcript, so this only
+         *     runs the L0 rules, the L1 text screen and the L2 addressee gate. No audio, no ASR,
+         *     no cloud upload — the audio path is the streaming session.
+         *
+         *     Args:
+         *         request: JSON body ``{text, duration_ms, rms, tab_focused, in_open_window}``.
          */
-        post: operations["call_segment_api_voice_call_segment_post"];
+        post: operations["call_judge_api_voice_call_judge_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1000,6 +1000,26 @@ export interface components {
              * @default false
              */
             local_model_present: boolean;
+            /**
+             * Streaming
+             * @default true
+             */
+            streaming: boolean;
+            /**
+             * Provider
+             * @default cpu
+             */
+            provider: string;
+            /**
+             * Device
+             * @default 0
+             */
+            device: number;
+            /**
+             * Num Threads
+             * @default 0
+             */
+            num_threads: number;
         };
         /**
          * CallConfig
@@ -1038,7 +1058,7 @@ export interface components {
             smart_turn_enabled: boolean;
             /**
              * Local Asr Model
-             * @default models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
+             * @default models/asr/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
              */
             local_asr_model: string;
             /**
@@ -1192,6 +1212,38 @@ export interface components {
             wake_word: components["schemas"]["WakeWordConfig"];
             vad: components["schemas"]["VadConfig"];
             call: components["schemas"]["CallConfig"];
+            /**
+             * Streaming
+             * @default true
+             */
+            streaming: boolean;
+            /**
+             * Asr Mode
+             * @default cloud
+             */
+            asr_mode: string;
+            /**
+             * Vad Mode
+             * @default local
+             */
+            vad_mode: string;
+            /**
+             * Kws Mode
+             * @default local
+             */
+            kws_mode: string;
+            /**
+             * Tts Mode
+             * @default api
+             */
+            tts_mode: string;
+            /**
+             * Hardware
+             * @default {}
+             */
+            hardware: {
+                [key: string]: unknown;
+            };
         };
         /**
          * ConnectivityResult
@@ -1275,6 +1327,9 @@ export interface components {
             tts: components["schemas"]["TtsSectionEditable"];
             wake_word: components["schemas"]["WakeWordConfig"];
             vad: components["schemas"]["VadConfig"];
+            kws: components["schemas"]["KwsConfig"];
+            streaming: components["schemas"]["StreamingConfig"];
+            hardware: components["schemas"]["HardwareConfig"];
             agent: components["schemas"]["AgentConfigOut"];
             llm_client: components["schemas"]["LlmClientConfigOut"];
             tools: components["schemas"]["ToolsConfigOut"];
@@ -1380,6 +1435,39 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * HardwareConfig
+         * @description 浏览器侧硬件选项（config/schema/voice.py 副本，两处必须同步）。
+         *
+         *     Browser-side hardware options (copy of config/schema/voice.py; keep in sync).
+         */
+        HardwareConfig: {
+            /**
+             * Input Device
+             * @default
+             */
+            input_device: string;
+            /**
+             * Output Device
+             * @default
+             */
+            output_device: string;
+            /**
+             * Echo Cancellation
+             * @default true
+             */
+            echo_cancellation: boolean;
+            /**
+             * Noise Suppression
+             * @default true
+             */
+            noise_suppression: boolean;
+            /**
+             * Auto Gain
+             * @default true
+             */
+            auto_gain: boolean;
         };
         /**
          * HistoryConversation
@@ -1494,6 +1582,56 @@ export interface components {
             turn_id?: string | null;
             /** Ts */
             ts?: string | null;
+        };
+        /**
+         * KwsConfig
+         * @description 本地 KWS 配置（config/schema/voice.py 副本，两处必须同步）。
+         *
+         *     Local KWS config (copy of config/schema/voice.py; keep in sync).
+         */
+        KwsConfig: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Mode
+             * @default local
+             * @enum {string}
+             */
+            mode: "local" | "api" | "off";
+            /**
+             * Model Dir
+             * @default models/kws/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01
+             */
+            model_dir: string;
+            /**
+             * Provider
+             * @default cpu
+             * @enum {string}
+             */
+            provider: "cpu" | "cuda" | "coreml";
+            /**
+             * Device
+             * @default 0
+             */
+            device: number;
+            /**
+             * Num Threads
+             * @default 2
+             */
+            num_threads: number;
+            /**
+             * Keywords Threshold
+             * @default 0.25
+             */
+            keywords_threshold: number;
+            /**
+             * Keywords Score
+             * @default 1
+             */
+            keywords_score: number;
         };
         /**
          * LibraryDetailResponse
@@ -2069,6 +2207,45 @@ export interface components {
             archived: boolean;
         };
         /**
+         * StreamingConfig
+         * @description 流式语音会话配置（config/schema/voice.py 副本，两处必须同步）。
+         *
+         *     Streaming voice-session config (copy of config/schema/voice.py; keep in sync).
+         */
+        StreamingConfig: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Frame Ms
+             * @default 20
+             */
+            frame_ms: number;
+            /**
+             * Partial Interval Ms
+             * @default 120
+             */
+            partial_interval_ms: number;
+            /**
+             * Endpoint Silence Ms
+             * @default 700
+             */
+            endpoint_silence_ms: number;
+            /**
+             * Max Utterance Ms
+             * @default 15000
+             */
+            max_utterance_ms: number;
+            /**
+             * Commit Policy
+             * @default active_only
+             * @enum {string}
+             */
+            commit_policy: "active_only" | "all";
+        };
+        /**
          * TaskLibraryItem
          * @description 任务库条目（一次成功任务的存档）。
          *
@@ -2106,26 +2283,6 @@ export interface components {
              * @default
              */
             session_id: string;
-        };
-        /**
-         * TextResponse
-         * @description 返回纯文本内容的通用响应。
-         *
-         *     Generic response returning plain text content.
-         */
-        TextResponse: {
-            /**
-             * Ok
-             * @default true
-             */
-            ok: boolean;
-            /** Error */
-            error?: string | null;
-            /**
-             * Text
-             * @default
-             */
-            text: string;
         };
         /**
          * ToolCallResponse
@@ -2225,9 +2382,9 @@ export interface components {
         };
         /**
          * TtsSectionEditable
-         * @description TTS 区段（多一个 enabled 标记）。
+         * @description TTS 区段（多引擎选择、本地模型与推理硬件）。
          *
-         *     TTS section (extra ``enabled`` flag).
+         *     TTS section (extra engine choice, local model and inference hardware).
          */
         TtsSectionEditable: {
             /**
@@ -2254,6 +2411,46 @@ export interface components {
              * @default false
              */
             enabled: boolean;
+            /**
+             * Mode
+             * @default api
+             */
+            mode: string;
+            /**
+             * Local Model
+             * @default
+             */
+            local_model: string;
+            /**
+             * Provider
+             * @default cpu
+             */
+            provider: string;
+            /**
+             * Device
+             * @default 0
+             */
+            device: number;
+            /**
+             * Num Threads
+             * @default 0
+             */
+            num_threads: number;
+            /**
+             * Speaker
+             * @default 0
+             */
+            speaker: number;
+            /**
+             * Speed
+             * @default 1
+             */
+            speed: number;
+            /**
+             * Lang
+             * @default
+             */
+            lang: string;
         };
         /**
          * UploadStatsResponse
@@ -2308,6 +2505,49 @@ export interface components {
          *     silently filtered out and never reach the frontend.
          */
         VadConfig: {
+            /**
+             * Mode
+             * @default local
+             * @enum {string}
+             */
+            mode: "local" | "off";
+            /**
+             * Engine
+             * @default ten-vad
+             * @enum {string}
+             */
+            engine: "ten-vad" | "silero";
+            /**
+             * Model
+             * @default models/vad/ten-vad.onnx
+             */
+            model: string;
+            /**
+             * Vad Threshold
+             * @default 0.5
+             */
+            vad_threshold: number;
+            /**
+             * Window Size
+             * @default 0
+             */
+            window_size: number;
+            /**
+             * Provider
+             * @default cpu
+             * @enum {string}
+             */
+            provider: "cpu" | "cuda" | "coreml";
+            /**
+             * Device
+             * @default 0
+             */
+            device: number;
+            /**
+             * Num Threads
+             * @default 0
+             */
+            num_threads: number;
             /**
              * Silence Threshold
              * @default 0.02
@@ -2366,73 +2606,6 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
-        };
-        /**
-         * WakeCheckResponse
-         * @description 本地 KWS 快检响应（`POST /voice/wake/check`）。
-         *
-         *     只做「有没有唤醒词」的本地判定（毫秒级、不出本机、不调云端 ASR）：
-         *     hit=True 命中；hit=False 未命中（调用方丢弃该段）；bypass=True 闸门不可用
-         *     （模型缺失/解析失败），调用方应回退完整 /voice/wake 路径而不是丢唤醒。
-         *
-         *     Local KWS quick-check response. Only the local "is the wake word present"
-         *     verdict (milliseconds, no cloud ASR): hit=True means yes; hit=False means drop
-         *     the clip; bypass=True means the gate is unavailable (model missing / parse
-         *     failure) and the caller should fall back to the full /voice/wake path rather
-         *     than lose the wake.
-         */
-        WakeCheckResponse: {
-            /**
-             * Ok
-             * @default true
-             */
-            ok: boolean;
-            /** Error */
-            error?: string | null;
-            /**
-             * Hit
-             * @default false
-             */
-            hit: boolean;
-            /**
-             * Bypass
-             * @default false
-             */
-            bypass: boolean;
-        };
-        /**
-         * WakeResponse
-         * @description 唤醒检测响应。
-         *
-         *     text 是**原始**转写（不被归一化改写），matched 为是否命中，command 为唤醒词之后的内容
-         *     （仅唤醒词时为空串）。
-         *
-         *     Wake-detection response. text is the **raw** transcript, matched says whether a wake word hit,
-         *     and command is what followed it (empty when only the wake word was spoken).
-         */
-        WakeResponse: {
-            /**
-             * Ok
-             * @default true
-             */
-            ok: boolean;
-            /** Error */
-            error?: string | null;
-            /**
-             * Matched
-             * @default false
-             */
-            matched: boolean;
-            /**
-             * Command
-             * @default
-             */
-            command: string;
-            /**
-             * Text
-             * @default
-             */
-            text: string;
         };
         /**
          * WakeWordConfig
@@ -2550,7 +2723,38 @@ export interface operations {
             };
         };
     };
-    tts_synthesize_api_tts_post: {
+    voice_models_api_voice_models_get: {
+        parameters: {
+            query?: {
+                kind?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    voice_models_refresh_api_voice_models_refresh_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -2570,7 +2774,7 @@ export interface operations {
             };
         };
     };
-    voice_transcribe_api_voice_transcribe_post: {
+    voice_hardware_api_voice_hardware_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2585,12 +2789,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TextResponse"];
+                    "application/json": unknown;
                 };
             };
         };
     };
-    voice_wake_check_api_voice_wake_check_post: {
+    voice_capabilities_api_voice_capabilities_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2605,12 +2809,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WakeCheckResponse"];
+                    "application/json": unknown;
                 };
             };
         };
     };
-    voice_wake_api_voice_wake_post: {
+    tts_synthesize_api_tts_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -2625,7 +2829,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WakeResponse"];
+                    "application/json": unknown;
                 };
             };
         };
@@ -2761,7 +2965,7 @@ export interface operations {
             };
         };
     };
-    call_segment_api_voice_call_segment_post: {
+    call_judge_api_voice_call_judge_post: {
         parameters: {
             query?: never;
             header?: never;

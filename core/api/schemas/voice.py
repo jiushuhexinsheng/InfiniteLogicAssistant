@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """唤醒 / VAD / 配置状态响应。Wake-word, VAD and config-status responses."""
+from typing import Any, Literal
+
 from pydantic import BaseModel, Field
 
 from .base import ApiResponse
@@ -61,6 +63,16 @@ class VadConfig(BaseModel):
     extra fields during serialization, so adding a field only to the config model would be
     silently filtered out and never reach the frontend.
     """
+    # ── 本地 VAD（流式链路；见 config/schema/voice.py 同名字段）──
+    mode: Literal["local", "off"] = "local"
+    engine: Literal["ten-vad", "silero"] = "ten-vad"
+    model: str = "models/vad/ten-vad.onnx"
+    vad_threshold: float = 0.5
+    window_size: int = 0
+    provider: Literal["cpu", "cuda", "coreml"] = "cpu"
+    device: int = 0
+    num_threads: int = 0
+
     silence_threshold: float = 0.02
     silence_duration_ms: int = 1500
     max_duration_ms: int = 10000
@@ -93,7 +105,7 @@ class CallConfig(BaseModel):
     l0_min_rms: float = 0.02
     l0_min_seconds: float = 0.5
     smart_turn_enabled: bool = True
-    local_asr_model: str = "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
+    local_asr_model: str = "models/asr/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
     # 默认关（小米网关拒绝 text 部件）：见 config/schema/voice.py 同名字段（两处必须同步）。
     # Off by default (Xiaomi gateway rejects text parts): same field in config/schema/voice.py (keep in sync).
     merge_l2: bool = False
@@ -101,6 +113,49 @@ class CallConfig(BaseModel):
     # Session expiry / miss-relax threshold: same fields in config/schema/voice.py (keep in sync).
     session_ttl_s: float = 300.0
     relax_after_misses: int = 2
+
+class StreamingConfig(BaseModel):
+    """流式语音会话配置（config/schema/voice.py 副本，两处必须同步）。
+
+    Streaming voice-session config (copy of config/schema/voice.py; keep in sync).
+    """
+
+    enabled: bool = True
+    frame_ms: int = 20
+    partial_interval_ms: int = 120
+    endpoint_silence_ms: int = 700
+    max_utterance_ms: int = 15000
+    commit_policy: Literal["active_only", "all"] = "active_only"
+
+
+class HardwareConfig(BaseModel):
+    """浏览器侧硬件选项（config/schema/voice.py 副本，两处必须同步）。
+
+    Browser-side hardware options (copy of config/schema/voice.py; keep in sync).
+    """
+
+    input_device: str = ""
+    output_device: str = ""
+    echo_cancellation: bool = True
+    noise_suppression: bool = True
+    auto_gain: bool = True
+
+
+class KwsConfig(BaseModel):
+    """本地 KWS 配置（config/schema/voice.py 副本，两处必须同步）。
+
+    Local KWS config (copy of config/schema/voice.py; keep in sync).
+    """
+
+    enabled: bool = True
+    mode: Literal["local", "api", "off"] = "local"
+    model_dir: str = "models/kws/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
+    provider: Literal["cpu", "cuda", "coreml"] = "cpu"
+    device: int = 0
+    num_threads: int = 2
+    keywords_threshold: float = 0.25
+    keywords_score: float = 1.0
+
 
 class ConfigResponse(ApiResponse):
     """配置状态端点响应（LLM/ASR/TTS 可用性、唤醒词、VAD）。
@@ -118,6 +173,14 @@ class ConfigResponse(ApiResponse):
     wake_word: WakeWordConfig
     vad: VadConfig
     call: CallConfig
+    # 能力模式（前端据此选择流式链路/本地/API 展示；见 voice.asr/vad/kws/tts）。
+    # Capability modes (the frontend chooses the streaming path and local/API labels).
+    streaming: bool = True
+    asr_mode: str = "cloud"
+    vad_mode: str = "local"
+    kws_mode: str = "local"
+    tts_mode: str = "api"
+    hardware: dict[str, Any] = {}
 
 class CallSessionResponse(ApiResponse):
     """通话会话 start/stop 响应。Call session start/stop response."""
@@ -148,36 +211,3 @@ class UploadStatsResponse(ApiResponse):
     total: int = 0
     by_via: dict[str, int] = {}
     days: list[dict] = []
-
-
-class WakeResponse(ApiResponse):
-    """唤醒检测响应。
-
-    text 是**原始**转写（不被归一化改写），matched 为是否命中，command 为唤醒词之后的内容
-    （仅唤醒词时为空串）。
-
-    Wake-detection response. text is the **raw** transcript, matched says whether a wake word hit,
-    and command is what followed it (empty when only the wake word was spoken).
-    """
-
-    matched: bool = False
-    command: str = ""
-    text: str = ""
-
-class WakeCheckResponse(ApiResponse):
-    """本地 KWS 快检响应（`POST /voice/wake/check`）。
-
-    只做「有没有唤醒词」的本地判定（毫秒级、不出本机、不调云端 ASR）：
-    hit=True 命中；hit=False 未命中（调用方丢弃该段）；bypass=True 闸门不可用
-    （模型缺失/解析失败），调用方应回退完整 /voice/wake 路径而不是丢唤醒。
-
-    Local KWS quick-check response. Only the local "is the wake word present"
-    verdict (milliseconds, no cloud ASR): hit=True means yes; hit=False means drop
-    the clip; bypass=True means the gate is unavailable (model missing / parse
-    failure) and the caller should fall back to the full /voice/wake path rather
-    than lose the wake.
-    """
-
-    hit: bool = False
-    bypass: bool = False
-

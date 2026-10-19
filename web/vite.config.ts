@@ -15,6 +15,9 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:8520',
         changeOrigin: true,
+        // 流式语音走 WebSocket（/api/voice/asr/stream）。
+        // Streaming voice uses WebSocket (/api/voice/asr/stream).
+        ws: true,
       },
     },
   },

@@ -16,7 +16,7 @@
  * standby IS the pre-wake state.
  */
 import { api } from '../../api'
-import { callActive, callConfig, state, statusLine, wakeEnabled, wakeMode } from './store'
+import { callActive, callConfig, state, statusLine, wakeEnabled } from './store'
 import { startListening, stopListening, ensureListening } from './wake/wakeOrchestrator'
 import type { AsstState } from './store'
 
@@ -97,12 +97,6 @@ export async function enterCallFromWake(): Promise<boolean> {
   wakeEnabled.value = true   // 静待的唤醒生命周期（播报回落 ensureListening gate 它）
   state.value = 'listening'  // callActive=true → 视觉/文案 =「通话聆听中」
   statusLine.value = ''
-  // webspeech 模式交接：段漏斗需要段录音器（SpeechRecognition 不产段）——先停浏览器
-  // 识别再走 ensureListening（callActive 已 true → acquireAndStart 强制段录音器路径）。
-  // Webspeech hand-off: the funnel needs the segment recorder (SpeechRecognition yields
-  // no segments) — stop the browser recognizer first, then ensureListening (callActive
-  // is already true, so acquireAndStart forces the segmenter path).
-  if (wakeMode.value === 'webspeech') stopListening()
-  void ensureListening()     // 兜底：漏斗期间麦必须在（幂等，已在听则无副作用）
+  void ensureListening()     // 兜底：通话期间麦必须在（幂等，已在听则无副作用）
   return true
 }

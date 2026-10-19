@@ -88,19 +88,24 @@ describe('moduleBody 各模块 PATCH 形状', () => {
     expect(Object.keys(b.server).sort()).toEqual(['cors_origins', 'host', 'open_browser', 'port'])
   })
 
-  it('tts → {tts:{enabled, active, profiles}}', () => {
+  it('tts → 含引擎/本地模型/推理硬件字段', () => {
     const b = moduleBody('tts') as any
-    expect(Object.keys(b.tts).sort()).toEqual(['active', 'enabled', 'profiles'])
+    expect(Object.keys(b.tts).sort()).toEqual([
+      'active', 'device', 'enabled', 'lang', 'local_model', 'mode',
+      'num_threads', 'profiles', 'provider', 'speaker', 'speed',
+    ])
   })
 
-  it('asr → {active, profiles, mode, local_model}（**不含**只读的 local_model_present）', () => {
+  it('asr → 含模式/本地模型/流式/推理硬件（**不含**只读的 local_model_present）', () => {
     // 关键回归：asr 若落到兜底分支只发 {active, profiles}，用户切换的转写模式会被**静默
     // 丢弃**（保存看似成功）；local_model_present 回送则被后端 extra=forbid 拒绝 400。
     // Key regression: a fall-through would silently drop the mode; sending the read-only
     // local_model_present back would 400 on the backend's extra="forbid".
     const b = moduleBody('asr') as any
     expect(Object.keys(b)).toEqual(['asr'])
-    expect(Object.keys(b.asr).sort()).toEqual(['active', 'local_model', 'mode', 'profiles'])
+    expect(Object.keys(b.asr).sort()).toEqual([
+      'active', 'device', 'local_model', 'mode', 'num_threads', 'profiles', 'provider', 'streaming',
+    ])
     expect(b.asr.mode).toBe('cloud')
     expect(b.asr).not.toHaveProperty('local_model_present')
   })

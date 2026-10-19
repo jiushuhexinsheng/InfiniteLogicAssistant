@@ -8,7 +8,6 @@
     "build": "vue-tsc && vite build",
     "test": "vitest run",
     "preview": "vite preview",
-    "verify:voice": "node scripts/verify-voice.mjs",
     "gen:api": "python ../scripts/gen_openapi.py && openapi-typescript src/api/openapi.json -o src/api/generated.ts",
     "shot": "node scripts/screenshot.mjs",
     "shot:all": "node scripts/shot-all.mjs"

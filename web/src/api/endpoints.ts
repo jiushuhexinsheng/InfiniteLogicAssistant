@@ -1,7 +1,6 @@
 // ─── API 端点 ───
 // ─── API Endpoints ───
-import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, LibraryTask, PingResponse, SessionItem, TextResponse, ToolCallResponse, ToolsResponse, WakeResponse } from '../types'
-import { blobToWavBase64 } from '../audio'
+import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, LibraryTask, PingResponse, SessionItem, ToolCallResponse, ToolsResponse } from '../types'
 import { get, post, patchHttp, putHttp, del } from './http'
 // 类型别名（MemoryFact 等生成类型）由门面 ../api 定义，此处仅类型引用（运行时被擦除）。
 // The generated type aliases (MemoryFact etc.) are defined by the ../api facade; this
@@ -34,44 +33,39 @@ export const api = {
   fetchModels: (section: string, profile: Record<string, any>) =>
     post<{ ok: boolean; models: string[]; count: number; error?: string }>('/providers/fetch-models', { section, profile }),
 
-  // 语音
-  // Voice
-  /** 语音转文字。Speech to text. */
-  transcribe: async (blob: Blob): Promise<TextResponse> => {
-    const base64Wav = await blobToWavBase64(blob)
-    return post<TextResponse>('/voice/transcribe', { audio_base64: base64Wav })
-  },
+  // 语音：音频走 /api/voice/asr/stream WebSocket；HTTP 侧只保留通话会话语义。
+  // Voice: audio travels over the /api/voice/asr/stream WebSocket; HTTP keeps call-session semantics.
 
-  // 唤醒检测：转写 + 唤醒词判定 + 指令切分（后端完成判定，前端只需照结果行事）。
-  // Wake detection: transcribe, judge the wake word, split out the command. The backend owns the
-  // judgement; the frontend only acts on the result.
-  /** 唤醒检测。Wake detection. */
-  /** 本地 KWS 快检：只回答「有没有唤醒词」，毫秒级、不出本机、零云端调用。
-   *  Local KWS quick check: only "is the wake word present" — milliseconds, no cloud call. */
-  wakeCheck: async (blob: Blob): Promise<{ ok?: boolean; hit?: boolean; bypass?: boolean; error?: string }> => {
-    const base64Wav = await blobToWavBase64(blob)
-    return post<{ ok?: boolean; hit?: boolean; bypass?: boolean; error?: string }>('/voice/wake/check', { audio_base64: base64Wav })
-  },
-  wakeDetect: async (blob: Blob, opts?: { mode?: string }): Promise<WakeResponse> => {
-    const base64Wav = await blobToWavBase64(blob)
-    // mode 随请求下发：cloud 显式旁路后端 KWS 闸门（纯云端判定，最大召回）
-    // The mode travels with the request: cloud explicitly bypasses the backend KWS
-    // gate (pure cloud judging, maximum recall).
-    return post<WakeResponse>('/voice/wake', { audio_base64: base64Wav, ...(opts?.mode ? { mode: opts.mode } : {}) })
-  },
-
-  // ── 通话模式（免唤醒三级漏斗）──
+  // ── 通话模式（免唤醒文本判定）──
   /** 进入通话模式（建会话）。Enter call mode (open a session). */
   callStart: async (): Promise<{ ok?: boolean; open_window_s?: number; error?: string }> =>
     post('/voice/call/start'),
   /** 退出通话模式。Exit call mode. */
   callStop: async (): Promise<{ ok?: boolean; error?: string }> =>
     post('/voice/call/stop'),
-  /** 段落进漏斗：hit 才把 text 送编排。Segment into the funnel; on hit the text goes to the orchestrator. */
-  callSegment: async (blob: Blob, meta: { tabFocused: boolean; inOpenWindow: boolean }): Promise<{ ok?: boolean; hit?: boolean; text?: string; stage?: string; reason?: string }> => {
-    const audio_base64 = await blobToWavBase64(blob)
-    return post('/voice/call/segment', { audio_base64, tab_focused: meta.tabFocused, in_open_window: meta.inOpenWindow })
-  },
+  /** 通话纯文本判定（流式 ASR 已给出文本，只跑 L0/L1/L2 文本闸门）。
+   *  Text-only call judging (streaming ASR already produced the text). */
+  callJudge: async (text: string, meta: {
+    durationMs: number; rms: number; tabFocused: boolean; inOpenWindow: boolean
+  }): Promise<{ ok?: boolean; hit?: boolean; text?: string; stage?: string; reason?: string }> =>
+    post('/voice/call/judge', {
+      text,
+      duration_ms: meta.durationMs,
+      rms: meta.rms,
+      tab_focused: meta.tabFocused,
+      in_open_window: meta.inOpenWindow,
+    }),
+
+  // ── 本地模型与硬件能力 ──
+  /** 模型列表（按能力）。Model list by capability. */
+  getModels: (kind?: string) => get<{ ok: boolean; models: Record<string, any[]> }>(
+    kind ? `/voice/models?kind=${encodeURIComponent(kind)}` : '/voice/models'),
+  /** 刷新模型列表。Refresh the model list. */
+  refreshModels: () => post<{ ok: boolean; models: Record<string, any[]> }>('/voice/models/refresh'),
+  /** 硬件/引擎能力快照。Hardware/engine capability snapshot. */
+  getHardware: () => get<{ ok: boolean; hardware: any }>('/voice/hardware'),
+  /** 四能力当前模式与可用性。Per-capability mode and availability. */
+  getCapabilities: () => get<{ ok: boolean; [key: string]: any }>('/voice/capabilities'),
 
   // 语音上传成本统计（audit 的 audio-upload via= 三前缀计数 + 近 7 日趋势；只回计数与日期）
   // Voice upload cost stats (audio-upload via= counts + 7-day trend; counts and dates only)
@@ -79,8 +73,8 @@ export const api = {
   getUploadStats: () => get<{
     ok: boolean
     total: number
-    by_via: { wake: number; transcribe: number; 'call-segment': number }
-    days: { date: string; wake: number; transcribe: number; 'call-segment': number }[]
+    by_via: { stream: number }
+    days: { date: string; stream: number }[]
   }>('/voice/upload-stats'),
 
   // 单工具执行（前端"重试失败工具"走后端真实重跑；高风险工具需 confirm: true 显式确认）

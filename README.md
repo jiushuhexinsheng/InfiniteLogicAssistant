@@ -1,8 +1,9 @@
 # 无限逻辑 · 语音全控智能体
 
 用语音（或文字）控制电脑上的一切：唤醒 → 说话 → 意图判断 → 任务编排（澄清/确认/执行/汇报）→
-多智能体协作 + 工具执行 → 记忆/RAG 上下文。浏览器端本地 VAD 分段 + 本地 KWS 唤醒判定 +
-轻量 Python 后端（FastAPI），OpenAI 兼容接口，支持离线/在线任意部署。
+多智能体协作 + 工具执行 → 记忆/RAG 上下文。浏览器 AudioWorklet 采集 → WebSocket 流式 →
+后端本地 VAD / KWS / ASR（sherpa-onnx），轻量 Python 后端（FastAPI），OpenAI 兼容接口，
+支持离线/在线任意部署。
 
 > 自研编排状态机（不依赖 LangGraph/CrewAI）、多智能体协调、长期记忆 + RAG、MCP 桥接、
 > Skills 技能包、cron 定时任务、GUI/Shell/文件系统执行层。更新历史与验收清单见
@@ -17,10 +18,11 @@
 | 模块 | 功能 |
 |------|------|
 | 悬浮球助手 | 右下角可拖拽悬浮球，语音对话 + 聊天气泡面板 + 迷你播放条 |
-| 语音唤醒 | **VAD → 本地 KWS → ASR** 三层链路：浏览器本地 VAD 切段 → 后端 sherpa-onnx KWS 本地判定唤醒词**「衍衡」/「洛吉斯」**（发音级/拼音级，同音字免疫）→ 命中才调云端 ASR 抬指令。背景声/闲聊被 KWS 就地丢弃，**不出本机、不上云、不花钱** |
-| 唤醒模式 | `auto`/`local`（KWS 闸门 + ASR）、`cloud`（旁路闸门纯云端，最大召回）、`webspeech`（浏览器识别兜底），设置页/配置切换 |
-| 通话模式 | 双击悬浮球免唤醒持续聆听，三级漏斗（本地规则/本地转写/云端精判），播报可打断、回答后 8s 开放追问 |
-| 语音输入 | ASR（OpenAI 兼容）转文字；语音作答提问（播报完直接开口答，不必再喊唤醒词） |
+| 语音唤醒 | **WebSocket 流式链路**：AudioWorklet 20ms PCM 帧 → 后端本地 VAD（TEN/Silero）分段 → 本地 KWS（Zipformer）或文本拼音判定唤醒词**「衍衡」/「洛吉斯」** → 本地增量 ASR（边说边出字）或云端 ASR。本地模式音频不出本机 |
+| 本地引擎 | `core/voice/local/sherpa_onnx`：VAD / KWS / ASR / TTS 四引擎；模型放 `models/{vad,kws,asr,tts,llm}`，任意兼容 sherpa-onnx 模型可放入并在设置页选择 |
+| 推理硬件 | 每个模型独立选 `cpu` / `cuda` / `coreml` 与线程数；不可用的 provider 明确报错 |
+| 通话模式 | 双击悬浮球免唤醒持续聆听；流式文本进 L0 规则 + L1 快筛 + L2 云端意图闸门，命中才送编排；播报可打断、回答后 8s 开放追问 |
+| 语音输入 | 本地或云端 ASR 转文字；状态栏显示「正在识别…」，定稿进聊天记录并显示「识别完成」 |
 | AI 对话 | LLM（OpenAI 兼容：DeepSeek / OpenAI / 通义…）多 profile 切换，ReAct 工具调用 |
 | 任务编排 | 意图判断（闲聊/任务）→ 任务形成 → 澄清缺失信息 → 操作确认（**默认已放行**，见「安全」节）→ 执行 → 汇报（SSE 实时） |
 | 消息块协议 | 对话内容模块化：思考 / 工具 / 正文（代码/文档/图片）/ 提问作答 / 回合汇总卡等独立块渲染，注册协议可扩展（ext:*），思考过程可折叠查看 |
@@ -34,7 +36,7 @@
 | 环境感知 | 采集系统信息写入 environment.md，注入规划上下文，工具参数贴合真实系统 |
 | 全链路可控 | 任意时刻可停止整个任务/当前步骤（CancellationToken 贯穿到子进程，taskkill /T 兜底） |
 | 安全审计 | 非 localhost 绑定强制 API Token；工具执行与高风险确认写入 data/audit.log；每次云端音频上传记账可查 |
-| 语音播报 | 浏览器 SpeechSynthesis API 播报助手回复（可选后端 TTS） |
+| 语音播报 | 浏览器 SpeechSynthesis / 本地 Kokoro / 云端 TTS 三选一，句级队列、可打断 |
 | 设置面板 | 控制台「设置」页：切换服务商 profile / 调节参数 / 设密钥（不回显）/ 检测连接，热重载即时生效 |
 
 ## 快速开始
@@ -109,23 +111,25 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 - **续聊窗口**：回合结束/播报完后的 `vad.followup_window_ms`（默认 6s）内**免唤醒**——直接开口
   说话即当新指令（窗口内说唤醒词也兼容，照常进指令窗）；到期自动回聆听。设为 0 关闭
   （回到「结束后必须喊唤醒词」的旧行为）。窗口内语音会走云端转写（与作答通道同成本）
-- **播报期间暂停监听**：助手说话时会停掉分段录音器并**释放麦克风轨道**，播完恢复；
+- **播报期间暂停送帧**：助手说话时流式会话进入 mute（麦克风保持、帧不入 ASR/KWS），播完恢复；
   播报结束后 1.2 秒内音频整体丢弃（**回声护栏**——助手自称「衍衡」，防止它自己的声音被误唤醒）
 - 说出「停止 / 取消 / 暂停」等命令词可中断当前任务
 - **对话 / 任务模式**：控制台头部 `[对话][任务]` 开关切换（localStorage 持久化）。
   **对话**（默认）少打断、完成不询问；**任务**模式会在任务完成后询问「这个任务完成了吗？」，
   答「完成了」才把该任务存档进任务库，下次相似任务自动预填参数减少询问
 
-**唤醒模式**（设置页「语音」或 `config.yaml` 的 `voice.wake_word`）：
+**能力模式**（设置页「语音识别 / 本地模型」或 `config.yaml`）：
 
-| 模式 | 行为 |
-|------|------|
-| `auto`（默认）/ `local` | KWS 本地判定前置闸门 + 云端 ASR 抬指令（背景声不上云） |
-| `cloud` | 旁路 KWS，纯云端判定（最大召回，每次人声段都上云） |
-| `webspeech` | 浏览器 Web Speech API 兜底（不依赖后端 ASR 配置） |
+| 能力 | 本地 | API | 说明 |
+|------|------|-----|------|
+| VAD | TEN VAD / Silero（默认） | — | 没有云端 VAD；模型缺失时会话明确报错 |
+| KWS | Zipformer（默认） | 文本拼音判定 | API 模式在转写后判唤醒词 |
+| ASR | Zipformer 流式（默认 `cloud`） | OpenAI 兼容 profile | `local` / `cloud` / `hybrid`；本地增量出字 |
+| TTS | Kokoro | OpenAI 兼容 profile | 另有浏览器 SpeechSynthesis 可选 |
 
-唤醒词、静音阈值、KWS 灵敏度等可在 `config.yaml` 的 `voice.wake_word` / `voice.vad` /
-`voice.kws` 中调整。KWS 模型缺失时闸门自动旁路回退云端判定，不阻塞唤醒。
+唤醒词、VAD 端点静音、KWS 阈值、本地模型、CPU/GPU 与麦克风/扬声器都在设置页
+「语音唤醒」「本地模型」卡中调整；模型放 `models/{vad,kws,asr,tts}`，用
+`python scripts/fetch_models.py` 下载。
 
 > **桌面端说明**：桌面原生悬浮球（PySide6）与本地常驻语音监听已暂停开发，桌面代码迁移至
 > `desktop-ball` 分支（不再回迁）。当前语音交互由浏览器端 VAD/悬浮球与后端承担。
@@ -134,9 +138,9 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  交互层  浏览器悬浮球(Vue3 + 本地 VAD) · 消息块渲染 · ASR/TTS  │
+│  交互层  悬浮球(Vue3) · AudioWorklet 采集 · WebSocket 流式显示  │
 ├──────────────────────────────────────────────────────────────┤
-│  唤醒层  VAD 切段 → KWS 本地判定(sherpa-onnx) → ASR 抬指令      │
+│  流式层  WebSocket → 本地 VAD → KWS → ASR → partial/final       │
 ├──────────────────────────────────────────────────────────────┤
 │  编排层  Orchestrator:会话状态机 → 意图 → 任务 → 澄清 → 确认    │
 │          → 执行(ReAct) → 汇报 ；SSE 实时推送                   │
@@ -149,14 +153,14 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 └──────────────────────────────────────────────────────────────┘
 ```
 
-> 唤醒链补注：通话模式（双击悬浮球进入）不走 KWS 唤醒判定——段落改走**三级判定漏斗**
-> （L0 确定性规则 → L1 本地转写快筛 → L2 云端 ASR 精转 + LLM 四分类闸门），命中后进同一
-> 编排层（`/api/voice/utter`）；漏斗框图见 [wiki/Architecture.md](wiki/Architecture.md)。
+> 通话模式补注：双击悬浮球进入后，流式会话照常转写；final 文本进 **L0 规则 → L1 文本快筛
+> → L2 云端意图闸门**（`/api/voice/call/judge`），命中后进同一编排层（`/api/voice/utter`）；
+> 框图见 [wiki/Architecture.md](wiki/Architecture.md)。
 
 一次输入的处理链路：
 
 ```
-语音（VAD 切段 → KWS 本地判定 → ASR）或文字输入
+语音（AudioWorklet → WebSocket → 本地 VAD/KWS/ASR 或云端）或文字输入
   → 意图判断（闲聊 | 任务）
   → 闲聊：LLM 直接回复
   → 任务：form_task（目标/参数/风险）→ 缺参数则澄清追问
@@ -174,15 +178,17 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 | PUT | `/api/config/secrets` | 设置密钥（不回显） |
 | GET | `/api/detection` | 聚合检测（环境/配置/连通性） |
 | GET | `/api/env` | 环境感知快照 |
-| POST | `/api/voice/wake/check` | 本地 KWS 快检（毫秒级、零云端调用） |
-| POST | `/api/voice/wake` | 唤醒检测（转写 + 判定 + 切指令） |
-| POST | `/api/voice/transcribe` | 纯转写（指令/作答段） |
+| WS | `/api/voice/asr/stream` | **流式语音入口**：start JSON + PCM16 帧；返回 ready / vad / partial / final / wake |
 | POST | `/api/voice/utter` | **编排入口**（SSE 事件流，`mode`: chat/task） |
 | POST | `/api/voice/answer` | 投递提问回答（可带 qid 配对） |
 | POST | `/api/voice/resume` | SSE 断线后续播（`server.resume_grace_s` 宽限期内任务不丢） |
-| POST | `/api/voice/call/start` / `call/stop` | 通话模式开/关（无段落 300s 自动过期；开启期间与唤醒互斥） |
-| POST | `/api/voice/call/segment` | 通话段落进三级漏斗（L0 规则 → L1 本地转写 → L2 云端精判），`hit` 才送编排 |
-| GET | `/api/voice/upload-stats` | 云端音频上传成本统计（`audio-upload via=` 三前缀计数 + 近 7 日趋势，只回计数与日期） |
+| POST | `/api/voice/call/start` / `call/stop` | 通话模式开/关（无段落 300s 自动过期） |
+| POST | `/api/voice/call/judge` | 通话纯文本判定（L0 规则 → L1 快筛 → L2 云端意图闸门），`hit` 才送编排 |
+| GET | `/api/voice/models` | 扫描 `models/{vad,kws,asr,tts,llm}` 并返回模型清单 |
+| POST | `/api/voice/models/refresh` | 重新扫描模型目录 |
+| GET | `/api/voice/hardware` | CPU 核数、可用 provider、sherpa 版本、默认线程数 |
+| GET | `/api/voice/capabilities` | 四能力当前模式 + 本地模型是否就位 + API 是否配置 |
+| GET | `/api/voice/upload-stats` | 云端音频上传成本（`audio-upload via=stream` 计数 + 近 7 日趋势） |
 | POST | `/api/tts` | 后端 TTS 合成（可选） |
 | GET/POST | `/api/tools` `/api/tools/call` | 工具列表 / 执行（是否询问由 `permissions` 策略决定） |
 | GET/DELETE | `/api/memory` | 长期记忆读取 / 删除 |
@@ -245,13 +251,16 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
   （写错启动即报错）。多 profile（deepseek / openai / qwen / xiaomi-mimo…）改 `active` 切换。
 - `config.secrets.yaml`：密钥独立存储（`llm/asr/tts.api_key`、`server.api_token`），不入库；
   环境变量优先级更高。
-- `voice.wake_word`：唤醒词（可多个）与开关；`voice.vad`：静音切段参数；
-  `voice.kws`：本地 KWS 闸门（模型目录 / 检测阈值）。
-- `voice.asr.mode`：**转写模式**（2026-10-12）——`local`（本地 sherpa-onnx，音频不出本机；
-  缺模型时**明确报错，绝不静默上云**）/ `cloud`（默认，走 `active` profile 的云端）/
-  `hybrid`（本地优先，本地不可用 / 转写为空 / 失败时才回落云端）。覆盖**唤醒链与通话 L2**
-  （通话 L1 始终本地快筛）；`voice.asr.local_model` 为本地模型目录（`scripts/fetch_local_asr_model.py`
-  下载，模型不入库）。隐私口径见「安全」节。
+- `voice.wake_word`：唤醒词（可多个）与开关；`voice.vad`：本地 VAD（TEN/Silero）、端点静音
+  与最长语音；`voice.kws`：`local` / `api` / `off`、模型目录、阈值与 provider。
+- `voice.streaming`：WebSocket 流式会话（帧长、partial 间隔、端点静音、最长语音、提交策略）。
+- `voice.asr.mode`：`local`（本地流式 sherpa-onnx，音频不出本机；缺模型时**明确报错，绝不
+  静默上云**）/ `cloud`（默认，走 `active` profile 的云端）/ `hybrid`（本地优先，本地不可用 /
+  转写为空 / 失败时才回落云端）；`voice.asr.streaming/provider/local_model` 控制本地流式与硬件。
+- `voice.tts.mode`：`api`（默认，`enabled` + profile）或 `local`（Kokoro）；`voice.hardware`
+  选浏览器输入/输出设备与回声消除 / 降噪 / 自动增益。
+- 模型目录：`models/{vad,kws,asr,tts,llm}`；`python scripts/fetch_models.py` 下载 VAD/ASR/Kokoro，
+  KWS 小模型随仓库；模型不入库。隐私口径见「安全」节。
 - `agent`：`recursion_limit`（ReAct 步数上限）、`multi_agent`（复杂任务是否转多智能体协调者）、
   `auto_approve`（write/exec 免确认开关）、`confirm_timeout_s`（确认/澄清超时秒数，
   0=不限；到期按拒绝处理，防确认链无限挂起）、`models_failover`（主模型故障备选序列）、
@@ -342,7 +351,7 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 ├── requirements.txt           Python 依赖（在线 / 离线 scripts/libs/ 双路）
 ├── requirements-dev.txt       测试/检查依赖（pytest + pytest-asyncio + mypy）
 ├── mypy.ini                   后端静态类型检查配置
-├── models/                    KWS 唤醒模型（随仓库入库；缺失时自动旁路）
+├── models/                    vad / kws / asr / tts / llm 五类模型（KWS 随仓库；其余脚本下载）
 ├── core/
 │   ├── config/                配置包：schema（pydantic 模型）/ loader（YAML+密钥注入）/ runtime（单例+热重载）
 │   ├── container.py           应用上下文容器（AppContext：scheduler / MCP / LLM 连接池统一启停）
@@ -353,12 +362,14 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 │   ├── api/                   API 路由（voice / tools / memory / schedule / history / library /
 │   │                          sessions / settings / providers / state）
 │   │   ├── schemas/           pydantic 响应模型分域包（openapi → 前端类型单一事实来源）
-│   │   └── voice/             语音域子包：run（编排入口）/ call（三级漏斗）/ wake / tts / meta
+│   │   └── voice/             语音域子包：stream（流式 WebSocket）/ run（编排入口）/
+│   │                          call（通话会话 + 文本判定）/ models（模型/硬件）/ tts / meta
 │   ├── llm/                   LLM 客户端（stream.py SSE 解析 / client.py 重试+熔断+连接池 /
 │   │                          protocols/：openai · anthropic · gemini 三协议实现）
-│   ├── voice/                 ASR / TTS + 唤醒：wake.py（拼音级判定）/ pinyin.py / kws.py（本地 KWS
-│   │                          闸门）/ local_asr.py（本地转写）/ smart_turn.py（说完没复核）/
-│   │                          call_funnel.py（通话三级漏斗 L0/L1/L2）
+│   ├── voice/                 ASR / TTS + 唤醒：wake.py（拼音级判定）/ pinyin.py /
+│   │                          call_funnel.py（通话文本判定 L0/L1/L2）/
+│   │                          local/sherpa_onnx（VAD/KWS/ASR/TTS 四引擎 + 模型注册表）/
+│   │                          streaming（WebSocket 会话：VAD → KWS → ASR → partial/final）
 │   ├── orchestrator/          编排层：blocks（消息块协议）/ events（SSE 契约）/ session（状态机）/
 │   │                          intent / task / clarify / confirm / executor / condense（历史滚动压缩）/
 │   │                          control / pipeline

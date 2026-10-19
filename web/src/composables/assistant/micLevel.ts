@@ -3,8 +3,8 @@ import { ref } from 'vue'
 /**
  * 麦克风电平单例：供状态胶囊/迷你条的声波条随真实音量起伏。
  *
- * 数据源是段录音器已有的 100ms RMS tick（useSegmentRecorder 的 onLevel 回调）——
- * 不另开采集，麦克风关闭/播报停麦时由调用方归零。webspeech 模式没有段录音器，
+ * 数据源是 AudioWorklet 每帧上报的 RMS（streamClient 的 onLevel 回调）——
+ * 不另开采集，麦克风关闭/播报静音时由调用方归零。
  * 电平保持 0（声波条静止，可接受降级）。
  *
  * Mic-level singleton driving the sound bars in the status pill / mini player with

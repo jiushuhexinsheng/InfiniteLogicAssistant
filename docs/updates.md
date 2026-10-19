@@ -7,6 +7,27 @@
 
 ## 更新历史
 
+### 2026-10-20 流式语音 WebSocket + sherpa-onnx 四引擎；旧切段链路删除
+
+**新链路**：浏览器 AudioWorklet → `/api/voice/asr/stream` WebSocket → 本地 VAD（TEN/Silero）
+→ KWS（Zipformer）→ ASR（本地增量 partial / 云端整段 final）→ 唤醒判定。前端
+`liveTranscript` 双缓冲：状态栏/迷你条「正在识别…」，定稿进聊天记录并短暂显示「识别完成」。
+
+- **本地包**：`core/voice/local/sherpa_onnx/`（registry / audio / hardware / vad / kws /
+  asr / tts）+ `core/voice/local/runtime.py`；模型按 `models/{vad,kws,asr,tts,llm}` 分目录，
+  registry 纯文件系统校验，任意兼容 sherpa-onnx 模型可放入并选择。
+- **CPU/GPU**：每个模型独立 `provider`（cpu/cuda/coreml）与线程数；不可用时明确报错。
+- **配置**：`voice.streaming`、`voice.vad` 本地字段、`voice.kws.mode/provider`、
+  `voice.asr.streaming/provider`、`voice.tts.mode/local_model`、`voice.hardware`；
+  设置页新增「本地模型」卡（模型下拉 / CPU-GPU / 浏览器设备）。
+- **删除旧链路**：后端 `/voice/transcribe`、`/voice/wake(/check)`、`/voice/call/segment`、
+  `asr_dispatch.py`、`local_asr.py`、`kws.py`、`smart_turn.py`；前端 `segmentFlow`、
+  `useSegmentRecorder`、`wakeChain`、Web Speech 路径、`audio.ts`；`pipecat-ai` 依赖移除。
+- **保留**：`call_funnel.py` 的 L0/文本快筛/L2 判定（供 `/voice/call/judge`）；
+  `scripts/fetch_local_asr_model.py` 作为兼容下载入口；上传成本口径只剩 `via=stream`。
+- **测试**：pytest 611 passed；vitest 325 passed；mypy / ruff / vue-tsc + vite build 通过；
+  Chrome fake-audio 冒烟确认中间稿与「正在识别…」状态。
+
 ### 2026-10-12 ASR 三模式（本地 / 云端 / 混合）+ P8 人工验收通过
 
 **P8 唤醒链人工验收通过**：子项目 1 的真人有声环境验收由用户对照麦克风逐条执行并通过

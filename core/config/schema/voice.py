@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 "配置 schema — voice 子模块（自 schema.py 拆出，纯移动）。"
 
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -62,13 +63,72 @@ class WakeWordConfig(BaseModel):
         return data
 
 
+class StreamingConfig(BaseModel):
+    """流式语音会话配置（WebSocket 链路）。
+
+    Streaming voice session config (the WebSocket pipeline).
+
+    VAD/KWS/ASR 都在同一路 WebSocket 里完成；前端只负责送 20 ms PCM 帧和渲染
+    partial/final。``commit_policy`` 决定哪些定稿进聊天记录：``active_only`` 只在
+    指令窗/作答/通话等「被消费」的场景提交，``all`` 连未唤醒的旁白也显示。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    frame_ms: int = Field(20, ge=10, le=100)
+    partial_interval_ms: int = Field(120, ge=30, le=1000)
+    endpoint_silence_ms: int = Field(700, ge=100)
+    max_utterance_ms: int = Field(15000, ge=1000)
+    commit_policy: Literal["active_only", "all"] = "active_only"
+
+
+class HardwareConfig(BaseModel):
+    """浏览器侧硬件选项（输入/输出设备与麦克风处理开关）。
+
+    Browser-side hardware options (I/O devices and mic processing switches).
+
+    推理用的 CPU/GPU 不在这里：它按模型分别配置（``vad.provider`` /
+    ``kws.provider`` / ``asr.provider`` / ``tts.provider``），因为 VAD 跑 CPU 而
+    ASR 跑 GPU 是常见组合。
+    Inference CPU/GPU is not here: it is configured per model (``vad.provider`` /
+    ``kws.provider`` / ``asr.provider`` / ``tts.provider``), since VAD-on-CPU +
+    ASR-on-GPU is a common pairing.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    input_device: str = ""          # 浏览器 deviceId；空 = 系统默认
+    output_device: str = ""         # 浏览器 sinkId；空 = 系统默认
+    echo_cancellation: bool = True
+    noise_suppression: bool = True
+    auto_gain: bool = True
+
+
 class VadConfig(BaseModel):
     """语音活动检测（VAD）配置：静音阈值与时长上限。
 
     Voice activity detection (VAD) config: silence threshold and duration limits.
+
+    本项目只有**本地 VAD**（TEN VAD / Silero VAD，sherpa-onnx）；没有云端 VAD 选项。
+    旧的浏览器 RMS 参数（``silence_threshold`` / ``silence_duration_ms`` 等）保留用于
+    兼容旧配置，流式链路使用下面的本地 VAD 字段。
+    There is **local VAD only** (TEN VAD / Silero, sherpa-onnx); no cloud VAD option.
+    The legacy browser-RMS keys stay for old config compatibility; the streaming
+    pipeline uses the local fields below.
     """
 
     model_config = ConfigDict(extra="forbid")
+
+    # ── 本地 VAD（流式链路）──
+    mode: Literal["local", "off"] = "local"
+    engine: Literal["ten-vad", "silero"] = "ten-vad"
+    model: str = "models/vad/ten-vad.onnx"
+    vad_threshold: float = Field(0.5, ge=0.0, le=1.0)
+    window_size: int = Field(0, ge=0)   # 0 = 按引擎默认（TEN 256 / Silero 512）
+    provider: Literal["cpu", "cuda", "coreml"] = "cpu"
+    device: int = Field(0, ge=0)
+    num_threads: int = Field(0, ge=0)   # 0 = 自动
 
     silence_threshold: float = Field(0.02, ge=0.0)
     silence_duration_ms: int = Field(1500, ge=0)
@@ -140,9 +200,16 @@ class KwsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
+    # local = 本地 Zipformer KWS；api = 转写后用文本拼音判定；off = 不判唤醒。
+    # local = on-device Zipformer KWS; api = text/pinyin judging after ASR; off = no wake gate.
+    mode: Literal["local", "api", "off"] = "local"
     # 模型目录（tokens.txt + encoder/decoder/joiner onnx）；不存在时闸门自动禁用（不报错）。
     # Model dir (tokens.txt + encoder/decoder/joiner onnx); the gate auto-disables when absent.
-    model_dir: str = "models/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
+    model_dir: str = "models/kws/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
+    # 推理硬件：每个模型可独立选 CPU/GPU。Inference hardware, per model.
+    provider: Literal["cpu", "cuda", "coreml"] = "cpu"
+    device: int = Field(0, ge=0)
+    num_threads: int = Field(2, ge=0)
     # 检测阈值：越低越灵敏（漏报少、误报多）。默认 0.25 是 sherpa 官方示例值。
     # Detection threshold: lower is more sensitive (fewer misses, more false hits).
     # 0.25 is the sherpa reference default.
@@ -181,7 +248,7 @@ class CallConfig(BaseModel):
     # ASR-level setting, no longer owned by the call switch. This key stays purely as a
     # migration source (extra="forbid" — dropping it would fail old config.yaml at
     # startup); nothing reads it at runtime and the loader migrates a user-written value.
-    local_asr_model: str = "models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
+    local_asr_model: str = "models/asr/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
     # L2 合并调用：单次云端 chat 同时精转写+四分类（省一次上传与一轮 LLM）；
     # False = 两步（cloud_transcribe + judge）。**默认关**——小米 ASR 网关明确拒绝
     # 请求携带 text 部件（"text prompt is injected by the gateway" → 400），合并形状
@@ -217,3 +284,5 @@ class VoiceSection(BaseModel):
     call: CallConfig = Field(default_factory=lambda: CallConfig())
     asr: AsrSection = Field(default_factory=lambda: AsrSection())
     tts: TtsSection = Field(default_factory=lambda: TtsSection())
+    streaming: StreamingConfig = Field(default_factory=lambda: StreamingConfig())
+    hardware: HardwareConfig = Field(default_factory=lambda: HardwareConfig())

@@ -24,10 +24,10 @@
       </div>
       <div v-if="uploadStats" class="trend">
         <div v-for="d in uploadStats.days" :key="d.date" class="trend-bar"
-             :title="`${d.date}：${d.wake + d.transcribe + d['call-segment']} 次`"
+             :title="`${d.date}：${d.stream} 次`"
              :style="{ height: trendHeight(d) }"></div>
       </div>
-      <p class="hint">未命中唤醒词的人声段不上传（本地 KWS 闸门），不计入本口径。</p>
+      <p class="hint">只有云端 ASR 模式会上传音频；本地流式模式下音频不出本机，不计入本口径。</p>
     </UiCard>
   </div>
 </template>
@@ -55,26 +55,20 @@ onMounted(async () => {
  *  total; all — when the fetch failed). */
 const uploadCards = computed(() => {
   const s = uploadStats.value
-  if (!s) return [
-    { num: '—', lbl: '唤醒上传' }, { num: '—', lbl: '转写上传' },
-    { num: '—', lbl: '通话上传' }, { num: '—', lbl: '上传合计' },
-  ]
+  if (!s) return [{ num: '—', lbl: '流式上传' }, { num: '—', lbl: '上传合计' }]
   return [
-    { num: s.by_via.wake, lbl: '唤醒上传' },
-    { num: s.by_via.transcribe, lbl: '转写上传' },
-    { num: s.by_via['call-segment'], lbl: '通话上传' },
+    { num: s.by_via.stream, lbl: '流式上传' },
     { num: s.total, lbl: '上传合计' },
   ]
 })
 
 /** 趋势柱高（按日合计相对窗口最大值；全零时给基础高度保形）。
  *  Bar height (daily total vs. the window max; a floor keeps shape when all zero). */
-function trendHeight(d: { wake: number; transcribe: number; 'call-segment': number }): string {
+function trendHeight(d: { stream: number }): string {
   const s = uploadStats.value
   if (!s) return '2px'
-  const max = Math.max(1, ...s.days.map((x) => x.wake + x.transcribe + x['call-segment']))
-  const n = d.wake + d.transcribe + d['call-segment']
-  return `${Math.round((n / max) * 36) + 2}px`
+  const max = Math.max(1, ...s.days.map((x) => x.stream))
+  return `${Math.round((d.stream / max) * 36) + 2}px`
 }
 
 /** 统计数据：消息数、用户/助手消息数、工具调用数和工具总耗时。Statistics: message count, user/assistant message count, tool call count and total tool duration. */

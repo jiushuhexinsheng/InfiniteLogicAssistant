@@ -1,28 +1,14 @@
-import { state, statusLine, partialText, wakeEnabled, vadConfig, wakeMode, callActive, failWake } from '../store'
-import { createSegmentRecorder } from '../useSegmentRecorder'
-import { getWebSpeechProvider, peekWebSpeechProvider, disposeAll } from './wakeChain'
-import { handleSegment } from './segmentFlow'
-import { handleLocalResult } from './localResult'
+import {
+  state, statusLine, wakeEnabled, failWake, hardwareConfig, streamingEnabled,
+} from '../store'
 import { st, clearWaitTimers, resetFailures, stopBargeIn } from './orchState'
+import { createVoiceStream, type VoiceStreamHandle } from '../stream/streamClient'
+import { handleStreamEvent } from '../stream/streamFlow'
+import { clearTranscript } from '../storeTranscript'
 import { reportMicLevel, resetMicLevel } from '../micLevel'
-// 拆分自 wakeOrchestrator.ts（重构：纯移动 + 状态收敛到 orchState.st，无行为变化）。
-// Split from wakeOrchestrator.ts (pure move; mutable state consolidated into orchState.st).
-// ── 分段录音器 ──
-
-function startSegmenter() {
-  if (!st.micStream) return
-  st.segmenter = createSegmentRecorder(st.micStream, {
-    speechThreshold: vadConfig.silence_threshold,
-    silenceMs: vadConfig.silence_duration_ms,
-    minSpeechMs: vadConfig.min_speech_ms,
-    maxMs: vadConfig.max_duration_ms,
-    onSegment: (b) => {
-      void handleSegment(b).catch((e) => console.warn('[wake] handleSegment error:', e))
-    },
-    onLevel: reportMicLevel,   // 声波条随真实音量动。Sound bars follow the real volume.
-  })
-  st.segmenter.start()
-}
+// 流式语音麦克风控制：取流 → AudioWorklet → WebSocket；旧切段/Web Speech 链路已删除。
+// Streaming mic control: stream → AudioWorklet → WebSocket; the legacy segment / Web
+// Speech pipeline is gone.
 
 // ── 停止监听 ──
 
@@ -32,18 +18,12 @@ export function stopListening() {
   clearWaitTimers()
   if (state.value === 'recording') state.value = wakeEnabled.value ? 'listening' : 'idle'
 
-  const wsp = peekWebSpeechProvider()
-  if (wsp?.isRunning()) wsp.stop()
-
-  if (st.segmenter) {
-    try { st.segmenter.stop() } catch (e) { console.error('[wake] st.segmenter stop error:', e) }
-    st.segmenter = null
+  if (st.voiceStream) {
+    try { st.voiceStream.stop() } catch (e) { console.error('[wake] voiceStream stop error:', e) }
+    st.voiceStream = null
   }
-  if (st.micStream) {
-    try { st.micStream.getTracks().forEach((t) => t.stop()) } catch { /* ignore */ }
-    st.micStream = null
-  }
-  resetMicLevel()   // 兜底归零（段录音器 stop 已归零；webspeech/异常路径无录音器）。Belt-and-braces zero.
+  clearTranscript()
+  resetMicLevel()   // 兜底归零（声波条回落）。Belt-and-braces zero for the level bars.
 }
 
 // ── 取流 ──
@@ -51,67 +31,45 @@ export function stopListening() {
 type AcquireOutcome = 'ok' | 'mic-error' | 'aborted'
 
 async function acquireAndStart(): Promise<AcquireOutcome> {
-  const mode = wakeMode.value
-
-  // 终审 Important #1：webspeech 分支只在非通话态选路。通话期强制 st.segmenter —— 否则
-  // WebSpeech 的 final result 只进 handleLocalResult，永不产生 call/segment，免唤醒说话
-  // 被静默丢弃（且 detectWake 照常执行，违反「通话激活时 KWS 闸门暂停」）。st.segmenter 路
-  // 不依赖 KWS 模型（漏斗判在后端），webspeech 用户可用；退出通话自然回落 webspeech。
-  // Final-review Important #1: the webspeech branch is selected only outside a call. During
-  // a call the st.segmenter path is forced — otherwise a WebSpeech final result only reaches
-  // handleLocalResult, never produces call/segment, and wake-free speech is silently lost
-  // (detectWake also keeps running, violating "the KWS gate pauses while a call is active").
-  // The st.segmenter path needs no KWS model (the funnel judges server-side), so it works for
-  // webspeech users; exiting the call falls back to webspeech naturally.
-  if (mode === 'webspeech' && !callActive.value) {
-    const wsp = getWebSpeechProvider()
-    if (wsp.isRunning()) return 'ok'
-    if (!wsp.isAvailable()) {
-      statusLine.value = '⚠️ 当前浏览器不支持 Web Speech API，请切换到其他模式'
-      return 'mic-error'
-    }
-    const started = wsp.start((text, isFinal) => {
-      // 中间结果显示到 partialText（悬浮球可以看到正在听的内容）；最终结果清空并处理
-      // Interim results shown in partialText (the ball shows what is being heard); final results clear and process
-      partialText.value = isFinal ? '' : text
-      if (isFinal) handleLocalResult(text)
-    })
-    if (!started) {
-      statusLine.value = '⚠️ Web Speech API 启动失败'
-      return 'mic-error'
-    }
-    return 'ok'
+  if (st.voiceStream) return 'ok'
+  if (!streamingEnabled.value) {
+    statusLine.value = '流式语音已关闭（voice.streaming.enabled=false）'
+    return 'mic-error'
+  }
+  if (typeof window === 'undefined'
+      || !(window.AudioContext || (window as any).webkitAudioContext)
+      || typeof WebSocket === 'undefined') {
+    statusLine.value = '当前浏览器不支持流式语音（需要 AudioContext + WebSocket）'
+    return 'mic-error'
   }
 
-  if (st.segmenter) return 'ok'
   const gen = st.listenGen
-  let stream: MediaStream
+  let handle: VoiceStreamHandle
+  handle = createVoiceStream({
+    onEvent: (ev) => {
+      void handleStreamEvent(ev).catch((e) => console.warn('[wake] stream event error:', e))
+    },
+    onLevel: reportMicLevel,
+    onError: (e) => { statusLine.value = e.message },
+    onClose: () => { if (st.voiceStream === handle) st.voiceStream = null },
+    inputDevice: hardwareConfig.input_device,
+    echoCancellation: hardwareConfig.echo_cancellation,
+    noiseSuppression: hardwareConfig.noise_suppression,
+    autoGain: hardwareConfig.auto_gain,
+  })
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-    })
+    await handle.start()
   } catch (e) {
-    console.warn('[wake] getUserMedia failed:', e)
+    console.warn('[wake] voice stream start failed:', e)
+    handle.stop()
     statusLine.value = describeMicError(e)
     return 'mic-error'
   }
   if (gen !== st.listenGen) {
-    try { stream.getTracks().forEach((t) => t.stop()) } catch { /* ignore */ }
+    handle.stop()
     return 'aborted'
   }
-  if (st.segmenter) {
-    try { stream.getTracks().forEach((t) => t.stop()) } catch { /* ignore */ }
-    return 'ok'
-  }
-  st.micStream = stream
-  try {
-    startSegmenter()
-  } catch (e) {
-    console.error('[wake] st.segmenter start failed:', e)
-    statusLine.value = '唤醒启动失败，请重试'
-    stopListening()
-    return 'mic-error'
-  }
+  st.voiceStream = handle
   return 'ok'
 }
 
@@ -146,13 +104,7 @@ export function describeMicError(e: any): string {
 
 // ── 开启/关闭唤醒 ──
 
-/** 启动被打断（取流途中被停）的提示文案：startListening 的 aborted 分支与 toggleWake
- *  共用一份 —— toggleWake 靠它把良性竞态（原样提示、不进错误态）与真实失败（failWake）
- *  按提取前的行为分开。
- *  Message shown when startup is aborted (the stream was stopped mid-acquisition):
- *  startListening's aborted branch and toggleWake share this one string — toggleWake uses
- *  it to tell a benign race (status line only, no error state) from a real failure
- *  (failWake), exactly as before the extraction. */
+/** 启动被打断（取流途中被停）的提示文案。Message shown when startup is aborted. */
 const START_ABORTED_MSG = '唤醒启动被打断，请再点一次'
 
 /** 启动监听序列（toggleWake 的 enable 分支体）。返回 'ok' | 'aborted' | 错误文案。 */
@@ -187,9 +139,6 @@ export async function toggleWake() {
 
   // followup 与 done/error 同属「回合刚结束」窗口：录音器可能还活着 → acquireAndStart
   // 复用（与 done 窗口单击的既有语义一致），不重建。
-  // followup is another "turn just ended" window alongside done/error: the recorder may
-  // still be live → acquireAndStart reuses it (same semantics as a click in the done
-  // window); no rebuild.
   if (state.value === 'idle' || state.value === 'done' || state.value === 'error'
       || state.value === 'followup') {
     if (st.startingWake) {
@@ -199,16 +148,11 @@ export async function toggleWake() {
     st.startingWake = true   // 置位留在 toggleWake；startListening 的 finally 只负责清位。
     const r = await startListening()
     if (r === 'ok') {
-      // 与双击电源同一落点：开机 = 唤醒前 = 静待（2026-10-11 单链条状态图）。
-      // 徽章/起始页按钮若停在 listening，唤醒会走不到通话守卫（只认 standby）→
-      // 回退指令窗 → 悬浮球「录音中…」。两条开启入口必须同源。
-      // Same landing as the double-click power switch: powered-on = pre-wake = standby.
-      // Left on `listening`, the wake word could not satisfy the call guard (standby
-      // only) and fell back to the command window — the 「录音中…」 ring.
+      // 与双击电源同一落点：开机 = 唤醒前 = 静待。
       state.value = 'standby'
       console.log('[wake] listening started!')
     } else if (r === START_ABORTED_MSG) {
-      statusLine.value = r   // 打断是良性竞态：原样提示，不进错误态（行为同提取前）。
+      statusLine.value = r   // 打断是良性竞态：原样提示，不进错误态。
     } else {
       failWake(r)
     }
@@ -217,7 +161,7 @@ export async function toggleWake() {
     stopListening()
     wakeEnabled.value = false
     state.value = 'idle'
-    partialText.value = ''
+    clearTranscript()
     statusLine.value = ''
   }
 }
@@ -228,5 +172,4 @@ export function stopWake() {
   st.turnToken++          // 停止监听 → 作废在飞的尾随提取（停止后不得再发指令）
   stopBargeIn()
   stopListening()
-  disposeAll()
 }

@@ -31,9 +31,11 @@ async def tts_synthesize(request: Request):
         return JSONResponse({"ok": False, "error": "无效 JSON"}, status_code=400)
     text = (params.get("text") or "").strip()
     voice = params.get("voice") or None
+    engine = str(params.get("engine") or "").strip().lower()
     if not text:
         return JSONResponse({"ok": False, "error": "text 不能为空"}, status_code=400)
-    if not config.is_tts_enabled():
+    tts_mode = engine if engine in ("local", "api") else getattr(config.settings.voice.tts, "mode", "api")
+    if tts_mode != "local" and not config.is_tts_enabled():
         return JSONResponse(
             {"ok": False, "error": "TTS 未启用：voice.tts.enabled=false 或未配置 endpoint"},
             status_code=400,
@@ -41,7 +43,7 @@ async def tts_synthesize(request: Request):
     try:
         from core.voice.tts import synthesize
         from core.voice.tts import TtsConfigError
-        audio, media_type = await synthesize(text, voice)
+        audio, media_type = await synthesize(text, voice, mode=tts_mode)
     except TtsConfigError as e:
         # 配置问题（未启用/缺 voice_ref 等）：客户端可修复 → 400
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)

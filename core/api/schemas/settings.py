@@ -5,7 +5,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from .base import ApiResponse
-from .voice import VadConfig, WakeWordConfig
+from .voice import HardwareConfig, KwsConfig, StreamingConfig, VadConfig, WakeWordConfig
 
 # ─────────────────────────── settings ───────────────────────────
 
@@ -47,11 +47,19 @@ class SectionEditable(BaseModel):
     api_key_set: dict[str, bool] = {}
 
 class TtsSectionEditable(SectionEditable):
-    """TTS 区段（多一个 enabled 标记）。
+    """TTS 区段（多引擎选择、本地模型与推理硬件）。
 
-    TTS section (extra ``enabled`` flag).
+    TTS section (extra engine choice, local model and inference hardware).
     """
     enabled: bool = False
+    mode: str = "api"
+    local_model: str = ""
+    provider: str = "cpu"
+    device: int = 0
+    num_threads: int = 0
+    speaker: int = 0
+    speed: float = 1.0
+    lang: str = ""
 
 class AsrSectionEditable(SectionEditable):
     """ASR 区段（多转写模式、本地模型目录与「本地模型是否就位」标记）。
@@ -72,6 +80,10 @@ class AsrSectionEditable(SectionEditable):
     mode: str = "cloud"
     local_model: str = ""
     local_model_present: bool = False
+    streaming: bool = True
+    provider: str = "cpu"
+    device: int = 0
+    num_threads: int = 0
 
 class AgentConfigOut(BaseModel):
     """Agent 配置输出（递归限制、多代理、故障转移模型列表、确认超时、压缩阈值）。
@@ -183,6 +195,9 @@ class EditableSnapshot(BaseModel):
     tts: TtsSectionEditable
     wake_word: WakeWordConfig
     vad: VadConfig
+    kws: KwsConfig
+    streaming: StreamingConfig
+    hardware: HardwareConfig
     agent: AgentConfigOut
     llm_client: LlmClientConfigOut
     tools: ToolsConfigOut

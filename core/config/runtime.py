@@ -225,10 +225,10 @@ def editable_snapshot() -> dict:
         return {name: bool(p.api_key) for name, p in section.profiles.items()}
 
     def _local_model_present() -> bool:
-        # 延迟 import（core.voice.local_asr → core.config，模块级 import 会成环）；
-        # 纯文件系统判断，不加载模型（见 local_asr.local_model_present 的说明）。
-        from core.voice.local_asr import local_model_present
-        return local_model_present()
+        # 延迟 import；registry 只做文件系统校验，不加载模型。
+        # Lazy import; registry validates the filesystem only and never loads a model.
+        from core.voice.local.sherpa_onnx import registry
+        return registry.present("asr", s.voice.asr.local_model)
 
     return {
         "llm": {"active": s.llm.active, "profiles": _profiles(s.llm),
@@ -238,11 +238,22 @@ def editable_snapshot() -> dict:
                 # 三模式（2026-10-12）：mode/local_model 可编辑；local_model_present 是
                 # 只读展示（纯文件系统判断，不加载模型），前端不得回送。
                 "mode": s.voice.asr.mode, "local_model": s.voice.asr.local_model,
+                "streaming": s.voice.asr.streaming,
+                "provider": s.voice.asr.provider, "device": s.voice.asr.device,
+                "num_threads": s.voice.asr.num_threads,
                 "local_model_present": _local_model_present()},
         "tts": {"enabled": s.voice.tts.enabled, "active": s.voice.tts.active,
-                "profiles": _profiles(s.voice.tts), "api_key_set": _key_set(s.voice.tts)},
+                "profiles": _profiles(s.voice.tts), "api_key_set": _key_set(s.voice.tts),
+                "mode": s.voice.tts.mode, "local_model": s.voice.tts.local_model,
+                "provider": s.voice.tts.provider, "device": s.voice.tts.device,
+                "num_threads": s.voice.tts.num_threads,
+                "speaker": s.voice.tts.speaker, "speed": s.voice.tts.speed,
+                "lang": s.voice.tts.lang},
         "wake_word": s.voice.wake_word.model_dump(),
         "vad": s.voice.vad.model_dump(),
+        "kws": s.voice.kws.model_dump(),
+        "streaming": s.voice.streaming.model_dump(),
+        "hardware": s.voice.hardware.model_dump(),
         "agent": s.agent.model_dump(),
         "llm_client": s.llm_client.model_dump(),
         "tools": s.tools.model_dump(),

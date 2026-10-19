@@ -1,7 +1,7 @@
 /**
  * barge-in 监控 —— 播报期间的「用户开口即打断」能量检测（docs/designs/02 批3）。
  *
- * 与段录音器（useSegmentRecorder）分离的独立监听流：开启一个带回声消除的
+ * 与主麦克风流分离的独立监听流：开启一个带回声消除的
  * getUserMedia 流 + AnalyserNode 轮询 RMS，连续超阈达到时长即触发一次 onTrigger
  * （由调用方接 stopSpeak('barge_in')）。任何取流/上下文失败都静默降级 —— 返回
  * no-op stop，调用方维持「播报期间停麦」的旧行为，打断功能不可用不致坏。
@@ -90,8 +90,7 @@ export function startBargeInMonitor(opts: BargeInOptions): BargeInMonitor {
       timer = setInterval(() => {
         if (stopped) return
         analyser.getByteTimeDomainData(buf)
-        // RMS（与 useSegmentRecorder 同口径：字节域 128 为 0）。
-        // RMS (same convention as useSegmentRecorder: byte domain, 128 = silence).
+        // RMS（字节域 128 为 0）。RMS (byte domain, 128 = silence).
         let sum = 0
         for (let i = 0; i < buf.length; i++) {
           const v = (buf[i] - 128) / 128

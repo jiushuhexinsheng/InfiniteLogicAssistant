@@ -98,8 +98,6 @@ from .voice import (
     ConfigResponse,
     UploadStatsResponse,
     VadConfig,
-    WakeCheckResponse,
-    WakeResponse,
     WakeWordConfig,
 )
 
@@ -160,7 +158,5 @@ __all__ = [
     "ToolsResponse",
     "TtsSectionEditable",
     "VadConfig",
-    "WakeCheckResponse",
-    "WakeResponse",
     "WakeWordConfig",
 ]

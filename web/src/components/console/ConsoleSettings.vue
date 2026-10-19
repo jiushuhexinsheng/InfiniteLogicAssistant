@@ -42,6 +42,11 @@
           <!-- 语音模块：唤醒词 + VAD（播报设置已移入「语音合成」卡）。Voice module: wake word + VAD (playback settings moved into the TTS card). -->
           <VoiceCard v-if="s.activeMenu.value === 'voice'" />
 
+          <!-- 本地模型与硬件：四能力 local/API、模型下拉、CPU/GPU、浏览器设备。
+               Local models and hardware: per-capability local/API, model picker, CPU/GPU,
+               browser devices. -->
+          <LocalModelsCard v-if="s.activeMenu.value === 'models'" />
+
           <!-- 权限模块：工具权限策略（层级默认 + 规则覆盖）。Permission module: tool permission policy. -->
           <PermissionsCard v-if="s.activeMenu.value === 'permissions'" />
 
@@ -68,6 +73,7 @@ import ApiKeyModal from './settings/ApiKeyModal.vue'
 import PermissionsCard from './settings/PermissionsCard.vue'
 import ServiceCard from './settings/ServiceCard.vue'
 import VoiceCard from './settings/VoiceCard.vue'
+import LocalModelsCard from './settings/LocalModelsCard.vue'
 import TtsEngineCard from './settings/TtsEngineCard.vue'
 import TtsLocalCard from './settings/TtsLocalCard.vue'
 import TtsSettings from '../assistant/TtsSettings.vue'

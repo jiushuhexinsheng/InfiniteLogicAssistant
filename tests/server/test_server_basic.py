@@ -32,23 +32,6 @@ def test_tools_list(client):
     assert "expression" in calc["function"]["parameters"]["properties"]
 
 
-# ─── 语音转写 ───
-
-def test_voice_transcribe_unconfigured(client):
-    """测试 ASR 未配置时转写返回明确错误。Tests transcription returning a clear error when ASR is unconfigured.
-
-    ⚠️ 载荷必须是**可解码**的 base64（"AAAA"）：转写现在先解码再走 asr_dispatch，不可解码的
-    载荷会先撞解码错误而不是「未配置」。本用例要测的是后者。
-    The payload must be **decodable** base64: transcription now decodes before dispatching,
-    so an undecodable payload would hit the decode error rather than "unconfigured", which
-    is what this case is about."""
-    resp = client.post("/api/voice/transcribe", json={"audio_base64": "AAAA"})
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["ok"] is False
-    assert data["error"] == "ASR 未配置"
-
-
 # ─── TTS：配置错误应映射为 400（可修复），而非 500 ───
 
 def test_tts_config_error_maps_to_400(client, monkeypatch):
