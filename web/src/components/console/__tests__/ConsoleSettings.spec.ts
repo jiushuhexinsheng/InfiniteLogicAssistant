@@ -9,10 +9,23 @@ vi.mock('../../../api', () => ({
     getDetection: vi.fn(),
     putSecret: vi.fn(),
     fetchModels: vi.fn(),
+    getModels: vi.fn(async () => ({ ok: true, models: { vad: [], kws: [], asr: [], tts: [], llm: [] } })),
+    refreshModels: vi.fn(async () => ({ ok: true, models: { vad: [], kws: [], asr: [], tts: [], llm: [] } })),
+    getHardware: vi.fn(async () => ({
+      ok: true,
+      hardware: { providers: ['cpu'], cpu_count: 8, sherpa_version: '1.13.8', default_threads: 4 },
+    })),
+    getCapabilities: vi.fn(async () => ({
+      ok: true,
+      vad: { mode: 'local', present: true },
+      kws: { mode: 'local', present: true },
+      asr: { mode: 'local', present: true },
+      tts: { mode: 'local', present: true },
+    })),
   },
 }))
-// 播报面板自带 SpeechSynthesis 接线，与「区块落位」断言无关，替换成可识别的桩。
-// The playback panel carries its own speech-synthesis wiring, irrelevant to placement assertions; stub it.
+// 播报面板自带 SpeechSynthesis 接线，与区块落位断言无关，替换成可识别的桩。
+// The playback panel carries its own speech-synthesis wiring; stub it.
 vi.mock('../../assistant/TtsSettings.vue', () => ({
   default: { template: '<div class="tts-settings-stub" />' },
 }))
@@ -22,108 +35,114 @@ import { activeMenu, editable } from '../settings/state'
 import { ttsSettings, saveTts } from '../../../composables/assistant/useTts'
 import ConsoleSettings from '../ConsoleSettings.vue'
 
-/** 最小可编辑快照：llm/asr/tts 三段都要在（菜单绿点与 ServiceCard 都会读）。
- *  Minimal editable snapshot: all three service sections (menu dots and ServiceCard read them). */
+/** 最小可编辑快照（语音页需要的四能力字段齐全）。
+ *  Minimal editable snapshot with every field the voice page reads. */
 function snapshot() {
-  const svc = { active: 'p', profiles: { p: {} }, api_key_set: { p: false } }
+  const svc = { active: 'p', profiles: { p: { provider: 'openai', endpoint: '', model: '' } }, api_key_set: { p: false } }
   return {
     llm: structuredClone(svc),
-    asr: structuredClone(svc),
-    tts: { enabled: true, active: 'p', profiles: { p: { provider: 'openai', voices: [], format: 'wav' } }, api_key_set: { p: false } },
+    asr: { ...structuredClone(svc), mode: 'local', local_model: 'models/asr/x', streaming: true,
+           provider: 'cpu', device: 0, num_threads: 0, local_model_present: true },
+    tts: { enabled: true, active: 'p', profiles: { p: { provider: 'openai', voices: [], format: 'wav' } },
+           api_key_set: { p: false }, mode: 'local', local_model: 'models/tts/x', provider: 'cpu',
+           device: 0, num_threads: 0, speaker: 0, speed: 1, lang: '' },
     wake_word: { enabled: true, keywords: ['衍衡'], sensitivity: 0.5, model_path: '' },
     vad: {
+      mode: 'local', engine: 'ten-vad', model: 'models/vad/ten-vad.onnx', vad_threshold: 0.5,
+      window_size: 0, provider: 'cpu', device: 0, num_threads: 0,
       silence_threshold: 0.02, silence_duration_ms: 1500, max_duration_ms: 10000,
-      answer_timeout_ms: 8000, min_speech_ms: 300, upload_throttle_ms: 500, followup_window_ms: 6000, listen_idle_s: 180,
-      barge_in: false,
+      answer_timeout_ms: 8000, min_speech_ms: 300, upload_throttle_ms: 500,
+      followup_window_ms: 6000, listen_idle_s: 180, barge_in: false,
     },
+    kws: { enabled: true, mode: 'local', model_dir: 'models/kws/x', provider: 'cpu', device: 0,
+           num_threads: 2, keywords_threshold: 0.25, keywords_score: 1 },
+    streaming: { enabled: true, frame_ms: 20, partial_interval_ms: 120, endpoint_silence_ms: 700,
+                 max_utterance_ms: 15000, commit_policy: 'active_only' },
+    hardware: { input_device: '', output_device: '', echo_cancellation: true,
+                noise_suppression: true, auto_gain: true },
+    permissions: { default_action: 'allow', tiers: { read: 'allow', write: 'allow', exec: 'allow' }, rules: [] },
+    agent: {}, llm_client: {}, tools: {}, mcp: { servers: [] }, rag: {}, memory: {},
+    server: { host: '127.0.0.1', port: 8520, open_browser: false, cors_origins: [], api_token_set: false },
   }
 }
 
-/**
- * 语音合成的两卡堆叠结构。
- *
- * 回归靶子：卡1（引擎大选择 + 播报开关 + 试听）常驻；卡2 按引擎分支 ——
- * 本地渲染浏览器语音卡，API 渲染 ServiceCard（含 voice_ref / voices 字段）。
- * 任何把结构拍回单卡、或丢掉某一分支的改动都应被此处拦下。
- *
- * Two-card stacked structure for the TTS section.
- */
-describe('ConsoleSettings 语音合成两卡结构', () => {
+/** 切换语音页内部 Tab。Switch an internal tab of the voice page. */
+async function openTab(w: ReturnType<typeof mount>, label: string) {
+  const tab = w.findAll('.vs-tab').find(t => t.text() === label)
+  expect(tab, `tab ${label}`).toBeTruthy()
+  await tab!.trigger('click')
+  await flushPromises()
+}
+
+describe('ConsoleSettings 语音统一页', () => {
   beforeEach(async () => {
     vi.mocked(api.getConfigFull).mockResolvedValue({ ok: true, editable: snapshot() } as any)
     editable.value = null
-    activeMenu.value = 'tts'
+    activeMenu.value = 'voice'
     ttsSettings.value.engine = 'browser'
     saveTts()
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { enumerateDevices: vi.fn(async () => []) },
+    })
   })
 
-  /** 本地分支：卡1 引擎选择 + 卡2 本地语音卡，无后端 ServiceCard。
-   *  Local branch: card 1 engine picker + card 2 local card, no backend ServiceCard. */
-  it('本地引擎：渲染引擎选择卡与本地语音卡', async () => {
+  it('默认概览：六个 Tab + 状态灯 + 一键本地', async () => {
     const w = mount(ConsoleSettings)
     await flushPromises()
+    expect(w.findAll('.vs-tab').map(t => t.text())).toEqual([
+      '概览', '唤醒', '识别', '合成', '硬件', '高级',
+    ])
+    expect(w.text()).toContain('语音总览')
+    expect(w.text()).toContain('一键本地')
+    expect(w.findAll('.cs-status-chip').length).toBe(4)
+  })
+
+  it('唤醒 Tab 显示唤醒词', async () => {
+    const w = mount(ConsoleSettings)
+    await flushPromises()
+    await openTab(w, '唤醒')
+    expect(w.text()).toContain('唤醒词')
+    expect(w.text()).not.toContain('语音总览')
+  })
+
+  it('识别 Tab 同时显示本地引擎与 ASR API Profile', async () => {
+    const w = mount(ConsoleSettings)
+    await flushPromises()
+    await openTab(w, '识别')
+    expect(w.text()).toContain('识别引擎（VAD / KWS / ASR）')
+    expect(w.text()).toContain('ASR 语音识别（API Profile）')
+  })
+
+  it('合成 Tab 浏览器分支显示引擎选择 + 浏览器语音卡', async () => {
+    const w = mount(ConsoleSettings)
+    await flushPromises()
+    await openTab(w, '合成')
     expect(w.text()).toContain('语音引擎')
-    // 引擎大选择已迁移至 UiRadioCard（.ui-radio-cards）。Engine picker migrated to UiRadioCard.
     expect(w.find('.ui-radio-cards').exists()).toBe(true)
     expect(w.text()).toContain('本地语音 · 浏览器合成')
-    expect(w.text()).not.toContain('TTS 语音合成')
     expect(w.find('.tts-settings-stub').exists()).toBe(true)
   })
 
-  /** 两卡顺序：引擎选择卡在前，配置卡在后。Order: engine card first, config card second. */
-  it('引擎选择卡位于配置卡之前', async () => {
-    const w = mount(ConsoleSettings)
-    await flushPromises()
-    const cards = w.findAll('.ui-card')
-    expect(cards.length).toBeGreaterThanOrEqual(2)
-    expect(cards[0].text()).toContain('语音引擎')
-    expect(cards[1].text()).toContain('本地语音 · 浏览器合成')
-  })
-
-  /** API 分支：ServiceCard（含 voice_ref / voices 字段）+ 播报面板挂 slot。
-   *  API branch: ServiceCard (with voice_ref / voices fields) + playback panel in slot. */
-  it('API 引擎：渲染后端配置卡与新增字段', async () => {
+  it('合成 Tab API 分支显示后端配置与新增字段', async () => {
     ttsSettings.value.engine = 'api'
     saveTts()
     const w = mount(ConsoleSettings)
     await flushPromises()
-    expect(w.text()).toContain('语音引擎')
+    await openTab(w, '合成')
     expect(w.text()).toContain('TTS 语音合成')
     expect(w.text()).toContain('参考音频（voiceclone）')
     expect(w.text()).toContain('音色列表（下拉候选）')
     expect(w.find('.tts-settings-stub').exists()).toBe(true)
   })
 
-  /** 语音唤醒：两卡与播报面板都不得出现。Voice section: neither card nor panel appears. */
-  it('语音唤醒菜单不渲染语音合成的卡', async () => {
-    activeMenu.value = 'voice'
-    const w = mount(ConsoleSettings)
-    await flushPromises()
-    expect(w.find('.tts-settings-stub').exists()).toBe(false)
-    expect(w.find('.ui-radio-cards').exists()).toBe(false)
-    expect(w.text()).toContain('唤醒词')
-  })
-
-  /**
-   * editable 未加载：一张卡都不渲染，且不得抛错。
-   *
-   * 回归靶子：activeMenu 的初值就是 'llm'，卡片若先于 editable 渲染，会在 sec('llm').profiles
-   * 上取到 undefined 直接抛错。Batch 3 把 5 处重复的 `s.editable.value &&` 前缀收敛成外层一次
-   * `<template v-if>` —— 这条断言守住那次收敛。
-   *
-   * Regression target: activeMenu starts as 'llm'; a card rendering before editable would read
-   * .profiles off undefined and throw. Batch 3 collapsed the 5 repeated `s.editable.value &&`
-   * prefixes into one outer `<template v-if>`; this guards that collapse.
-   */
   it('editable 未加载时一张卡都不渲染且不抛错', async () => {
-    // 让配置拉取永不落定，editable 保持 null。Keep the config fetch pending so editable stays null.
     vi.mocked(api.getConfigFull).mockReturnValue(new Promise(() => {}) as any)
     editable.value = null
     activeMenu.value = 'llm'
     const w = mount(ConsoleSettings)
     await flushPromises()
     expect(w.findAll('.cs-card').length).toBe(0)
-    // 菜单不依赖 editable，仍应渲染。The menu doesn't depend on editable and must still render.
     expect(w.find('.cs-menu').exists()).toBe(true)
   })
 })

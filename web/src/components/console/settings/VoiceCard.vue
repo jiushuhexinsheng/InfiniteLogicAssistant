@@ -51,7 +51,7 @@
       <UiInput type="number" step="0.05" min="0" max="1" :model-value="s.ed().wake_word.sensitivity" @update:model-value="v => (s.ed().wake_word.sensitivity = toNum(v))" />
     </SettingsField>
     <p class="cs-note">
-      VAD 模型、端点静音、阈值与 CPU/GPU 在左侧「本地模型」页配置；本卡保留唤醒词与对话时序。
+      VAD 模型、端点静音、阈值与 CPU/GPU 在「识别」Tab 配置；本卡保留唤醒词与对话时序。
     </p>
     <SettingsField v-if="s.editable.value" label="唤醒后等指令超时（ms）">
       <UiInput type="number" min="1" :model-value="s.ed().vad.answer_timeout_ms" @update:model-value="v => (s.ed().vad.answer_timeout_ms = toNum(v))" />

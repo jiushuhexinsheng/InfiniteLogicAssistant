@@ -26,7 +26,7 @@
          ASR local/cloud/hybrid is configured on the 本地模型 page; this card only edits
          the cloud API profile. -->
     <p v-if="section.key === 'asr'" class="cs-note">
-      转写模式（本地 / 云端 / 混合）与本地模型在左侧「本地模型」页设置；本卡只配置云端 API Profile。
+      转写模式（本地 / 云端 / 混合）与本地模型在上方「识别引擎」卡设置；本卡只配置云端 API Profile。
     </p>
 
     <!-- Profile 管理：切换 / 新增（自填） / 删除。Profile management: switch / add (self-filled) / delete. -->

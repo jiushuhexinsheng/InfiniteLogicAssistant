@@ -43,10 +43,9 @@ export interface AdvancedDef {
 /** 左侧菜单定义。Left menu definitions. */
 export const menuDefs: MenuDef[] = [
   { id: 'llm', label: '大模型', icon: 'brain' },
-  { id: 'asr', label: '语音识别', icon: 'mic' },
-  { id: 'tts', label: '语音合成', icon: 'volume' },
-  { id: 'voice', label: '语音唤醒', icon: 'ear' },
-  { id: 'models', label: '本地模型', icon: 'cpu' },
+  // 语音相关设置全部收口到这一个入口（内部 Tab：概览/唤醒/识别/合成/硬件/高级）。
+  // All voice settings live under this single entry (tabs inside).
+  { id: 'voice', label: '语音', icon: 'ear' },
   { id: 'permissions', label: '权限', icon: 'shield' },
   { id: 'advanced', label: '高级设置', icon: 'zap' },
 ]

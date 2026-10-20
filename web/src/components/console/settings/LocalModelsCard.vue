@@ -2,20 +2,23 @@
   <!-- 本地模型 / 硬件：四能力各自的 local·API 模式、模型下拉、CPU/GPU 与浏览器设备。
        Local models / hardware: per-capability local·API mode, model picker, CPU/GPU and
        browser devices. -->
-  <SettingsCard title="本地模型与硬件（sherpa-onnx）">
+  <SettingsCard :title="title">
     <template #actions>
-      <UiButton variant="secondary" size="sm" :disabled="loading" @click="oneClickLocal">
-        一键本地
-      </UiButton>
-      <UiButton variant="ghost" size="sm" :disabled="loading" @click="refresh">
-        {{ loading ? '扫描中…' : '刷新模型' }}
-      </UiButton>
+      <template v-if="show('overview') || show('recognition') || show('tts')">
+        <UiButton variant="secondary" size="sm" :disabled="loading" @click="oneClickLocal">
+          一键本地
+        </UiButton>
+        <UiButton variant="ghost" size="sm" :disabled="loading" @click="refresh">
+          {{ loading ? '扫描中…' : '刷新模型' }}
+        </UiButton>
+      </template>
       <UiButton variant="primary" size="sm" :disabled="!s.editable.value || s.saving.value" @click="save">
         {{ s.saving.value ? '保存中…' : '保存' }}
       </UiButton>
     </template>
 
     <template v-if="s.editable.value">
+      <template v-if="show('overview') || show('recognition') || show('tts')">
       <p class="cs-note">
         模型目录：<code>models/{vad,kws,asr,tts,llm}</code>。把任意兼容 sherpa-onnx 的模型放进对应目录，
         点「刷新模型」即可选择；大模型可用
@@ -26,15 +29,17 @@
         当前可用 provider：<strong>{{ providers.join(' / ') || 'cpu' }}</strong>
         <span v-if="hw">（sherpa-onnx {{ hw.sherpa_version }}，{{ hw.cpu_count }} 核）</span>。
       </p>
+      </template>
 
       <!-- 四能力状态：模式 + 模型是否就位；缺失时红色，选错模型一眼可见。 -->
-      <div v-if="statusRows.length" class="cs-status">
+      <div v-if="statusRows.length && (show('overview') || show('recognition'))" class="cs-status">
         <span v-for="row in statusRows" :key="row.kind" class="cs-status-chip" :class="row.tone">
           {{ row.text }}
         </span>
       </div>
 
-      <!-- ── VAD（只有本地，没有云端 VAD）── -->
+      <!-- ── 识别：VAD / KWS / ASR ── -->
+      <template v-if="show('recognition')">
       <h3 class="cs-title">VAD · 本地分段</h3>
       <SettingsField label="模式" row>
         <UiSegmented
@@ -141,9 +146,11 @@
         </SettingsField>
       </div>
 
+      </template>
+
       <!-- ── TTS ── -->
-      <h3 class="cs-title">TTS · 语音合成</h3>
-      <p class="cs-hint">引擎选择（浏览器 / 本地 Kokoro / API）在「语音合成」页；这里配置本地 Kokoro 的模型与推理硬件。</p>
+      <template v-if="show('tts')">
+      <p class="cs-hint">引擎选择（浏览器 / 本地 Kokoro / API）在「合成」Tab 顶部；这里配置本地 Kokoro 的模型与推理硬件。</p>
       <template v-if="ttsSettings.engine === 'local'">
         <SettingsField label="模型">
           <UiSelect
@@ -174,16 +181,38 @@
         </div>
       </template>
 
+      </template>
+
       <!-- ── 流式会话 ── -->
+      <template v-if="show('advanced')">
       <h3 class="cs-title">流式会话</h3>
       <SettingsField label="启用 WebSocket 流式链路" row>
         <UiToggle :model-value="s.ed().streaming.enabled"
           @update:model-value="v => (s.ed().streaming.enabled = v)" />
       </SettingsField>
+      <div class="cs-grid">
+        <SettingsField label="帧长（ms）">
+          <UiInput type="number" min="10" max="100" :model-value="s.ed().streaming.frame_ms"
+            @update:model-value="v => (s.ed().streaming.frame_ms = toNum(v))" />
+        </SettingsField>
+        <SettingsField label="partial 间隔（ms）">
+          <UiInput type="number" min="30" :model-value="s.ed().streaming.partial_interval_ms"
+            @update:model-value="v => (s.ed().streaming.partial_interval_ms = toNum(v))" />
+        </SettingsField>
+        <SettingsField label="端点静音（ms）">
+          <UiInput type="number" min="100" :model-value="s.ed().streaming.endpoint_silence_ms"
+            @update:model-value="v => (s.ed().streaming.endpoint_silence_ms = toNum(v))" />
+        </SettingsField>
+        <SettingsField label="最长语音（ms）">
+          <UiInput type="number" min="1000" :model-value="s.ed().streaming.max_utterance_ms"
+            @update:model-value="v => (s.ed().streaming.max_utterance_ms = toNum(v))" />
+        </SettingsField>
+      </div>
       <p class="cs-note">关闭后音频不再走流式链路；新链路不保留旧的浏览器切段上传回退。</p>
+      </template>
 
       <!-- ── 浏览器硬件 ── -->
-      <h3 class="cs-title">麦克风 / 扬声器</h3>
+      <template v-if="show('hardware')">
       <div class="cs-grid">
         <SettingsField label="输入设备">
           <UiSelect :model-value="s.ed().hardware.input_device" :options="inputOptions"
@@ -209,6 +238,7 @@
         </SettingsField>
       </div>
       <UiButton variant="secondary" size="sm" @click="refreshDevices(true)">刷新设备列表</UiButton>
+      </template>
     </template>
   </SettingsCard>
 </template>
@@ -228,6 +258,29 @@ import { notify } from '../../../composables/useToast'
 import { ttsSettings, saveTts } from '../../../composables/assistant/useTts'
 
 const s = useSettings()
+
+/** 本卡在「语音」页中的段落；一个组件按 Tab 复用，避免四份重复代码。
+ *  Section of this card inside the 语音 page; one component reused per tab. */
+const props = withDefaults(defineProps<{
+  scope?: 'all' | 'overview' | 'recognition' | 'tts' | 'hardware' | 'advanced'
+}>(), { scope: 'all' })
+
+/** 当前段落是否渲染。Whether a section renders in this scope. */
+function show(section: string): boolean {
+  return props.scope === 'all' || props.scope === section
+}
+
+/** 卡片标题随 Tab 变化。Card title follows the tab. */
+const title = computed(() => {
+  switch (props.scope) {
+    case 'overview': return '语音总览'
+    case 'recognition': return '识别引擎（VAD / KWS / ASR）'
+    case 'tts': return '本地 TTS（Kokoro）'
+    case 'hardware': return '麦克风与扬声器'
+    case 'advanced': return '流式与高级'
+    default: return '本地模型与硬件（sherpa-onnx）'
+  }
+})
 
 /** 已安装模型（按能力）。Installed models by capability. */
 const models = ref<Record<string, any[]>>({})

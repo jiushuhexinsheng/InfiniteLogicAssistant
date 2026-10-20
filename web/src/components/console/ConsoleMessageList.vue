@@ -4,7 +4,7 @@
          Streaming error: stays visible until the next start or a settings change. -->
     <div v-if="streamError" class="stream-error">
       ⚠️ {{ streamError }}
-      <span class="stream-error-hint">设置 → 本地模型</span>
+      <span class="stream-error-hint">设置 → 语音 → 识别</span>
     </div>
     <!-- 欢迎横幅（衍衡/在线状态行）已移除（2026-10-11 用户要求：对话页去掉身份头，
          状态信息由悬浮球状态胶囊与侧栏承担）。
