@@ -130,7 +130,18 @@ def _download(spec: ModelSpec) -> None:
             src = tf.extractfile(m)
             if src is None:
                 continue
-            target = dest / Path(m.name).name
+            if spec.keep_names or spec.keep_prefixes:
+                # ASR 只保留少量文件，平铺到模型目录。ASR keeps only a flat file set.
+                rel = Path(Path(m.name).name)
+            else:
+                # 完整模型（如 Kokoro）保留 tarball 内的相对结构——espeak-ng-data 是目录，
+                # 平铺会把目录结构打散，registry 就判模型不完整。
+                # Full models keep their relative layout; flattening would destroy
+                # espeak-ng-data/ and make the registry report an incomplete model.
+                parts = Path(m.name).parts
+                rel = Path(*parts[1:]) if len(parts) > 1 else Path(parts[0])
+            target = dest / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
             with src, open(target, "wb") as out:
                 shutil.copyfileobj(src, out)
     TMP.unlink(missing_ok=True)

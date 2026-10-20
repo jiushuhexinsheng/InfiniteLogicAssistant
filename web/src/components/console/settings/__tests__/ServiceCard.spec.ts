@@ -128,33 +128,19 @@ function asrSnapshot(mode = 'cloud', present = false) {
 }
 
 /**
- * ASR 三模式（本地/云端/混合）：段级 UiSegmented 渲染与写回、本地模型未就位的警示。
- * ASR tri-mode: the section-level segmented control renders and writes back; a missing
- * local model raises a warning.
+ * ASR 模式已收口到「本地模型」页；API Profile 卡不再渲染三模式控件。
+ * ASR mode moved to the 本地模型 page; the API Profile card no longer renders it.
  */
-describe('ServiceCard（ASR 三模式）', () => {
+describe('ServiceCard（ASR 本地面板已收口）', () => {
   beforeEach(() => {
     editable.value = structuredClone(asrSnapshot()) as any
   })
 
-  it('渲染 本地/云端/混合 三选项，点击写回 editable.asr.mode', async () => {
+  it('不再渲染三模式控件，提示去「本地模型」页', () => {
     const w = mount(ServiceCard, { props: { section: asrDef } })
-    const items = w.findAll('.ui-segmented .sg-item')
-    expect(items.map(i => i.text())).toEqual(['本地', '云端', '混合'])
-    await items.find(i => i.text() === '混合')!.trigger('click')
-    expect((editable.value as any).asr.mode).toBe('hybrid')
-  })
-
-  it('本地模型未就位 + 选了「本地」→ 显示警示条', () => {
-    editable.value = structuredClone(asrSnapshot('local', false)) as any
-    const w = mount(ServiceCard, { props: { section: asrDef } })
-    expect(w.text()).toContain('本地 ASR 模型未就位')
-  })
-
-  it('云端模式不因本地模型缺失告警（与本地模型无关）', () => {
-    editable.value = structuredClone(asrSnapshot('cloud', false)) as any
-    const w = mount(ServiceCard, { props: { section: asrDef } })
-    expect(w.text()).not.toContain('本地 ASR 模型未就位')
+    expect(w.find('.ui-segmented').exists()).toBe(false)
+    expect(w.text()).toContain('本地模型')
+    expect(w.text()).toContain('转写模式')
   })
 
   it('本地模型已就位 → 不显示警示', () => {

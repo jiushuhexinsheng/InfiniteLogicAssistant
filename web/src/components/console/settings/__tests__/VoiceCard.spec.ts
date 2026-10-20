@@ -86,16 +86,6 @@ describe('VoiceCard', () => {
     expect((editable.value as any).wake_word.keywords).toEqual(['', ' '])   // 未被存成空列表。Not saved as empty.
   })
 
-  /** 成本控制的两个旋钮在设置页可调（文档把它们当降调用量的手段，界面不能只有一半）。 */
-  it('两个成本旋钮可在设置页编辑', async () => {
-    const w = mount(VoiceCard)
-    const inputs = w.findAll('input.ui-input')
-    expect(inputs.some((i) => (i.element as HTMLInputElement).value === '300')).toBe(true)
-    expect(inputs.some((i) => (i.element as HTMLInputElement).value === '500')).toBe(true)
-    await inputs.find((i) => (i.element as HTMLInputElement).value === '300')!.setValue('900')
-    expect((editable.value as any).vad.min_speech_ms).toBe(900)
-  })
-
   /** spec 要求：隐私边界必须写进设置页。Spec: the privacy boundary must be stated on the settings page.
    *  流式链路下：云端模式每个 VAD 段都上传；本地模式不出本机；混合仅兜底上传。
    *  Under the streaming pipeline: cloud uploads every VAD segment, local never leaves

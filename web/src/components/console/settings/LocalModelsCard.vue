@@ -4,6 +4,9 @@
        browser devices. -->
   <SettingsCard title="本地模型与硬件（sherpa-onnx）">
     <template #actions>
+      <UiButton variant="secondary" size="sm" :disabled="loading" @click="oneClickLocal">
+        一键本地
+      </UiButton>
       <UiButton variant="ghost" size="sm" :disabled="loading" @click="refresh">
         {{ loading ? '扫描中…' : '刷新模型' }}
       </UiButton>
@@ -23,6 +26,13 @@
         当前可用 provider：<strong>{{ providers.join(' / ') || 'cpu' }}</strong>
         <span v-if="hw">（sherpa-onnx {{ hw.sherpa_version }}，{{ hw.cpu_count }} 核）</span>。
       </p>
+
+      <!-- 四能力状态：模式 + 模型是否就位；缺失时红色，选错模型一眼可见。 -->
+      <div v-if="statusRows.length" class="cs-status">
+        <span v-for="row in statusRows" :key="row.kind" class="cs-status-chip" :class="row.tone">
+          {{ row.text }}
+        </span>
+      </div>
 
       <!-- ── VAD（只有本地，没有云端 VAD）── -->
       <h3 class="cs-title">VAD · 本地分段</h3>
@@ -133,18 +143,8 @@
 
       <!-- ── TTS ── -->
       <h3 class="cs-title">TTS · 语音合成</h3>
-      <SettingsField label="模式" row>
-        <UiSegmented
-          :model-value="s.ed().tts.mode"
-          :options="[
-            { value: 'local', label: '本地' },
-            { value: 'api', label: 'API' },
-          ]"
-          aria-label="TTS 模式"
-          @update:model-value="v => (s.ed().tts.mode = v)"
-        />
-      </SettingsField>
-      <template v-if="s.ed().tts.mode === 'local'">
+      <p class="cs-hint">引擎选择（浏览器 / 本地 Kokoro / API）在「语音合成」页；这里配置本地 Kokoro 的模型与推理硬件。</p>
+      <template v-if="ttsSettings.engine === 'local'">
         <SettingsField label="模型">
           <UiSelect
             :model-value="s.ed().tts.local_model"
@@ -225,6 +225,7 @@ import { UiButton, UiInput, UiSegmented, UiSelect, UiToggle } from '../../ui'
 import { api } from '../../../api'
 import { useSettings } from './useSettings'
 import { notify } from '../../../composables/useToast'
+import { ttsSettings, saveTts } from '../../../composables/assistant/useTts'
 
 const s = useSettings()
 
@@ -232,6 +233,8 @@ const s = useSettings()
 const models = ref<Record<string, any[]>>({})
 /** 硬件快照。Hardware snapshot. */
 const hw = ref<any>(null)
+/** 四能力状态快照（后端 /api/voice/capabilities）。Four-capability status snapshot. */
+const caps = ref<any>(null)
 /** 浏览器输入/输出设备。Browser input/output devices. */
 const devices = ref<MediaDeviceInfo[]>([])
 const loading = ref(false)
@@ -255,6 +258,39 @@ const outputOptions = computed(() => [
     .map((d, i) => ({ value: d.deviceId, label: d.label || `扬声器 ${i + 1}` })),
 ])
 
+type StatusTone = 'ok' | 'err' | 'info' | 'neutral'
+interface StatusRow { kind: string; text: string; tone: StatusTone }
+
+/** 某能力的状态文案。Status text for one capability. */
+function capRow(label: string, cap: any, mode: string): StatusRow {
+  if (!cap) return { kind: label, text: `${label} —`, tone: 'neutral' }
+  if (mode === 'browser') return { kind: label, text: `${label} 浏览器`, tone: 'info' }
+  if (mode === 'off') return { kind: label, text: `${label} 已关闭`, tone: 'neutral' }
+  if (mode === 'cloud' || mode === 'api') {
+    return { kind: label, text: `${label} API`, tone: 'info' }
+  }
+  return cap.present
+    ? { kind: label, text: `${label} 本地 ✓`, tone: 'ok' }
+    : { kind: label, text: `${label} 本地 · 模型缺失`, tone: 'err' }
+}
+
+/** 四能力状态行（随 editable 实时变化）。Live status rows. */
+const statusRows = computed<StatusRow[]>(() => {
+  const c = caps.value
+  const e = s.ed()
+  if (!c || !e) return []
+  const ttsRow = capRow('TTS', c.tts, e.tts.mode)
+  if (e.tts.mode === 'local' && ttsSettings.value.engine !== 'local') {
+    ttsRow.text += ' · 播放：浏览器'
+  }
+  return [
+    capRow('VAD', c.vad, e.vad.mode),
+    capRow('KWS', c.kws, e.kws.mode),
+    capRow('ASR', c.asr, e.asr.mode),
+    ttsRow,
+  ]
+})
+
 /** 模型下拉选项（value = 相对项目根路径）。Model options (value = root-relative path). */
 function modelOptions(kind: string) {
   return (models.value[kind] || []).map((m) => ({
@@ -276,12 +312,60 @@ function toNum(v: string): number | '' {
   return v === '' ? '' : Number(v)
 }
 
+/** 当前选中模型无效时，自动改用该能力下第一个有效模型（只改表单，不自动保存）。 */
+function ensureSelection() {
+  const e = s.ed()
+  if (!e) return
+  const fix = (kind: string, current: string, set: (v: string) => void) => {
+    const list = models.value[kind] || []
+    if (list.some((m) => m.valid && m.path === current)) return
+    const first = list.find((m) => m.valid)
+    if (first) set(first.path)
+  }
+  fix('vad', e.vad.model, (v) => { e.vad.model = v })
+  fix('kws', e.kws.model_dir, (v) => { e.kws.model_dir = v })
+  fix('asr', e.asr.local_model, (v) => { e.asr.local_model = v })
+  fix('tts', e.tts.local_model, (v) => { e.tts.local_model = v })
+}
+
+/** 一键本地：四能力切本地并选有效模型；TTS 没有 Kokoro 时保持 API。 */
+function oneClickLocal() {
+  const e = s.ed()
+  if (!e) return
+  const valid = (kind: string) => (models.value[kind] || []).filter((m) => m.valid)
+  if (!valid('vad').length) {
+    notify.err('没有可用的本地 VAD 模型，请先下载或刷新模型')
+    return
+  }
+  if (!valid('asr').length) {
+    notify.err('没有可用的本地 ASR 模型，请先下载或刷新模型')
+    return
+  }
+  ensureSelection()
+  e.vad.mode = 'local'
+  e.kws.mode = valid('kws').length ? 'local' : 'api'
+  e.asr.mode = 'local'
+  const ttsReady = (models.value.tts || []).some(
+    (m) => m.valid && m.path === e.tts.local_model,
+  )
+  e.tts.mode = ttsReady ? 'local' : 'api'
+  ttsSettings.value.engine = ttsReady ? 'local' : 'browser'
+  saveTts()
+  if (!ttsReady) notify.warn('Kokoro 本地 TTS 未就位，播报暂用浏览器语音；下载后再次一键本地即可')
+  notify.ok('已切换为本地语音（保存中）')
+  void s.saveModule('models')
+}
+
 async function refresh() {
   loading.value = true
   try {
-    const [m, h] = await Promise.all([api.getModels(), api.getHardware()])
+    const [m, h, c] = await Promise.all([
+      api.getModels(), api.getHardware(), api.getCapabilities(),
+    ])
     if (m.ok) models.value = m.models
     if (h.ok) hw.value = h.hardware
+    if (c.ok) caps.value = c
+    ensureSelection()
     await refreshDevices(false)
   } catch (e: any) {
     notify.err('模型扫描失败：' + (e?.message || e))
@@ -321,4 +405,14 @@ onMounted(refresh)
   padding-top: var(--sp-2); border-top: var(--divider-dashed);
 }
 .cs-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
+.cs-status { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-2) 0; }
+.cs-status-chip {
+  font-size: var(--fs-2xs); line-height: 1.6;
+  padding: var(--sp-q6) var(--sp-q10); border-radius: var(--r-full);
+  border: 1px solid var(--border-base); color: var(--text-2);
+  background: rgba(148, 163, 184, .06);
+}
+.cs-status-chip.ok { color: #34d399; border-color: rgba(52, 211, 153, .35); background: rgba(52, 211, 153, .08); }
+.cs-status-chip.err { color: #f87171; border-color: rgba(248, 113, 113, .4); background: rgba(248, 113, 113, .08); }
+.cs-status-chip.info { color: var(--brand-c2); border-color: rgba(103, 232, 249, .3); background: rgba(103, 232, 249, .07); }
 </style>

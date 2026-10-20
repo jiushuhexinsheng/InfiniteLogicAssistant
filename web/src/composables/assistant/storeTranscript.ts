@@ -15,6 +15,21 @@ import { partialText, statusLine, state } from './store'
 
 export type TranscriptStatus = 'idle' | 'recognizing' | 'finalized'
 
+/** 流式会话的粗粒度阶段（用于顶部/迷你条的状态与错误提示）。
+ *  Coarse streaming-session phase (drives the status/error surfaces). */
+export type StreamPhase = 'idle' | 'loading' | 'ready' | 'recognizing' | 'finalized' | 'error'
+
+/** 当前流式阶段。Current streaming phase. */
+export const streamPhase = ref<StreamPhase>('idle')
+/** 最近一次流式错误（保持到用户下一次启动/切换）。Latest streaming error (kept until retry). */
+export const streamError = ref('')
+
+/** 设置阶段；error 时保留原因，其他阶段清空错误。Set the phase; keep the reason on error. */
+export function setStreamPhase(phase: StreamPhase, error = '') {
+  streamPhase.value = phase
+  streamError.value = phase === 'error' ? error : ''
+}
+
 /** 当前识别会话的显示状态。Display state of the current recognition session. */
 export interface LiveTranscript {
   /** 当前段号（服务端递增）。Current segment id (server-incremented). */
@@ -50,6 +65,7 @@ let finalTimer: ReturnType<typeof setTimeout> | null = null
 /** 开始一段识别：清空中间稿并进入「正在识别」。Begin a segment. */
 export function beginRecognition(segmentId = 0) {
   if (finalTimer) { clearTimeout(finalTimer); finalTimer = null }
+  setStreamPhase('recognizing')
   liveTranscript.value = {
     ...liveTranscript.value,
     segmentId,
@@ -102,9 +118,11 @@ export function finalizeTranscript(
   }
   partialText.value = ''
   statusLine.value = text ? '识别完成' : '没听清，请再说一次'
+  setStreamPhase('finalized')
   finalTimer = setTimeout(() => {
     if (liveTranscript.value.status === 'finalized') {
       liveTranscript.value = { ...liveTranscript.value, status: 'idle', ghostText: '' }
+      setStreamPhase('ready')
     }
   }, 1500)
 }

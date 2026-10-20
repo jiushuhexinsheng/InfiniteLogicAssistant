@@ -2,7 +2,7 @@
   <!-- 简约对话历史区域。Compact conversation history area. -->
   <div ref="scrollEl" class="mini-history">
     <!-- 空态：简洁提示（随唤醒开关走，见 hints.ts）。Empty state: simple prompt (wake-switch aware, see hints.ts). -->
-    <div v-if="!turns.length" class="mini-empty">
+    <div v-if="!turns.length && !showInterim" class="mini-empty">
       <div class="empty-text">
         <b>开始对话</b>
         <span>{{ emptyText }}</span>
@@ -38,6 +38,10 @@
         </div>
       </div>
     </template>
+    <!-- 流式识别临时气泡：与控制台聊天区同源（interim 原地替换，定稿进正式记录）。
+         Streaming interim bubble, same source as the console chat area. -->
+    <InterimBubble v-if="showInterim" :text="interimText" />
+    <InterimBubble v-else-if="ghostText" :text="ghostText" ghost />
   </div>
 </template>
 
@@ -46,6 +50,8 @@ import { computed, nextTick, ref, watch } from 'vue'
 import type { AsstState, ChatMessage } from '../../composables/useAssistant'
 import { wakeEnabled } from '../../composables/assistant/store'
 import { emptyHint } from '../../composables/assistant/hints'
+import { liveTranscript } from '../../composables/assistant/storeTranscript'
+import InterimBubble from './InterimBubble.vue'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
 import { summarizeBlock } from '../../blocks'
 
@@ -65,6 +71,14 @@ const props = defineProps<{
 
 /** 空态提示：随唤醒开关走（唤醒关时不再叫人喊唤醒词）。Empty-state hint: wake-switch aware (no shout-the-wake-word advice when wake is off). */
 const emptyText = computed(() => emptyHint(wakeEnabled.value, props.wakeHint))
+
+/** 正在识别的中间稿。The in-flight interim transcript. */
+const interimText = computed(() => liveTranscript.value.interim)
+/** 是否显示中间稿气泡。Whether the interim bubble is shown. */
+const showInterim = computed(() =>
+  liveTranscript.value.status === 'recognizing' && !!interimText.value)
+/** 未进入聊天记录的旁白。Discarded ghost text. */
+const ghostText = computed(() => liveTranscript.value.ghostText)
 
 /**
  * 组件事件定义。Component events definition.
@@ -170,7 +184,11 @@ watch(() => props.messages.length, (n) => {
  * Scroll to bottom when new turn arrives or last message text grows (streaming reply).
  */
 watch(
-  () => [props.messages.length, props.messages[props.messages.length - 1]?.text?.length],
+  () => [
+    props.messages.length,
+    props.messages[props.messages.length - 1]?.text?.length,
+    interimText.value.length,
+  ],
   () => {
     nextTick(() => {
       if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight

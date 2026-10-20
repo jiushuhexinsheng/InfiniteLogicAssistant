@@ -4,7 +4,7 @@ import {
 import { st, clearWaitTimers, resetFailures, stopBargeIn } from './orchState'
 import { createVoiceStream, type VoiceStreamHandle } from '../stream/streamClient'
 import { handleStreamEvent } from '../stream/streamFlow'
-import { clearTranscript } from '../storeTranscript'
+import { clearTranscript, setStreamPhase, streamError } from '../storeTranscript'
 import { reportMicLevel, resetMicLevel } from '../micLevel'
 // 流式语音麦克风控制：取流 → AudioWorklet → WebSocket；旧切段/Web Speech 链路已删除。
 // Streaming mic control: stream → AudioWorklet → WebSocket; the legacy segment / Web
@@ -23,6 +23,7 @@ export function stopListening() {
     st.voiceStream = null
   }
   clearTranscript()
+  if (!streamError.value) setStreamPhase('idle')
   resetMicLevel()   // 兜底归零（声波条回落）。Belt-and-braces zero for the level bars.
 }
 
@@ -44,14 +45,21 @@ async function acquireAndStart(): Promise<AcquireOutcome> {
   }
 
   const gen = st.listenGen
+  setStreamPhase('loading')
   let handle: VoiceStreamHandle
   handle = createVoiceStream({
     onEvent: (ev) => {
       void handleStreamEvent(ev).catch((e) => console.warn('[wake] stream event error:', e))
     },
     onLevel: reportMicLevel,
-    onError: (e) => { statusLine.value = e.message },
-    onClose: () => { if (st.voiceStream === handle) st.voiceStream = null },
+    onError: (e) => {
+      statusLine.value = e.message
+      setStreamPhase('error', e.message)
+    },
+    onClose: () => {
+      if (st.voiceStream === handle) st.voiceStream = null
+      if (!streamError.value) setStreamPhase('idle')
+    },
     inputDevice: hardwareConfig.input_device,
     echoCancellation: hardwareConfig.echo_cancellation,
     noiseSuppression: hardwareConfig.noise_suppression,
@@ -62,7 +70,14 @@ async function acquireAndStart(): Promise<AcquireOutcome> {
   } catch (e) {
     console.warn('[wake] voice stream start failed:', e)
     handle.stop()
-    statusLine.value = describeMicError(e)
+    // 服务端错误（模型缺失/加载失败）原样展示；麦克风错误走可操作文案。
+    // Server errors (missing/failed model) are shown verbatim; mic errors get actionable copy.
+    const err = e as { server?: boolean; message?: string }
+    const message = err?.server
+      ? (err.message || '语音服务启动失败')
+      : describeMicError(e)
+    statusLine.value = message
+    setStreamPhase('error', message)
     return 'mic-error'
   }
   if (gen !== st.listenGen) {
@@ -70,6 +85,7 @@ async function acquireAndStart(): Promise<AcquireOutcome> {
     return 'aborted'
   }
   st.voiceStream = handle
+  setStreamPhase('ready')
   return 'ok'
 }
 

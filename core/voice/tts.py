@@ -16,7 +16,11 @@ TTS speech synthesis — supports two OpenAI-compatible protocols:
           - mimo-v2.5-tts-voicedesign (voice design): voice unsupported; the user message carries the style description
 """
 import asyncio
+import atexit
 import base64
+import threading
+from concurrent.futures import ProcessPoolExecutor
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -26,35 +30,79 @@ from core import config as config_mod
 from core.config import add_reload_hook, is_tts_enabled, resolve_tts_profile
 from core.logger import logger
 
-# 本地 Kokoro 单例（配置热重载后重建）。Local Kokoro singleton (rebuilt on config reload).
-_local_engine: Any | None = None
+# 本地 Kokoro 放在**子进程**里跑：Windows 上 sherpa 的 Kokoro 在非主线程生成中文会
+# 只输出极短音频（espeak/词典的线程相关状态），放在 asyncio 线程池里会静默坏掉。
+# 子进程的主线程生成稳定，且不阻塞事件循环；模型在子进程内常驻。
+# Run local Kokoro in a **child process**: on Windows, sherpa's Kokoro produces a
+# near-empty clip for Chinese when run in a worker thread (thread-local espeak/lexicon
+# state); a child process's main thread is stable and keeps the event loop free.
+_tts_pool: ProcessPoolExecutor | None = None
+_tts_pool_lock = threading.Lock()
+_worker_engine: Any | None = None
+_worker_opts: dict | None = None
 
 
-def _get_local_engine():
-    """取本地 TTS 引擎（懒加载单例）。Get the local TTS engine (lazy singleton)."""
-    global _local_engine
-    if _local_engine is None:
+def _tts_worker(opts: dict, text: str) -> bytes:
+    """子进程入口：加载/复用引擎并合成（必须是模块级函数，Windows spawn 可导入）。
+
+    Child-process entry: load/reuse the engine and synthesize. Must be module-level so
+    Windows spawn can import it.
+    """
+    global _worker_engine, _worker_opts
+    if _worker_engine is None or opts != _worker_opts:
         from core.voice.local.sherpa_onnx import TtsEngine, TtsOptions
-        t = config_mod.settings.voice.tts
-        _local_engine = TtsEngine(TtsOptions(
-            model_dir=t.local_model,
-            provider=t.provider,
-            device=t.device,
-            num_threads=t.num_threads,
-            speaker=t.speaker,
-            speed=t.speed,
-            lang=t.lang,
-        ))
-    return _local_engine
+        engine = TtsEngine(TtsOptions(**opts))
+        ok, reason = engine.status()
+        if not ok:
+            raise RuntimeError(reason)
+        _worker_engine = engine
+        _worker_opts = dict(opts)
+    return _worker_engine.synthesize_wav(text)
 
 
-def _reset_local_tts() -> None:
-    """配置热重载后丢弃本地引擎。Drop the local engine after a config reload."""
-    global _local_engine
-    _local_engine = None
+def _get_tts_pool() -> ProcessPoolExecutor:
+    """取本地 TTS 子进程池（单 worker，惰性创建）。Get the lazy single-worker TTS pool."""
+    global _tts_pool
+    with _tts_pool_lock:
+        if _tts_pool is None:
+            _tts_pool = ProcessPoolExecutor(max_workers=1)
+        return _tts_pool
 
 
-add_reload_hook(_reset_local_tts)
+def _shutdown_tts_pool() -> None:
+    """关闭子进程池（配置热重载 / 进程退出）。Shut down the pool on reload/exit."""
+    global _tts_pool
+    with _tts_pool_lock:
+        pool, _tts_pool = _tts_pool, None
+    if pool is not None:
+        try:
+            pool.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+
+
+def _local_options() -> dict:
+    """当前配置 → 子进程 TtsOptions 字典。Current config → child TtsOptions dict."""
+    t = config_mod.settings.voice.tts
+    return asdict(_tts_options(t))
+
+
+def _tts_options(t: Any) -> Any:
+    """构造 TtsOptions（延迟 import 避免顶层拉起 sherpa）。Build TtsOptions lazily."""
+    from core.voice.local.sherpa_onnx import TtsOptions
+    return TtsOptions(
+        model_dir=t.local_model,
+        provider=t.provider,
+        device=t.device,
+        num_threads=t.num_threads,
+        speaker=t.speaker,
+        speed=t.speed,
+        lang=t.lang,
+    )
+
+
+atexit.register(_shutdown_tts_pool)
+add_reload_hook(_shutdown_tts_pool)
 
 # 输出格式 → 媒体类型
 _MEDIA_TYPES = {"wav": "audio/wav", "mp3": "audio/mpeg", "pcm16": "audio/pcm"}
@@ -113,19 +161,20 @@ async def synthesize(text: str, voice: str | None = None, mode: str | None = Non
 
 
 async def _synthesize_local(text: str) -> tuple[bytes, str]:
-    """本地 Kokoro 合成；不可用时明确报错，不静默回落云端。
+    """本地 Kokoro 合成（子进程，主线程生成）；不可用时明确报错，不静默回落云端。
 
-    Local Kokoro synthesis; raises clearly when unavailable — never silently falls back
-    to the cloud (the user explicitly chose local).
+    Local Kokoro synthesis in a child process (main-thread generation); raises clearly
+    when unavailable — never silently falls back to the cloud (the user chose local).
     """
-    engine = _get_local_engine()
-    ok, reason = await asyncio.to_thread(engine.status)
-    if not ok:
+    loop = asyncio.get_running_loop()
+    try:
+        wav = await loop.run_in_executor(
+            _get_tts_pool(), _tts_worker, _local_options(), text)
+    except Exception as e:  # noqa: BLE001
         raise TtsConfigError(
-            f"本地 TTS 不可用：{reason}。请检查 voice.tts.local_model，"
+            f"本地 TTS 合成失败：{e}。请检查 voice.tts.local_model，"
             "或将 voice.tts.mode 改为 api"
-        )
-    wav = await asyncio.to_thread(engine.synthesize_wav, text)
+        ) from e
     return wav, "audio/wav"
 
 

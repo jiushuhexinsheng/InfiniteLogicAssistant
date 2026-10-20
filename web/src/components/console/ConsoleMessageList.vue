@@ -1,5 +1,11 @@
 <template>
   <div ref="scrollEl" class="console-messages">
+    <!-- 流式语音错误：保持可见，直到用户重新开麦或改设置（不只闪一下状态行）。
+         Streaming error: stays visible until the next start or a settings change. -->
+    <div v-if="streamError" class="stream-error">
+      ⚠️ {{ streamError }}
+      <span class="stream-error-hint">设置 → 本地模型</span>
+    </div>
     <!-- 欢迎横幅（衍衡/在线状态行）已移除（2026-10-11 用户要求：对话页去掉身份头，
          状态信息由悬浮球状态胶囊与侧栏承担）。
          The welcome banner (衍衡 / online-status row) is removed (2026-10-11 user
@@ -40,7 +46,7 @@ import MessageItem from '../assistant/MessageItem.vue'
 import InterimBubble from '../assistant/InterimBubble.vue'
 import { UiEmpty } from '../ui'
 import type { ChatMessage } from '../../composables/useAssistant'
-import { liveTranscript } from '../../composables/assistant/storeTranscript'
+import { liveTranscript, streamError } from '../../composables/assistant/storeTranscript'
 
 /** 组件 props：消息列表、消息级动作开关（回合空闲且有会话）。
  *  Component props: message list, message-level action switch. */
@@ -96,4 +102,14 @@ onMounted(scrollToBottom)
   display: flex; flex-direction: column; gap: var(--sp-q14);
   padding: var(--sp-1) var(--sp-q2) var(--sp-q10); max-width: 860px; width: 100%; margin: 0 auto;
 }
+.stream-error {
+  max-width: 860px; width: 100%; margin: 0 auto var(--sp-2);
+  padding: var(--sp-2) var(--sp-q10);
+  border: 1px dashed rgba(248, 113, 113, .45);
+  border-radius: var(--r-sm);
+  background: rgba(248, 113, 113, .07);
+  color: #f87171;
+  font-size: var(--fs-xs); line-height: 1.6;
+}
+.stream-error-hint { color: var(--text-3); margin-left: var(--sp-2); }
 </style>

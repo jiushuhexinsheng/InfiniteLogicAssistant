@@ -50,26 +50,9 @@
     <SettingsField v-if="s.editable.value" label="灵敏度（0-1）">
       <UiInput type="number" step="0.05" min="0" max="1" :model-value="s.ed().wake_word.sensitivity" @update:model-value="v => (s.ed().wake_word.sensitivity = toNum(v))" />
     </SettingsField>
-    <SettingsField v-if="s.editable.value" label="静音判定阈值">
-      <UiInput type="number" step="0.01" :model-value="s.ed().vad.silence_threshold" @update:model-value="v => (s.ed().vad.silence_threshold = toNum(v))" />
-    </SettingsField>
-    <SettingsField v-if="s.editable.value" label="静音停止时长（ms）">
-      <UiInput type="number" :model-value="s.ed().vad.silence_duration_ms" @update:model-value="v => (s.ed().vad.silence_duration_ms = toNum(v))" />
-    </SettingsField>
-    <SettingsField v-if="s.editable.value" label="最长录音（ms）">
-      <UiInput type="number" :model-value="s.ed().vad.max_duration_ms" @update:model-value="v => (s.ed().vad.max_duration_ms = toNum(v))" />
-    </SettingsField>
-    <!-- 成本控制的两个旋钮：wiki/Configuration.md 与 config.yaml.example 都把它们当作「降调用量」
-         的手段介绍，设置页却改不了，只能手改配置文件 —— 同族的其余 vad 参数这里都能调。
-         The two cost knobs: Configuration.md and config.yaml.example both present them as the way to
-         cut call volume, yet the settings page could not touch them while every sibling vad
-         parameter is editable here. -->
-    <SettingsField v-if="s.editable.value" label="最短语音时长（ms，短于此不上传）">
-      <UiInput type="number" min="0" :model-value="s.ed().vad.min_speech_ms" @update:model-value="v => (s.ed().vad.min_speech_ms = toNum(v))" />
-    </SettingsField>
-    <SettingsField v-if="s.editable.value" label="上传节流（ms，两次唤醒判定的最小间隔）">
-      <UiInput type="number" min="0" :model-value="s.ed().vad.upload_throttle_ms" @update:model-value="v => (s.ed().vad.upload_throttle_ms = toNum(v))" />
-    </SettingsField>
+    <p class="cs-note">
+      VAD 模型、端点静音、阈值与 CPU/GPU 在左侧「本地模型」页配置；本卡保留唤醒词与对话时序。
+    </p>
     <SettingsField v-if="s.editable.value" label="唤醒后等指令超时（ms）">
       <UiInput type="number" min="1" :model-value="s.ed().vad.answer_timeout_ms" @update:model-value="v => (s.ed().vad.answer_timeout_ms = toNum(v))" />
     </SettingsField>

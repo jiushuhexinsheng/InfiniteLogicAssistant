@@ -53,7 +53,15 @@ async def test_synthesize_chat_preset_uses_default_voice(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_synthesize_disabled_raises_config_error(monkeypatch):
-    """未启用 TTS 属配置错误。TTS being disabled is a configuration error."""
+    """未启用 TTS 属配置错误（API 模式；local 模式不依赖这个开关）。
+
+    TTS being disabled is a configuration error in API mode; local mode does not
+    depend on this switch.
+    """
+    from core import config
+    settings = config.settings.model_copy(deep=True)
+    settings.voice.tts.mode = "api"
+    monkeypatch.setattr(config, "get_settings", lambda: settings)
     monkeypatch.setattr("core.voice.tts.is_tts_enabled", lambda: False)
     with pytest.raises(TtsConfigError):
         await synthesize("你好")

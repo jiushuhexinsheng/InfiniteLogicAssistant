@@ -31,6 +31,7 @@
 import { computed } from 'vue'
 import { UiIconButton, UiIcon } from '../ui'
 import { micLevel, eqBarHeights } from '../../composables/assistant/micLevel'
+import { streamPhase, streamError } from '../../composables/assistant/storeTranscript'
 import type { AsstState, ChatMessage } from '../../composables/useAssistant'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
 
@@ -86,6 +87,8 @@ const lastMsg = computed<ChatMessage | null>(() => props.messages[props.messages
  * invisible whenever any history existed (2026-10-07 fix).
  */
 const miniText = computed(() => {
+  if (streamError.value) return '⚠️ ' + streamError.value
+  if (streamPhase.value === 'loading') return '正在加载本地语音引擎…'
   const p = props.partialText
   if (p && ['recording', 'listening', 'awaiting_answer', 'transcribing'].includes(props.state)) return p
   if (props.statusLine) return props.statusLine
@@ -97,6 +100,8 @@ const miniText = computed(() => {
  * 计算迷你播放器角色名。Compute mini player role name.
  */
 const miniRole = computed(() => {
+  if (streamError.value) return '语音错误'
+  if (streamPhase.value === 'loading') return '正在加载'
   if (props.state === 'transcribing' && props.partialText) return '正在识别'
   if (!lastMsg.value) return 'AI 助手'
   if (lastMsg.value.role === 'user') return '你说'

@@ -114,25 +114,76 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
       ws.onopen = () => resolve()
       ws.onerror = () => reject(new Error('语音流连接失败'))
     })
-    ws.onmessage = (ev) => {
-      try {
-        opts.onEvent(JSON.parse(ev.data) as VoiceStreamEvent)
-      } catch { /* 非 JSON 帧忽略 */ }
+
+    // 必须等到服务端 ready 才算启动成功：本地模型缺失/加载失败时服务端会先发
+    // error 再断开，若在这里当成成功，界面会显示「静待中」而不是错误原因。
+    // Wait for the server's ready: a missing/failed local model makes the server send
+    // error and close; treating that as success hides the real failure behind「静待中」.
+    let readySettled = false
+    let readyTimer: ReturnType<typeof setTimeout> | null = null
+    let resolveReady!: () => void
+    let rejectReady!: (e: Error) => void
+    const ready = new Promise<void>((resolve, reject) => {
+      resolveReady = resolve
+      rejectReady = reject
+    })
+    const settleReady = (err?: Error) => {
+      if (readySettled) return
+      readySettled = true
+      if (readyTimer) { clearTimeout(readyTimer); readyTimer = null }
+      if (err) rejectReady(err)
+      else resolveReady()
     }
-    ws.onclose = () => {
+    readyTimer = setTimeout(
+      () => settleReady(new Error('本地引擎加载超时（20s），请检查模型与后端日志')),
+      20_000,
+    )
+
+    const socket = ws
+    socket.onmessage = (ev) => {
+      let event: VoiceStreamEvent
+      try {
+        event = JSON.parse(ev.data) as VoiceStreamEvent
+      } catch { return }
+      opts.onEvent(event)
+      if (event.type === 'ready') {
+        settleReady()
+      } else if (event.type === 'error') {
+        const error = Object.assign(new Error(String(event.message || '语音服务错误')), {
+          server: true,
+          code: event.code,
+        })
+        opts.onError?.(error)
+        settleReady(error)
+      }
+    }
+    socket.onclose = () => {
       running = false
+      // 就绪前断开 = 启动失败；就绪后断开 = 正常生命周期（下次开麦重建）。
+      // Close before ready = startup failure; after ready = normal lifecycle.
+      settleReady(new Error('语音流在就绪前断开'))
       // 服务端关闭/报错时也要释放麦克风与音频图，否则麦克风会一直占着。
       // Release the mic and audio graph on a server close/error too; otherwise the mic stays held.
       releaseAudio()
       opts.onClose?.()
     }
-    ws.onerror = () => opts.onError?.(new Error('语音流连接错误'))
-    ws.send(JSON.stringify({
+    socket.onerror = () => {
+      const error = new Error('语音流连接错误')
+      settleReady(error)
+      opts.onError?.(error)
+    }
+    socket.send(JSON.stringify({
       type: 'start',
       sample_rate: ctx.sampleRate,
       channels: 1,
       format: 'pcm_s16le',
     }))
+    try {
+      await ready
+    } catch (e) {
+      stop()
+      throw e
+    }
     running = true
   }
 

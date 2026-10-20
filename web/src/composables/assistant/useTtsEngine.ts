@@ -2,6 +2,7 @@ import { computed } from 'vue'
 import { ttsSettings, saveTts } from './useTts'
 import type { TtsEngine } from './useTts'
 import { useConfig } from '../useApi'
+import { api } from '../../api'
 
 /**
  * 语音引擎选择的单一来源（两卡堆叠布局的卡1 与卡2 共用）。
@@ -36,6 +37,13 @@ export function useTtsEngine() {
   function setEngine(e: TtsEngine) {
     ttsSettings.value.engine = e
     saveTts()
+    // local/api 同时写后端 voice.tts.mode；browser 只影响前端播报。
+    // local/api also persist the backend voice.tts.mode; browser is frontend-only.
+    if (e === 'local' || e === 'api') {
+      void api.patchConfig({ tts: { mode: e } })
+        .then(() => app.refreshConfig())
+        .catch(() => { /* 配置写入失败不阻塞前端选择；状态页会显示真实模式 */ })
+    }
   }
 
   return { engine, apiAvailable, setEngine }

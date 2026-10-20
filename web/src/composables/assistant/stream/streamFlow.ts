@@ -21,7 +21,9 @@ import {
   st, playBeep, armCommandTimer, clearCommandTimer, clearFollowupTimer,
   inEchoGuard, abandonPendingQuestion, tryEnterCallFromStandby,
 } from '../wake/orchState'
-import { beginRecognition, setInterim, finalizeTranscript, showGhost } from '../storeTranscript'
+import {
+  beginRecognition, setInterim, finalizeTranscript, showGhost, setStreamPhase,
+} from '../storeTranscript'
 import { missStatusLine } from './missStatus'
 
 /** 服务端事件的最小形状。Minimal shape of a server event. */
@@ -42,6 +44,9 @@ function restoreBase(): void {
 /** 处理一条服务端事件。Handle one server event. */
 export async function handleStreamEvent(ev: StreamEvent): Promise<void> {
   switch (ev.type) {
+    case 'ready':
+      setStreamPhase('ready')
+      return
     case 'vad':
       if (ev.event === 'speech_start') {
         if (state.value !== 'transcribing') baseState = state.value
@@ -60,10 +65,13 @@ export async function handleStreamEvent(ev: StreamEvent): Promise<void> {
     case 'final':
       await handleFinal(ev)
       return
-    case 'error':
-      statusLine.value = String(ev.message || '语音识别失败')
+    case 'error': {
+      const message = String(ev.message || '语音识别失败')
+      statusLine.value = message
+      setStreamPhase('error', message)
       restoreBase()
       return
+    }
     default:
       return
   }

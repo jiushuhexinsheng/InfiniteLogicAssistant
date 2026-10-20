@@ -22,23 +22,12 @@
       <UiToggle :model-value="s.sec(section.key).enabled" @update:model-value="v => (s.sec(section.key).enabled = v)" />
     </SettingsField>
 
-    <!-- 段级三选一（ASR 转写模式：本地/云端/混合）。随「保存」一并 PATCH。
-         Section-level segmented control (ASR transcription mode); saved with the rest. -->
-    <SettingsField v-if="section.modeField" :label="fieldLabel(section.modeField.key)">
-      <UiSegmented
-        :model-value="s.sec(section.key)[section.modeField.key]"
-        :options="section.modeField.options"
-        :aria-label="fieldLabel(section.modeField.key)"
-        @update:model-value="setModeField"
-      />
-      <p v-if="section.key === 'asr'" class="cs-mode-hint">{{ asrModeHint }}</p>
-      <!-- 本地模型未就位 + 选了需要它的模式 → 明确警示（不是静默失败）。
-           Local model missing while a mode that needs it is selected → a clear warning. -->
-      <p v-if="section.key === 'asr' && !s.sec('asr').local_model_present && s.sec('asr').mode !== 'cloud'" class="cs-note">
-        ⚠️ 本地 ASR 模型未就位：运行 <code>python scripts/fetch_local_asr_model.py</code> 下载，
-        或把「转写模式」改回云端。<template v-if="s.sec('asr').mode === 'local'">本地模式下语音转写会明确报错，且音频<strong>不会</strong>上云。</template>
-      </p>
-    </SettingsField>
+    <!-- ASR 的本地/云端/混合模式已收口到「本地模型」页；本卡只配置云端 API profile。
+         ASR local/cloud/hybrid is configured on the 本地模型 page; this card only edits
+         the cloud API profile. -->
+    <p v-if="section.key === 'asr'" class="cs-note">
+      转写模式（本地 / 云端 / 混合）与本地模型在左侧「本地模型」页设置；本卡只配置云端 API Profile。
+    </p>
 
     <!-- Profile 管理：切换 / 新增（自填） / 删除。Profile management: switch / add (self-filled) / delete. -->
     <div class="cs-profrow">
@@ -129,7 +118,7 @@ import { computed } from 'vue'
 import SettingsField from './SettingsField.vue'
 import VendorPicker from './VendorPicker.vue'
 import SettingsCard from './SettingsCard.vue'
-import { UiButton, UiChip, UiCombobox, UiIcon, UiInput, UiSegmented, UiSelect, UiToggle } from '../../ui'
+import { UiButton, UiChip, UiCombobox, UiIcon, UiInput, UiSelect, UiToggle } from '../../ui'
 import type { SegOption } from '../../ui/UiSegmented.vue'
 import { useSettings } from './useSettings'
 import { fieldLabel, isNumericField, type SectionDef } from './configDefs'
@@ -161,24 +150,6 @@ const profileOptions = computed<SegOption[]>(() =>
 )
 
 /** ASR 转写模式说明（仅 ASR 卡用）。ASR transcription-mode hint (ASR card only). */
-const asrModeHint = computed(() => {
-  switch (s.sec('asr')?.mode) {
-    case 'local': return '🔒 本地模式：sherpa-onnx 在本机转写，音频不出本机、零成本（缺模型时明确报错，绝不上云）'
-    case 'hybrid': return '🔄 混合模式：本地优先，本地不可用/转写为空时才回落云端（回落会上传，审计记 fallback=1）'
-    default: return '☁️ 云端模式：音频上传到当前 ASR profile 的服务商（默认，与旧行为一致）'
-  }
-})
-
-/** 写入段级 modeField（走函数而非模板内联回调 —— 内联箭头里 `section.modeField`
- *  的 `v-if` 可选链收窄会失效，vue-tsc 报 possibly undefined）。
- *  Write the section-level modeField through a function: inside an inline arrow the
- *  `v-if` narrowing of `section.modeField` does not survive, so vue-tsc complains it may
- *  be undefined. */
-function setModeField(v: string | number) {
-  const mf = props.section.modeField
-  if (mf) s.sec(props.section.key)[mf.key] = String(v)
-}
-
 /** 当前活跃 Profile（voices 列表编辑用）。The active profile (for editing the voices list). */
 function activeProfile(): any {
   const sec = s.sec(props.section.key)

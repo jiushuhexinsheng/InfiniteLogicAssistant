@@ -9,6 +9,8 @@ is serialised per instance with a lock.
 """
 from __future__ import annotations
 
+import os
+import shutil
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +21,33 @@ import numpy as np
 from core import config
 from core.logger import logger
 from core.voice.local.sherpa_onnx import audio, hardware
+
+
+def _ascii_espeak_dir(data_dir: Path) -> Path:
+    """把 espeak-ng-data 复制到 ASCII 路径（Windows 上 espeak-ng 不认中文路径）。
+
+    Copy espeak-ng-data to an ASCII path: espeak-ng on Windows cannot open
+    non-ASCII paths and silently falls back to /usr/share/espeak-ng-data, which
+    makes Kokoro fail at load time. ``C:\\Users\\Public`` is ASCII and writable.
+    """
+    if os.name != "nt" or str(data_dir).isascii():
+        return data_dir
+    base = Path(os.environ.get("PUBLIC", r"C:\Users\Public")) / "InfiniteLogicAssistant"
+    dest = base / "espeak-ng-data"
+    try:
+        src_phontab = data_dir / "phontab"
+        if not (dest / "phontab").is_file() or (
+            src_phontab.is_file()
+            and src_phontab.stat().st_mtime > (dest / "phontab").stat().st_mtime
+        ):
+            base.mkdir(parents=True, exist_ok=True)
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(data_dir, dest)
+        return dest
+    except Exception as e:  # noqa: BLE001
+        logger.warning("espeak-ng 数据目录复制失败（回退原路径）: {}", e)
+        return data_dir
 
 
 @dataclass(frozen=True)
@@ -82,7 +111,8 @@ class TtsEngine:
             if not voices.is_file():
                 alt = d / "voices.txt"
                 voices = alt if alt.is_file() else voices
-            data_dir = d / "espeak-ng-data"
+            data_dir = _ascii_espeak_dir(d / "espeak-ng-data")
+            dict_dir = d / "dict"
             lexicon = ",".join(str(p) for p in sorted(d.glob("lexicon*.txt")))
 
             if model is None or not tokens.is_file():
@@ -96,7 +126,11 @@ class TtsEngine:
                 tokens=str(tokens),
                 lexicon=lexicon,
                 data_dir=str(data_dir) if data_dir.is_dir() else "",
+                dict_dir=str(dict_dir) if dict_dir.is_dir() else "",
                 length_scale=float(self.opts.length_scale),
+                # 多语种 Kokoro 的 lang 留空，交给 lexicon/拼音处理；传 'multi'
+                # 会被 espeak 当成不存在的 voice 而失败。
+                # Keep lang empty for multi-lang Kokoro; 'multi' is not an espeak voice.
                 lang=self.opts.lang,
             )
             model_cfg = sherpa_onnx.OfflineTtsModelConfig(

@@ -110,7 +110,18 @@ python scripts/fetch_models.py --kind tts
 ```
 
 KWS 小模型随仓库提供；`scripts/fetch_local_asr_model.py` 保留兼容，目标已改为
-`models/asr/...`。
+`models/asr/...`。`fetch_models.py` 对完整模型（Kokoro）保留 tarball 内的相对目录结构，
+否则 `espeak-ng-data/` 会被平铺掉、registry 判模型不完整。
+
+### 本地 TTS 的 Windows 细节
+
+- **子进程生成**：sherpa Kokoro 在非主线程生成中文会只输出极短音频（espeak/词典的
+  线程相关状态），所以 `core/voice/tts.py` 用单 worker `ProcessPoolExecutor`，主线程生成、
+  模型在子进程常驻，不阻塞事件循环。
+- **ASCII espeak 路径**：espeak-ng 在 Windows 上打不开含中文的项目路径，会回退到
+  `/usr/share/espeak-ng-data` 并失败；`tts.py` 把 `espeak-ng-data` 复制到
+  `%PUBLIC%\InfiniteLogicAssistant\espeak-ng-data` 后传入。
+- `lang` 保持空串，交给多语种 lexicon/拼音；传 `multi` 会被 espeak 当成不存在的 voice。
 
 ## 验证
 
