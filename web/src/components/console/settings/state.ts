@@ -5,6 +5,7 @@ import { notify } from '../../../composables/useToast'
 import { formatError } from '../../../errors'
 import type { EditableSnapshot } from '../../../types'
 import { testPassed } from './detection'
+import { status as voiceStatus, voiceAllReady } from '../../../composables/useVoiceModuleStatus'
 
 /**
  * 设置页的核心状态与配置读写。
@@ -74,10 +75,14 @@ export function menuDot(id: string): boolean {
     return !!s?.api_key_set?.[s.active]
   }
   if (id === 'voice') {
-    // 开启且正常 = 唤醒启用 + 至少一个唤醒词（空词表 = 配置坏，不算正常）。
-    // Enabled and healthy = wake on + at least one wake word (an empty list = broken config).
+    // 语音聚合灯：四模块都就绪（VAD/KWS/ASR/TTS）才绿；能力状态由后端定义。
+    // Voice aggregate dot: all four modules ready, as defined by the backend.
     const w = (editable.value as any)?.wake_word
-    return !!w?.enabled && (w?.keywords?.length ?? 0) > 0
+    // 能力状态尚未拉取时退回旧判据（唤醒启用 + 有唤醒词），拉取后以四模块就绪为准。
+    // Before capabilities load, fall back to wake enabled + keywords; after load, use
+    // all four modules' readiness.
+    const capsReady = voiceStatus.value ? voiceAllReady.value : true
+    return !!w?.enabled && (w?.keywords?.length ?? 0) > 0 && capsReady
   }
   return false
 }

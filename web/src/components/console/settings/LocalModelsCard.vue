@@ -2,18 +2,20 @@
   <!-- 本地模型 / 硬件：四能力各自的 local·API 模式、模型下拉、CPU/GPU 与浏览器设备。
        Local models / hardware: per-capability local·API mode, model picker, CPU/GPU and
        browser devices. -->
-  <SettingsCard :title="title">
+  <SettingsCard :title="title" :title-en="titleEn">
     <template #actions>
-      <template v-if="show('overview') || show('recognition') || show('tts')">
+      <template v-if="show('recognition') || show('tts')">
         <UiButton variant="secondary" size="sm" :disabled="loading" @click="oneClickLocal">
-          一键本地
+          <BiLabel :zh="T.useLocal.zh" :en="T.useLocal.en" />
         </UiButton>
         <UiButton variant="ghost" size="sm" :disabled="loading" @click="refresh">
-          {{ loading ? '扫描中…' : '刷新模型' }}
+          <BiLabel :zh="loading ? T.scanning.zh : T.refreshModels.zh"
+                   :en="loading ? T.scanning.en : T.refreshModels.en" />
         </UiButton>
       </template>
       <UiButton variant="primary" size="sm" :disabled="!s.editable.value || s.saving.value" @click="save">
-        {{ s.saving.value ? '保存中…' : '保存' }}
+        <BiLabel :zh="s.saving.value ? T.saving.zh : T.save.zh"
+                 :en="s.saving.value ? T.saving.en : T.save.en" />
       </UiButton>
     </template>
 
@@ -32,7 +34,7 @@
       </template>
 
       <!-- 四能力状态：模式 + 模型是否就位；缺失时红色，选错模型一眼可见。 -->
-      <div v-if="statusRows.length && (show('overview') || show('recognition'))" class="cs-status">
+      <div v-if="statusRows.length && show('recognition')" class="cs-status">
         <span v-for="row in statusRows" :key="row.kind" class="cs-status-chip" :class="row.tone">
           {{ row.text }}
         </span>
@@ -41,34 +43,34 @@
       <!-- ── 识别：VAD / KWS / ASR ── -->
       <template v-if="show('recognition')">
       <h3 class="cs-title">VAD · 本地分段</h3>
-      <SettingsField label="模式" row>
+      <SettingsField label="模式" en="Mode" row>
         <UiSegmented
           :model-value="s.ed().vad.mode"
-          :options="[{ value: 'local', label: '本地' }, { value: 'off', label: '关闭' }]"
+          :options="[{ value: 'local', label: '本地 / Local' }, { value: 'off', label: '关闭 / Off' }]"
           aria-label="VAD 模式"
           @update:model-value="v => (s.ed().vad.mode = v)"
         />
       </SettingsField>
-      <SettingsField label="模型">
+      <SettingsField label="模型" en="Model">
         <UiSelect
           :model-value="s.ed().vad.model"
           :options="modelOptions('vad')"
-          placeholder="选择 VAD 模型"
+          placeholder="选择 VAD 模型 / Select VAD model"
           @update:model-value="v => (s.ed().vad.model = String(v))"
         />
         <p class="cs-hint">{{ missingHint('vad', s.ed().vad.model) }}</p>
       </SettingsField>
       <div class="cs-grid">
-        <SettingsField label="阈值（0-1）">
+        <SettingsField label="阈值（0-1）" en="Threshold (0-1)">
           <UiInput type="number" step="0.05" min="0" max="1"
             :model-value="s.ed().vad.vad_threshold"
             @update:model-value="v => (s.ed().vad.vad_threshold = toNum(v))" />
         </SettingsField>
-        <SettingsField label="provider">
+        <SettingsField label="加速后端" en="Acceleration">
           <UiSelect :model-value="s.ed().vad.provider" :options="providerOptions"
             @update:model-value="v => (s.ed().vad.provider = String(v))" />
         </SettingsField>
-        <SettingsField label="线程（0=自动）">
+        <SettingsField label="线程（0=自动）" en="Threads (0=auto)">
           <UiInput type="number" min="0" :model-value="s.ed().vad.num_threads"
             @update:model-value="v => (s.ed().vad.num_threads = toNum(v))" />
         </SettingsField>
@@ -76,33 +78,33 @@
 
       <!-- ── KWS ── -->
       <h3 class="cs-title">KWS · 唤醒词</h3>
-      <SettingsField label="模式" row>
+      <SettingsField label="模式" en="Mode" row>
         <UiSegmented
           :model-value="s.ed().kws.mode"
           :options="[
-            { value: 'local', label: '本地 KWS' },
-            { value: 'api', label: '文本判定' },
-            { value: 'off', label: '关闭' },
+            { value: 'local', label: '本地 / Local' },
+            { value: 'api', label: '文本 / Text' },
+            { value: 'off', label: '关闭 / Off' },
           ]"
           aria-label="KWS 模式"
           @update:model-value="v => (s.ed().kws.mode = v)"
         />
       </SettingsField>
-      <SettingsField v-if="s.ed().kws.mode === 'local'" label="模型">
+      <SettingsField v-if="s.ed().kws.mode === 'local'" label="模型" en="Model">
         <UiSelect
           :model-value="s.ed().kws.model_dir"
           :options="modelOptions('kws')"
-          placeholder="选择 KWS 模型"
+          placeholder="选择 KWS 模型 / Select KWS model"
           @update:model-value="v => (s.ed().kws.model_dir = String(v))"
         />
         <p class="cs-hint">{{ missingHint('kws', s.ed().kws.model_dir) }}</p>
       </SettingsField>
       <div class="cs-grid" v-if="s.ed().kws.mode === 'local'">
-        <SettingsField label="provider">
+        <SettingsField label="加速后端" en="Acceleration">
           <UiSelect :model-value="s.ed().kws.provider" :options="providerOptions"
             @update:model-value="v => (s.ed().kws.provider = String(v))" />
         </SettingsField>
-        <SettingsField label="线程">
+        <SettingsField label="线程" en="Threads">
           <UiInput type="number" min="0" :model-value="s.ed().kws.num_threads"
             @update:model-value="v => (s.ed().kws.num_threads = toNum(v))" />
         </SettingsField>
@@ -110,37 +112,37 @@
 
       <!-- ── ASR ── -->
       <h3 class="cs-title">ASR · 语音识别</h3>
-      <SettingsField label="模式" row>
+      <SettingsField label="模式" en="Mode" row>
         <UiSegmented
           :model-value="s.ed().asr.mode"
           :options="[
-            { value: 'local', label: '本地' },
+            { value: 'local', label: '本地 / Local' },
             { value: 'cloud', label: 'API' },
-            { value: 'hybrid', label: '混合' },
+            { value: 'hybrid', label: '混合 / Hybrid' },
           ]"
           aria-label="ASR 模式"
           @update:model-value="v => (s.ed().asr.mode = v)"
         />
       </SettingsField>
-      <SettingsField v-if="s.ed().asr.mode !== 'cloud'" label="本地模型">
+      <SettingsField v-if="s.ed().asr.mode !== 'cloud'" label="本地模型" en="Local Model">
         <UiSelect
           :model-value="s.ed().asr.local_model"
           :options="modelOptions('asr')"
-          placeholder="选择 ASR 模型"
+          placeholder="选择 ASR 模型 / Select ASR model"
           @update:model-value="v => (s.ed().asr.local_model = String(v))"
         />
         <p class="cs-hint">{{ missingHint('asr', s.ed().asr.local_model) }}</p>
       </SettingsField>
       <div class="cs-grid" v-if="s.ed().asr.mode !== 'cloud'">
-        <SettingsField label="provider">
+        <SettingsField label="加速后端" en="Acceleration">
           <UiSelect :model-value="s.ed().asr.provider" :options="providerOptions"
             @update:model-value="v => (s.ed().asr.provider = String(v))" />
         </SettingsField>
-        <SettingsField label="线程（0=自动）">
+        <SettingsField label="线程（0=自动）" en="Threads (0=auto)">
           <UiInput type="number" min="0" :model-value="s.ed().asr.num_threads"
             @update:model-value="v => (s.ed().asr.num_threads = toNum(v))" />
         </SettingsField>
-        <SettingsField label="流式出字" row>
+        <SettingsField label="流式出字" en="Streaming" row>
           <UiToggle :model-value="s.ed().asr.streaming"
             @update:model-value="v => (s.ed().asr.streaming = v)" />
         </SettingsField>
@@ -152,29 +154,29 @@
       <template v-if="show('tts')">
       <p class="cs-hint">引擎选择（浏览器 / 本地 Kokoro / API）在「合成」Tab 顶部；这里配置本地 Kokoro 的模型与推理硬件。</p>
       <template v-if="ttsSettings.engine === 'local'">
-        <SettingsField label="模型">
+        <SettingsField label="模型" en="Model">
           <UiSelect
             :model-value="s.ed().tts.local_model"
             :options="modelOptions('tts')"
-            placeholder="选择 TTS 模型"
+            placeholder="选择 TTS 模型 / Select TTS model"
             @update:model-value="v => (s.ed().tts.local_model = String(v))"
           />
           <p class="cs-hint">{{ missingHint('tts', s.ed().tts.local_model) }}</p>
         </SettingsField>
         <div class="cs-grid">
-          <SettingsField label="provider">
+          <SettingsField label="加速后端" en="Acceleration">
             <UiSelect :model-value="s.ed().tts.provider" :options="providerOptions"
               @update:model-value="v => (s.ed().tts.provider = String(v))" />
           </SettingsField>
-          <SettingsField label="线程">
+          <SettingsField label="线程" en="Threads">
             <UiInput type="number" min="0" :model-value="s.ed().tts.num_threads"
               @update:model-value="v => (s.ed().tts.num_threads = toNum(v))" />
           </SettingsField>
-          <SettingsField label="音色 ID">
+          <SettingsField label="音色 ID" en="Speaker ID">
             <UiInput type="number" min="0" :model-value="s.ed().tts.speaker"
               @update:model-value="v => (s.ed().tts.speaker = toNum(v))" />
           </SettingsField>
-          <SettingsField label="语速">
+          <SettingsField label="语速" en="Speed">
             <UiInput type="number" step="0.05" min="0.1" max="4" :model-value="s.ed().tts.speed"
               @update:model-value="v => (s.ed().tts.speed = toNum(v))" />
           </SettingsField>
@@ -186,24 +188,24 @@
       <!-- ── 流式会话 ── -->
       <template v-if="show('advanced')">
       <h3 class="cs-title">流式会话</h3>
-      <SettingsField label="启用 WebSocket 流式链路" row>
+      <SettingsField label="启用 WebSocket 流式链路" en="Enable WebSocket streaming" row>
         <UiToggle :model-value="s.ed().streaming.enabled"
           @update:model-value="v => (s.ed().streaming.enabled = v)" />
       </SettingsField>
       <div class="cs-grid">
-        <SettingsField label="帧长（ms）">
+        <SettingsField label="帧长（ms）" en="Frame (ms)">
           <UiInput type="number" min="10" max="100" :model-value="s.ed().streaming.frame_ms"
             @update:model-value="v => (s.ed().streaming.frame_ms = toNum(v))" />
         </SettingsField>
-        <SettingsField label="partial 间隔（ms）">
+        <SettingsField label="partial 间隔（ms）" en="Partial interval (ms)">
           <UiInput type="number" min="30" :model-value="s.ed().streaming.partial_interval_ms"
             @update:model-value="v => (s.ed().streaming.partial_interval_ms = toNum(v))" />
         </SettingsField>
-        <SettingsField label="端点静音（ms）">
+        <SettingsField label="端点静音（ms）" en="Endpoint silence (ms)">
           <UiInput type="number" min="100" :model-value="s.ed().streaming.endpoint_silence_ms"
             @update:model-value="v => (s.ed().streaming.endpoint_silence_ms = toNum(v))" />
         </SettingsField>
-        <SettingsField label="最长语音（ms）">
+        <SettingsField label="最长语音（ms）" en="Max utterance (ms)">
           <UiInput type="number" min="1000" :model-value="s.ed().streaming.max_utterance_ms"
             @update:model-value="v => (s.ed().streaming.max_utterance_ms = toNum(v))" />
         </SettingsField>
@@ -214,30 +216,32 @@
       <!-- ── 浏览器硬件 ── -->
       <template v-if="show('hardware')">
       <div class="cs-grid">
-        <SettingsField label="输入设备">
+        <SettingsField label="输入设备" en="Input device">
           <UiSelect :model-value="s.ed().hardware.input_device" :options="inputOptions"
-            placeholder="系统默认" @update:model-value="v => (s.ed().hardware.input_device = String(v))" />
+            placeholder="系统默认 / System default" @update:model-value="v => (s.ed().hardware.input_device = String(v))" />
         </SettingsField>
-        <SettingsField label="输出设备">
+        <SettingsField label="输出设备" en="Output device">
           <UiSelect :model-value="s.ed().hardware.output_device" :options="outputOptions"
-            placeholder="系统默认" @update:model-value="v => (s.ed().hardware.output_device = String(v))" />
+            placeholder="系统默认 / System default" @update:model-value="v => (s.ed().hardware.output_device = String(v))" />
         </SettingsField>
       </div>
       <div class="cs-grid">
-        <SettingsField label="回声消除" row>
+        <SettingsField label="回声消除" en="Echo cancellation" row>
           <UiToggle :model-value="s.ed().hardware.echo_cancellation"
             @update:model-value="v => (s.ed().hardware.echo_cancellation = v)" />
         </SettingsField>
-        <SettingsField label="降噪" row>
+        <SettingsField label="降噪" en="Noise suppression" row>
           <UiToggle :model-value="s.ed().hardware.noise_suppression"
             @update:model-value="v => (s.ed().hardware.noise_suppression = v)" />
         </SettingsField>
-        <SettingsField label="自动增益" row>
+        <SettingsField label="自动增益" en="Auto gain" row>
           <UiToggle :model-value="s.ed().hardware.auto_gain"
             @update:model-value="v => (s.ed().hardware.auto_gain = v)" />
         </SettingsField>
       </div>
-      <UiButton variant="secondary" size="sm" @click="refreshDevices(true)">刷新设备列表</UiButton>
+      <UiButton variant="secondary" size="sm" @click="refreshDevices(true)">
+        <BiLabel zh="刷新设备列表" en="Refresh devices" />
+      </UiButton>
       </template>
     </template>
   </SettingsCard>
@@ -251,7 +255,9 @@
 import { computed, onMounted, ref } from 'vue'
 import SettingsCard from './SettingsCard.vue'
 import SettingsField from './SettingsField.vue'
+import BiLabel from './BiLabel.vue'
 import { UiButton, UiInput, UiSegmented, UiSelect, UiToggle } from '../../ui'
+import { settingsText as T } from '../../../locales/settings'
 import { api } from '../../../api'
 import { useSettings } from './useSettings'
 import { notify } from '../../../composables/useToast'
@@ -270,7 +276,7 @@ function show(section: string): boolean {
   return props.scope === 'all' || props.scope === section
 }
 
-/** 卡片标题随 Tab 变化。Card title follows the tab. */
+/** 卡片标题随 Tab 变化（中英）。Card title follows the tab (zh/en). */
 const title = computed(() => {
   switch (props.scope) {
     case 'overview': return '语音总览'
@@ -279,6 +285,16 @@ const title = computed(() => {
     case 'hardware': return '麦克风与扬声器'
     case 'advanced': return '流式与高级'
     default: return '本地模型与硬件（sherpa-onnx）'
+  }
+})
+const titleEn = computed(() => {
+  switch (props.scope) {
+    case 'overview': return 'Voice Overview'
+    case 'recognition': return 'Recognition Engine'
+    case 'tts': return 'Local TTS'
+    case 'hardware': return 'Microphone & Speaker'
+    case 'advanced': return 'Streaming & Advanced'
+    default: return 'Local Models & Hardware'
   }
 })
 

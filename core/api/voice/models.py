@@ -67,41 +67,61 @@ async def voice_capabilities():
     """
     s = config.settings.voice
     hw = hardware.probe()
+    vad_present = registry.present("vad", s.vad.model)
+    kws_present = registry.present("kws", s.kws.model_dir)
+    asr_present = registry.present("asr", s.asr.local_model)
+    tts_present = registry.present("tts", s.tts.local_model)
+    asr_api = config.is_asr_configured()
+    tts_api = config.is_tts_enabled()
+
+    def mark(d: dict, ready: bool, reason: str) -> dict:
+        d["ready"] = ready
+        d["reason"] = reason
+        return d
+
     return {
         "ok": True,
         "hardware": hw.to_dict(),
-        "vad": {
+        "vad": mark({
             "mode": s.vad.mode,
             "engine": s.vad.engine,
             "model": s.vad.model,
-            "present": registry.present("vad", s.vad.model),
+            "present": vad_present,
             "provider": s.vad.provider,
             "num_threads": s.vad.num_threads,
             "api": False,   # 本项目不提供云端 VAD / no cloud VAD
-        },
-        "kws": {
+        }, s.vad.mode != "off" and vad_present,
+           "VAD 已关闭" if s.vad.mode == "off" else ("VAD 模型缺失" if not vad_present else "")),
+        "kws": mark({
             "mode": s.kws.mode,
             "model_dir": s.kws.model_dir,
-            "present": registry.present("kws", s.kws.model_dir),
+            "present": kws_present,
             "provider": s.kws.provider,
             "num_threads": s.kws.num_threads,
             "api": True,    # 云端 ASR 文本 + 拼音判定 / cloud ASR text + pinyin
-        },
-        "asr": {
+        }, s.kws.mode != "off" and (kws_present or s.kws.mode == "api"),
+           "KWS 已关闭" if s.kws.mode == "off" else ("KWS 模型缺失" if s.kws.mode == "local" and not kws_present else "")),
+        "asr": mark({
             "mode": s.asr.mode,
             "local_model": s.asr.local_model,
-            "present": registry.present("asr", s.asr.local_model),
+            "present": asr_present,
             "streaming": s.asr.streaming,
             "provider": s.asr.provider,
             "num_threads": s.asr.num_threads,
-            "api": config.is_asr_configured(),
-        },
-        "tts": {
+            "api": asr_api,
+        }, (s.asr.mode == "cloud" and asr_api) or (s.asr.mode == "local" and asr_present)
+           or (s.asr.mode == "hybrid" and (asr_present or asr_api)),
+           "" if ((s.asr.mode == "cloud" and asr_api) or (s.asr.mode == "local" and asr_present)
+                  or (s.asr.mode == "hybrid" and (asr_present or asr_api)))
+           else ("ASR API 未配置" if s.asr.mode == "cloud" else "ASR 本地模型缺失")),
+        "tts": mark({
             "mode": s.tts.mode,
             "local_model": s.tts.local_model,
-            "present": registry.present("tts", s.tts.local_model),
+            "present": tts_present,
             "provider": s.tts.provider,
             "num_threads": s.tts.num_threads,
-            "api": config.is_tts_enabled(),
-        },
+            "api": tts_api,
+        }, (s.tts.mode == "local" and tts_present) or (s.tts.mode == "api" and tts_api),
+           "" if ((s.tts.mode == "local" and tts_present) or (s.tts.mode == "api" and tts_api))
+           else ("TTS API 未配置" if s.tts.mode == "api" else "TTS 本地模型缺失")),
     }

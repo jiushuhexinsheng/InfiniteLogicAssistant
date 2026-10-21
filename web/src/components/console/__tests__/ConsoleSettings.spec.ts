@@ -17,10 +17,10 @@ vi.mock('../../../api', () => ({
     })),
     getCapabilities: vi.fn(async () => ({
       ok: true,
-      vad: { mode: 'local', present: true },
-      kws: { mode: 'local', present: true },
-      asr: { mode: 'local', present: true },
-      tts: { mode: 'local', present: true },
+      vad: { mode: 'local', present: true, ready: true, reason: '' },
+      kws: { mode: 'local', present: true, ready: true, reason: '' },
+      asr: { mode: 'local', present: true, ready: true, reason: '' },
+      tts: { mode: 'local', present: true, ready: true, reason: '' },
     })),
   },
 }))
@@ -68,7 +68,7 @@ function snapshot() {
 
 /** 切换语音页内部 Tab。Switch an internal tab of the voice page. */
 async function openTab(w: ReturnType<typeof mount>, label: string) {
-  const tab = w.findAll('.vs-tab').find(t => t.text() === label)
+  const tab = w.findAll('.vs-tab').find(t => t.find('.vs-tab-zh').text() === label)
   expect(tab, `tab ${label}`).toBeTruthy()
   await tab!.trigger('click')
   await flushPromises()
@@ -87,15 +87,18 @@ describe('ConsoleSettings 语音统一页', () => {
     })
   })
 
-  it('默认概览：六个 Tab + 状态灯 + 一键本地', async () => {
+  it('默认概览：六个 Tab + 语音链路状态条', async () => {
     const w = mount(ConsoleSettings)
     await flushPromises()
-    expect(w.findAll('.vs-tab').map(t => t.text())).toEqual([
+    expect(w.findAll('.vs-tab-zh').map(t => t.text())).toEqual([
       '概览', '唤醒', '识别', '合成', '硬件', '高级',
     ])
     expect(w.text()).toContain('语音总览')
-    expect(w.text()).toContain('一键本地')
-    expect(w.findAll('.cs-status-chip').length).toBe(4)
+    expect(w.findAll('.chain-node').length).toBe(7)
+    expect(w.text()).toContain('麦克风')
+    expect(w.text()).toContain('VAD')
+    expect(w.text()).toContain('TTS')
+    expect(w.text()).not.toContain('一键本地')
   })
 
   it('唤醒 Tab 显示唤醒词', async () => {

@@ -1,7 +1,7 @@
 <template>
   <UiCard class="cs-card">
     <div class="cs-card-head">
-      <span class="cs-card-title"><slot name="title">{{ title }}</slot></span>
+      <span class="cs-card-title"><slot name="title"><BiLabel :zh="title" :en="titleEn" block /></slot></span>
       <slot name="actions" />
     </div>
     <!-- 卡体：唯一滚动面（卡头固定在其上方）。The card body: the only scrolling surface
@@ -22,9 +22,11 @@
      is gone. -->
 <script setup lang="ts">
 import { UiCard } from '../../ui'
+import BiLabel from './BiLabel.vue'
 
-/** 卡片标题。标题内容复杂时可用 `#title` slot 覆盖。Card title; use the `#title` slot for richer content. */
-withDefaults(defineProps<{ title?: string }>(), { title: '' })
+/** 卡片标题（中文 + 英文副标题）。标题内容复杂时可用 `#title` slot 覆盖。
+ *  Card title (zh + en subtitle); use the `#title` slot for richer content. */
+withDefaults(defineProps<{ title?: string; titleEn?: string }>(), { title: '', titleEn: '' })
 </script>
 
 <style scoped>

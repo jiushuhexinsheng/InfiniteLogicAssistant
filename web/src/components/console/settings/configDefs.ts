@@ -20,8 +20,9 @@ export interface SectionDef {
   key: string
   /** 连通性结果名（对应 /api/detection）。Connectivity result name (from /api/detection). */
   name: string
-  /** 卡片标题。Card title. */
+  /** 卡片标题（中文主标题 + 英文副标题）。Card title (zh + en subtitle). */
   title: string
+  titleEn?: string
   /** 是否有启用开关。Whether an enable toggle is shown. */
   toggle: boolean
   /** 可编辑字段名列表。Editable field names. */
@@ -52,11 +53,11 @@ export const menuDefs: MenuDef[] = [
 
 /** 三大服务 section 定义（name 对应 /api/detection 的连通性结果名）。Three service section definitions (name matches the /api/detection connectivity result name). */
 export const sectionDefs: SectionDef[] = [
-  { key: 'llm', name: 'LLM', title: 'LLM 大模型', toggle: false,
+  { key: 'llm', name: 'LLM', title: 'LLM 大模型', titleEn: 'LLM Model', toggle: false,
     fields: ['provider', 'endpoint', 'model', 'chat_path', 'max_tokens', 'temperature', 'timeout'] },
-  { key: 'asr', name: 'ASR', title: 'ASR 语音识别（API Profile）', toggle: false,
+  { key: 'asr', name: 'ASR', title: 'ASR 语音识别（API Profile）', titleEn: 'ASR API Profile', toggle: false,
     fields: ['provider', 'endpoint', 'model', 'language', 'chat_path', 'timeout'] },
-  { key: 'tts', name: 'TTS', title: 'TTS 语音合成', toggle: true,
+  { key: 'tts', name: 'TTS', title: 'TTS 语音合成（API Profile）', titleEn: 'TTS API Profile', toggle: true,
     fields: ['provider', 'endpoint', 'model', 'voice', 'voices', 'voice_ref', 'format', 'chat_path', 'timeout'] },
 ]
 

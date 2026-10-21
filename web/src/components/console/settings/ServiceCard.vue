@@ -1,6 +1,6 @@
 <template>
   <!-- 服务模块卡：LLM / ASR / TTS 共用（字段表由 sectionDefs 驱动）。Service module card: shared by LLM / ASR / TTS, fields driven by sectionDefs. -->
-  <SettingsCard :title="section.title">
+  <SettingsCard :title="section.title" :title-en="section.titleEn">
     <template #actions>
       <div class="cs-card-btns">
         <!-- 测试连接：进行中显示旋转动画 +「测试中…」（按钮禁用防重复点）；结果走 toast。
@@ -8,10 +8,12 @@
              prevent double clicks); results go through a toast. -->
         <UiButton variant="secondary" size="sm" :disabled="s.detecting.value" @click="s.detectOne(section.name)">
           <UiIcon v-if="s.detecting.value" name="loader-2" :size="12" class="cs-spin" />
-          {{ s.detecting.value ? '测试中…' : '测试连接' }}
+          <BiLabel :zh="s.detecting.value ? '测试中…' : T.testConnection.zh"
+                   :en="s.detecting.value ? 'Testing…' : T.testConnection.en" />
         </UiButton>
         <UiButton variant="primary" size="sm" :disabled="!s.editable.value || s.saving.value" @click="s.saveModule(section.key)">
-          {{ s.saving.value ? '保存中…' : '保存' }}
+          <BiLabel :zh="s.saving.value ? T.saving.zh : T.save.zh"
+                   :en="s.saving.value ? T.saving.en : T.save.en" />
         </UiButton>
       </div>
     </template>
@@ -119,6 +121,8 @@ import SettingsField from './SettingsField.vue'
 import VendorPicker from './VendorPicker.vue'
 import SettingsCard from './SettingsCard.vue'
 import { UiButton, UiChip, UiCombobox, UiIcon, UiInput, UiSelect, UiToggle } from '../../ui'
+import BiLabel from './BiLabel.vue'
+import { settingsText as T } from '../../../locales/settings'
 import type { SegOption } from '../../ui/UiSegmented.vue'
 import { useSettings } from './useSettings'
 import { fieldLabel, isNumericField, type SectionDef } from './configDefs'

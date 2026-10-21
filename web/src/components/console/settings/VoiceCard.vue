@@ -1,9 +1,10 @@
 <template>
   <!-- 语音模块：唤醒词 + VAD。Voice module: wake word + VAD. -->
-  <SettingsCard title="语音（唤醒 / 静音检测）">
+  <SettingsCard title="唤醒与对话时序" title-en="Wake Word & Timing">
     <template #actions>
       <UiButton variant="primary" size="sm" :disabled="!s.editable.value || s.saving.value" @click="saveVoice()">
-        {{ s.saving.value ? '保存中…' : '保存' }}
+        <BiLabel :zh="s.saving.value ? T.saving.zh : T.save.zh"
+                 :en="s.saving.value ? T.saving.en : T.save.en" />
       </UiButton>
     </template>
 
@@ -19,14 +20,14 @@
          browser's recognizer (not more private). The old copy ("cloud/auto both upload",
          "local/browser audio never leaves") contradicted the post-gate implementation. -->
     <p class="cs-note">
-      🎙️ <strong>转写模式</strong>（「语音识别」卡）＝<strong>{{ asrModeLabel }}</strong>：{{ asrPrivacyLine }}。
+      🎙️ <strong>转写模式</strong>（「识别」Tab）＝<strong>{{ asrModeLabel }}</strong>：{{ asrPrivacyLine }}。
     </p>
     <p class="cs-note">
       ⚠️ <strong>转写模式＝云端</strong>时，每个 VAD 判到的人声段都会上传到 ASR 服务商 —— <strong>无论是否说出唤醒词</strong>。
       <strong>本地</strong>模式音频不出本机（VAD/KWS/ASR 都在本机）；<strong>混合</strong>仅在本机失败或转写为空时上传兜底。
-      不接受音频上传请把「语音识别」卡切到本地，或改用文字输入。
+      不接受音频上传请把「识别」Tab 切到本地，或改用文字输入。
     </p>
-    <SettingsField v-if="s.editable.value" label="唤醒启用" row>
+    <SettingsField v-if="s.editable.value" label="唤醒启用" en="Wake enabled" row>
       <UiToggle :model-value="s.ed().wake_word.enabled" @update:model-value="v => (s.ed().wake_word.enabled = v)" />
     </SettingsField>
     <!-- 唤醒词是**列表**（命中任意一个即唤醒）：绑定 singular `keyword` 会读到 undefined
@@ -36,7 +37,7 @@
          undefined (a blank box that looks unconfigured) and on save `keywords` wins, so the wake
          word could not be changed from the UI at all. Add/remove rows follow the permissions card's
          rule list. -->
-    <SettingsField v-if="s.editable.value" label="唤醒词（可多个，说哪个都能唤醒）">
+    <SettingsField v-if="s.editable.value" label="唤醒词（可多个，说哪个都能唤醒）" en="Wake words">
       <div v-for="(_, i) in (s.ed().wake_word.keywords || [])" :key="i" class="cs-kwrow">
         <UiInput v-model="s.ed().wake_word.keywords[i]" placeholder="如 衍衡" />
         <UiButton
@@ -47,26 +48,26 @@
       </div>
       <UiButton variant="secondary" size="sm" @click="s.ed().wake_word.keywords.push('')">＋ 新增唤醒词</UiButton>
     </SettingsField>
-    <SettingsField v-if="s.editable.value" label="灵敏度（0-1）">
+    <SettingsField v-if="s.editable.value" label="灵敏度（0-1）" en="Sensitivity (0-1)">
       <UiInput type="number" step="0.05" min="0" max="1" :model-value="s.ed().wake_word.sensitivity" @update:model-value="v => (s.ed().wake_word.sensitivity = toNum(v))" />
     </SettingsField>
     <p class="cs-note">
       VAD 模型、端点静音、阈值与 CPU/GPU 在「识别」Tab 配置；本卡保留唤醒词与对话时序。
     </p>
-    <SettingsField v-if="s.editable.value" label="唤醒后等指令超时（ms）">
+    <SettingsField v-if="s.editable.value" label="唤醒后等指令超时（ms）" en="Command timeout (ms)">
       <UiInput type="number" min="1" :model-value="s.ed().vad.answer_timeout_ms" @update:model-value="v => (s.ed().vad.answer_timeout_ms = toNum(v))" />
     </SettingsField>
     <!-- 打断播报（barge-in，docs/designs/02 批3）：助手说话时也可直接开口打断。
          默认关 = 播报期间停麦的旧行为。 -->
-    <SettingsField v-if="s.editable.value" label="打断播报（助手说话时可直接开口打断）" row>
+    <SettingsField v-if="s.editable.value" label="打断播报（助手说话时可直接开口打断）" en="Barge-in" row>
       <UiToggle :model-value="s.ed().vad.barge_in" @update:model-value="v => (s.ed().vad.barge_in = v)" />
     </SettingsField>
     <!-- 续聊窗口（docs/designs/03-A）：回合结束后的免唤醒接话窗口，0=关闭。 -->
-    <SettingsField v-if="s.editable.value" label="续聊窗口（ms，结束后免唤醒直接说话；0=关）">
+    <SettingsField v-if="s.editable.value" label="续聊窗口（ms，结束后免唤醒直接说话；0=关）" en="Follow-up window (ms)">
       <UiInput type="number" min="0" :model-value="s.ed().vad.followup_window_ms" @update:model-value="v => (s.ed().vad.followup_window_ms = toNum(v))" />
     </SettingsField>
     <!-- 聆听空闲超时：唤醒进入聆听后 N 秒无实质信息 → 静待（麦保持本地 KWS 侦听）。 -->
-    <SettingsField v-if="s.editable.value" label="聆听空闲超时（秒，无实质信息转入静待；0=永不）">
+    <SettingsField v-if="s.editable.value" label="聆听空闲超时（秒，无实质信息转入静待；0=永不）" en="Idle timeout (s)">
       <UiInput type="number" min="0" :model-value="s.ed().vad.listen_idle_s" @update:model-value="v => (s.ed().vad.listen_idle_s = toNum(v))" />
     </SettingsField>
   </SettingsCard>
@@ -77,9 +78,11 @@
 import { computed } from 'vue'
 import SettingsField from './SettingsField.vue'
 import SettingsCard from './SettingsCard.vue'
+import BiLabel from './BiLabel.vue'
 import { UiButton, UiInput, UiToggle } from '../../ui'
 import { useSettings } from './useSettings'
 import { notify } from '../../../composables/useToast'
+import { settingsText as T } from '../../../locales/settings'
 
 /** 设置页单例状态与操作（保留对象引用以维持响应式）。Settings singleton (kept as an object to preserve reactivity). */
 const s = useSettings()

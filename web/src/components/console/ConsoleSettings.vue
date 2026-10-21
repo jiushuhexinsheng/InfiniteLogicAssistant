@@ -60,6 +60,7 @@ import VoiceSettingsPage from './settings/VoiceSettingsPage.vue'
 import { useSettings } from './settings/useSettings'
 import SettingsMenu from './settings/SettingsMenu.vue'
 import { sectionDefs } from './settings/configDefs'
+import { refreshVoiceStatus } from '../../composables/useVoiceModuleStatus'
 import { UiIcon } from '../ui'
 
 /** 设置页单例状态与操作（保留对象引用以维持响应式）。Settings singleton (kept as an object to preserve reactivity). */
@@ -67,7 +68,10 @@ const s = useSettings()
 
 // useSettings 的 state 跨挂载存活，故每次进入设置页都重新拉取，避免展示陈旧配置。
 // The useSettings state survives mount/unmount, so re-fetch on every entry to avoid stale config.
-onMounted(() => { s.load() })
+onMounted(() => {
+  s.load()
+  void refreshVoiceStatus()
+})
 </script>
 
 <style scoped>

@@ -1,22 +1,33 @@
-<!-- 设置字段组件：标签 + 控件插槽，支持行内（row）和弹性宽度（grow）布局。Settings field component: label + control slot, supports inline (row) and flexible width (grow) layout. -->
+<!-- 设置字段：统一走 BiFormItem（中文主标签 + 英文副标签 + 控件 + 中英帮助）。
+     Settings field: every field goes through BiFormItem so the bilingual layout is consistent. -->
 <template>
-  <component :is="row ? 'div' : 'label'" class="sf" :class="{ row, grow }">
-    <!-- 字段标签。Field label. -->
-    <span class="sf-label">{{ label }}</span>
-    <!-- 字段控件插槽。Field control slot. -->
-    <span class="sf-control"><slot /></span>
-  </component>
+  <BiFormItem
+    :label-zh="label"
+    :label-en="en"
+    :hint-zh="hint"
+    :hint-en="hintEn"
+    :row="row"
+    :grow="grow"
+  >
+    <slot />
+  </BiFormItem>
 </template>
 
 <script setup lang="ts">
-/** 组件 props：label（标签文本）、row（行内布局）、grow（弹性宽度）。Component props: label (label text), row (inline layout), grow (flexible width). */
-withDefaults(defineProps<{ label: string; row?: boolean; grow?: boolean }>(), { row: false, grow: false })
-</script>
+import BiFormItem from './BiFormItem.vue'
 
-<style scoped>
-.sf { display: flex; flex-direction: column; gap: var(--sp-q6); min-width: 0; }
-.sf.row { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--sp-3); }
-.sf.grow { flex: 1; }
-.sf-label { font-size: var(--fs-2xs); color: var(--text-3); flex-shrink: 0; }
-.sf-control { min-width: 0; display: block; }
-</style>
+withDefaults(defineProps<{
+  label: string
+  en?: string
+  hint?: string
+  hintEn?: string
+  row?: boolean
+  grow?: boolean
+}>(), {
+  en: '',
+  hint: '',
+  hintEn: '',
+  row: false,
+  grow: false,
+})
+</script>

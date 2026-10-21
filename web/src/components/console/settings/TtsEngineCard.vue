@@ -1,10 +1,11 @@
 <template>
   <!-- 卡1：引擎选择（第一眼决定本地 / API），附播报总开关与试听。
        Card 1: engine choice (local vs API at first glance), plus the master switch and preview. -->
-  <SettingsCard title="语音引擎">
+  <SettingsCard title="语音引擎" title-en="Voice Engine">
     <template #actions>
       <UiButton variant="ghost" size="sm" @click="testVoice()">
-        <UiIcon name="play" :size="10" /> 试听
+        <UiIcon name="play" :size="10" />
+        <BiLabel zh="试听" en="Preview" />
       </UiButton>
     </template>
 
@@ -47,6 +48,7 @@
  * Engine state comes from the useTtsEngine singleton (shared with card 2).
  */
 import SettingsCard from './SettingsCard.vue'
+import BiLabel from './BiLabel.vue'
 import { UiButton, UiIcon, UiRadioCard, UiToggle } from '../../ui'
 import type { RadioCardOption } from '../../ui'
 import { ttsSettings, testVoice, toggleSpeak } from '../../../composables/assistant/useTts'

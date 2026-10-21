@@ -13,12 +13,17 @@
         :aria-selected="tab === t.id"
         @click="tab = t.id"
       >
-        {{ t.label }}
+        <span v-if="tabDot(t.id)" class="vs-dot" :class="tabDot(t.id)"></span>
+        <span class="vs-tab-zh">{{ t.labelZh }}</span>
+        <span class="vs-tab-en">{{ t.labelEn }}</span>
       </button>
     </div>
 
     <div class="vs-body">
-      <LocalModelsCard v-if="tab === 'overview'" scope="overview" />
+      <template v-if="tab === 'overview'">
+        <VoiceChainStatus @select="tab = $event" />
+        <LocalModelsCard scope="overview" />
+      </template>
 
       <VoiceCard v-else-if="tab === 'wake'" />
 
@@ -49,8 +54,9 @@
  *
  * Voice settings page: the former four menu entries collapse into six tabs.
  */
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import LocalModelsCard from './LocalModelsCard.vue'
+import VoiceChainStatus from './VoiceChainStatus.vue'
 import VoiceCard from './VoiceCard.vue'
 import TtsEngineCard from './TtsEngineCard.vue'
 import TtsLocalCard from './TtsLocalCard.vue'
@@ -58,23 +64,40 @@ import TtsSettings from '../../assistant/TtsSettings.vue'
 import ServiceCard from './ServiceCard.vue'
 import { useTtsEngine } from '../../../composables/assistant/useTtsEngine'
 import { sectionDefs } from './configDefs'
+import { settingsText as T } from '../../../locales/settings'
+import { useVoiceModuleStatus } from '../../../composables/useVoiceModuleStatus'
 
 type TabId = 'overview' | 'wake' | 'recognition' | 'synthesis' | 'hardware' | 'advanced'
-interface TabDef { id: TabId; label: string }
+interface TabDef { id: TabId; labelZh: string; labelEn: string }
 
 const tabs: TabDef[] = [
-  { id: 'overview', label: '概览' },
-  { id: 'wake', label: '唤醒' },
-  { id: 'recognition', label: '识别' },
-  { id: 'synthesis', label: '合成' },
-  { id: 'hardware', label: '硬件' },
-  { id: 'advanced', label: '高级' },
+  { id: 'overview', labelZh: T.overview.zh, labelEn: T.overview.en },
+  { id: 'wake', labelZh: T.wake.zh, labelEn: T.wake.en },
+  { id: 'recognition', labelZh: T.recognition.zh, labelEn: T.recognition.en },
+  { id: 'synthesis', labelZh: T.synthesis.zh, labelEn: T.synthesis.en },
+  { id: 'hardware', labelZh: T.hardware.zh, labelEn: T.hardware.en },
+  { id: 'advanced', labelZh: T.advanced.zh, labelEn: T.advanced.en },
 ]
 
 const tab = ref<TabId>('overview')
 const { engine } = useTtsEngine()
+const { status, refreshVoiceStatus } = useVoiceModuleStatus()
 const asrDef = sectionDefs.find(d => d.key === 'asr')!
 const ttsDef = sectionDefs.find(d => d.key === 'tts')!
+
+/** Tab 上的小状态灯（没有状态概念的 Tab 不显示）。Tab status dots. */
+const tabDot = computed(() => (id: TabId): '' | 'ok' | 'err' => {
+  if (!status.value) return ''
+  if (id === 'wake') return status.value.kws.ready ? 'ok' : 'err'
+  if (id === 'recognition') {
+    const s = status.value
+    return s.vad.ready && s.kws.ready && s.asr.ready ? 'ok' : 'err'
+  }
+  if (id === 'synthesis') return status.value.tts.ready ? 'ok' : 'err'
+  return ''
+})
+
+onMounted(() => { void refreshVoiceStatus() })
 </script>
 
 <style scoped>
@@ -98,6 +121,7 @@ const ttsDef = sectionDefs.find(d => d.key === 'tts')!
 }
 .vs-tab {
   flex: none;
+  display: inline-flex; align-items: baseline; gap: var(--sp-q6);
   padding: var(--sp-q6) var(--sp-3);
   border-radius: var(--r-sm);
   border: 1px solid transparent;
@@ -107,6 +131,11 @@ const ttsDef = sectionDefs.find(d => d.key === 'tts')!
   cursor: pointer;
   transition: color var(--dur-fast), background var(--dur-fast), border-color var(--dur-fast);
 }
+.vs-tab-zh { font-size: var(--fs-xs); }
+.vs-tab-en { font-size: var(--fs-2xs); opacity: .7; }
+.vs-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
+.vs-dot.ok { background: #34d399; box-shadow: 0 0 5px rgba(52, 211, 153, .6); }
+.vs-dot.err { background: #f87171; }
 .vs-tab:hover { color: var(--text-1); background: rgba(148, 163, 184, .08); }
 .vs-tab.on {
   color: var(--text-1);
