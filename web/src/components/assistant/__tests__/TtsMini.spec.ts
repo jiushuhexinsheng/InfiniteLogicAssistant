@@ -24,19 +24,19 @@ import { ttsSettings, saveTts } from '../../../composables/assistant/useTts'
  */
 describe('TtsMini（开始页语音设置卡）', () => {
   beforeEach(() => {
-    ttsSettings.value.engine = 'browser'
+    ttsSettings.value.engine = 'local'
     saveTts()
     configRef.value = { tts_available: true, tts_voice: 'Chloe' }
   })
 
-  /** 卡片三要素齐全：引擎选择、角色选择、试听。All three essentials present. */
-  it('渲染引擎选择、角色选择与试听', () => {
+  /** 卡片三要素齐全：引擎选择、音色说明/选择、试听。All three essentials present. */
+  it('渲染引擎选择、音色说明与试听', () => {
     const w = mount(TtsMini)
     expect(w.findAll('.sg-item').length).toBe(2)
-    expect(w.text()).toContain('本地语音')
+    expect(w.text()).toContain('本地模型')
     expect(w.text()).toContain('API 语音')
-    expect(w.find('.ui-select').exists()).toBe(true)   // 本地引擎 = 系统语音下拉（自绘触发器）
-    expect(w.text()).toContain('角色')
+    expect(w.find('.ui-select').exists()).toBe(false)
+    expect(w.text()).toContain('音色')
     expect(w.text()).toContain('试听')
     // 无障碍语义随 UiSegmented 迁移保留。A11y semantics preserved via UiSegmented.
     expect(w.find('[role="radiogroup"]').exists()).toBe(true)

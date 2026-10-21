@@ -10,6 +10,10 @@ pull hundreds of MB into memory.
 """
 from __future__ import annotations
 
+import asyncio
+import time
+from typing import Any
+
 from fastapi import APIRouter
 
 from core import config
@@ -60,6 +64,81 @@ async def voice_schema(kind: str = "vad"):
         return {"ok": True, "kind": kind, "params": schema_mod.capability_schema(kind)}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
+
+
+@router.post("/voice/engines/{kind}/test")
+async def voice_engine_test(kind: str):
+    """加载并实际跑一次本地引擎，返回耗时与结果（设置页「测试」按钮）。
+
+    Load and actually exercise one local engine, returning latency and a detail string
+    (the settings-page "Test" button). This deliberately tests the **local** engine
+    regardless of the configured mode.
+    """
+    if kind not in ("vad", "kws", "asr", "tts"):
+        return {"ok": False, "ready": False, "error": f"未知能力: {kind}"}
+    started = time.perf_counter()
+    try:
+        from core.voice.local.runtime import get_runtime
+        runtime = get_runtime()
+        if kind == "vad":
+            engine: Any = runtime.vad()
+            ok, reason = await asyncio.to_thread(engine.status)
+            if not ok:
+                return {"ok": False, "ready": False, "error": reason}
+            import numpy as np
+            segs = await asyncio.to_thread(engine.segments, np.zeros(16000, dtype=np.float32), 16000)
+            detail = f"1s 静音 → {len(segs)} 段"
+        elif kind == "kws":
+            engine = runtime.kws()
+            ok, reason = await asyncio.to_thread(engine.status)
+            if not ok:
+                return {"ok": False, "ready": False, "error": reason}
+            from core.voice.local.sherpa_onnx import audio as audio_mod
+            test_wav = config.ROOT_DIR / "models" / "kws" / \
+                "sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01" / "test_wavs" / "3.wav"
+            if test_wav.is_file():
+                samples, sr = audio_mod.read_wav_bytes(test_wav.read_bytes())
+                hit = await asyncio.to_thread(engine.detect, samples, sr)
+                detail = f"测试音频命中：{hit}" if hit else "测试音频未命中（正常）"
+            else:
+                detail = "模型已加载（无测试音频）"
+        elif kind == "asr":
+            engine = runtime.asr()
+            ok, reason = await asyncio.to_thread(engine.status)
+            if not ok:
+                return {"ok": False, "ready": False, "error": reason}
+            from core.voice.local.sherpa_onnx import audio as audio_mod
+            test_wav = config.ROOT_DIR / "models" / "kws" / \
+                "sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01" / "test_wavs" / "3.wav"
+            if not test_wav.is_file():
+                return {"ok": True, "ready": True, "detail": "模型已加载（无测试音频）",
+                        "latency_ms": int((time.perf_counter() - started) * 1000)}
+            samples, sr = audio_mod.read_wav_bytes(test_wav.read_bytes())
+            text = await asyncio.to_thread(engine.transcribe, samples, sr)
+            detail = f"转写：{(text or '')[:60] or '（空）'}"
+        else:  # tts
+            from core.voice.tts import _synthesize_local
+            wav, _media = await _synthesize_local("你好，我是衍衡")
+            import io
+            import wave
+            with wave.open(io.BytesIO(wav), "rb") as w:
+                duration = w.getnframes() / w.getframerate()
+            detail = f"合成 {duration:.2f}s / {len(wav)} bytes"
+        return {
+            "ok": True,
+            "ready": True,
+            "kind": kind,
+            "latency_ms": int((time.perf_counter() - started) * 1000),
+            "detail": detail,
+        }
+    except Exception as e:  # noqa: BLE001
+        return {
+            "ok": False,
+            "ready": False,
+            "kind": kind,
+            "latency_ms": int((time.perf_counter() - started) * 1000),
+            "error": str(e),
+        }
 
 
 @router.get("/voice/hardware")

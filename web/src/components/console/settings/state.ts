@@ -120,13 +120,13 @@ export function moduleBody(id: string): Record<string, any> {
       asr: {
         mode: e.asr.mode, local_model: e.asr.local_model, streaming: e.asr.streaming,
         provider: e.asr.provider, device: e.asr.device, num_threads: e.asr.num_threads,
-        active: e.asr.active, profiles: e.asr.profiles,
+        params: e.asr.params, active: e.asr.active, profiles: e.asr.profiles,
       },
       tts: {
         enabled: e.tts.enabled, active: e.tts.active, profiles: e.tts.profiles,
         mode: e.tts.mode, local_model: e.tts.local_model, provider: e.tts.provider,
         device: e.tts.device, num_threads: e.tts.num_threads, speaker: e.tts.speaker,
-        speed: e.tts.speed, lang: e.tts.lang,
+        speed: e.tts.speed, lang: e.tts.lang, params: e.tts.params,
       },
       streaming: e.streaming,
       hardware: e.hardware,
@@ -137,7 +137,7 @@ export function moduleBody(id: string): Record<string, any> {
       enabled: e.tts.enabled, active: e.tts.active, profiles: e.tts.profiles,
       mode: e.tts.mode, local_model: e.tts.local_model, provider: e.tts.provider,
       device: e.tts.device, num_threads: e.tts.num_threads, speaker: e.tts.speaker,
-      speed: e.tts.speed, lang: e.tts.lang,
+      speed: e.tts.speed, lang: e.tts.lang, params: e.tts.params,
     },
   }
   // 权限段不是 profile 形状，必须单独分支 —— 否则会落到下面的兜底分支，
@@ -156,6 +156,7 @@ export function moduleBody(id: string): Record<string, any> {
       active: e.asr.active, profiles: e.asr.profiles, mode: e.asr.mode,
       local_model: e.asr.local_model, streaming: e.asr.streaming,
       provider: e.asr.provider, device: e.asr.device, num_threads: e.asr.num_threads,
+      params: e.asr.params,
     },
   }
   return { [id]: { active: e[id].active, profiles: e[id].profiles } }

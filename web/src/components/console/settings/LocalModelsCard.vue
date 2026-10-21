@@ -40,6 +40,23 @@
         </span>
       </div>
 
+      <!-- 引擎自检：实际加载并跑一次，给出耗时/结果（模型存在性之外的第二道确认）。 -->
+      <div v-if="show('recognition') || show('tts')" class="cs-tests">
+        <UiButton
+          v-for="k in testKinds" :key="k" variant="secondary" size="sm"
+          :disabled="testing === k" @click="testEngine(k)"
+        >
+          <BiLabel :zh="`测试 ${k.toUpperCase()}`" :en="`Test ${k.toUpperCase()}`" />
+        </UiButton>
+        <template v-for="k in testKinds" :key="`r-${k}`">
+          <span v-if="engineTests[k]" class="cs-test-result" :class="{ err: !engineTests[k].ok }">
+            {{ k.toUpperCase() }}:
+            {{ engineTests[k].ok ? (engineTests[k].detail || 'OK') : (engineTests[k].error || '失败') }}
+            <em v-if="engineTests[k].latency_ms != null"> · {{ engineTests[k].latency_ms }}ms</em>
+          </span>
+        </template>
+      </div>
+
       <!-- ── 识别：VAD / KWS / ASR ── -->
       <template v-if="show('recognition')">
       <h3 class="cs-title">VAD · 本地分段</h3>
@@ -54,7 +71,7 @@
           :model-value="s.ed().vad.model"
           :options="modelOptions('vad')"
           placeholder="选择 VAD 模型 / Select VAD model"
-          @update:model-value="v => (s.ed().vad.model = String(v))"
+          @update:model-value="v => switchModel('vad', String(v))"
         />
         <p class="cs-hint">{{ missingHint('vad', s.ed().vad.model) }}</p>
       </SettingsField>
@@ -77,7 +94,7 @@
           :model-value="s.ed().kws.model_dir"
           :options="modelOptions('kws')"
           placeholder="选择 KWS 模型 / Select KWS model"
-          @update:model-value="v => (s.ed().kws.model_dir = String(v))"
+          @update:model-value="v => switchModel('kws', String(v))"
         />
         <p class="cs-hint">{{ missingHint('kws', s.ed().kws.model_dir) }}</p>
       </SettingsField>
@@ -100,7 +117,7 @@
           :model-value="s.ed().asr.local_model"
           :options="modelOptions('asr')"
           placeholder="选择 ASR 模型 / Select ASR model"
-          @update:model-value="v => (s.ed().asr.local_model = String(v))"
+          @update:model-value="v => switchModel('asr', String(v))"
         />
         <p class="cs-hint">{{ missingHint('asr', s.ed().asr.local_model) }}</p>
       </SettingsField>
@@ -117,7 +134,7 @@
             :model-value="s.ed().tts.local_model"
             :options="modelOptions('tts')"
             placeholder="选择 TTS 模型 / Select TTS model"
-            @update:model-value="v => (s.ed().tts.local_model = String(v))"
+            @update:model-value="v => switchModel('tts', String(v))"
           />
           <p class="cs-hint">{{ missingHint('tts', s.ed().tts.local_model) }}</p>
         </SettingsField>
@@ -220,6 +237,56 @@ function show(section: string): boolean {
   return props.scope === 'all' || props.scope === section
 }
 
+/** 当前 Tab 可测试的引擎。Local engines testable in this scope. */
+const testKinds = computed(() => props.scope === 'tts' ? ['tts'] : ['vad', 'kws', 'asr'])
+
+/** 模型切换时按 modelId 保存/恢复模型专属参数（通用参数 provider/线程不随模型走）。
+ *  Save/restore model-specific params by modelId; common provider/threads stay shared. */
+const MODEL_KEYS: Record<string, string> = {
+  vad: 'model', kws: 'model_dir', asr: 'local_model', tts: 'local_model',
+}
+
+function switchModel(kind: string, next: string) {
+  const e = s.ed()
+  if (!e) return
+  const key = MODEL_KEYS[kind]
+  const old = String(e[kind]?.[key] || '')
+  if (old === next) return
+  const fields = (schemas.value[kind] || []).filter(f => (f.group || 'model') === 'model')
+  if (!e[kind].params) e[kind].params = {}
+  if (old) {
+    const saved: Record<string, unknown> = {}
+    for (const f of fields) saved[f.key] = e[kind][f.key]
+    e[kind].params[old] = saved
+  }
+  const saved = e[kind].params[next]
+  for (const f of fields) {
+    if (saved && Object.prototype.hasOwnProperty.call(saved, f.key)) {
+      e[kind][f.key] = saved[f.key]
+    } else if (f.default !== undefined) {
+      e[kind][f.key] = f.default
+    }
+  }
+  e[kind][key] = next
+  engineTests.value = { ...engineTests.value, [kind]: undefined }
+}
+
+/** 加载并实际跑一次引擎；结果显示在卡片内。Load and exercise one engine. */
+async function testEngine(kind: string) {
+  testing.value = kind
+  try {
+    const r = await api.testEngine(kind as 'vad' | 'kws' | 'asr' | 'tts')
+    engineTests.value = { ...engineTests.value, [kind]: r }
+    if (r.ok) notify.ok(`${kind.toUpperCase()} 自检通过（${r.latency_ms ?? '?'}ms）`)
+    else notify.err(`${kind.toUpperCase()} 自检失败：${r.error || '未知错误'}`)
+  } catch (e: any) {
+    engineTests.value = { ...engineTests.value, [kind]: { ok: false, error: e?.message || String(e) } }
+    notify.err(`${kind.toUpperCase()} 自检失败：${e?.message || e}`)
+  } finally {
+    testing.value = ''
+  }
+}
+
 /** 卡片标题随 Tab 变化（中英）。Card title follows the tab (zh/en). */
 const title = computed(() => {
   switch (props.scope) {
@@ -246,6 +313,9 @@ const titleEn = computed(() => {
 const models = ref<Record<string, any[]>>({})
 /** 后端参数 schema（按能力）。Parameter schema by capability. */
 const schemas = ref<Record<string, SchemaField[]>>({})
+/** 引擎自检结果（按能力）。Engine self-test results. */
+const engineTests = ref<Record<string, any>>({})
+const testing = ref('')
 /** 硬件快照。Hardware snapshot. */
 const hw = ref<any>(null)
 /** 四能力状态快照（后端 /api/voice/capabilities）。Four-capability status snapshot. */
@@ -444,4 +514,8 @@ onMounted(refresh)
 .cs-status-chip.ok { color: #34d399; border-color: rgba(52, 211, 153, .35); background: rgba(52, 211, 153, .08); }
 .cs-status-chip.err { color: #f87171; border-color: rgba(248, 113, 113, .4); background: rgba(248, 113, 113, .08); }
 .cs-status-chip.info { color: var(--brand-c2); border-color: rgba(103, 232, 249, .3); background: rgba(103, 232, 249, .07); }
+.cs-tests { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-2) 0; }
+.cs-test-result { font-size: var(--fs-2xs); color: #34d399; }
+.cs-test-result.err { color: #f87171; }
+.cs-test-result em { font-style: normal; color: var(--text-3); }
 </style>

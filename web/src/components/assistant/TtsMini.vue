@@ -16,7 +16,8 @@
 
     <!-- 角色选择 + 试听/停止（播报中停止按钮替换试听，可打断预览与正式播报）。 -->
     <div class="tm-row">
-      <VoiceSelect class="tm-voice" label="角色" />
+      <VoiceSelect v-if="engine === 'api'" class="tm-voice" label="角色" />
+      <p v-else class="tm-hint">音色 / 语速在控制台「语音合成」中配置</p>
       <UiButton
         v-if="speaking"
         class="tm-test"
@@ -52,7 +53,7 @@ import { useTtsEngine } from '../../composables/assistant/useTtsEngine'
 
 /** 引擎选项（与 UiSegmented 契约）。Engine options (UiSegmented contract). */
 const ENGINE_OPTIONS: SegOption[] = [
-  { value: 'browser', label: '本地语音' },
+  { value: 'local', label: '本地模型' },
   { value: 'api', label: 'API 语音' },
 ]
 

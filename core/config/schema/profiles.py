@@ -5,7 +5,7 @@ LLM/ASR/TTS profile 与对应 section；CompatConfig 为网关兼容开关（ext
 2026-10-11 起厂商目录（VendorPreset/vendor_presets/vendor 键）整体退役 —— profile 全部自填。
 """
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -123,6 +123,7 @@ class AsrSection(BaseModel):
     provider: Literal["cpu", "cuda", "coreml"] = "cpu"
     device: int = Field(0, ge=0)
     num_threads: int = Field(0, ge=0)   # 0 = 自动
+    params: dict[str, dict[str, Any]] = Field(default_factory=dict)
     active: str = ""   # 空 = 取第一个 profile（目录退役后无内置默认名）
     profiles: dict[str, AsrProfile] = Field(default_factory=dict)
 
@@ -146,6 +147,7 @@ class TtsSection(BaseModel):
     speaker: int = Field(0, ge=0)
     speed: float = Field(1.0, gt=0.0, le=4.0)
     lang: str = ""
+    params: dict[str, dict[str, Any]] = Field(default_factory=dict)
     enabled: bool = False
     active: str = ""   # 空 = 取第一个 profile（目录退役后无内置默认名）
     profiles: dict[str, TtsProfile] = Field(default_factory=dict)

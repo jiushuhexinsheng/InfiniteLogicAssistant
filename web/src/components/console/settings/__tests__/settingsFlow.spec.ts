@@ -92,7 +92,7 @@ describe('moduleBody 各模块 PATCH 形状', () => {
     const b = moduleBody('tts') as any
     expect(Object.keys(b.tts).sort()).toEqual([
       'active', 'device', 'enabled', 'lang', 'local_model', 'mode',
-      'num_threads', 'profiles', 'provider', 'speaker', 'speed',
+      'num_threads', 'params', 'profiles', 'provider', 'speaker', 'speed',
     ])
   })
 
@@ -104,7 +104,8 @@ describe('moduleBody 各模块 PATCH 形状', () => {
     const b = moduleBody('asr') as any
     expect(Object.keys(b)).toEqual(['asr'])
     expect(Object.keys(b.asr).sort()).toEqual([
-      'active', 'device', 'local_model', 'mode', 'num_threads', 'profiles', 'provider', 'streaming',
+      'active', 'device', 'local_model', 'mode', 'num_threads', 'params',
+      'profiles', 'provider', 'streaming',
     ])
     expect(b.asr.mode).toBe('cloud')
     expect(b.asr).not.toHaveProperty('local_model_present')

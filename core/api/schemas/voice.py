@@ -72,6 +72,7 @@ class VadConfig(BaseModel):
     provider: Literal["cpu", "cuda", "coreml"] = "cpu"
     device: int = 0
     num_threads: int = 0
+    params: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
     silence_threshold: float = 0.02
     silence_duration_ms: int = 1500
@@ -153,6 +154,7 @@ class KwsConfig(BaseModel):
     provider: Literal["cpu", "cuda", "coreml"] = "cpu"
     device: int = 0
     num_threads: int = 2
+    params: dict[str, dict[str, Any]] = Field(default_factory=dict)
     keywords_threshold: float = 0.25
     keywords_score: float = 1.0
 

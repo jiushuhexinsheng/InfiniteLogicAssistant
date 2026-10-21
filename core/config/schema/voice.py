@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 "配置 schema — voice 子模块（自 schema.py 拆出，纯移动）。"
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -129,6 +129,9 @@ class VadConfig(BaseModel):
     provider: Literal["cpu", "cuda", "coreml"] = "cpu"
     device: int = Field(0, ge=0)
     num_threads: int = Field(0, ge=0)   # 0 = 自动
+    # 按模型记忆的专属参数：{ model_id: { key: value } }（SchemaForm 切换模型时保存/恢复）。
+    # Per-model parameter memory: { model_id: { key: value } }.
+    params: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
     silence_threshold: float = Field(0.02, ge=0.0)
     silence_duration_ms: int = Field(1500, ge=0)
@@ -210,6 +213,9 @@ class KwsConfig(BaseModel):
     provider: Literal["cpu", "cuda", "coreml"] = "cpu"
     device: int = Field(0, ge=0)
     num_threads: int = Field(2, ge=0)
+    # 按模型记忆的专属参数（SchemaForm 切换模型时保存/恢复）。
+    # Per-model parameter memory (saved/restored when switching models).
+    params: dict[str, dict[str, Any]] = Field(default_factory=dict)
     # 检测阈值：越低越灵敏（漏报少、误报多）。默认 0.25 是 sherpa 官方示例值。
     # Detection threshold: lower is more sensitive (fewer misses, more false hits).
     # 0.25 is the sherpa reference default.

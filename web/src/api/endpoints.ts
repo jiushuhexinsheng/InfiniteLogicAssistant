@@ -69,6 +69,10 @@ export const api = {
   /** 某能力的参数 schema（SchemaForm 数据源）。Parameter schema for one capability. */
   getSchema: (kind: 'vad' | 'kws' | 'asr' | 'tts') =>
     get<{ ok: boolean; kind: string; params: any[] }>(`/voice/schema?kind=${kind}`),
+  /** 加载并实际跑一次本地引擎。Load and exercise one local engine. */
+  testEngine: (kind: 'vad' | 'kws' | 'asr' | 'tts') =>
+    post<{ ok: boolean; ready?: boolean; latency_ms?: number; detail?: string; error?: string }>(
+      `/voice/engines/${kind}/test`),
 
   // 语音上传成本统计（audit 的 audio-upload via= 三前缀计数 + 近 7 日趋势；只回计数与日期）
   // Voice upload cost stats (audio-upload via= counts + 7-day trend; counts and dates only)

@@ -60,6 +60,7 @@ class TtsSectionEditable(SectionEditable):
     speaker: int = 0
     speed: float = 1.0
     lang: str = ""
+    params: dict[str, Any] = {}
 
 class AsrSectionEditable(SectionEditable):
     """ASR 区段（多转写模式、本地模型目录与「本地模型是否就位」标记）。
@@ -84,6 +85,7 @@ class AsrSectionEditable(SectionEditable):
     provider: str = "cpu"
     device: int = 0
     num_threads: int = 0
+    params: dict[str, Any] = {}
 
 class AgentConfigOut(BaseModel):
     """Agent 配置输出（递归限制、多代理、故障转移模型列表、确认超时、压缩阈值）。
