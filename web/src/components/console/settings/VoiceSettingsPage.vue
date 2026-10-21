@@ -39,8 +39,7 @@
         <ServiceCard v-if="engine === 'api'" :section="ttsDef">
           <TtsSettings />
         </ServiceCard>
-        <LocalModelsCard v-else-if="engine === 'local'" scope="tts" />
-        <TtsLocalCard v-else />
+        <LocalModelsCard v-else scope="tts" />
       </template>
 
       <LocalModelsCard v-else-if="tab === 'hardware'" scope="hardware" />
@@ -62,7 +61,6 @@ import ModelProviderPanel from './ModelProviderPanel.vue'
 import VoiceChainStatus from './VoiceChainStatus.vue'
 import VoiceCard from './VoiceCard.vue'
 import TtsEngineCard from './TtsEngineCard.vue'
-import TtsLocalCard from './TtsLocalCard.vue'
 import TtsSettings from '../../assistant/TtsSettings.vue'
 import ServiceCard from './ServiceCard.vue'
 import { useTtsEngine } from '../../../composables/assistant/useTtsEngine'
@@ -151,6 +149,17 @@ onMounted(() => { void refreshVoiceStatus() })
   display: flex;
   flex-direction: column;
   gap: var(--sp-q14);
-  overflow: hidden;
+  /* 一个 Tab 可能有多张卡（识别 = 本地引擎 + 供应商 + API Profile）。整页滚动，
+     卡片保持自然高度；否则 flex 收缩会把后面的卡片卡头和卡体压没。
+     A tab can hold several cards (recognition = local engines + providers + API
+     profile). Scroll the page and keep cards at natural height; otherwise flex
+     shrinking collapses later cards' bodies. */
+  overflow-y: auto;
+}
+.vs-body :deep(.cs-card) {
+  flex: 0 0 auto;
+}
+.vs-body :deep(.cs-card-body) {
+  overflow: visible;
 }
 </style>

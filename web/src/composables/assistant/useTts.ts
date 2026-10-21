@@ -65,7 +65,9 @@ function load(): TtsSettings {
     if (raw) {
       const p = JSON.parse(raw)
       return {
-        engine: p.engine === 'api' ? 'api' : p.engine === 'local' ? 'local' : 'browser',
+        // 浏览器引擎已退役：旧 localStorage 的 browser 一律迁到本地 Kokoro。
+        // Browser engine retired: legacy `browser` migrates to local Kokoro.
+        engine: p.engine === 'api' ? 'api' : 'local',
         speakEnabled: p.speakEnabled !== false,
         volume: clamp(p.volume ?? 1, 0, 1),
         rate: clamp(p.rate ?? 1, 0.1, 10),
@@ -75,7 +77,7 @@ function load(): TtsSettings {
       }
     }
   } catch { /* 解析失败则用默认。Parse failure: use defaults. */ }
-  return { engine: 'browser', speakEnabled: true, volume: 1, rate: 1, pitch: 1, voiceName: '', apiVoice: '' }
+  return { engine: 'local', speakEnabled: true, volume: 1, rate: 1, pitch: 1, voiceName: '', apiVoice: '' }
 }
 
 /** 全局单例设置（全站共享；滑块/下拉直接改它，下次播报即生效）。
@@ -294,7 +296,9 @@ async function playApi(text: string, idx: number, gen: number): Promise<void> {
   prefetched.delete(idx)
   const blob = cached ? await cached : await fetchSentence(text, gen)
   if (gen !== speakGen) return  // 合成在途被本轮作废。Invalidated mid-synthesis.
-  if (!blob) { await playBrowser(text, gen); return }  // 逐句回退。Per-sentence fallback.
+  // 本地/API 失败不再回退浏览器：用户选择的后端就是唯一播报引擎。
+  // Do not fall back to the browser: the selected backend is the only playback engine.
+  if (!blob) return
   await new Promise<void>((resolve) => {
     let settled = false
     const finish = () => {

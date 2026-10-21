@@ -117,14 +117,14 @@ describe('ConsoleSettings 语音统一页', () => {
     expect(w.text()).toContain('ASR 语音识别（API Profile）')
   })
 
-  it('合成 Tab 浏览器分支显示引擎选择 + 浏览器语音卡', async () => {
+  it('合成 Tab 本地分支显示引擎选择 + 本地 TTS 卡', async () => {
     const w = mount(ConsoleSettings)
     await flushPromises()
     await openTab(w, '合成')
     expect(w.text()).toContain('语音引擎')
     expect(w.find('.ui-radio-cards').exists()).toBe(true)
-    expect(w.text()).toContain('本地语音 · 浏览器合成')
-    expect(w.find('.tts-settings-stub').exists()).toBe(true)
+    expect(w.text()).toContain('本地 TTS（Kokoro）')
+    expect(w.find('.tts-settings-stub').exists()).toBe(false)
   })
 
   it('合成 Tab API 分支显示后端配置与新增字段', async () => {

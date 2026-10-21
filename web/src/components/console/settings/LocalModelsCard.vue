@@ -43,14 +43,12 @@
       <!-- ── 识别：VAD / KWS / ASR ── -->
       <template v-if="show('recognition')">
       <h3 class="cs-title">VAD · 本地分段</h3>
-      <SettingsField label="模式" en="Mode" row>
-        <UiSegmented
-          :model-value="s.ed().vad.mode"
-          :options="[{ value: 'local', label: '本地 / Local' }, { value: 'off', label: '关闭 / Off' }]"
-          aria-label="VAD 模式"
-          @update:model-value="v => (s.ed().vad.mode = v)"
-        />
-      </SettingsField>
+      <SourceModeSwitch
+        :model-value="s.ed().vad.mode"
+        :options="[{ value: 'local', label: '本地', en: 'Local' }, { value: 'off', label: '关闭', en: 'Off' }]"
+        label-zh="VAD 模式" label-en="VAD Mode"
+        @update:model-value="v => (s.ed().vad.mode = v)"
+      />
       <SettingsField label="模型" en="Model">
         <UiSelect
           :model-value="s.ed().vad.model"
@@ -60,36 +58,20 @@
         />
         <p class="cs-hint">{{ missingHint('vad', s.ed().vad.model) }}</p>
       </SettingsField>
-      <div class="cs-grid">
-        <SettingsField label="阈值（0-1）" en="Threshold (0-1)">
-          <UiInput type="number" step="0.05" min="0" max="1"
-            :model-value="s.ed().vad.vad_threshold"
-            @update:model-value="v => (s.ed().vad.vad_threshold = toNum(v))" />
-        </SettingsField>
-        <SettingsField label="加速后端" en="Acceleration">
-          <UiSelect :model-value="s.ed().vad.provider" :options="providerOptions"
-            @update:model-value="v => (s.ed().vad.provider = String(v))" />
-        </SettingsField>
-        <SettingsField label="线程（0=自动）" en="Threads (0=auto)">
-          <UiInput type="number" min="0" :model-value="s.ed().vad.num_threads"
-            @update:model-value="v => (s.ed().vad.num_threads = toNum(v))" />
-        </SettingsField>
-      </div>
+      <SchemaForm :params="schemaFor('vad')" :values="s.ed().vad" />
 
       <!-- ── KWS ── -->
       <h3 class="cs-title">KWS · 唤醒词</h3>
-      <SettingsField label="模式" en="Mode" row>
-        <UiSegmented
-          :model-value="s.ed().kws.mode"
-          :options="[
-            { value: 'local', label: '本地 / Local' },
-            { value: 'api', label: '文本 / Text' },
-            { value: 'off', label: '关闭 / Off' },
-          ]"
-          aria-label="KWS 模式"
-          @update:model-value="v => (s.ed().kws.mode = v)"
-        />
-      </SettingsField>
+      <SourceModeSwitch
+        :model-value="s.ed().kws.mode"
+        :options="[
+          { value: 'local', label: '本地', en: 'Local' },
+          { value: 'api', label: '文本', en: 'Text' },
+          { value: 'off', label: '关闭', en: 'Off' },
+        ]"
+        label-zh="KWS 模式" label-en="KWS Mode"
+        @update:model-value="v => (s.ed().kws.mode = v)"
+      />
       <SettingsField v-if="s.ed().kws.mode === 'local'" label="模型" en="Model">
         <UiSelect
           :model-value="s.ed().kws.model_dir"
@@ -99,31 +81,20 @@
         />
         <p class="cs-hint">{{ missingHint('kws', s.ed().kws.model_dir) }}</p>
       </SettingsField>
-      <div class="cs-grid" v-if="s.ed().kws.mode === 'local'">
-        <SettingsField label="加速后端" en="Acceleration">
-          <UiSelect :model-value="s.ed().kws.provider" :options="providerOptions"
-            @update:model-value="v => (s.ed().kws.provider = String(v))" />
-        </SettingsField>
-        <SettingsField label="线程" en="Threads">
-          <UiInput type="number" min="0" :model-value="s.ed().kws.num_threads"
-            @update:model-value="v => (s.ed().kws.num_threads = toNum(v))" />
-        </SettingsField>
-      </div>
+      <SchemaForm v-if="s.ed().kws.mode !== 'off'" :params="schemaFor('kws')" :values="s.ed().kws" />
 
       <!-- ── ASR ── -->
       <h3 class="cs-title">ASR · 语音识别</h3>
-      <SettingsField label="模式" en="Mode" row>
-        <UiSegmented
-          :model-value="s.ed().asr.mode"
-          :options="[
-            { value: 'local', label: '本地 / Local' },
-            { value: 'cloud', label: 'API' },
-            { value: 'hybrid', label: '混合 / Hybrid' },
-          ]"
-          aria-label="ASR 模式"
-          @update:model-value="v => (s.ed().asr.mode = v)"
-        />
-      </SettingsField>
+      <SourceModeSwitch
+        :model-value="s.ed().asr.mode"
+        :options="[
+          { value: 'local', label: '本地', en: 'Local' },
+          { value: 'cloud', label: 'API', en: 'API' },
+          { value: 'hybrid', label: '混合', en: 'Hybrid' },
+        ]"
+        label-zh="ASR 模式" label-en="ASR Mode"
+        @update:model-value="v => (s.ed().asr.mode = v)"
+      />
       <SettingsField v-if="s.ed().asr.mode !== 'cloud'" label="本地模型" en="Local Model">
         <UiSelect
           :model-value="s.ed().asr.local_model"
@@ -133,20 +104,7 @@
         />
         <p class="cs-hint">{{ missingHint('asr', s.ed().asr.local_model) }}</p>
       </SettingsField>
-      <div class="cs-grid" v-if="s.ed().asr.mode !== 'cloud'">
-        <SettingsField label="加速后端" en="Acceleration">
-          <UiSelect :model-value="s.ed().asr.provider" :options="providerOptions"
-            @update:model-value="v => (s.ed().asr.provider = String(v))" />
-        </SettingsField>
-        <SettingsField label="线程（0=自动）" en="Threads (0=auto)">
-          <UiInput type="number" min="0" :model-value="s.ed().asr.num_threads"
-            @update:model-value="v => (s.ed().asr.num_threads = toNum(v))" />
-        </SettingsField>
-        <SettingsField label="流式出字" en="Streaming" row>
-          <UiToggle :model-value="s.ed().asr.streaming"
-            @update:model-value="v => (s.ed().asr.streaming = v)" />
-        </SettingsField>
-      </div>
+      <SchemaForm v-if="s.ed().asr.mode !== 'cloud'" :params="schemaFor('asr')" :values="s.ed().asr" />
 
       </template>
 
@@ -163,24 +121,7 @@
           />
           <p class="cs-hint">{{ missingHint('tts', s.ed().tts.local_model) }}</p>
         </SettingsField>
-        <div class="cs-grid">
-          <SettingsField label="加速后端" en="Acceleration">
-            <UiSelect :model-value="s.ed().tts.provider" :options="providerOptions"
-              @update:model-value="v => (s.ed().tts.provider = String(v))" />
-          </SettingsField>
-          <SettingsField label="线程" en="Threads">
-            <UiInput type="number" min="0" :model-value="s.ed().tts.num_threads"
-              @update:model-value="v => (s.ed().tts.num_threads = toNum(v))" />
-          </SettingsField>
-          <SettingsField label="音色 ID" en="Speaker ID">
-            <UiInput type="number" min="0" :model-value="s.ed().tts.speaker"
-              @update:model-value="v => (s.ed().tts.speaker = toNum(v))" />
-          </SettingsField>
-          <SettingsField label="语速" en="Speed">
-            <UiInput type="number" step="0.05" min="0.1" max="4" :model-value="s.ed().tts.speed"
-              @update:model-value="v => (s.ed().tts.speed = toNum(v))" />
-          </SettingsField>
-        </div>
+        <SchemaForm :params="schemaFor('tts')" :values="s.ed().tts" />
       </template>
 
       </template>
@@ -256,7 +197,10 @@ import { computed, onMounted, ref } from 'vue'
 import SettingsCard from './SettingsCard.vue'
 import SettingsField from './SettingsField.vue'
 import BiLabel from './BiLabel.vue'
-import { UiButton, UiInput, UiSegmented, UiSelect, UiToggle } from '../../ui'
+import SchemaForm from './SchemaForm.vue'
+import SourceModeSwitch from './SourceModeSwitch.vue'
+import type { SchemaField } from './SchemaForm.vue'
+import { UiButton, UiInput, UiSelect, UiToggle } from '../../ui'
 import { settingsText as T } from '../../../locales/settings'
 import { api } from '../../../api'
 import { useSettings } from './useSettings'
@@ -300,6 +244,8 @@ const titleEn = computed(() => {
 
 /** 已安装模型（按能力）。Installed models by capability. */
 const models = ref<Record<string, any[]>>({})
+/** 后端参数 schema（按能力）。Parameter schema by capability. */
+const schemas = ref<Record<string, SchemaField[]>>({})
 /** 硬件快照。Hardware snapshot. */
 const hw = ref<any>(null)
 /** 四能力状态快照（后端 /api/voice/capabilities）。Four-capability status snapshot. */
@@ -314,7 +260,14 @@ const providers = computed<string[]>(() => {
   if (!list.length) return ['cpu']
   return list.includes('cpu') ? list : ['cpu', ...list]
 })
-const providerOptions = computed(() => providers.value.map((p) => ({ value: p, label: p.toUpperCase() })))
+/** 过滤 schema 中的 provider 选项（只保留当前构建真实支持的）。Filter provider options. */
+function schemaFor(kind: string): SchemaField[] {
+  return (schemas.value[kind] || []).map((f) => {
+    if (f.key !== 'provider' || !f.options) return f
+    const ok = f.options.filter(o => providers.value.includes(String(o.value)))
+    return { ...f, options: ok.length ? ok : f.options }
+  })
+}
 
 const inputOptions = computed(() => [
   { value: '', label: '系统默认' },
@@ -434,6 +387,13 @@ async function refresh() {
     if (m.ok) models.value = m.models
     if (h.ok) hw.value = h.hardware
     if (c.ok) caps.value = c
+    const schemaResults = await Promise.all(
+      (['vad', 'kws', 'asr', 'tts'] as const).map(k =>
+        api.getSchema(k).catch(() => null)),
+    )
+    schemaResults.forEach((r, i) => {
+      if (r?.ok) schemas.value[['vad', 'kws', 'asr', 'tts'][i]] = r.params
+    })
     ensureSelection()
     await refreshDevices(false)
   } catch (e: any) {

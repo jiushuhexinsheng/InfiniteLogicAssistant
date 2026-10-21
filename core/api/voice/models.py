@@ -13,7 +13,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from core import config
-from core.voice.local.sherpa_onnx import KINDS, hardware, registry
+from core.voice.local.sherpa_onnx import KINDS, hardware, registry, schema as schema_mod
 
 router = APIRouter()
 
@@ -46,6 +46,20 @@ async def voice_models_refresh():
         "ok": True,
         "models": {k: [m.to_dict() for m in registry.scan(k)] for k in KINDS},
     }
+
+
+@router.get("/voice/schema")
+async def voice_schema(kind: str = "vad"):
+    """某能力的参数 schema（设置页 SchemaForm 数据源）。
+
+    Parameter schema for one capability (the settings-page SchemaForm feed).
+    """
+    if kind not in ("vad", "kws", "asr", "tts"):
+        return {"ok": False, "error": f"未知能力: {kind}"}
+    try:
+        return {"ok": True, "kind": kind, "params": schema_mod.capability_schema(kind)}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
 
 
 @router.get("/voice/hardware")

@@ -59,7 +59,6 @@ import { useTtsEngine } from '../../../composables/assistant/useTtsEngine'
 const ENGINE_OPTIONS: RadioCardOption[] = [
   { value: 'local', icon: 'sparkles', label: '本地模型', hint: 'Kokoro · 后端合成 · 不出本机' },
   { value: 'api', icon: 'bot', label: 'API 语音', hint: '云端合成 · 更自然' },
-  { value: 'browser', icon: 'wave', label: '浏览器语音', hint: 'SpeechSynthesis · 零配置' },
 ]
 
 const { engine, apiAvailable, setEngine } = useTtsEngine()

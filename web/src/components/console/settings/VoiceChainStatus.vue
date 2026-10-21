@@ -84,7 +84,7 @@ const nodes = computed<Node[]>(() => {
     },
     {
       id: 'play', zh: '播放', en: 'Playback',
-      detail: ttsSettings.value.engine === 'browser' ? '浏览器 / Browser' : '后端 / Backend',
+      detail: ttsSettings.value.engine === 'local' ? '本地 Kokoro' : 'API',
       reason: '', tone: tts?.ready ? 'ok' : 'warn', tab: 'synthesis',
     },
   ]
