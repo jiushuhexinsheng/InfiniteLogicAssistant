@@ -51,13 +51,9 @@ docs/superpowers/plans/voice-verification-report.md
 /参考资料/
 screen*.png
 
-# 本地模型（encoder 单文件超 GitHub 100MB 限，走 fetch 脚本引导，不入库）
-# Local models (encoder files exceed GitHub's 100MB limit; bootstrap via fetch script).
-# 目录按能力划分：models/{vad,kws,asr,tts,llm}；体积小的 KWS 模型仍随仓库入库。
-# Layout by capability: models/{vad,kws,asr,tts,llm}; the small KWS model stays committed.
-models/asr/*/
-models/tts/*/
-models/vad/*.onnx
-models/llm/*/
+# 本地模型按能力划分：models/{vad,kws,asr,tts,llm}。
+# 大文件（.onnx / .bin）通过 Git LFS 入库（见 .gitattributes）；只忽略打包残留。
+# Models live under models/{vad,kws,asr,tts,llm}. Large files (.onnx/.bin) go through
+# Git LFS (see .gitattributes); only archive leftovers are ignored.
 models/_*.tar.bz2
 models/*.tar.bz2
