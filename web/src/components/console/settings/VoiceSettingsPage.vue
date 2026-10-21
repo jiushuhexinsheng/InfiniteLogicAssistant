@@ -29,11 +29,13 @@
 
       <template v-else-if="tab === 'recognition'">
         <LocalModelsCard scope="recognition" />
+        <ModelProviderPanel section="asr" />
         <ServiceCard :section="asrDef" />
       </template>
 
       <template v-else-if="tab === 'synthesis'">
         <TtsEngineCard />
+        <ModelProviderPanel v-if="engine === 'api'" section="tts" />
         <ServiceCard v-if="engine === 'api'" :section="ttsDef">
           <TtsSettings />
         </ServiceCard>
@@ -56,6 +58,7 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import LocalModelsCard from './LocalModelsCard.vue'
+import ModelProviderPanel from './ModelProviderPanel.vue'
 import VoiceChainStatus from './VoiceChainStatus.vue'
 import VoiceCard from './VoiceCard.vue'
 import TtsEngineCard from './TtsEngineCard.vue'

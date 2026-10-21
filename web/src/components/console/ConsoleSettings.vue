@@ -22,9 +22,10 @@
              `s.editable.value &&` prefixes. activeMenu starts as 'llm', so rendering the card
              first would read .profiles off undefined. -->
         <template v-if="s.editable.value">
-          <!-- 服务模块（大模型 API Profile）。Service module (LLM API profile). -->
-          <template v-for="def in sectionDefs" :key="def.key">
-            <ServiceCard v-if="s.activeMenu.value === def.key" :section="def" />
+          <!-- 大模型：供应商向导 + API Profile 详情。LLM: provider wizard + profile details. -->
+          <template v-if="s.activeMenu.value === 'llm'">
+            <ModelProviderPanel section="llm" />
+            <ServiceCard :section="sectionDefs.find(d => d.key === 'llm')!" />
           </template>
 
           <!-- 语音设置统一入口：概览/唤醒/识别/合成/硬件/高级。
@@ -56,6 +57,7 @@ import AdvancedCard from './settings/AdvancedCard.vue'
 import ApiKeyModal from './settings/ApiKeyModal.vue'
 import PermissionsCard from './settings/PermissionsCard.vue'
 import ServiceCard from './settings/ServiceCard.vue'
+import ModelProviderPanel from './settings/ModelProviderPanel.vue'
 import VoiceSettingsPage from './settings/VoiceSettingsPage.vue'
 import { useSettings } from './settings/useSettings'
 import SettingsMenu from './settings/SettingsMenu.vue'
