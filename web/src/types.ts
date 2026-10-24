@@ -316,3 +316,9 @@ export type SseEvent =
   | BlockEvent
   | ErrorEvent
   | DoneEvent
+
+// ─── LLM 模型清单与全局模型切换（对话内切换器）───
+export type LlmActive = components['schemas']['LlmActive']
+export type LlmModelGroup = components['schemas']['LlmModelGroup']
+export type LlmModelsResponse = components['schemas']['LlmModelsResponse']
+export type SetActiveModelResponse = components['schemas']['SetActiveModelResponse']

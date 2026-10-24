@@ -9,7 +9,7 @@
     <span class="nsi-sep" aria-hidden="true">·</span>
     <span class="nsi-seg nsi-model" title="当前 LLM 模型">
       <span class="nsi-label">模型</span>
-      <span class="nsi-text">{{ cfg?.llm_profile || '未配置' }}</span>
+      <span class="nsi-text">{{ cfg?.llm_model || cfg?.llm_profile || '未配置' }}</span>
     </span>
     <span class="nsi-sep nsi-sep-model" aria-hidden="true">·</span>
     <span class="nsi-seg nsi-wake" :title="asst.wakeHint.value">

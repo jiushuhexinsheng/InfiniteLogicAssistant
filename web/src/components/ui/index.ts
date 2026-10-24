@@ -31,3 +31,5 @@ export { default as UiEmpty } from './UiEmpty.vue'
 export { default as UiHint } from './UiHint.vue'
 export { default as UiErrorNote } from './UiErrorNote.vue'
 export { default as UiToaster } from './UiToaster.vue'
+
+export type { GroupedOption, OptionGroup } from './groupedTypes'

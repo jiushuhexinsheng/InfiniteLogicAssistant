@@ -1,6 +1,6 @@
 // ─── API 端点 ───
 // ─── API Endpoints ───
-import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, LibraryTask, PingResponse, SessionItem, ToolCallResponse, ToolsResponse } from '../types'
+import type { ApiResponse, ConfigResponse, DetectionReport, EditableSnapshot, LibraryTask, LlmModelsResponse, PingResponse, SessionItem, SetActiveModelResponse, ToolCallResponse, ToolsResponse } from '../types'
 import { get, post, patchHttp, putHttp, del } from './http'
 // 类型别名（MemoryFact 等生成类型）由门面 ../api 定义，此处仅类型引用（运行时被擦除）。
 // The generated type aliases (MemoryFact etc.) are defined by the ../api facade; this
@@ -32,6 +32,11 @@ export const api = {
   /** 获取厂商模型列表。Fetch provider model list. */
   fetchModels: (section: string, profile: Record<string, any>) =>
     post<{ ok: boolean; models: string[]; count: number; error?: string }>('/providers/fetch-models', { section, profile }),
+  /** 分组模型清单（对话切换器）。Grouped model catalogue for the chat picker. */
+  getLlmModels: () => get<LlmModelsResponse>('/llm/models'),
+  /** 设置全局 active 供应商/模型。Set the global active provider/model. */
+  setActiveModel: (provider: string, model: string) =>
+    post<SetActiveModelResponse>('/llm/active-model', { provider, model }),
 
   // 语音：音频走 /api/voice/asr/stream WebSocket；HTTP 侧只保留通话会话语义。
   // Voice: audio travels over the /api/voice/asr/stream WebSocket; HTTP keeps call-session semantics.

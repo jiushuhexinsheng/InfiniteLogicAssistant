@@ -12,6 +12,8 @@
       排队 {{ queueCount }} 条 · 点击清空
     </button>
     <div class="chat-input-row">
+      <!-- 模型切换器：按供应商分组的全局模型下拉（切换即写配置）。 -->
+      <ModelPicker class="ci-model" />
       <!-- 消息输入框：Enter 发送，Shift+Enter 换行；UiTextarea 自动增高至 4 行。
            Message textarea: Enter to send, Shift+Enter for newline; UiTextarea autosizes to 4 rows. -->
       <UiTextarea
@@ -41,6 +43,7 @@
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
 import { UiIconButton, UiIcon, UiTextarea } from '../ui'
+import ModelPicker from './ModelPicker.vue'
 import { outboxCount as queueCount, clearQueued } from '../../composables/assistant/useChat'
 
 /**
@@ -89,6 +92,8 @@ function submit() {
 }
 /* 输入行布局。Input row layout. */
 .chat-input-row { display: flex; align-items: flex-end; gap: var(--sp-2); }
+/* 模型切换器固定在输入行左侧，不参与伸展。The model picker is pinned left and never stretches. */
+.ci-model { flex-shrink: 0; }
 /* 排队徽标（可点击清空）。Queued badge (click to clear). */
 .ci-queue {
   align-self: flex-start;

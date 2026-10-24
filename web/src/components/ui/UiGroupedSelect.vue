@@ -74,19 +74,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import UiFieldChevron from './UiFieldChevron.vue'
 import UiIcon from './UiIcon.vue'
 import { useAnchoredPanel } from './useAnchoredPanel'
-
-/** 一个选项。One option. */
-export interface GroupedOption {
-  value: string
-  label: string
-  disabled?: boolean
-}
-
-/** 一组选项（组标题 + 选项）。One option group (header + options). */
-export interface OptionGroup {
-  label: string
-  options: GroupedOption[]
-}
+import type { GroupedOption, OptionGroup } from './groupedTypes'
 
 const props = withDefaults(defineProps<{
   groups: OptionGroup[]
