@@ -17,7 +17,7 @@
       <SettingsField label="Provider ID" en="Provider ID" hint="小写标识，保存后作为 profile 名">
         <UiInput
           v-model="form.id"
-          :disabled="editing"
+          :disabled="!!editing"
           placeholder="例如 my-provider"
         />
         <p v-if="idError" class="pw-err">{{ idError }}</p>
@@ -263,7 +263,9 @@ async function save(): Promise<void> {
       profile.voices = profile.voices || []
     }
 
-    const section = s.editable.value[props.section]
+    const snapshot = s.editable.value
+    if (!snapshot) return
+    const section = (snapshot as any)[props.section]
     section.profiles[id] = profile
     // 只有「一份 profile 都没有」时才自动设为 active，避免静默切走当前模型。
     if (!Object.keys(props.profiles).length) section.active = id
