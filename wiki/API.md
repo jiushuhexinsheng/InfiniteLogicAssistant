@@ -38,6 +38,8 @@
 | POST | `/api/sessions/{sid}/clear` · `/api/sessions/{sid}/fork` | 清空会话 / 分叉编辑 |
 | GET / POST | `/api/schedules` · DELETE `/api/schedules/{sid}` | 定时任务列表/注册/取消 |
 | POST | `/api/providers/fetch-models` | 拉取可用模型列表（自填 endpoint 后可用） |
+| GET | `/api/llm/models` | 按供应商分组的可用模型（对话内模型切换器） |
+| POST | `/api/llm/active-model` | 设置全局使用的供应商与模型（专用写入端点） |
 | POST | `/api/task/{session_id}/stop` | 停止该会话整个任务 |
 
 完整 schema 见 `GET /openapi.json`（前端 `web/src/api/generated.ts` 由其生成，

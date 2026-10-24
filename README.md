@@ -197,6 +197,8 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 | GET/DELETE | `/api/library` `/api/library/{task_id}` | 任务知识库浏览 / 详情 / 删除 |
 | GET/POST/PATCH/DELETE | `/api/sessions` 等 | 会话管理（列表/改名/清空 `clear`/分叉 `fork`） |
 | POST | `/api/providers/fetch-models` | 拉取可用模型列表（自填 endpoint 后可用） |
+| GET | `/api/llm/models` | 按供应商分组的可用模型（对话内模型切换器） |
+| POST | `/api/llm/active-model` | 设置全局使用的供应商与模型（专用写入端点） |
 | POST | `/api/task/{session_id}/stop` | 停止整个任务 |
 
 完整 schema 见 `GET /openapi.json`（`web/src/api/generated.ts` 由其生成）。
@@ -283,6 +285,9 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 
 **网页设置页**：控制台「设置」tab 可切换服务商 profile、调节参数、设置密钥（不回显）、检测连接；
 保存后大部分配置**热重载即时生效**（LLM/ASR/TTS/唤醒词/参数），服务器绑定 / MCP 类变更需重启。
+
+**模型配置与选择分离**：设置页「大模型」只维护供应商与模型清单（新增/编辑/删除、拉取模型、
+兼容补丁）；**当前使用哪个模型**在对话输入框左侧的下拉里切换（按供应商分组），切换即全局生效并同步顶栏。
 
 ## 安全
 

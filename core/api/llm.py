@@ -121,6 +121,8 @@ async def set_active_model(request: Request):
             status_code=400,
         )
 
+    if not isinstance(llm, dict):
+        return JSONResponse({"ok": False, "error": "配置缺少 llm 段"}, status_code=400)
     llm["active"] = provider
     profile["model"] = model
     try:
