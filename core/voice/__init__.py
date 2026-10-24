@@ -285,4 +285,4 @@ def _reset_clients() -> None:
     AppContext.get().reset_voice()
 
 
-add_reload_hook(_reset_clients)
+add_reload_hook(_reset_clients, sections=("voice",))

@@ -134,4 +134,4 @@ def _reset_runtime() -> None:
     _runtime = None
 
 
-add_reload_hook(_reset_runtime)
+add_reload_hook(_reset_runtime, sections=("voice",))

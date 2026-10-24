@@ -59,7 +59,7 @@ def _reset_health() -> None:
     _HEALTH.clear()
 
 
-add_reload_hook(_reset_health)
+add_reload_hook(_reset_health, sections=("voice",))
 
 
 @router.get("/voice/models")

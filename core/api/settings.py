@@ -221,7 +221,7 @@ async def patch_config(request: Request):
         logger.error("写回 config.yaml 失败: {}", e)
         return JSONResponse({"ok": False, "error": f"写入 config.yaml 失败: {e}"}, status_code=500)
 
-    config_mod.reload_settings()  # 热重载：per-request 读取立即生效
+    config_mod.reload_settings(source="api.config")  # 热重载：per-request 读取立即生效
     return {"ok": True, "restart_required": restart_required}
 
 
@@ -266,7 +266,7 @@ async def put_secrets(request: Request):
     with open(config_mod.SECRETS_FILE, "w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
 
-    config_mod.reload_settings()
+    config_mod.reload_settings(source="api.secrets")
     return {"ok": True, "set": bool(value), "path": path}
 
 

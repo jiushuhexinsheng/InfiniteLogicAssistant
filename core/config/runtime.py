@@ -22,7 +22,8 @@ from core.config.loader import _build, _print_notice
 from core.config.schema import Settings
 
 _settings: Settings | None = None
-_reload_hooks: list = []
+# (回调, 作用域段名元组或 None=每次都跑)。(callback, section names or None=always).
+_reload_hooks: list[tuple] = []
 
 
 def _get_settings() -> Settings:
@@ -39,18 +40,28 @@ def _get_settings() -> Settings:
     return _cfg.get_settings()
 
 
-def add_reload_hook(fn) -> None:
+def add_reload_hook(fn, sections: tuple[str, ...] | None = None) -> None:
     """注册配置热重载后的回调（如重建 ASR/TTS 客户端等持有旧 profile 的单例）。
 
-    Register a callback invoked after configuration hot reload (e.g. to rebuild singletons
-    such as ASR/TTS clients that hold stale profiles).
+    ``sections`` 为作用域：只有这些顶层配置段发生变化时才执行该回调；``None``
+    表示每次重载都执行。语音引擎/子进程池这类昂贵资源应限定在 ``("voice",)``，
+    否则改 LLM 或记忆配置也会把本地模型全部卸载重载。
+
+    Register a callback invoked after configuration hot reload (e.g. to rebuild
+    singletons such as ASR/TTS clients that hold stale profiles).
+
+    ``sections`` scopes the callback: it runs only when one of those top-level
+    config sections changed; ``None`` runs on every reload. Expensive resources such
+    as local engines / the TTS child pool should be scoped to ``("voice",)`` so an
+    LLM or memory edit does not unload and reload every local model.
 
     Args:
-        fn: 无参回调函数。
-            A zero-argument callback.
+        fn: 无参回调函数。A zero-argument callback.
+        sections: 触发的顶层段名；None = 每次都执行。Triggering top-level sections;
+            None = every reload.
     """
     from core import config as _cfg
-    _cfg._reload_hooks.append(fn)
+    _cfg._reload_hooks.append((fn, sections))
 
 
 def get_settings() -> Settings:
@@ -68,19 +79,59 @@ def get_settings() -> Settings:
     return _cfg._settings
 
 
-def reload_settings() -> Settings:
-    """重新加载配置（PATCH /api/config 后调用；per-request 读取立即生效）。
+def _changed_sections(old: Settings | None, new: Settings) -> set[str] | None:
+    """比较新旧配置的顶层段，返回变化的段名集合（首次构建返回 None = 全部）。
 
-    Reload the configuration (called after PATCH /api/config; per-request reads take effect
-    immediately).
+    Compare the top-level sections of the old and new settings; return the changed
+    names (None on first build, meaning "everything").
+
+    Args:
+        old: 旧配置（可能为 None）。Old settings (may be None).
+        new: 新配置。New settings.
 
     Returns:
-        重新加载后的 Settings 单例。
-        The reloaded Settings singleton.
+        变化的顶层段名；None 表示无从比较。Changed section names; None when unknown.
+    """
+    if old is None:
+        return None
+    before, after = old.model_dump(), new.model_dump()
+    keys = set(before) | set(after)
+    return {k for k in keys if before.get(k) != after.get(k)}
+
+
+def reload_settings(source: str = "") -> Settings:
+    """重新加载配置（PATCH /api/config / PUT /api/config/secrets 后调用）。
+
+    钩子按作用域触发：只有声明过的顶层段发生变化才执行；不声明的钩子每次都跑。
+    日志记录来源与变更段，便于回答「谁把本地引擎打掉了」。
+
+    Reload the configuration (called after PATCH /api/config or PUT
+    /api/config/secrets). Hooks are section-scoped: a scoped hook runs only when one
+    of its sections changed; unscoped hooks run every time. The log line records the
+    source and changed sections so "who unloaded the local engines?" is answerable.
+
+    Args:
+        source: 触发来源（如 ``api.config`` / ``api.secrets``），仅用于日志。
+            Trigger source (e.g. ``api.config`` / ``api.secrets``), for logging only.
+
+    Returns:
+        重新加载后的 Settings 单例。The reloaded Settings singleton.
     """
     from core import config as _cfg
-    _cfg._settings = _build()
-    for fn in list(_cfg._reload_hooks):
+    old = _cfg._settings
+    new = _build()
+    changed = _changed_sections(old, new)
+    _cfg._settings = new
+    try:
+        from core.logger import logger
+        logger.info("配置热重载：来源={} 变更段={}",
+                    source or "unknown",
+                    sorted(changed) if changed is not None else "全部")
+    except Exception:  # noqa: BLE001 - 日志失败绝不能挡住重载。Logging must never block reload.
+        pass
+    for fn, sections in list(_cfg._reload_hooks):
+        if sections is not None and changed is not None and not (set(sections) & changed):
+            continue
         try:
             fn()
         except Exception:

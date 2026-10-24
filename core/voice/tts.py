@@ -102,7 +102,7 @@ def _tts_options(t: Any) -> Any:
 
 
 atexit.register(_shutdown_tts_pool)
-add_reload_hook(_shutdown_tts_pool)
+add_reload_hook(_shutdown_tts_pool, sections=("voice",))
 
 # 输出格式 → 媒体类型
 _MEDIA_TYPES = {"wav": "audio/wav", "mp3": "audio/mpeg", "pcm16": "audio/pcm"}
