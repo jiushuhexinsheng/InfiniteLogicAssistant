@@ -46,7 +46,10 @@
           v-for="k in testKinds" :key="k" variant="secondary" size="sm"
           :disabled="testing === k" @click="testEngine(k)"
         >
-          <BiLabel :zh="`测试 ${k.toUpperCase()}`" :en="`Test ${k.toUpperCase()}`" />
+          <BiLabel
+            :zh="testing === k ? `测试 ${k.toUpperCase()}…` : `测试 ${k.toUpperCase()}`"
+            :en="testing === k ? `Testing ${k.toUpperCase()}…` : `Test ${k.toUpperCase()}`"
+          />
         </UiButton>
         <template v-for="k in testKinds" :key="`r-${k}`">
           <span v-if="engineTests[k]" class="cs-test-result" :class="{ err: !engineTests[k].ok }">
@@ -343,12 +346,18 @@ const providers = computed<string[]>(() => {
   if (!list.length) return ['cpu']
   return list.includes('cpu') ? list : ['cpu', ...list]
 })
-/** 过滤 schema 中的 provider 选项（只保留当前构建真实支持的）。Filter provider options. */
+/** 过滤 schema 中的 provider 选项（只保留当前构建真实支持的），并标注推荐后端。 */
 function schemaFor(kind: string): SchemaField[] {
   return (schemas.value[kind] || []).map((f) => {
     if (f.key !== 'provider' || !f.options) return f
     const ok = f.options.filter(o => providers.value.includes(String(o.value)))
-    return { ...f, options: ok.length ? ok : f.options }
+    const rec = providers.value.includes('cuda') ? 'cuda'
+      : providers.value.includes('coreml') ? 'coreml' : 'cpu'
+    return {
+      ...f,
+      options: ok.length ? ok : f.options,
+      hint: { zh: `推荐 ${rec.toUpperCase()}`, en: `Recommended: ${rec.toUpperCase()}` },
+    }
   })
 }
 

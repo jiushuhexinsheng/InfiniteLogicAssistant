@@ -1,19 +1,19 @@
 <template>
   <!-- 高级模块：Agent / LLM 客户端 / 工具 / RAG / 服务器参数配置。Advanced module: Agent / LLM client / Tools / RAG / Server settings. -->
-  <SettingsCard title="高级设置（Agent / LLM 客户端 / 工具 / 服务器 / MCP）">
+  <SettingsCard title="高级设置（Agent / LLM 客户端 / 工具 / 服务器 / MCP）" title-en="Advanced Settings">
     <template #actions>
       <UiButton variant="primary" size="sm" :disabled="!s.editable.value || s.saving.value" @click="s.saveModule('advanced')">
-        {{ s.saving.value ? '保存中…' : '保存' }}
+        <BiLabel :zh="s.saving.value ? '保存中…' : '保存'" :en="s.saving.value ? 'Saving…' : 'Save'" />
       </UiButton>
     </template>
 
     <div v-for="d in advancedDefs" :key="d.key" class="cs-subcard">
       <div class="cs-subcard-title">{{ d.title }}</div>
       <template v-for="f in d.fields" :key="f[0]">
-        <SettingsField v-if="f[1] === 'bool'" :label="fieldLabel(f[0])" row>
+        <SettingsField v-if="f[1] === 'bool'" :label="fieldLabel(f[0])" :en="fieldLabelEn(f[0])" row>
           <UiToggle :model-value="s.sec(d.key)[f[0]]" @update:model-value="v => (s.sec(d.key)[f[0]] = v)" />
         </SettingsField>
-        <SettingsField v-else :label="fieldLabel(f[0])">
+        <SettingsField v-else :label="fieldLabel(f[0])" :en="fieldLabelEn(f[0])">
           <UiInput :type="f[1] === 'number' ? 'number' : 'text'" v-model="s.sec(d.key)[f[0]]" />
         </SettingsField>
       </template>
@@ -30,9 +30,10 @@
 <script setup lang="ts">
 import SettingsField from './SettingsField.vue'
 import SettingsCard from './SettingsCard.vue'
+import BiLabel from './BiLabel.vue'
 import { UiButton, UiInput, UiToggle } from '../../ui'
 import { useSettings } from './useSettings'
-import { advancedDefs, fieldLabel } from './configDefs'
+import { advancedDefs, fieldLabel, fieldLabelEn } from './configDefs'
 
 /** 设置页单例状态与操作（保留对象引用以维持响应式）。Settings singleton (kept as an object to preserve reactivity). */
 const s = useSettings()

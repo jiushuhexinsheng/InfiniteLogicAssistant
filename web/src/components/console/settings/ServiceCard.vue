@@ -41,7 +41,7 @@
     </div>
 
     <template v-for="f in section.fields" :key="f">
-      <SettingsField :label="fieldLabel(f)">
+      <SettingsField :label="fieldLabel(f)" :en="fieldLabelEn(f)">
         <!-- 协议下拉：选择 OpenAI 兼容 / Anthropic / Gemini。Protocol dropdown: choose OpenAI compatible / Anthropic / Gemini. -->
         <UiSelect v-if="f === 'provider'" :model-value="s.sec(section.key).profiles[s.sec(section.key).active][f]" :options="PROVIDERS" @update:model-value="v => (s.sec(section.key).profiles[s.sec(section.key).active][f] = v)" />
         <!-- 音频格式下拉：后端 TtsProfile.format 是 wav/mp3/pcm16 三值字面量，文本框能输非法值。
@@ -118,7 +118,7 @@ import BiLabel from './BiLabel.vue'
 import { settingsText as T } from '../../../locales/settings'
 import type { SegOption } from '../../ui/UiSegmented.vue'
 import { useSettings } from './useSettings'
-import { fieldLabel, isNumericField, type SectionDef } from './configDefs'
+import { fieldLabel, fieldLabelEn, isNumericField, type SectionDef } from './configDefs'
 
 /** 组件 props：服务模块定义（来自 configDefs.sectionDefs）。Component props: the service module definition (from configDefs.sectionDefs). */
 const props = defineProps<{ section: SectionDef }>()

@@ -112,6 +112,27 @@ export const LABELS: Record<string, string> = {
   mode: '转写模式',
 }
 
+/** 字段英文标签映射。English label mapping for fields. */
+export const LABELS_EN: Record<string, string> = {
+  provider: 'Protocol', endpoint: 'Endpoint', model: 'Model', vision_model: 'Vision model',
+  chat_path: 'Chat Path', max_tokens: 'Max Tokens', temperature: 'Temperature', timeout: 'Timeout (s)',
+  language: 'Language', voice: 'Voice', voices: 'Voices (suggestions)',
+  voice_ref: 'Reference audio (voiceclone)', format: 'Format', recursion_limit: 'ReAct step limit',
+  multi_agent: 'Multi-agent', structured_temperature: 'Structured temperature', retry_max: 'Retries',
+  retry_backoff_base: 'Backoff base (s)', retry_backoff_max: 'Backoff max (s)', circuit_breaker_threshold: 'Breaker threshold',
+  circuit_breaker_cooldown: 'Breaker cooldown (s)',
+  request_timeout: 'Request timeout (s)', search_max_results: 'Search results', weather_timeout: 'Weather timeout (s)',
+  auto_index: 'Auto index', host: 'Host', port: 'Port', open_browser: 'Open browser on start',
+  confirm_timeout_s: 'Confirm/clarify timeout (s)',
+  recency_half_life_days: 'Memory half-life (days)', recency_weight: 'Recency weight',
+  inject_top_k: 'Inject top-k', inject_max_chars: 'Inject char budget',
+  extract_recent_messages: 'Extract lookback (msgs)',
+  rerank: 'Rerank', rerank_candidates: 'Rerank candidates', rerank_top_k: 'Rerank top-k',
+  condense_threshold_chars: 'Condense threshold (chars)',
+  llm_max_output_chars: 'Tool output LLM cap (chars)',
+  mode: 'Mode',
+}
+
 /**
  * 根据字段名获取中文标签。
  * Get the Chinese label for a field name.
@@ -121,6 +142,17 @@ export const LABELS: Record<string, string> = {
  */
 export function fieldLabel(f: string): string {
   return LABELS[f] || f
+}
+
+/**
+ * 根据字段名获取英文副标签。
+ * Get the English subtitle for a field name.
+ *
+ * @param f 字段名。Field name.
+ * @returns 英文副标签，缺省回退空串。The English subtitle, falling back to empty.
+ */
+export function fieldLabelEn(f: string): string {
+  return LABELS_EN[f] || ''
 }
 
 /**
