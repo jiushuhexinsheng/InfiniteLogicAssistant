@@ -35,8 +35,9 @@ export interface SectionDef {
 export interface AdvancedDef {
   /** editable 快照上的 key。Key on the editable snapshot. */
   key: string
-  /** 子卡标题。Sub-card title. */
+  /** 子卡标题（中文 + 英文副标题）。Sub-card title (zh + en subtitle). */
   title: string
+  titleEn?: string
   /** [字段名, 控件类型] 列表。List of [field name, control type]. */
   fields: readonly (readonly [string, 'number' | 'bool' | 'text'])[]
 }
@@ -63,20 +64,20 @@ export const sectionDefs: SectionDef[] = [
 
 /** 高级模块定义（Agent / LLM 客户端 / 工具 / RAG / 服务器）。Advanced module definitions (Agent / LLM client / Tools / RAG / Server). */
 export const advancedDefs: AdvancedDef[] = [
-  { key: 'agent', title: 'Agent 任务执行',
+  { key: 'agent', title: 'Agent 任务执行', titleEn: 'Agent',
     fields: [['recursion_limit', 'number'], ['multi_agent', 'bool'], ['structured_temperature', 'number'],
       ['confirm_timeout_s', 'number'], ['condense_threshold_chars', 'number']] },
-  { key: 'llm_client', title: 'LLM 客户端（重试 / 熔断）',
+  { key: 'llm_client', title: 'LLM 客户端（重试 / 熔断）', titleEn: 'LLM client',
     fields: [['retry_max', 'number'], ['retry_backoff_base', 'number'], ['retry_backoff_max', 'number'],
       ['circuit_breaker_threshold', 'number'], ['circuit_breaker_cooldown', 'number'], ['request_timeout', 'number']] },
-  { key: 'tools', title: '工具参数',
+  { key: 'tools', title: '工具参数', titleEn: 'Tools',
     fields: [['search_max_results', 'number'], ['weather_timeout', 'number'], ['llm_max_output_chars', 'number']] },
-  { key: 'rag', title: 'RAG 检索',
+  { key: 'rag', title: 'RAG 检索', titleEn: 'RAG',
     fields: [['auto_index', 'bool'], ['rerank', 'text'], ['rerank_candidates', 'number'], ['rerank_top_k', 'number']] },
-  { key: 'memory', title: '长期记忆（docs/designs/04）',
+  { key: 'memory', title: '长期记忆（docs/designs/04）', titleEn: 'Memory',
     fields: [['recency_half_life_days', 'number'], ['recency_weight', 'number'],
       ['inject_top_k', 'number'], ['inject_max_chars', 'number'], ['extract_recent_messages', 'number']] },
-  { key: 'server', title: '服务器',
+  { key: 'server', title: '服务器', titleEn: 'Server',
     fields: [['host', 'text'], ['port', 'number'], ['open_browser', 'bool']] },
 ]
 

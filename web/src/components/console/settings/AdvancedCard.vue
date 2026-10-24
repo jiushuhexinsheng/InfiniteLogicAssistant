@@ -8,7 +8,7 @@
     </template>
 
     <div v-for="d in advancedDefs" :key="d.key" class="cs-subcard">
-      <div class="cs-subcard-title">{{ d.title }}</div>
+      <div class="cs-subcard-title">{{ d.title }}<i v-if="d.titleEn"> {{ d.titleEn }}</i></div>
       <template v-for="f in d.fields" :key="f[0]">
         <SettingsField v-if="f[1] === 'bool'" :label="fieldLabel(f[0])" :en="fieldLabelEn(f[0])" row>
           <UiToggle :model-value="s.sec(d.key)[f[0]]" @update:model-value="v => (s.sec(d.key)[f[0]] = v)" />
@@ -50,6 +50,7 @@ const s = useSettings()
   font-size: var(--fs-xs); font-weight: 600; color: var(--text-2);
   letter-spacing: .02em;
 }
+.cs-subcard-title i { font-style: normal; font-weight: 400; font-size: var(--fs-2xs); color: var(--text-3); }
 .cs-note {
   font-size: var(--fs-2xs); color: var(--text-3); line-height: 1.6;
   margin: var(--sp-1) 0 0;

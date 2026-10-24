@@ -1,10 +1,10 @@
 <template>
   <!-- 权限设置卡：按风险层级设默认动作 + 单工具/通配规则覆盖。
        Permission settings card: per-tier default actions plus per-tool / glob rule overrides. -->
-  <SettingsCard title="工具权限">
+  <SettingsCard title="工具权限" title-en="Tool Permissions">
     <template #actions>
       <UiButton variant="primary" size="sm" :disabled="!s.editable.value || s.saving.value" @click="s.saveModule('permissions')">
-        {{ s.saving.value ? '保存中…' : '保存' }}
+        <BiLabel :zh="s.saving.value ? '保存中…' : '保存'" :en="s.saving.value ? 'Saving…' : 'Save'" />
       </UiButton>
     </template>
 
@@ -13,13 +13,13 @@
       首条匹配规则；层级默认；最后 <code>default_action</code>。
     </p>
 
-    <SettingsField label="默认动作（未命中任何规则时）">
+    <SettingsField label="默认动作（未命中任何规则时）" en="Default action">
       <UiSelect v-model="perms.default_action" :options="ACTIONS" />
     </SettingsField>
 
     <div class="cs-subcard">
-      <div class="cs-subcard-title">按风险层级的默认动作</div>
-      <SettingsField v-for="t in TIERS" :key="t.key" :label="t.label">
+      <div class="cs-subcard-title">按风险层级的默认动作 <i>Per-tier defaults</i></div>
+      <SettingsField v-for="t in TIERS" :key="t.key" :label="t.label" :en="t.en">
         <UiSelect v-model="perms.tiers[t.key]" :options="ACTIONS" />
       </SettingsField>
       <p class="cs-note">
@@ -28,12 +28,12 @@
     </div>
 
     <div class="cs-subcard">
-      <div class="cs-subcard-title">规则（优先级高于层级默认）</div>
+      <div class="cs-subcard-title">规则（优先级高于层级默认） <i>Rules</i></div>
       <div v-for="(r, i) in perms.rules" :key="i" class="cs-profrow">
-        <SettingsField label="工具名或通配" grow>
+        <SettingsField label="工具名或通配" en="Tool or glob" grow>
           <UiCombobox v-model="r.match" :options="toolNames" placeholder="如 run_* 或 read_file" />
         </SettingsField>
-        <SettingsField label="动作">
+        <SettingsField label="动作" en="Action">
           <UiSelect v-model="r.action" :options="ACTIONS" />
         </SettingsField>
         <UiButton variant="secondary" size="sm" hover="danger" @click="perms.rules.splice(i, 1)">删除</UiButton>
@@ -48,6 +48,7 @@ import { computed, onMounted, ref } from 'vue'
 import { api } from '../../../api'
 import SettingsField from './SettingsField.vue'
 import SettingsCard from './SettingsCard.vue'
+import BiLabel from './BiLabel.vue'
 import { UiButton, UiCombobox, UiSelect } from '../../ui'
 import { useSettings } from './useSettings'
 
@@ -63,9 +64,9 @@ const ACTIONS = [
 
 /** 三个风险层级。The three risk tiers. */
 const TIERS = [
-  { key: 'read' as const, label: '只读工具' },
-  { key: 'write' as const, label: '写入工具' },
-  { key: 'exec' as const, label: '执行工具' },
+  { key: 'read' as const, label: '只读工具', en: 'Read' },
+  { key: 'write' as const, label: '写入工具', en: 'Write' },
+  { key: 'exec' as const, label: '执行工具', en: 'Exec' },
 ]
 
 /** 已注册工具名（规则 match 输入的 datalist 提示）。Registered tool names (datalist hints for the rule match input). */
@@ -92,6 +93,7 @@ onMounted(async () => {
   background: rgba(15, 23, 42, .4);
 }
 .cs-subcard-title { font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); letter-spacing: .02em; }
+.cs-subcard-title i { font-style: normal; font-weight: 400; font-size: var(--fs-2xs); color: var(--text-3); margin-left: var(--sp-1); }
 .cs-profrow { display: flex; align-items: flex-end; gap: var(--sp-2); }
 .cs-note { font-size: var(--fs-2xs); color: var(--text-3); line-height: 1.6; margin: var(--sp-1) 0 0; }
 </style>
