@@ -22,11 +22,16 @@ pygetwindow==0.0.9
 pillow==12.3.0
 # 本地语音（WebSocket 流式链路）：sherpa-onnx 提供 VAD / KWS / ASR / TTS 四类引擎。
 # 模型按能力放在 models/{vad,kws,asr,tts}（scripts/fetch_models.py 下载；KWS 小模型随仓库）。
+# numpy 是 core/voice/local/sherpa_onnx 的**直接依赖**（音频分帧/重采样/波形读写），
+# 必须在 requirements 里显式钉住——sherpa-onnx 的 wheel 不声明 numpy，全新环境
+# （CI）只装 sherpa-onnx 会缺 numpy 导致 import 失败。
 # sentencepiece 是 sherpa text2token 生成关键词文件的依赖；pypinyin 提供无声调拼音。
 # Local speech (WebSocket streaming): sherpa-onnx supplies VAD / KWS / ASR / TTS.
-# Models live under models/{vad,kws,asr,tts} (fetched by scripts/fetch_models.py; the
-# small KWS model ships in-repo). sentencepiece backs text2token; pypinyin provides
-# toneless pinyin for wake matching.
+# numpy is a **direct dependency** of core/voice/local/sherpa_onnx (framing / resample /
+# WAV IO) and must be pinned explicitly — the sherpa-onnx wheel does not declare numpy,
+# so a fresh env (CI) installing only sherpa-onnx lacks numpy and fails to import.
+# sentencepiece backs text2token; pypinyin provides toneless pinyin for wake matching.
+numpy==2.5.3
 sherpa-onnx==1.13.8
 sentencepiece==0.2.2
 pypinyin==0.55.0
