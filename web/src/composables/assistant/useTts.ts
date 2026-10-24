@@ -2,17 +2,16 @@ import { ref } from 'vue'
 import { splitSentences } from '../../blocks/speech'
 import { hardwareConfig } from './store'
 
-/** 语音播报（双引擎，句级队列）。
- *  Voice broadcast (dual engine, sentence queue).
- *  engine='browser'：浏览器 speechSynthesis（本地语音，零配置）。Browser speechSynthesis (local voice, zero config).
- *  engine='api'    ：POST /api/tts（后端 OpenAI 兼容 TTS），逐句失败回退浏览器。
- *                    POST /api/tts (backend OpenAI compatible TTS), per-sentence fallback to browser.
+/** 语音播报（句级队列，单引擎）。
+ *  Voice broadcast (sentence queue, single engine).
+ *  engine='local'：POST /api/tts（后端本地 Kokoro）。local = POST /api/tts (backend Kokoro).
+ *  engine='api'  ：POST /api/tts（后端 OpenAI 兼容 TTS）。api = POST /api/tts (backend cloud TTS).
  *  长文本先经 splitSentences 切句入队，逐句播放：首响提前、可随时 stopSpeak 打断；
- *  API 引擎按窗口 2 预取后续句子（乱序完成按序播放）。
+ *  按窗口 2 预取后续句子（乱序完成按序播放）。
  *  Long text is split into sentences and queued: earlier first audio, interruptible
- *  via stopSpeak at any time; the API engine prefetches with a window of 2 (out-of-
+ *  via stopSpeak at any time; a window of 2 prefetches upcoming sentences (out-of-
  *  order completion, in-order playback). */
-export type TtsEngine = 'browser' | 'local' | 'api'
+export type TtsEngine = 'local' | 'api'
 
 /** TTS 设置接口。TTS settings interface. */
 export interface TtsSettings {
@@ -22,12 +21,6 @@ export interface TtsSettings {
   speakEnabled: boolean
   /** 音量（0-1）。Volume (0-1). */
   volume: number
-  /** 语速（0.1-10，仅浏览器引擎）。Speech rate (0.1-10, browser engine only). */
-  rate: number
-  /** 音调（0-2，仅浏览器引擎）。Pitch (0-2, browser engine only). */
-  pitch: number
-  /** 浏览器语音名（'' = 系统默认）。Browser voice name ('' = system default). */
-  voiceName: string
   /** API 语音名（'' = 用后端配置的 voice）。API voice name ('' = use backend configured voice). */
   apiVoice: string
 }
@@ -42,10 +35,6 @@ export const API_VOICE_SUGGESTIONS = ['Chloe', 'Mia', '冰糖', '茉莉', '苏�
 
 /** API 引擎预取窗口（当前句播放时预取后续 N 句）。API engine prefetch window (N upcoming sentences). */
 const PREFETCH_WINDOW = 2
-
-/** 单句播放兜底超时（毫秒）：部分浏览器 onend 不触发，泵不能被永久卡住。
- *  Per-sentence watchdog (ms): some browsers never fire onend; the pump must not hang. */
-const SENTENCE_TIMEOUT_MS = 20000
 
 /** 数值钳制工具函数。Number clamping utility function.
  *  @param n - 输入数值。Input number.
@@ -70,14 +59,11 @@ function load(): TtsSettings {
         engine: p.engine === 'api' ? 'api' : 'local',
         speakEnabled: p.speakEnabled !== false,
         volume: clamp(p.volume ?? 1, 0, 1),
-        rate: clamp(p.rate ?? 1, 0.1, 10),
-        pitch: clamp(p.pitch ?? 1, 0, 2),
-        voiceName: typeof p.voiceName === 'string' ? p.voiceName : '',
         apiVoice: typeof p.apiVoice === 'string' ? p.apiVoice : '',
       }
     }
   } catch { /* 解析失败则用默认。Parse failure: use defaults. */ }
-  return { engine: 'local', speakEnabled: true, volume: 1, rate: 1, pitch: 1, voiceName: '', apiVoice: '' }
+  return { engine: 'local', speakEnabled: true, volume: 1, apiVoice: '' }
 }
 
 /** 全局单例设置（全站共享；滑块/下拉直接改它，下次播报即生效）。
@@ -133,45 +119,11 @@ export function toggleSpeak() {
   saveTts()
 }
 
-/** 可用浏览器语音（中文优先，其余兜底）。
- *  Available browser voices (Chinese first, others as fallback).
- *  @returns 语音列表，中文在前。Voice list, Chinese first. */
-export function getVoices(): SpeechSynthesisVoice[] {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return []
-  const all = window.speechSynthesis.getVoices()
-  const zh = all.filter(v => /^zh/i.test(v.lang))
-  const others = all.filter(v => !/^zh/i.test(v.lang))
-  return [...zh, ...others]
-}
-
-/** 语音列表异步就绪时回调（部分浏览器需等 voiceschanged 事件）。
- *  Callback when voice list is asynchronously ready (some browsers need to wait for voiceschanged event).
- *  @param cb - 就绪回调函数。Ready callback function. */
-export function loadVoices(cb: () => void) {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return
-  const s = window.speechSynthesis
-  s.getVoices()
-  s.onvoiceschanged = () => cb()
-  cb()
-}
-
-/** 解析当前设置对应的浏览器语音。Resolve browser voice for current settings.
- *  @returns 匹配的语音对象，或 undefined。Matched voice object, or undefined. */
-function resolveVoice(): SpeechSynthesisVoice | undefined {
-  const vs = getVoices()
-  if (!vs.length) return undefined
-  const name = ttsSettings.value.voiceName
-  if (name) return vs.find(v => v.name === name)
-  return vs.find(v => /^zh/i.test(v.lang) && v.localService)
-    || vs.find(v => /^zh/i.test(v.lang))
-    || vs[0]
-}
-
-/** 停止一切播报（清队、取消合成、停掉 API Audio、作废迟到回调）。
+/** 停止一切播报（清队、取消合成、停掉 Audio、作废迟到回调）。
  *  打断白名单（docs/designs/02 §3.1）：UI 停止 / 新回合 / barge-in 均走这里；
  *  beep 提示音独立于 TTS 管线，不受影响。
  *
- *  Stop all playback (clear queue, cancel synthesis, stop the API audio, void late
+ *  Stop all playback (clear queue, cancel synthesis, stop the audio, void late
  *  callbacks). The interrupt whitelist (docs/designs/02 §3.1): UI stop / new round
  *  / barge-in all route here; the beep chime is outside the TTS pipeline and
  *  unaffected.
@@ -181,7 +133,6 @@ export function stopSpeak(reason: 'ui' | 'new_turn' | 'barge_in' = 'ui') {
   speakQueue = []
   queueIdx = 0
   prefetched.clear()
-  try { window.speechSynthesis?.cancel() } catch { /* ignore */ }
   // 先停 Audio 再释放收尾回调：finish 里的 revoke/清理以 currentAudio 为准。
   // Stop the audio before releasing the finish callback; revoke/cleanup inside
   // finish keys off currentAudio.
@@ -206,7 +157,6 @@ function resetPlayback() {
   speakQueue = []
   queueIdx = 0
   prefetched.clear()
-  try { window.speechSynthesis?.cancel() } catch { /* ignore */ }
   const handle = currentAudio
   currentAudio = null
   if (handle) {
@@ -216,50 +166,6 @@ function resetPlayback() {
   const done = currentDone
   currentDone = null
   done?.()
-}
-
-/** 播放单句（浏览器引擎）。Play one sentence (browser engine).
- *  同步完成路径：最后一步的 finish 里直接按代际复位 speaking（保证 onend 触发即复位，
- *  与既有测试契约一致）；泵末尾的复位是兜底。
- *
- *  Synchronous completion path: finish resets speaking by generation right there
- *  (so an onend that fires clears immediately, matching the existing test
- *  contract); the pump's own reset is a backstop.
- *  @param text - 句文本。Sentence text.
- *  @param gen - 本轮代际。Round generation.
- *  @returns 播放结束（含被打断）的 Promise。Promise resolving when done (or interrupted). */
-function playBrowser(text: string, gen: number): Promise<void> {
-  return new Promise((resolve) => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) { resolve(); return }
-    let settled = false
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const finish = () => {
-      if (settled) return
-      settled = true
-      if (currentDone === finish) currentDone = null
-      if (timer) clearTimeout(timer)
-      // 最后一句完成且仍是本代：同步复位（泵的复位是微任务兜底）。
-      if (gen === speakGen && queueIdx >= speakQueue.length) speaking.value = false
-      resolve()
-    }
-    try {
-      const u = new SpeechSynthesisUtterance(text.replace(/\n/g, '，'))
-      const s = ttsSettings.value
-      u.volume = s.volume
-      u.rate = s.rate
-      u.pitch = s.pitch
-      const v = resolveVoice()
-      if (v) { u.voice = v; u.lang = v.lang } else { u.lang = 'zh-CN' }
-      u.onend = finish
-      u.onerror = finish
-      currentDone = finish
-      timer = setTimeout(finish, SENTENCE_TIMEOUT_MS)
-      requestAnimationFrame(() => {
-        if (settled) return  // 排队间隙已被打断。Interrupted before dispatch.
-        try { window.speechSynthesis.speak(u) } catch { finish() }
-      })
-    } catch { finish() }
-  })
 }
 
 /** 取一句的音频（预取命中或现场合成）。Fetch one sentence's audio (prefetch hit or live).
@@ -347,16 +253,15 @@ function seedPrefetch(gen: number) {
  *  sentence until the queue empties or a newer generation takes over.
  *  @param gen - 本轮代际。Round generation. */
 async function runPump(gen: number) {
-  // browser = 浏览器 SpeechSynthesis；local / api = 后端 /api/tts（由后端按 engine 分派）。
-  // browser = SpeechSynthesis; local / api = backend /api/tts (the backend dispatches by engine).
-  const backend = ttsSettings.value.engine !== 'browser'
+  // 唯一引擎：local / api 都走后端 /api/tts（后端按 engine 分派）。
+  // Single engine: local / api both hit /api/tts (the backend dispatches by engine).
   speaking.value = true
   while (gen === speakGen && queueIdx < speakQueue.length) {
     const i = queueIdx
     const text = speakQueue[i]
     queueIdx = i + 1
-    if (backend) seedPrefetch(gen)  // 播本句期间预取后续。Prefetch upcoming while this plays.
-    await (backend ? playApi(text, i, gen) : playBrowser(text, gen))
+    seedPrefetch(gen)  // 播本句期间预取后续。Prefetch upcoming while this plays.
+    await playApi(text, i, gen)
     if (gen === speakGen) spokenChars.value += text.length
   }
   if (gen === speakGen) speaking.value = false
@@ -403,7 +308,7 @@ export function testVoice() {
  *  @returns 包含 TTS 设置、保存、语音列表、播报等方法的接口。Interface containing TTS settings, save, voice list, broadcast methods etc. */
 export function useTts() {
   return {
-    ttsSettings, speaking, spokenChars, saveTts, getVoices, loadVoices,
+    ttsSettings, speaking, spokenChars, saveTts,
     speakText, testVoice, speakAuto, toggleSpeak, stopSpeak,
   }
 }

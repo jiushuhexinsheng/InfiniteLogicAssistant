@@ -369,7 +369,6 @@ interface StatusRow { kind: string; text: string; tone: StatusTone }
 /** 某能力的状态文案。Status text for one capability. */
 function capRow(label: string, cap: any, mode: string): StatusRow {
   if (!cap) return { kind: label, text: `${label} —`, tone: 'neutral' }
-  if (mode === 'browser') return { kind: label, text: `${label} 浏览器`, tone: 'info' }
   if (mode === 'off') return { kind: label, text: `${label} 已关闭`, tone: 'neutral' }
   if (mode === 'cloud' || mode === 'api') {
     return { kind: label, text: `${label} API`, tone: 'info' }
@@ -454,9 +453,9 @@ function oneClickLocal() {
     (m) => m.valid && m.path === e.tts.local_model,
   )
   e.tts.mode = ttsReady ? 'local' : 'api'
-  ttsSettings.value.engine = ttsReady ? 'local' : 'browser'
+  ttsSettings.value.engine = ttsReady ? 'local' : 'api'
   saveTts()
-  if (!ttsReady) notify.warn('Kokoro 本地 TTS 未就位，播报暂用浏览器语音；下载后再次一键本地即可')
+  if (!ttsReady) notify.warn('Kokoro 本地 TTS 未就位，TTS 暂用 API；下载后再次一键本地即可')
   notify.ok('已切换为本地语音（保存中）')
   void s.saveModule('models')
 }

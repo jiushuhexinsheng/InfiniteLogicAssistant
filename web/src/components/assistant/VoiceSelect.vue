@@ -1,47 +1,33 @@
 <template>
-  <!-- 角色选择（按引擎切换形态）：本地=系统语音下拉；API=音色下拉（点开即选，
-       原 input+datalist 在 Chrome 中点击不弹候选、体验等同不可用）；
-       voiceclone 模型由后端 voice_ref 决定，仅显示说明。
-       Voice picker (shape per engine): local = system voice dropdown; API = voice
-       dropdown (open-to-pick — the former input+datalist never pops on click in
-       Chrome, effectively unusable); voiceclone models are backend-decided. -->
+  <!-- 音色选择（API 引擎）：点开即选，voiceclone 模型由后端 voice_ref 决定仅显示说明。
+       Voice picker (API): open-to-pick; voiceclone models are backend-decided. -->
   <div class="voice-select">
     <span class="vs-label">{{ label }}<em v-if="engine === 'api'">API</em></span>
-
-    <template v-if="engine === 'browser'">
-      <UiSelect v-model="ttsSettings.voiceName" :options="voiceItems" @update:model-value="saveTts()" />
-    </template>
-
-    <template v-else>
-      <!-- voiceclone：声音由后端参考音频决定，无需前端选。Voiceclone: backend decides the voice. -->
-      <p v-if="isVoiceClone" class="vs-clone">克隆 voice_ref 参考音频（控制台「参考音频」字段配置）</p>
-      <UiSelect v-else v-model="ttsSettings.apiVoice" :options="apiVoiceItems" @update:model-value="saveTts()" />
-    </template>
+    <!-- voiceclone：声音由后端参考音频决定，无需前端选。Voiceclone: backend decides the voice. -->
+    <p v-if="isVoiceClone" class="vs-clone">克隆 voice_ref 参考音频（控制台「参考音频」字段配置）</p>
+    <UiSelect v-else v-model="ttsSettings.apiVoice" :options="apiVoiceItems" @update:model-value="saveTts()" />
   </div>
 </template>
 
-<!-- 公共角色选择：TtsSettings 与 TtsMini 共用（同一单例、同一持久化逻辑）。Shared voice picker: used by both TtsSettings and TtsMini (same singleton, same persistence). -->
+<!-- 公共音色选择：TtsSettings 与 TtsMini 共用（同一单例、同一持久化逻辑）。Shared voice picker: used by both TtsSettings and TtsMini. -->
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import { UiSelect } from '../ui'
 import type { SegOption } from '../ui/UiSegmented.vue'
-import { ttsSettings, saveTts, getVoices, loadVoices, API_VOICE_SUGGESTIONS } from '../../composables/assistant/useTts'
+import { ttsSettings, saveTts, API_VOICE_SUGGESTIONS } from '../../composables/assistant/useTts'
 import { useTtsEngine } from '../../composables/assistant/useTtsEngine'
 import { useConfig } from '../../composables/useApi'
 
 /** 组件 Props：标签。Component props: label. */
 withDefaults(defineProps<{
   label?: string
-}>(), { label: '角色' })
+}>(), { label: '音色' })
 
 /** 引擎选择单例。Engine choice singleton. */
 const { engine } = useTtsEngine()
 
 /** 全局配置。Global config. */
 const app = useConfig()
-
-/** 浏览器可用语音列表。Available browser speech voices. */
-const voices = ref<SpeechSynthesisVoice[]>([])
 
 /** 是否 voiceclone 模型。Whether the model is voiceclone. */
 const isVoiceClone = computed(() =>
@@ -51,11 +37,11 @@ const isVoiceClone = computed(() =>
 /**
  * API 音色候选：后端默认 voice + 预置音色；
  * 当前值是历史自定义名时插到最前，保证可见、可回选（下拉形态不再支持自由输入，
- * 自定义音色的编辑入口在卡2「音色」字段——那是后端 profile 配置）。
+ * 自定义音色的编辑入口在合成卡「音色」字段——那是后端 profile 配置）。
  *
  * API voice candidates: backend default + presets; a historical custom value is
  * prepended so it stays visible/selectable (the dropdown form drops free typing —
- * custom voices are edited in card 2's "voice" field, the backend profile config).
+ * custom voices are edited in the synthesis card's "voice" field).
  */
 const voiceOptions = computed(() => {
   const cfg = app.config.value?.tts_voice
@@ -66,22 +52,11 @@ const voiceOptions = computed(() => {
   return list
 })
 
-/** 本地引擎的系统语音下拉选项（含「系统默认」空值项，空值 = 跟随浏览器默认）。 */
-const voiceItems = computed<SegOption[]>(() => [
-  { value: '', label: '系统默认' },
-  ...voices.value.map(v => ({ value: v.name, label: v.name })),
-])
-
 /** API 引擎的音色下拉选项（含「默认音色」空值项，空值 = 走后端配置）。 */
 const apiVoiceItems = computed<SegOption[]>(() => [
   { value: '', label: '默认音色（后端配置）' },
   ...voiceOptions.value.map(s => ({ value: s, label: s })),
 ])
-
-/** 挂载时加载浏览器语音列表。Load browser voices on mount. */
-onMounted(() => {
-  loadVoices(() => { voices.value = getVoices() })
-})
 </script>
 
 <style scoped>

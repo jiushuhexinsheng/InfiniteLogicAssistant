@@ -79,7 +79,7 @@ describe('ConsoleSettings 语音统一页', () => {
     vi.mocked(api.getConfigFull).mockResolvedValue({ ok: true, editable: snapshot() } as any)
     editable.value = null
     activeMenu.value = 'voice'
-    ttsSettings.value.engine = 'browser'
+    ttsSettings.value.engine = 'local'
     saveTts()
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
