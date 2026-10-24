@@ -3,7 +3,7 @@
     <!-- 后端连通性卡片：展示后端 ping 状态和延迟。Backend connectivity card: shows backend ping status and latency. -->
     <UiCard title="后端连通性">
       <div class="status-row">
-        <UiChip :tone="pingOk ? 'ok' : 'err'" detail="127.0.0.1:8520">后端</UiChip>
+        <UiChip :tone="pingOk ? 'ok' : 'err'" :detail="hostLabel">后端</UiChip>
         <UiButton variant="ghost" size="sm" @click="checkPing">刷新</UiButton>
         <span v-if="pingMs != null" class="ping-ms mono">{{ pingMs }}ms</span>
       </div>
@@ -16,7 +16,7 @@
         <UiChip :tone="cfg?.asr_available ? 'ok' : 'neutral'" :detail="cfg?.asr_profile || '—'">ASR</UiChip>
         <UiChip :tone="cfg?.tts_available ? 'ok' : 'neutral'" :detail="cfg?.tts_profile || '—'">TTS(后端)</UiChip>
       </div>
-      <p class="hint">语音播报实际走浏览器 SpeechSynthesis；「TTS」徽章表示后端可选 TTS 配置能力，两者相互独立。</p>
+      <p class="hint">语音播报走设置页选择的本地 Kokoro / 云端 TTS（浏览器 SpeechSynthesis 引擎已删除）；「TTS」徽章表示后端 TTS 配置能力。</p>
     </UiCard>
 
     <!-- 唤醒词与静音检测配置卡片。Wake word and VAD (Voice Activity Detection) config card. -->
@@ -59,6 +59,8 @@ import { UiButton, UiCard, UiChip, UiStatusDot } from '../ui'
 const asst = useAssistant()
 /** 全局配置缓存。Global config cache. */
 const app = useConfig()
+/** 当前页面实际连接的地址（不再硬编码 127.0.0.1:8520）。The address actually in use. */
+const hostLabel = typeof location === 'undefined' ? '—' : location.host
 
 /** 计算属性：从全局配置中提取各模块信息。Computed: extract module info from global config. */
 const cfg = computed(() => app.config.value)

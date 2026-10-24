@@ -391,7 +391,7 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 │   └── superpowers/           规格与执行计划（specs / plans）
 ├── wiki/                      项目 Wiki 源文件（首页 / 架构 / API / 配置 / 安全 / 开发 …）
 ├── web/                       Vue3 + Vite + TS 前端
-│   ├── scripts/               辅助脚本（verify-voice.mjs 语音验收台 / screenshot.mjs）
+│   ├── scripts/               辅助脚本（screenshot.mjs / shot-all.mjs 截图）
 │   └── src/
 │       ├── blocks/            消息块协议：types / registry / normalize（事件→块流）/ speech（TTS 管线）
 │       ├── components/blocks/ 块组件（Thinking/Tool/Text/Code/Question/Answer/Notice/Summary/…）

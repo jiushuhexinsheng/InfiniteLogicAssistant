@@ -7,8 +7,9 @@
 >
 > P0–P3 已全部完成并合入主分支（见 `roadmap.md`）。**桌面语音监听已暂停开发、不再回迁**：
 > 桌面悬浮球 UI 代码迁移至 `desktop-ball` 分支（桌面常驻监听已一并移除）。
-> 当前语音交互 = **浏览器本地 VAD 分段 + 云端（`POST /api/voice/wake`）唤醒判定 + 后端 OpenAI
-> 兼容 ASR/TTS + SpeechSynthesis 播报**（2026-09-13 唤醒链路重构，Vosk 引擎与模型已删除）。
+> 当前语音交互 = **WebSocket 流式单链路**：AudioWorklet 20ms PCM → 本地 VAD → 本地 KWS
+> → 本地增量 ASR / 云端整段 → 本地 Kokoro / 云端 TTS（2026-10-20 重构；旧切段上传与
+> `/api/voice/wake*`、`/voice/transcribe`、`/voice/call/segment` 均已删除）。
 > 下文涉及「桌面常驻语音监听」的段落均为设计意图/历史说明，与当前主分支实现存在差异。
 
 > ## 与当前实现的差异（2026-08-30 同步，以代码为准）
