@@ -71,6 +71,62 @@ async def test_run_skill_dangerous_rejected(asking_policy):
 
 
 @pytest.mark.asyncio
+async def test_run_skill_step_respects_deny_policy(monkeypatch):
+    """技能步骤必须走权限策略：deny 的工具调用不得执行。
+    Skill steps must honour the permission policy: a denied tool call must not run."""
+    from core.skills import executor as skill_exec
+    from core.tools.policy import Decision
+
+    calls: list[str] = []
+
+    async def fake_acall(name, args, **kw):
+        calls.append(name)
+        return "ran"
+
+    monkeypatch.setattr(skill_exec, "decide",
+                        lambda name, section=None: Decision("deny", "test"), raising=False)
+    monkeypatch.setattr(skill_exec.TOOLS, "acall", fake_acall)
+    skill = Skill("被拒", steps=[SkillStep("run_shell_tool", {"command": "echo x"})])
+    r = await skill_exec.run_skill(skill, {})
+    assert r.startswith("Error")
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_run_skill_step_ask_without_channel_is_rejected(asking_policy):
+    """策略要求询问但无确认通道（如无 session）时 fail-closed，不执行。
+    When the policy asks but there is no confirmation channel (e.g. no session), fail closed."""
+    from core.skills import executor as skill_exec
+
+    calls: list[str] = []
+
+    async def fake_acall(name, args, **kw):
+        calls.append(name)
+        return "ran"
+
+    original = skill_exec.TOOLS.acall
+    skill_exec.TOOLS.acall = fake_acall
+    try:
+        skill = Skill("要问", steps=[SkillStep("run_shell_tool", {"command": "echo x"})])
+        r = await skill_exec.run_skill(skill, {})
+    finally:
+        skill_exec.TOOLS.acall = original
+    assert r.startswith("Error")
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_run_skill_step_ask_with_approval_runs(asking_policy):
+    """有确认通道且操作者批准时，步骤照常执行（策略不能误伤正常技能）。
+    With a channel and operator approval the step runs as usual."""
+    skill = Skill("要问", steps=[SkillStep("get_datetime")])
+    s = Session()
+    s.channel = _ConfirmChannel(["确认"])
+    r = await run_skill(skill, {}, session=s)
+    assert "年" in r
+
+
+@pytest.mark.asyncio
 async def test_run_skill_tool(tmp_path, monkeypatch):
     """测试通过 skill 工具执行 YAML 定义的技能。Tests running a YAML-defined skill through the skill tool."""
     import core.tools.skill_tools as st

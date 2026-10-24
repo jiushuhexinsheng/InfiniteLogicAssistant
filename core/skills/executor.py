@@ -4,11 +4,12 @@ Skill executor — fills args_template ({{param}} placeholders) with parameters,
 """
 from typing import Any
 
-from core.orchestrator.confirm import confirm_if_needed
+from core.orchestrator.confirm import confirm_if_needed, confirm_tool
 from core.orchestrator.session import Session
 from core.orchestrator.task import Task
 from core.skills.loader import Skill
 from core.tools.base import TOOLS  # 从 base 导入，避免 core.tools.__init__ 循环
+from core.tools.policy import decide
 
 
 def fill_template(template: dict, params: dict) -> dict:
@@ -50,10 +51,34 @@ async def run_skill(skill: Skill, params: dict, session: Session | None = None, 
                 msg += f"（理由：{conf.reason[:200]}）"
             return msg
     out: list[str] = []
+    # 危险技能已在上方整体确认过：步骤级策略仍拦 deny，但 ask 不再逐条重复问
+    # （一次批准覆盖本次技能运行）。非危险技能的 ask 逐步照问。
+    # A dangerous skill was already approved as a whole above: deny still blocks each
+    # step, but ask is not repeated per step (one approval covers this skill run).
+    preapproved = skill.dangerous
     for step in skill.steps:
         if cancel is not None and cancel.is_cancelled:
             return "已停止"
         args = fill_template(step.args_template, params)
+        # 每一步都走与主循环相同的权限策略：技能不能成为 ask/deny 的后门。
+        # Every step honours the same permission policy as the main loop: skills must
+        # not be a back door around ask/deny.
+        decision = decide(step.tool)
+        if decision.action == "deny":
+            allowed, reason = False, decision.source
+        elif decision.action == "ask" and not preapproved:
+            if session is None:
+                allowed, reason = False, "无确认通道"
+            else:
+                conf = await confirm_tool(session, step.tool, args)
+                allowed, reason = bool(conf), conf.reason
+        else:
+            allowed, reason = True, ""
+        if not allowed:
+            msg = f"Error: 技能 {skill.name} 的步骤 {step.tool} 被权限策略拒绝"
+            if reason:
+                msg += f"（理由：{reason[:200]}）"
+            return msg
         result = await TOOLS.acall(step.tool, args, cancel=cancel, session=session)
         out.append(f"[{step.tool}] {result[:500]}")
     return "\n".join(out) or "（技能无步骤）"

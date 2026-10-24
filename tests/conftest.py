@@ -124,11 +124,12 @@ def asking_policy(monkeypatch):
     from core.api import tools as api_tools
     from core.orchestrator import confirm as confirm_mod
     from core.orchestrator import executor as orch_executor
+    from core.skills import executor as skill_executor
     from core.tools.policy import Decision
 
     ask = lambda name, section=None: Decision("ask", "test")   # noqa: E731
     ask_tier = lambda risk, section=None: Decision("ask", "test")   # noqa: E731
 
-    for mod in (confirm_mod, agent_base, api_tools, orch_executor):
+    for mod in (confirm_mod, agent_base, api_tools, orch_executor, skill_executor):
         monkeypatch.setattr(mod, "decide", ask)
     monkeypatch.setattr(confirm_mod, "decide_tier", ask_tier)
