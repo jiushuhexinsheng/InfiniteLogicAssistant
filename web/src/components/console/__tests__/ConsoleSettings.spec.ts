@@ -32,6 +32,7 @@ vi.mock('../../assistant/TtsSettings.vue', () => ({
 
 import { api } from '../../../api'
 import { activeMenu, editable } from '../settings/state'
+import { sectionDefs } from '../settings/configDefs'
 import { ttsSettings, saveTts } from '../../../composables/assistant/useTts'
 import ConsoleSettings from '../ConsoleSettings.vue'
 
@@ -147,5 +148,44 @@ describe('ConsoleSettings 语音统一页', () => {
     await flushPromises()
     expect(w.findAll('.cs-card').length).toBe(0)
     expect(w.find('.cs-menu').exists()).toBe(true)
+  })
+})
+
+describe('ConsoleSettings 大模型页', () => {
+  beforeEach(async () => {
+    const snap = snapshot()
+    vi.mocked(api.getConfigFull).mockResolvedValue({ ok: true, editable: snap } as any)
+    vi.mocked(api.patchConfig).mockResolvedValue({ ok: true, restart_required: false } as any)
+    vi.mocked(api.putSecret).mockResolvedValue({ ok: true, set: false, path: '' } as any)
+    editable.value = null
+    activeMenu.value = 'llm'
+  })
+
+  it('供应商列表可见；模型输入与「获取模型」从卡片移除', async () => {
+    const w = mount(ConsoleSettings)
+    await flushPromises()
+
+    expect(w.find('.pr-row').exists()).toBe(true)
+    expect(w.text()).toContain('模型供应商')
+    expect(w.text()).not.toContain('获取模型')
+    expect(w.find('.det-dot').exists()).toBe(true)
+  })
+
+  it('三段的字段定义都不再包含 model', () => {
+    for (const def of sectionDefs) expect(def.fields).not.toContain('model')
+  })
+
+  it('删除供应商：先存配置，再用空值清理密钥', async () => {
+    const w = mount(ConsoleSettings)
+    await flushPromises()
+
+    await w.find('.pr-del').trigger('click')
+    const confirm = [...document.querySelectorAll('.ui-modal .ui-btn')]
+      .find(b => b.textContent?.includes('删除')) as HTMLElement
+    confirm.click()
+    await flushPromises()
+
+    expect(api.patchConfig).toHaveBeenCalled()
+    expect(api.putSecret).toHaveBeenCalledWith('llm.profiles.p', '')
   })
 })

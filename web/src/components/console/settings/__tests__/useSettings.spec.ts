@@ -22,7 +22,7 @@ const EXPECTED_KEYS = [
   'sec', 'ed', 'menuDot',
   'activeProfile', 'modelOptions', 'voiceOptions',
   'toggleAdding', 'confirmCustom', 'deleteProfile', 'fetchModelsFor',
-  'compatShortcuts', 'compatEntries', 'setCompat', 'removeCompat', 'toggleCompat',
+  'compatEntries', 'setCompat', 'removeCompat',
   'saveModule', 'load', 'detectAll', 'detectOne',
   'openKeyModal', 'keyEnvHint', 'confirmKey', 'clearKey',
 ] as const
@@ -51,7 +51,7 @@ describe('useSettings 公开契约', () => {
     const s = useSettings() as Record<string, any>
     for (const key of ['sec', 'ed', 'menuDot', 'toggleAdding', 'saveModule', 'load',
       'detectAll', 'detectOne', 'openKeyModal', 'keyEnvHint', 'confirmKey', 'clearKey',
-      'fetchModelsFor', 'deleteProfile', 'compatEntries', 'setCompat', 'removeCompat', 'toggleCompat']) {
+      'fetchModelsFor', 'deleteProfile', 'compatEntries', 'setCompat', 'removeCompat']) {
       expect(typeof s[key], `${key} 应为函数`).toBe('function')
     }
   })

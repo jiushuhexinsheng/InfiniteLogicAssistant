@@ -157,11 +157,7 @@ export function removeCompat(s: any, key: string) {
 /** 快捷项开关：已有同键则移除，否则按快捷值写入（一次点击可逆）。
  *  Shortcut toggle: removes an existing key, otherwise writes the shortcut value
  *  (one click, reversible). */
-export function toggleCompat(s: any, key: string, value: string) {
-  const compat = mutableCompat(s)
-  if (key in compat) delete compat[key]
-  else compat[key] = parseCompatValue(value)
-}
+
 
 /**
  * 删除指定 Profile（至少保留一个）。

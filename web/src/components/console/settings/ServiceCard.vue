@@ -1,11 +1,12 @@
 <template>
-  <!-- 服务模块卡：LLM / ASR / TTS 共用（字段表由 sectionDefs 驱动）。Service module card: shared by LLM / ASR / TTS, fields driven by sectionDefs. -->
+  <!-- 服务模块卡：LLM / ASR / TTS 共用（字段表由 sectionDefs 驱动）。
+       Service module card: shared by LLM / ASR / TTS, fields driven by sectionDefs.
+       模型列表由供应商向导维护；本卡只编辑「编辑对象」profile 的其余字段。 -->
   <SettingsCard :title="section.title" :title-en="section.titleEn">
     <template #actions>
       <div class="cs-card-btns">
-        <!-- 测试连接：进行中显示旋转动画 +「测试中…」（按钮禁用防重复点）；结果走 toast。
-             Test connection: spinning animation + "testing…" while running (disabled to
-             prevent double clicks); results go through a toast. -->
+        <DetectionStatusDot :status="detectionStatus" :detail="detectionDetail" />
+        <!-- 测试连接：进行中显示「测试中…」；结果 toast 之外，旁边状态点持续可见。 -->
         <UiButton variant="secondary" size="sm" :disabled="s.detecting.value" @click="s.detectOne(section.name)">
           <UiIcon v-if="s.detecting.value" name="loader-2" :size="12" class="cs-spin" />
           <BiLabel :zh="s.detecting.value ? '测试中…' : T.testConnection.zh"
@@ -18,54 +19,42 @@
       </div>
     </template>
 
-    <!-- 卡体内容；卡头（含保存/测试连接）由 SettingsCard 固定在其上方。
-         Body content; the head (保存/测试连接) is held fixed above by SettingsCard. -->
     <SettingsField v-if="section.toggle" label="启用" row>
       <UiToggle :model-value="s.sec(section.key).enabled" @update:model-value="v => (s.sec(section.key).enabled = v)" />
     </SettingsField>
 
-    <!-- ASR 的本地/云端/混合模式已收口到「本地模型」页；本卡只配置云端 API profile。
-         ASR local/cloud/hybrid is configured on the 本地模型 page; this card only edits
-         the cloud API profile. -->
     <p v-if="section.key === 'asr'" class="cs-note">
       转写模式（本地 / 云端 / 混合）与本地模型在上方「识别引擎」卡设置；本卡只配置云端 API Profile。
     </p>
 
-    <!-- 供应商列表 / 新增 / 删除已收口到 ModelProviderPanel；本卡只编辑当前活跃
-         profile 的字段。Profile list / add / delete live in ModelProviderPanel; this card
-         only edits the active profile's fields. -->
+    <!-- 编辑对象：只决定本卡编辑哪个 profile，不写 active（切换全局模型在对话里）。 -->
     <div class="cs-profrow">
-      <SettingsField label="Profile" en="Profile" grow>
-        <UiSelect :model-value="s.sec(section.key).active" :options="profileOptions" @update:model-value="v => (s.sec(section.key).active = v)" />
+      <SettingsField label="编辑对象" en="Editing" grow>
+        <UiSelect v-model="editTarget" :options="profileOptions" />
       </SettingsField>
     </div>
 
     <template v-for="f in section.fields" :key="f">
       <SettingsField :label="fieldLabel(f)" :en="fieldLabelEn(f)">
-        <!-- 协议下拉：选择 OpenAI 兼容 / Anthropic / Gemini。Protocol dropdown: choose OpenAI compatible / Anthropic / Gemini. -->
-        <UiSelect v-if="f === 'provider'" :model-value="s.sec(section.key).profiles[s.sec(section.key).active][f]" :options="PROVIDERS" @update:model-value="v => (s.sec(section.key).profiles[s.sec(section.key).active][f] = v)" />
-        <!-- 音频格式下拉：后端 TtsProfile.format 是 wav/mp3/pcm16 三值字面量，文本框能输非法值。
-             Audio format dropdown: backend TtsProfile.format is a wav/mp3/pcm16 literal; a free-text box accepts invalid values. -->
-        <UiSelect v-else-if="f === 'format'" :model-value="s.sec(section.key).profiles[s.sec(section.key).active][f]" :options="FORMATS" @update:model-value="v => (s.sec(section.key).profiles[s.sec(section.key).active][f] = v)" />
-        <!-- 模型 / 音色：UiCombobox（可手输 + 项目风格建议层；替换原生 datalist 弹层）。
-             Model / voice: UiCombobox (free typing + project-styled suggestions; replaces
-             the native datalist popup). -->
-        <template v-else-if="f === 'model' || f === 'voice'">
-          <UiCombobox :model-value="s.sec(section.key).profiles[s.sec(section.key).active][f]" @update:model-value="v => (s.sec(section.key).profiles[s.sec(section.key).active][f] = v)" :options="f === 'model' ? s.modelOptions(section) : s.voiceOptions(section)" />
-        </template>
-        <!-- 音色列表编辑器：写回 profile.voices，同时喂给上面「音色」输入框的 datalist。
-             Voice list editor: writes back profile.voices, which also feeds the datalist of the "voice" input above. -->
+        <UiSelect v-if="f === 'provider'" :model-value="profile()[f]" :options="PROVIDERS" @update:model-value="v => (profile()[f] = v)" />
+        <UiSelect v-else-if="f === 'format'" :model-value="profile()[f]" :options="FORMATS" @update:model-value="v => (profile()[f] = v)" />
+        <UiCombobox
+          v-else-if="f === 'voice'"
+          :model-value="profile()[f]"
+          :options="s.voiceOptions(section)"
+          @update:model-value="v => (profile()[f] = v)"
+        />
         <template v-else-if="f === 'voices'">
-          <div v-for="(_, i) in (s.sec(section.key).profiles[s.sec(section.key).active].voices || [])" :key="i" class="cs-voicerow">
-            <UiInput :model-value="s.sec(section.key).profiles[s.sec(section.key).active].voices[i]" @update:model-value="v => (s.sec(section.key).profiles[s.sec(section.key).active].voices[i] = v)" placeholder="如 alloy" />
-            <UiButton variant="secondary" size="sm" hover="danger" @click="s.sec(section.key).profiles[s.sec(section.key).active].voices.splice(i, 1)">删除</UiButton>
+          <div v-for="(_, i) in (profile().voices || [])" :key="i" class="cs-voicerow">
+            <UiInput :model-value="profile().voices[i]" @update:model-value="v => (profile().voices[i] = v)" placeholder="如 alloy" />
+            <UiButton variant="secondary" size="sm" hover="danger" @click="profile().voices.splice(i, 1)">删除</UiButton>
           </div>
           <UiButton variant="secondary" size="sm" @click="addVoice">＋ 新增音色</UiButton>
         </template>
         <UiInput
           v-else
-          :model-value="s.sec(section.key).profiles[s.sec(section.key).active][f]"
-          @update:model-value="v => (s.sec(section.key).profiles[s.sec(section.key).active][f] = v)"
+          :model-value="profile()[f]"
+          @update:model-value="v => (profile()[f] = v)"
           :type="isNumericField(f) ? 'number' : 'text'"
           :step="isNumericField(f) ? (f === 'temperature' ? 0.1 : 1) : undefined"
         />
@@ -73,46 +62,31 @@
     </template>
 
     <div class="cs-keyrow">
-      <UiChip :tone="s.sec(section.key).api_key_set[s.sec(section.key).active] ? 'ok' : 'warn'" :dot="false">
-        API Key：{{ s.sec(section.key).api_key_set[s.sec(section.key).active] ? '已设置' : '未设置' }}
+      <UiChip :tone="s.sec(section.key).api_key_set[editTarget] ? 'ok' : 'warn'" :dot="false">
+        API Key：{{ s.sec(section.key).api_key_set[editTarget] ? '已设置' : '未设置' }}
       </UiChip>
-      <UiButton variant="secondary" size="sm" @click="s.openKeyModal(section.key, s.sec(section.key).active)">设置</UiButton>
-      <UiButton variant="secondary" size="sm" @click="s.fetchModelsFor(section)">获取模型</UiButton>
+      <UiButton variant="secondary" size="sm" @click="s.openKeyModal(section.key, editTarget)">设置</UiButton>
     </div>
 
-    <!-- 高级兼容（自填闭环）：特殊网关的请求体补丁，厂商预设退役后在此编辑。
-         Advanced gateway compat: request-body patches for special gateways; edited here
-         after the vendor presets retired. -->
+    <!-- 高级兼容：键值行；内置快捷项并入键 combobox（不再是独立 chip 行）。 -->
     <div class="cs-compat">
       <div class="cs-compat-head">
         <span class="cs-compat-title">高级兼容</span>
-        <span class="cs-compat-hint">特殊网关的请求体补丁（如小米需 auth_header/audio_data_url）</span>
+        <span class="cs-compat-hint">特殊网关的请求体补丁（键可选内置项或手输）</span>
       </div>
-      <div class="cs-compat-shortcuts">
-        <UiButton
-          v-for="c in s.compatShortcuts" :key="c.key"
-          size="sm" shape="pill" class="cs-compat-chip" :class="{ on: compatHas(c.key) }"
-          @click="s.toggleCompat(section, c.key, c.value)"
-        >{{ c.label }}</UiButton>
-      </div>
-      <div v-for="(row, i) in s.compatEntries(section)" :key="i" class="cs-compat-row">
-        <UiInput :model-value="row[0]" @update:model-value="v => renameCompat(i, row[0], v)" placeholder="键" />
-        <UiInput :model-value="row[1]" @update:model-value="v => s.setCompat(section, row[0], v, row[0])" placeholder="值" />
-        <UiButton variant="secondary" size="sm" hover="danger" @click="s.removeCompat(section, row[0])">删除</UiButton>
-      </div>
-      <UiButton variant="secondary" size="sm" @click="addCompat">＋ 新增兼容键</UiButton>
+      <CompatEditor :entries="s.compatEntries(section)" @update="setCompatEntries" />
     </div>
 
-    <!-- 扩展插槽：TTS 卡在此挂载播报设置面板（引擎 / 音色 / 音量 / 试听）。
-         Extension slot: the TTS card mounts the playback settings panel here (engine / voice / volume / preview). -->
     <slot />
   </SettingsCard>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import SettingsField from './SettingsField.vue'
 import SettingsCard from './SettingsCard.vue'
+import CompatEditor from './CompatEditor.vue'
+import DetectionStatusDot from './DetectionStatusDot.vue'
 import { UiButton, UiChip, UiCombobox, UiIcon, UiInput, UiSelect, UiToggle } from '../../ui'
 import BiLabel from './BiLabel.vue'
 import { settingsText as T } from '../../../locales/settings'
@@ -120,108 +94,91 @@ import type { SegOption } from '../../ui/UiSegmented.vue'
 import { useSettings } from './useSettings'
 import { fieldLabel, fieldLabelEn, isNumericField, type SectionDef } from './configDefs'
 
-/** 组件 props：服务模块定义（来自 configDefs.sectionDefs）。Component props: the service module definition (from configDefs.sectionDefs). */
+/** 组件 props：服务模块定义（来自 configDefs.sectionDefs）。Service section definition. */
 const props = defineProps<{ section: SectionDef }>()
 
-/** 设置页单例状态与操作（保留对象引用以维持响应式）。Settings singleton (kept as an object to preserve reactivity). */
+/** 设置页单例状态与操作。Settings singleton. */
 const s = useSettings()
 
-/** 协议下拉选项（后端 provider 字面量的单一来源）。Provider options (single source for the backend's provider literals). */
+/** 协议下拉选项。Protocol options. */
 const PROVIDERS: SegOption[] = [
   { value: 'openai', label: 'OpenAI 兼容' },
   { value: 'anthropic', label: 'Anthropic（原生）' },
   { value: 'gemini', label: 'Gemini（原生）' },
 ]
 
-/** 音频格式下拉选项（后端 TtsProfile.format 是 wav/mp3/pcm16 三值字面量，文本框能输非法值）。
- *  Audio format options (backend TtsProfile.format is a wav/mp3/pcm16 literal; a free-text box would accept invalid values). */
+/** 音频格式下拉选项。Audio format options. */
 const FORMATS: SegOption[] = [
   { value: 'wav', label: 'wav' },
   { value: 'mp3', label: 'mp3' },
   { value: 'pcm16', label: 'pcm16' },
 ]
 
-/** Profile 下拉选项：当前 section 已配置的 profile 名。Profile options: the section's configured profile names. */
+/** 本卡编辑对象（本地状态，不写 active）。The card's editing target (local, never persisted as active). */
+const editTarget = ref('')
+
+/** 当前 section 的 profiles。Profiles of this section. */
+const profiles = computed<Record<string, any>>(() => s.sec(props.section.key)?.profiles || {})
+
+/** 运行时解析后的 active（空串 → 第一个 profile）。Resolved active profile id. */
+const resolvedActive = computed(() => {
+  const sec = s.sec(props.section.key)
+  if (!sec) return ''
+  return sec.active && sec.profiles?.[sec.active] ? sec.active : (Object.keys(sec.profiles || {})[0] || '')
+})
+
+watch([resolvedActive, () => props.section.key], () => {
+  if (!editTarget.value || !profiles.value[editTarget.value]) editTarget.value = resolvedActive.value
+}, { immediate: true })
+
+/** 正在编辑的 profile 对象。The profile object being edited. */
+function profile(): any {
+  return profiles.value[editTarget.value] || {}
+}
+
+/** Profile 下拉选项。Profile options. */
 const profileOptions = computed<SegOption[]>(() =>
-  Object.keys(s.sec(props.section.key).profiles).map(n => ({ value: n, label: n })),
+  Object.keys(profiles.value).map(n => ({ value: n, label: n })),
 )
 
-/** ASR 转写模式说明（仅 ASR 卡用）。ASR transcription-mode hint (ASR card only). */
-/** 当前活跃 Profile（voices 列表编辑用）。The active profile (for editing the voices list). */
-function activeProfile(): any {
-  const sec = s.sec(props.section.key)
-  return sec?.profiles?.[sec.active]
+/** 连通性结果（测试连接状态点）。Connectivity result for the status dot. */
+const conn = computed(() => s.connResults.value[props.section.name])
+const detectionStatus = computed<'idle' | 'testing' | 'ok' | 'fail'>(() => {
+  if (s.detecting.value) return 'testing'
+  if (!conn.value) return 'idle'
+  return conn.value.status === 'ok' ? 'ok' : 'fail'
+})
+const detectionDetail = computed(() => {
+  if (!conn.value) return '尚未测试连接'
+  const label = conn.value.status === 'ok' ? '上次检测：成功' : '上次检测：失败'
+  return conn.value.latency_ms != null ? `${label} · ${conn.value.latency_ms}ms` : label
+})
+
+/** 把兼容编辑器回传的键值行写回 profile.compat。Write compat rows back to the profile. */
+function setCompatEntries(entries: Array<[string, string]>): void {
+  const prof = profile()
+  prof.compat = Object.fromEntries(entries.filter(([k]) => k.trim()))
 }
 
-/** 向 profile.voices 追加一个空音色行（列表不存在时先初始化）。
- *  Append an empty voice row to profile.voices (initializing the list if missing). */
-function addVoice() {
-  const prof = activeProfile()
-  if (!prof) return
+/** 向 profile.voices 追加一个空音色行。Append an empty voice row. */
+function addVoice(): void {
+  const prof = profile()
   if (!Array.isArray(prof.voices)) prof.voices = []
   prof.voices.push('')
-}
-
-// ─── 高级兼容编辑辅助（数据直改 editable 快照，随「保存」一并 PATCH） ───
-
-/** 当前 profile 是否已有某兼容键。Whether the active profile has a compat key. */
-function compatHas(key: string): boolean {
-  return s.compatEntries(props.section).some(([k]) => k === key)
-}
-
-/** 追加一个空兼容键行（占位键名，改名即生效）。Append an empty compat row. */
-function addCompat() {
-  s.setCompat(props.section, `key_${Date.now().toString(36)}`, '')
-}
-
-/** 重命名兼容键（本质 = 删旧建新，值不变）。Rename a compat key (delete + recreate, value kept). */
-function renameCompat(_i: number, oldKey: string, newKey: string) {
-  const cur = s.compatEntries(props.section).find(([k]) => k === oldKey)
-  s.setCompat(props.section, newKey, cur?.[1] ?? '', oldKey)
 }
 </script>
 
 <style scoped>
 .cs-card-btns { display: flex; align-items: center; gap: var(--sp-2); }
 .cs-profrow { display: flex; align-items: flex-end; gap: var(--sp-2); }
-/* 新增 Profile 按钮激活态（UiButton 透传 class）。Active state of the "add Profile" button (class passed through UiButton). */
-.cs-profrow :deep(.ui-btn.on) { color: var(--brand-c2); border-color: var(--brand-c2); }
 .cs-keyrow { display: flex; align-items: center; gap: var(--sp-2); }
-/* 音色列表行：一行一个音色 + 删除按钮（与唤醒词行同构）。Voice row: one voice plus a delete button (mirrors the wake-word row). */
 .cs-voicerow { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
 .cs-voicerow :deep(.ui-input) { flex: 1; min-width: 0; }
-
-/* 高级兼容编辑区：折叠密度 + 快捷 chip（与音色行同构的键值行）。Advanced compat editor:
-   compact density + shortcut chips (key-value rows mirroring the voice row). */
 .cs-compat { border-top: var(--divider-dashed); padding-top: var(--sp-q10); display: flex; flex-direction: column; gap: var(--sp-2); }
 .cs-compat-head { display: flex; align-items: baseline; gap: var(--sp-2); }
 .cs-compat-title { font-size: var(--fs-2xs); font-weight: 600; color: var(--text-2); letter-spacing: .04em; }
 .cs-compat-hint { font-size: var(--fs-2xs); color: var(--text-3); }
-.cs-compat-shortcuts { display: flex; flex-wrap: wrap; gap: var(--sp-q6); }
-/* 双类选择器压过 UiButton 基础样式。Double-class selector outspecifies UiButton base styles. */
-.cs-compat-shortcuts .cs-compat-chip.ui-btn {
-  font-size: var(--fs-2xs); font-family: var(--font-mono); color: var(--text-3);
-  background: rgba(15, 23, 42, .6); border: 1px solid var(--border-soft);
-  border-radius: var(--r-full); padding: var(--sp-1) var(--sp-q10); cursor: pointer;
-}
-.cs-compat-shortcuts .cs-compat-chip.ui-btn:hover { color: var(--brand-c2); border-color: var(--brand-c2); }
-.cs-compat-shortcuts .cs-compat-chip.ui-btn.on { color: var(--brand-c2); border-color: var(--brand-c2); background: rgba(52, 211, 153, .08); }
-.cs-compat-row { display: flex; align-items: center; gap: var(--sp-2); }
-.cs-compat-row :deep(.ui-input) { flex: 1; min-width: 0; font-family: var(--font-mono); }
-
-/* 段级三选一的说明与警示（与 VoiceCard 同款尺寸；scoped 样式不跨组件，故各自定义）。
-   Hint / warning for the section-level segmented control (same density as VoiceCard;
-   scoped styles do not cross components, so each card defines its own). */
-.cs-mode-hint { font-size: var(--fs-2xs); color: var(--text-3); margin: var(--sp-q6) 0 0; line-height: 1.5; }
 .cs-note { font-size: var(--fs-2xs); color: var(--text-3); line-height: 1.6; margin: var(--sp-1) 0 0; }
-.cs-note strong { color: var(--text-2); }
-.cs-note code {
-  font-family: var(--font-mono); font-size: inherit;
-  background: rgba(148, 163, 184, .12); border-radius: 3px; padding: 0 var(--sp-1);
-}
-
-/* 测试中旋转动画（挂在 loader-2 图标上）。Spin animation while a connection test runs
-   (applied to the loader-2 icon). */
 .cs-spin { animation: cs-spin .9s linear infinite; }
 @keyframes cs-spin { to { transform: rotate(360deg); } }
 </style>

@@ -55,11 +55,11 @@ export const menuDefs: MenuDef[] = [
 /** 三大服务 section 定义（name 对应 /api/detection 的连通性结果名）。Three service section definitions (name matches the /api/detection connectivity result name). */
 export const sectionDefs: SectionDef[] = [
   { key: 'llm', name: 'LLM', title: 'LLM 大模型', titleEn: 'LLM Model', toggle: false,
-    fields: ['provider', 'endpoint', 'model', 'chat_path', 'max_tokens', 'temperature', 'timeout'] },
+    fields: ['provider', 'endpoint', 'chat_path', 'max_tokens', 'temperature', 'timeout'] },
   { key: 'asr', name: 'ASR', title: 'ASR 语音识别（API Profile）', titleEn: 'ASR API Profile', toggle: false,
-    fields: ['provider', 'endpoint', 'model', 'language', 'chat_path', 'timeout'] },
+    fields: ['provider', 'endpoint', 'language', 'chat_path', 'timeout'] },
   { key: 'tts', name: 'TTS', title: 'TTS 语音合成（API Profile）', titleEn: 'TTS API Profile', toggle: true,
-    fields: ['provider', 'endpoint', 'model', 'voice', 'voices', 'voice_ref', 'format', 'chat_path', 'timeout'] },
+    fields: ['provider', 'endpoint', 'voice', 'voices', 'voice_ref', 'format', 'chat_path', 'timeout'] },
 ]
 
 /** 高级模块定义（Agent / LLM 客户端 / 工具 / RAG / 服务器）。Advanced module definitions (Agent / LLM client / Tools / RAG / Server). */

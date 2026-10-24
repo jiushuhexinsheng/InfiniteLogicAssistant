@@ -93,8 +93,10 @@ describe('ServiceCard（语音合成扩展）', () => {
    *  profile.voices feeds the voice combobox suggestions (UiCombobox replaced the native datalist). */
   it('voices 进入音色组合框建议（聚焦弹出项目风格面板）', async () => {
     const w = mount(ServiceCard, { props: { section: ttsDef } })
+    // 模型字段已移出 ServiceCard（由供应商向导维护），此处只剩 voice 组合框。
+    // The model field moved out of ServiceCard (owned by the provider wizard); only voice remains.
     const combos = w.findAll('.ui-combo input')
-    expect(combos.length, 'model 与 voice 各一个组合框').toBe(2)
+    expect(combos.length, '仅 voice 组合框').toBe(1)
     // 按当前值定位 voice 输入（不依赖字段渲染顺序）。Locate the voice input by its
     // current value (no reliance on field render order).
     const voiceInput = combos.find(i => (i.element as HTMLInputElement).value === 'Chloe')

@@ -58,11 +58,9 @@ export function useSettings() {
     fetchModelsFor: profiles.fetchModelsFor,
 
     // ── 高级兼容开关（自填闭环）/ Advanced gateway compat toggles ──
-    compatShortcuts: profiles.COMPAT_SHORTCUTS,
     compatEntries: profiles.compatEntries,
     setCompat: profiles.setCompat,
     removeCompat: profiles.removeCompat,
-    toggleCompat: profiles.toggleCompat,
 
     // ── 连通性检测 / Connectivity detection ──
     detecting: detection.detecting,
