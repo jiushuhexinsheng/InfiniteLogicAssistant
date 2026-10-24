@@ -31,20 +31,14 @@
       转写模式（本地 / 云端 / 混合）与本地模型在上方「识别引擎」卡设置；本卡只配置云端 API Profile。
     </p>
 
-    <!-- Profile 管理：切换 / 新增（自填） / 删除。Profile management: switch / add (self-filled) / delete. -->
+    <!-- 供应商列表 / 新增 / 删除已收口到 ModelProviderPanel；本卡只编辑当前活跃
+         profile 的字段。Profile list / add / delete live in ModelProviderPanel; this card
+         only edits the active profile's fields. -->
     <div class="cs-profrow">
-      <SettingsField label="Profile" grow>
+      <SettingsField label="Profile" en="Profile" grow>
         <UiSelect :model-value="s.sec(section.key).active" :options="profileOptions" @update:model-value="v => (s.sec(section.key).active = v)" />
       </SettingsField>
-      <UiButton variant="secondary" size="sm" :class="{ on: s.addingSection.value === section.key }" @click="s.toggleAdding(section.key)">
-        <UiIcon name="plus" :size="12" /> 新增
-      </UiButton>
-      <UiButton variant="secondary" size="sm" :disabled="Object.keys(s.sec(section.key).profiles).length <= 1" @click="s.deleteProfile(section.key)">
-        <UiIcon name="trash" :size="12" /> 删除
-      </UiButton>
     </div>
-
-    <VendorPicker v-if="s.addingSection.value === section.key" :section-key="section.key" />
 
     <template v-for="f in section.fields" :key="f">
       <SettingsField :label="fieldLabel(f)">
@@ -118,7 +112,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import SettingsField from './SettingsField.vue'
-import VendorPicker from './VendorPicker.vue'
 import SettingsCard from './SettingsCard.vue'
 import { UiButton, UiChip, UiCombobox, UiIcon, UiInput, UiSelect, UiToggle } from '../../ui'
 import BiLabel from './BiLabel.vue'

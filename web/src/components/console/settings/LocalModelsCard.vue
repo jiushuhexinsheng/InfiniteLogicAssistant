@@ -66,16 +66,16 @@
         label-zh="VAD 模式" label-en="VAD Mode"
         @update:model-value="v => (s.ed().vad.mode = v)"
       />
-      <SettingsField label="模型" en="Model">
-        <UiSelect
-          :model-value="s.ed().vad.model"
-          :options="modelOptions('vad')"
-          placeholder="选择 VAD 模型 / Select VAD model"
-          @update:model-value="v => switchModel('vad', String(v))"
-        />
-        <p class="cs-hint">{{ missingHint('vad', s.ed().vad.model) }}</p>
-      </SettingsField>
-      <SchemaForm :params="schemaFor('vad')" :values="s.ed().vad" />
+      <ModelConfigCard
+        kind="vad" title-zh="VAD 模型配置" title-en="VAD Model"
+        :model-value="s.ed().vad.model"
+        :model-options="modelOptions('vad')"
+        :values="s.ed().vad"
+        :params="schemaFor('vad')"
+        :missing-hint="missingHint('vad', s.ed().vad.model)"
+        placeholder="选择 VAD 模型 / Select VAD model"
+        @update:model="v => switchModel('vad', v)"
+      />
 
       <!-- ── KWS ── -->
       <h3 class="cs-title">KWS · 唤醒词</h3>
@@ -89,16 +89,17 @@
         label-zh="KWS 模式" label-en="KWS Mode"
         @update:model-value="v => (s.ed().kws.mode = v)"
       />
-      <SettingsField v-if="s.ed().kws.mode === 'local'" label="模型" en="Model">
-        <UiSelect
-          :model-value="s.ed().kws.model_dir"
-          :options="modelOptions('kws')"
-          placeholder="选择 KWS 模型 / Select KWS model"
-          @update:model-value="v => switchModel('kws', String(v))"
-        />
-        <p class="cs-hint">{{ missingHint('kws', s.ed().kws.model_dir) }}</p>
-      </SettingsField>
-      <SchemaForm v-if="s.ed().kws.mode !== 'off'" :params="schemaFor('kws')" :values="s.ed().kws" />
+      <ModelConfigCard
+        v-if="s.ed().kws.mode !== 'off'"
+        kind="kws" title-zh="KWS 模型配置" title-en="KWS Model"
+        :model-value="s.ed().kws.model_dir"
+        :model-options="modelOptions('kws')"
+        :values="s.ed().kws"
+        :params="schemaFor('kws')"
+        :missing-hint="missingHint('kws', s.ed().kws.model_dir)"
+        placeholder="选择 KWS 模型 / Select KWS model"
+        @update:model="v => switchModel('kws', v)"
+      />
 
       <!-- ── ASR ── -->
       <h3 class="cs-title">ASR · 语音识别</h3>
@@ -112,34 +113,34 @@
         label-zh="ASR 模式" label-en="ASR Mode"
         @update:model-value="v => (s.ed().asr.mode = v)"
       />
-      <SettingsField v-if="s.ed().asr.mode !== 'cloud'" label="本地模型" en="Local Model">
-        <UiSelect
-          :model-value="s.ed().asr.local_model"
-          :options="modelOptions('asr')"
-          placeholder="选择 ASR 模型 / Select ASR model"
-          @update:model-value="v => switchModel('asr', String(v))"
-        />
-        <p class="cs-hint">{{ missingHint('asr', s.ed().asr.local_model) }}</p>
-      </SettingsField>
-      <SchemaForm v-if="s.ed().asr.mode !== 'cloud'" :params="schemaFor('asr')" :values="s.ed().asr" />
+      <ModelConfigCard
+        v-if="s.ed().asr.mode !== 'cloud'"
+        kind="asr" title-zh="ASR 模型配置" title-en="ASR Model"
+        :model-value="s.ed().asr.local_model"
+        :model-options="modelOptions('asr')"
+        :values="s.ed().asr"
+        :params="schemaFor('asr')"
+        :missing-hint="missingHint('asr', s.ed().asr.local_model)"
+        placeholder="选择 ASR 模型 / Select ASR model"
+        @update:model="v => switchModel('asr', v)"
+      />
 
       </template>
 
       <!-- ── TTS ── -->
       <template v-if="show('tts')">
-      <p class="cs-hint">引擎选择（浏览器 / 本地 Kokoro / API）在「合成」Tab 顶部；这里配置本地 Kokoro 的模型与推理硬件。</p>
-      <template v-if="ttsSettings.engine === 'local'">
-        <SettingsField label="模型" en="Model">
-          <UiSelect
-            :model-value="s.ed().tts.local_model"
-            :options="modelOptions('tts')"
-            placeholder="选择 TTS 模型 / Select TTS model"
-            @update:model-value="v => switchModel('tts', String(v))"
-          />
-          <p class="cs-hint">{{ missingHint('tts', s.ed().tts.local_model) }}</p>
-        </SettingsField>
-        <SchemaForm :params="schemaFor('tts')" :values="s.ed().tts" />
-      </template>
+      <p class="cs-hint">引擎选择（本地 Kokoro / API）在「合成」Tab 顶部；这里配置本地 Kokoro 的模型与推理硬件。</p>
+      <ModelConfigCard
+        v-if="ttsSettings.engine === 'local'"
+        kind="tts" title-zh="TTS 模型配置" title-en="TTS Model"
+        :model-value="s.ed().tts.local_model"
+        :model-options="modelOptions('tts')"
+        :values="s.ed().tts"
+        :params="schemaFor('tts')"
+        :missing-hint="missingHint('tts', s.ed().tts.local_model)"
+        placeholder="选择 TTS 模型 / Select TTS model"
+        @update:model="v => switchModel('tts', v)"
+      />
 
       </template>
 
@@ -214,11 +215,12 @@ import { computed, onMounted, ref } from 'vue'
 import SettingsCard from './SettingsCard.vue'
 import SettingsField from './SettingsField.vue'
 import BiLabel from './BiLabel.vue'
-import SchemaForm from './SchemaForm.vue'
+import ModelConfigCard from './ModelConfigCard.vue'
 import SourceModeSwitch from './SourceModeSwitch.vue'
 import type { SchemaField } from './SchemaForm.vue'
 import { UiButton, UiInput, UiSelect, UiToggle } from '../../ui'
 import { settingsText as T } from '../../../locales/settings'
+import { refreshVoiceStatus } from '../../../composables/useVoiceModuleStatus'
 import { api } from '../../../api'
 import { useSettings } from './useSettings'
 import { notify } from '../../../composables/useToast'
@@ -259,14 +261,22 @@ function switchModel(kind: string, next: string) {
     for (const f of fields) saved[f.key] = e[kind][f.key]
     e[kind].params[old] = saved
   }
-  const saved = e[kind].params[next]
-  for (const f of fields) {
-    if (saved && Object.prototype.hasOwnProperty.call(saved, f.key)) {
-      e[kind][f.key] = saved[f.key]
-    } else if (f.default !== undefined) {
-      e[kind][f.key] = f.default
+  // 先按新模型的家族拉 schema（字段/默认值可能不同），再恢复参数。
+  // Fetch the new model's schema first (fields/defaults may differ), then restore params.
+  void api.getSchema(kind as any, next).then((r) => {
+    if (r?.ok) {
+      schemas.value[kind] = r.params
+      const fresh = r.params.filter((f: SchemaField) => (f.group || 'model') === 'model')
+      const saved = e[kind].params?.[next]
+      for (const f of fresh) {
+        if (saved && Object.prototype.hasOwnProperty.call(saved, f.key)) {
+          e[kind][f.key] = saved[f.key]
+        } else if (f.default !== undefined) {
+          e[kind][f.key] = f.default
+        }
+      }
     }
-  }
+  })
   e[kind][key] = next
   engineTests.value = { ...engineTests.value, [kind]: undefined }
 }
@@ -277,6 +287,9 @@ async function testEngine(kind: string) {
   try {
     const r = await api.testEngine(kind as 'vad' | 'kws' | 'asr' | 'tts')
     engineTests.value = { ...engineTests.value, [kind]: r }
+    // 自检结果写进后端 _HEALTH 缓存，刷新能力状态让链路条/状态灯即时反映。
+    // The self-test writes into the backend _HEALTH cache; refresh so the chain/dots update.
+    void refreshVoiceStatus()
     if (r.ok) notify.ok(`${kind.toUpperCase()} 自检通过（${r.latency_ms ?? '?'}ms）`)
     else notify.err(`${kind.toUpperCase()} 自检失败：${r.error || '未知错误'}`)
   } catch (e: any) {
@@ -457,14 +470,20 @@ async function refresh() {
     if (m.ok) models.value = m.models
     if (h.ok) hw.value = h.hardware
     if (c.ok) caps.value = c
+    ensureSelection()
+    // 按当前选中的模型拉 schema（字段/默认值随家族变化）。
+    // Fetch schema per the currently selected model (fields/defaults vary by family).
+    const modelOf = (k: string): string => {
+      const e = s.ed()
+      return MODEL_KEYS[k] ? String(e?.[k]?.[MODEL_KEYS[k]] || '') : ''
+    }
     const schemaResults = await Promise.all(
       (['vad', 'kws', 'asr', 'tts'] as const).map(k =>
-        api.getSchema(k).catch(() => null)),
+        api.getSchema(k, modelOf(k)).catch(() => null)),
     )
     schemaResults.forEach((r, i) => {
       if (r?.ok) schemas.value[['vad', 'kws', 'asr', 'tts'][i]] = r.params
     })
-    ensureSelection()
     await refreshDevices(false)
   } catch (e: any) {
     notify.err('模型扫描失败：' + (e?.message || e))

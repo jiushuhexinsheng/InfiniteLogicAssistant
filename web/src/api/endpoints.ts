@@ -66,9 +66,11 @@ export const api = {
   getHardware: () => get<{ ok: boolean; hardware: any }>('/voice/hardware'),
   /** 四能力当前模式与可用性。Per-capability mode and availability. */
   getCapabilities: () => get<{ ok: boolean; [key: string]: any }>('/voice/capabilities'),
-  /** 某能力的参数 schema（SchemaForm 数据源）。Parameter schema for one capability. */
-  getSchema: (kind: 'vad' | 'kws' | 'asr' | 'tts') =>
-    get<{ ok: boolean; kind: string; params: any[] }>(`/voice/schema?kind=${kind}`),
+  /** 某能力的参数 schema（SchemaForm 数据源；可传 model 按家族调整）。
+   *  Parameter schema for one capability; pass model to vary fields by family. */
+  getSchema: (kind: 'vad' | 'kws' | 'asr' | 'tts', model?: string) =>
+    get<{ ok: boolean; kind: string; family: string; params: any[] }>(
+      `/voice/schema?kind=${kind}${model ? `&model=${encodeURIComponent(model)}` : ''}`),
   /** 加载并实际跑一次本地引擎。Load and exercise one local engine. */
   testEngine: (kind: 'vad' | 'kws' | 'asr' | 'tts') =>
     post<{ ok: boolean; ready?: boolean; latency_ms?: number; detail?: string; error?: string }>(

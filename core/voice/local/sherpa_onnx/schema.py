@@ -39,11 +39,19 @@ def _common(kind: str) -> list[dict[str, Any]]:
     ]
 
 
-def capability_schema(kind: str) -> list[dict[str, Any]]:
-    """返回某能力的参数 schema。Return the parameter schema for one capability."""
+def capability_schema(kind: str, family: str = "", streaming: bool | None = None) -> list[dict[str, Any]]:
+    """返回某能力的参数 schema；``family``/``streaming`` 让模型专属字段随模型变化。
+
+    Return the parameter schema for one capability; ``family``/``streaming`` make the
+    model-specific fields vary per model.
+    """
     common = _common(kind)
+    family = (family or "").lower()
     if kind == "vad":
-        return common + [
+        # TEN VAD 与 Silero 的窗口默认不同；Silero 无 window_size 概念（用 512 内部窗口）。
+        # TEN VAD defaults to 256, Silero to 512; Silero has no window_size knob.
+        win_default = 0 if family != "silero" else 512
+        fields: list[dict[str, Any]] = [
             {
                 "key": "vad_threshold", "target": "vad", "type": "slider", "group": "model",
                 "label": _bi("语音概率阈值", "Speech probability threshold"),
@@ -55,18 +63,20 @@ def capability_schema(kind: str) -> list[dict[str, Any]]:
                 "label": _bi("最短语音时长（ms）", "Min speech (ms)"),
                 "default": 300, "min": 0, "max": 3000, "step": 50,
             },
-            {
+        ]
+        if family != "silero":
+            fields.append({
                 "key": "window_size", "target": "vad", "type": "select", "group": "model",
                 "label": _bi("分析窗口", "Window size"),
-                "default": 0,
+                "default": win_default,
                 "options": [
                     {"value": 0, "label": "自动 / Auto"},
                     {"value": 128, "label": "128"},
                     {"value": 256, "label": "256"},
                     {"value": 512, "label": "512"},
                 ],
-            },
-        ]
+            })
+        return common + fields
     if kind == "kws":
         return common + [
             {
@@ -82,6 +92,12 @@ def capability_schema(kind: str) -> list[dict[str, Any]]:
             },
         ]
     if kind == "asr":
+        # 只有在线（流式）模型能出 partial；离线 ASR 家族（sense-voice/whisper 等）
+        # 无流式概念，隐藏 streaming 开关。
+        # Only online (streaming) models emit partials; offline families hide the switch.
+        can_stream = streaming if streaming is not None else True
+        if not can_stream:
+            return common
         return common + [
             {
                 "key": "streaming", "target": "asr", "type": "switch", "group": "model",
@@ -91,6 +107,16 @@ def capability_schema(kind: str) -> list[dict[str, Any]]:
             },
         ]
     if kind == "tts":
+        # Kokoro 多语种留空 lang；其它家族（vits/matcha）无 speaker/lang 概念。
+        # Kokoro keeps lang empty for multi-lang; vits/matcha have no speaker/lang knobs.
+        if family and family not in ("kokoro", "kitten", "zipvoice"):
+            return common + [
+                {
+                    "key": "speed", "target": "tts", "type": "slider", "group": "model",
+                    "label": _bi("语速", "Speed"),
+                    "default": 1.0, "min": 0.5, "max": 2.0, "step": 0.05,
+                },
+            ]
         return common + [
             {
                 "key": "speaker", "target": "tts", "type": "number", "group": "model",
