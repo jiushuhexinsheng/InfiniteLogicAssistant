@@ -64,6 +64,13 @@ from .sessions import (
     SessionListResponse,
     SessionOut,
 )
+from .llm import (
+    LlmActive,
+    LlmModelGroup,
+    LlmModelsResponse,
+    SetActiveModelRequest,
+    SetActiveModelResponse,
+)
 from .settings import (
     AgentConfigOut,
     ConfigFullResponse,
@@ -118,6 +125,11 @@ __all__ = [
     "DetectionResponse",
     "EditableSnapshot",
     "EnvResponse",
+    "LlmActive",
+    "LlmModelGroup",
+    "LlmModelsResponse",
+    "SetActiveModelRequest",
+    "SetActiveModelResponse",
     "FactItem",
     "FetchModelsResponse",
     "FunctionParams",

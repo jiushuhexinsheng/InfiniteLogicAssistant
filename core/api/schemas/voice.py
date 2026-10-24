@@ -160,6 +160,10 @@ class ConfigResponse(ApiResponse):
     """
     llm_available: bool = False
     llm_profile: str = ""
+    # 当前模型名：同一供应商内切换模型时 llm_profile 不变，顶栏需要它。
+    # Current model name: llm_profile stays the same when switching models inside one
+    # provider, so the header needs this field.
+    llm_model: str = ""
     asr_available: bool = False
     asr_profile: str = ""
     tts_available: bool = False

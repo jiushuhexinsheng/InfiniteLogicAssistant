@@ -33,6 +33,7 @@ async def config_endpoint():
     return {
         "llm_available": config.is_llm_configured(),
         "llm_profile": config.resolve_llm_profile()[0],
+        "llm_model": config.resolve_llm_profile()[1].get("model", ""),
         "asr_available": config.is_asr_configured(),
         "asr_profile": config.resolve_asr_profile()[0],
         "tts_available": config.is_tts_enabled(),

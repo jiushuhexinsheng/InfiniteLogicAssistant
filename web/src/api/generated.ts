@@ -424,6 +424,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/llm/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Llm Models
+         * @description 按供应商分组返回可用模型与当前全局选择。
+         *
+         *     Return selectable models grouped by provider plus the current global selection.
+         *
+         *     Returns:
+         *         LlmModelsResponse。The grouped catalogue.
+         */
+        get: operations["llm_models_api_llm_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/llm/active-model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Active Model
+         * @description 设置全局使用的供应商与模型并热重载。
+         *
+         *     Set the globally used provider/model and hot-reload the configuration.
+         *
+         *     Args:
+         *         request: 请求体 `{"provider": str, "model": str}`。Request body.
+         *
+         *     Returns:
+         *         新的 active 选择；非法输入返回 400。The new selection; 400 on invalid input.
+         */
+        post: operations["set_active_model_api_llm_active_model_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tools": {
         parameters: {
             query?: never;
@@ -1230,6 +1283,11 @@ export interface components {
              */
             llm_profile: string;
             /**
+             * Llm Model
+             * @default
+             */
+            llm_model: string;
+            /**
              * Asr Available
              * @default false
              */
@@ -1720,6 +1778,22 @@ export interface components {
             tasks: components["schemas"]["TaskLibraryItem"][];
         };
         /**
+         * LlmActive
+         * @description 当前全局使用的供应商与模型。The globally active provider and model.
+         */
+        LlmActive: {
+            /**
+             * Provider
+             * @default
+             */
+            provider: string;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+        };
+        /**
          * LlmClientConfigOut
          * @description LLM 客户端配置输出（重试、熔断、超时参数）。
          *
@@ -1756,6 +1830,39 @@ export interface components {
              * @default 60
              */
             request_timeout: number;
+        };
+        /**
+         * LlmModelGroup
+         * @description 一个供应商分组及其可选模型。One provider group and its selectable models.
+         */
+        LlmModelGroup: {
+            /** Provider */
+            provider: string;
+            /** Label */
+            label: string;
+            /** Models */
+            models?: string[];
+            /**
+             * Current Model
+             * @default
+             */
+            current_model: string;
+        };
+        /**
+         * LlmModelsResponse
+         * @description `GET /api/llm/models` 响应。Response of GET /api/llm/models.
+         */
+        LlmModelsResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            active?: components["schemas"]["LlmActive"];
+            /** Groups */
+            groups?: components["schemas"]["LlmModelGroup"][];
         };
         /**
          * McpConfigOut
@@ -2255,6 +2362,20 @@ export interface components {
              * @default false
              */
             archived: boolean;
+        };
+        /**
+         * SetActiveModelResponse
+         * @description `POST /api/llm/active-model` 响应。Response of the active-model endpoint.
+         */
+        SetActiveModelResponse: {
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            active?: components["schemas"]["LlmActive"];
         };
         /**
          * StreamingConfig
@@ -3116,6 +3237,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UploadStatsResponse"];
+                };
+            };
+        };
+    };
+    llm_models_api_llm_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmModelsResponse"];
+                };
+            };
+        };
+    };
+    set_active_model_api_llm_active_model_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetActiveModelResponse"];
                 };
             };
         };

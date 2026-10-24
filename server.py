@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from core import config as config
-from core.api import history, library, memory, providers, schedule, sessions, settings, tools, voice
+from core.api import history, library, llm, memory, providers, schedule, sessions, settings, tools, voice
 from core.logger import logger
 
 
@@ -164,6 +164,7 @@ for _ext, _ct in _EXTRA_TYPES.items():
 
 # 挂载各域路由
 app.include_router(voice.router, prefix="/api")
+app.include_router(llm.router, prefix="/api")
 app.include_router(tools.router, prefix="/api")
 app.include_router(memory.router, prefix="/api")
 app.include_router(schedule.router, prefix="/api")
