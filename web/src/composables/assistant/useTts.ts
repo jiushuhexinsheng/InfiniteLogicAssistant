@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { authHeaders } from '../../api/auth'
 import { splitSentences } from '../../blocks/speech'
 import { hardwareConfig } from './store'
 
@@ -176,7 +177,7 @@ async function fetchSentence(text: string, gen: number): Promise<Blob | null> {
   try {
     const res = await fetch('/api/tts', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({
         text,
         voice: ttsSettings.value.apiVoice || undefined,

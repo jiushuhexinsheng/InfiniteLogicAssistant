@@ -3,6 +3,7 @@
 // docs/designs/06 — the underlying error is no longer embedded.)
 
 import type { QuestionEvent, QuestionOption, SseEvent, TaskState, TokenUsage } from '../types'
+import { authHeaders } from './auth'
 import { BASE } from './http'
 
 // ─── 编排 SSE：/api/voice/utter（唯一 agent 路径，含澄清/确认 question 事件）───
@@ -161,14 +162,14 @@ export async function streamUtter(
     if (mode === 'main') {
       return fetch(`${BASE}/voice/utter`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(body),
         signal: opts?.signal,
       })
     }
     return fetch(`${BASE}/voice/resume`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ session_id: sessionId || opts?.sessionId || '', last_seq: lastSeq }),
       signal: opts?.signal,
     })

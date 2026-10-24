@@ -1,4 +1,5 @@
 // ─── HTTP 封装 / HTTP Wrappers ───
+import { authHeaders } from './auth'
 
 /** API 基础路径 */
 /** API base path */
@@ -12,7 +13,11 @@ export const BASE = '/api'
  * @returns Promise<T> - 解析后的 JSON 响应 / Parsed JSON response
  */
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, options)
+  // 非 localhost 部署时服务端强制 X-API-Token；本地未配置 token 时头为空。
+  // Non-localhost deployments require X-API-Token; locally the header stays empty.
+  const headers = new Headers(options?.headers)
+  for (const [k, v] of Object.entries(authHeaders())) headers.set(k, v)
+  const res = await fetch(`${BASE}${path}`, { ...options, headers })
   if (!res.ok) {
     // 尝试解析 JSON 错误体，失败则用 HTTP 状态码
     // Try to parse JSON error body, fallback to HTTP status code

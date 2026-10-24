@@ -12,6 +12,8 @@
  * 20 ms frame then goes out as a binary message. Server events (ready/vad/partial/
  * final/error) are handed to `onEvent` verbatim.
  */
+import { withTokenParam } from '../../../api/auth'
+
 export interface VoiceStreamEvent {
   type: string
   [key: string]: unknown
@@ -108,7 +110,9 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
     node.connect(ctx.destination)
 
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    ws = new WebSocket(`${proto}://${location.host}/api/voice/asr/stream`)
+    // WS 无法自定义请求头：token 走查询参数（服务端两种都接受）。
+    // WS cannot set custom headers: carry the token in the query (the server accepts both).
+    ws = new WebSocket(withTokenParam(`${proto}://${location.host}/api/voice/asr/stream`))
     await new Promise<void>((resolve, reject) => {
       if (!ws) { reject(new Error('WebSocket 未创建')); return }
       ws.onopen = () => resolve()
