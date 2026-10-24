@@ -189,6 +189,17 @@ async def test_cloud_mode_uses_cloud_and_no_partial(monkeypatch):
     async def fake_cloud(_self, _segment):
         return "打开浏览器"
 
+    # start_session 会检查云端 ASR 是否可用（get_asr().available()）；本地 config.yaml 里
+    # 配了 ASR 时该检查为真，但 CI 从 example 新建的 config 未配 → 需要桩掉。
+    # start_session checks cloud ASR availability (get_asr().available()); it is True with a
+    # configured local config.yaml but False in CI's fresh example config, so stub it.
+    import core.voice as voice_mod
+
+    class _CloudAsr:
+        def available(self) -> bool:
+            return True
+
+    monkeypatch.setattr(voice_mod, "get_asr", lambda: _CloudAsr())
     monkeypatch.setattr(StreamingSession, "_cloud_transcribe", fake_cloud)
     ws = FakeWS()
     session = StreamingSession(ws, {"type": "start"}, runtime=FakeRuntime())
