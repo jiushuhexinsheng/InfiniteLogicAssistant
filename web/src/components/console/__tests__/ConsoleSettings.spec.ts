@@ -7,6 +7,7 @@ vi.mock('../../../api', () => ({
     getConfigFull: vi.fn(),
     patchConfig: vi.fn(),
     getDetection: vi.fn(),
+    getConfig: vi.fn(async () => ({ ok: true, llm_profile: 'p', llm_model: 'm' })),
     putSecret: vi.fn(),
     fetchModels: vi.fn(),
     getModels: vi.fn(async () => ({ ok: true, models: { vad: [], kws: [], asr: [], tts: [], llm: [] } })),
@@ -173,6 +174,23 @@ describe('ConsoleSettings 大模型页', () => {
 
   it('三段的字段定义都不再包含 model', () => {
     for (const def of sectionDefs) expect(def.fields).not.toContain('model')
+  })
+
+  it('设为当前后刷新全局配置（顶栏模型同步）', async () => {
+    const snap: any = snapshot()
+    snap.llm.profiles.p2 = { provider: 'openai', endpoint: 'https://b', model: 'm2' }
+    snap.llm.api_key_set.p2 = false
+    vi.mocked(api.getConfigFull).mockResolvedValue({ ok: true, editable: snap } as any)
+    vi.mocked(api.getConfig).mockClear()
+
+    const w = mount(ConsoleSettings)
+    await flushPromises()
+
+    await w.find('.pr-activate').trigger('click')
+    await flushPromises()
+
+    expect(api.patchConfig).toHaveBeenCalled()
+    expect(api.getConfig).toHaveBeenCalled()
   })
 
   it('删除供应商：先存配置，再用空值清理密钥', async () => {

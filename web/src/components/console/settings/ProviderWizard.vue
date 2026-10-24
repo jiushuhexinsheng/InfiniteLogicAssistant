@@ -98,6 +98,7 @@ import { UiButton, UiChip, UiInput, UiModal, UiSelect } from '../../ui'
 import { api } from '../../../api'
 import { presetsFor, type ProviderPreset, type ProviderSection } from './providerPresets'
 import { useSettings } from './useSettings'
+import { notify } from '../../../composables/useToast'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
@@ -139,6 +140,8 @@ const title = computed(() => editing.value
 
 /** ID 校验。ID validation. */
 const idError = computed(() => {
+  // 编辑模式 ID 只读：跳过格式/重名校验，否则非规范命名的旧 profile 会被卡死。
+  if (editing.value) return ''
   const id = form.id.trim()
   if (!id) return '请填写 Provider ID'
   if (!/^[a-z0-9][a-z0-9_-]*$/.test(id)) return '只能小写字母/数字/-/_，且以字母或数字开头'
@@ -199,6 +202,8 @@ function choosePreset(preset: ProviderPreset): void {
     const existing = props.profiles[preset.id]
     models.value = unionModels(existing.models, existing.model)
   } else {
+    // 编辑 A 时点一个不存在的预设 = 改为新增：不能继承 A 的字段。
+    editing.value = ''
     models.value = [...(preset.models || [])]
   }
   step.value = 2
@@ -209,11 +214,16 @@ async function fetchModels(): Promise<void> {
   fetching.value = true
   fetchError.value = ''
   try {
+    const existing = editing.value ? (props.profiles[editing.value] || {}) : {}
     const r = await api.fetchModels(props.section, {
+      name: form.id,
       provider: form.protocol,
       endpoint: form.endpoint,
-      chat_path: form.protocol === 'anthropic' ? '/v1/messages' : '/v1/chat/completions',
+      chat_path: existing.chat_path
+        || (form.protocol === 'anthropic' ? '/v1/messages' : '/v1/chat/completions'),
       api_key: apiKey.value,
+      api_key_env: existing.api_key_env || '',
+      models_path: existing.models_path || '',
       timeout: 30,
     })
     if (r.ok && r.models?.length) {
@@ -252,7 +262,9 @@ async function save(): Promise<void> {
       ...existing,
       provider: form.protocol,
       endpoint: form.endpoint.trim(),
-      chat_path: form.protocol === 'anthropic' ? '/v1/messages' : '/v1/chat/completions',
+      // 编辑时保留自定义路径（TTS 的 speech/chat 模式由它决定）。
+      chat_path: existing.chat_path
+        || (form.protocol === 'anthropic' ? '/v1/messages' : '/v1/chat/completions'),
       models: listed,
       model: current && listed.includes(current) ? current : listed[0],
     }
@@ -266,10 +278,19 @@ async function save(): Promise<void> {
     const snapshot = s.editable.value
     if (!snapshot) return
     const section = (snapshot as any)[props.section]
+    // 赋值前记录：赋值后 keys 已包含新 id，条件永远为 false。
+    const hadProfiles = Object.keys(props.profiles).length > 0
     section.profiles[id] = profile
     // 只有「一份 profile 都没有」时才自动设为 active，避免静默切走当前模型。
-    if (!Object.keys(props.profiles).length) section.active = id
-    if (apiKey.value) await api.putSecret(`${props.section}.profiles.${id}`, apiKey.value)
+    if (!hadProfiles) section.active = id
+    if (apiKey.value) {
+      try {
+        await api.putSecret(`${props.section}.profiles.${id}`, apiKey.value)
+      } catch (e: any) {
+        notify.err('密钥写入失败：' + (e?.message || e))
+        return
+      }
+    }
     await s.saveModule(props.section)
 
     emit('saved', id)

@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   putSecret: vi.fn().mockResolvedValue({ ok: true }),
   saveModule: vi.fn().mockResolvedValue(true),
   editable: { value: { llm: { active: '', profiles: {} as Record<string, any> } } },
+  notifyErr: vi.fn(),
 }))
 
 vi.mock('../../../../api', () => ({
@@ -20,12 +21,16 @@ vi.mock('../../../../api', () => ({
 vi.mock('../useSettings', () => ({
   useSettings: () => ({ editable: mocks.editable, saveModule: mocks.saveModule }),
 }))
+vi.mock('../../../../composables/useToast', () => ({
+  notify: { err: mocks.notifyErr, ok: vi.fn() },
+}))
 
 beforeEach(() => {
   mocks.fetchModels.mockReset()
   mocks.putSecret.mockClear()
   mocks.saveModule.mockClear()
   mocks.editable.value.llm = { active: '', profiles: {} }
+  mocks.notifyErr.mockClear()
 })
 
 const PROFILES = { openai: { provider: 'openai', endpoint: 'https://api.openai.com', model: 'gpt-4o-mini' } }
@@ -198,5 +203,84 @@ describe('ProviderWizard 第 2 步', () => {
 
     expect(document.body.textContent).toContain('403 Forbidden')
     expect(document.querySelectorAll('.mt-row')).toHaveLength(2)
+  })
+})
+
+describe('ProviderWizard 编辑与错误处理（review 修复）', () => {
+  it('编辑模式 ID 不符合新增正则时仍可进入第 2 步', async () => {
+    const profiles = { 'My-Provider': { provider: 'openai', endpoint: 'https://x', model: 'm' } }
+    mountWizard('My-Provider', profiles)
+    expect(nextButton().disabled).toBe(false)
+    nextButton().click()
+    await flushPromises()
+    expect(document.body.textContent).toContain('API Key')
+  })
+
+  it('编辑模式获取模型带上 profile name（服务端才能命中已存密钥）', async () => {
+    mocks.fetchModels.mockResolvedValue({ ok: true, models: ['m'], count: 1 })
+    const profiles = {
+      openai: { provider: 'openai', endpoint: 'https://api.openai.com', model: 'm',
+                api_key_env: 'OPENAI_KEY', models_path: '/v1/models' },
+    }
+    mountWizard('openai', profiles)
+    nextButton().click()
+    await flushPromises()
+    document.querySelector<HTMLElement>('.pw-fetch')!.click()
+    await flushPromises()
+
+    const payload = mocks.fetchModels.mock.calls[0][1]
+    expect(payload.name).toBe('openai')
+    expect(payload.api_key_env).toBe('OPENAI_KEY')
+    expect(payload.models_path).toBe('/v1/models')
+  })
+
+  it('编辑模式保存保留自定义 chat_path', async () => {
+    const profiles = { openai: { provider: 'openai', endpoint: 'https://x', model: 'm',
+                                 chat_path: '/custom/path', models: ['m'] } }
+    mountWizard('openai', profiles)
+    nextButton().click()
+    await flushPromises()
+    document.querySelector<HTMLElement>('.pw-save')!.click()
+    await flushPromises()
+
+    expect(mocks.editable.value.llm.profiles.openai.chat_path).toBe('/custom/path')
+  })
+
+  it('编辑 p1 时点不存在的预设，不会继承 p1 的字段', async () => {
+    const profiles = { openai: { provider: 'openai', endpoint: 'https://x', model: 'm',
+                                 models: ['m'], compat: { x: true }, voices: ['v'] } }
+    mountWizard('openai', profiles)
+    await openPreset()
+    document.querySelector<HTMLElement>('.pw-save')!.click()
+    await flushPromises()
+
+    const created = mocks.editable.value.llm.profiles.deepseek
+    expect(created.compat).toBeUndefined()
+    expect(created.voices).toBeUndefined()
+    expect(profiles.openai.compat).toEqual({ x: true })
+  })
+
+  it('首个供应商保存时自动设为 active', async () => {
+    mountWizard(null, {})
+    await openPreset()
+    document.querySelector<HTMLElement>('.pw-save')!.click()
+    await flushPromises()
+    expect(mocks.editable.value.llm.active).toBe('deepseek')
+  })
+
+  it('putSecret 失败：提示且不关闭向导', async () => {
+    mocks.putSecret.mockRejectedValueOnce(new Error('secret boom'))
+    const w = mountWizard()
+    await openPreset()
+    const key = document.querySelector<HTMLInputElement>('.pw-key')!
+    key.value = 'sk-x'
+    key.dispatchEvent(new Event('input'))
+    await nextTick()
+
+    document.querySelector<HTMLElement>('.pw-save')!.click()
+    await flushPromises()
+
+    expect(mocks.notifyErr).toHaveBeenCalled()
+    expect(w.emitted('saved')).toBeUndefined()
   })
 })

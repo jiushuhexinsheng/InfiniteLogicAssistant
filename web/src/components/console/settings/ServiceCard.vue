@@ -41,7 +41,7 @@
         <UiCombobox
           v-else-if="f === 'voice'"
           :model-value="profile()[f]"
-          :options="s.voiceOptions(section)"
+          :options="profile().voices || []"
           @update:model-value="v => (profile()[f] = v)"
         />
         <template v-else-if="f === 'voices'">
@@ -62,8 +62,8 @@
     </template>
 
     <div class="cs-keyrow">
-      <UiChip :tone="s.sec(section.key).api_key_set[editTarget] ? 'ok' : 'warn'" :dot="false">
-        API Key：{{ s.sec(section.key).api_key_set[editTarget] ? '已设置' : '未设置' }}
+      <UiChip :tone="keySet ? 'ok' : 'warn'" :dot="false">
+        API Key：{{ keySet ? '已设置' : '未设置' }}
       </UiChip>
       <UiButton variant="secondary" size="sm" @click="s.openKeyModal(section.key, editTarget)">设置</UiButton>
     </div>
@@ -74,7 +74,7 @@
         <span class="cs-compat-title">高级兼容</span>
         <span class="cs-compat-hint">特殊网关的请求体补丁（键可选内置项或手输）</span>
       </div>
-      <CompatEditor :entries="s.compatEntries(section)" @update="setCompatEntries" />
+      <CompatEditor :entries="compatRows" @update="setCompatEntries" />
     </div>
 
     <slot />
@@ -93,6 +93,7 @@ import { settingsText as T } from '../../../locales/settings'
 import type { SegOption } from '../../ui/UiSegmented.vue'
 import { useSettings } from './useSettings'
 import { fieldLabel, fieldLabelEn, isNumericField, type SectionDef } from './configDefs'
+import { parseCompatValue } from './profiles'
 
 /** 组件 props：服务模块定义（来自 configDefs.sectionDefs）。Service section definition. */
 const props = defineProps<{ section: SectionDef }>()
@@ -141,6 +142,9 @@ const profileOptions = computed<SegOption[]>(() =>
   Object.keys(profiles.value).map(n => ({ value: n, label: n })),
 )
 
+/** 编辑对象是否已设置密钥（快照切换时安全）。Whether the edit target has a key. */
+const keySet = computed(() => !!s.sec(props.section.key)?.api_key_set?.[editTarget.value])
+
 /** 连通性结果（测试连接状态点）。Connectivity result for the status dot. */
 const conn = computed(() => s.connResults.value[props.section.name])
 const detectionStatus = computed<'idle' | 'testing' | 'ok' | 'fail'>(() => {
@@ -154,10 +158,19 @@ const detectionDetail = computed(() => {
   return conn.value.latency_ms != null ? `${label} · ${conn.value.latency_ms}ms` : label
 })
 
-/** 把兼容编辑器回传的键值行写回 profile.compat。Write compat rows back to the profile. */
+/** 当前编辑对象的兼容行（不得读 active profile）。Compat rows of the editing target. */
+const compatRows = computed<Array<[string, string]>>(() =>
+  Object.entries(profile().compat || {}).map(
+    ([k, v]) => [k, typeof v === 'string' ? v : String(v)] as [string, string],
+  ),
+)
+
+/** 把兼容编辑器回传的键值行写回编辑对象，并恢复布尔/数字类型。 */
 function setCompatEntries(entries: Array<[string, string]>): void {
   const prof = profile()
-  prof.compat = Object.fromEntries(entries.filter(([k]) => k.trim()))
+  prof.compat = Object.fromEntries(
+    entries.filter(([k]) => k.trim()).map(([k, v]) => [k, parseCompatValue(v)]),
+  )
 }
 
 /** 向 profile.voices 追加一个空音色行。Append an empty voice row. */

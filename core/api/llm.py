@@ -109,6 +109,19 @@ async def set_active_model(request: Request):
         data = yaml.safe_load(config_mod.CONFIG_FILE.read_text(encoding="utf-8")) or {}
     except Exception:
         data = {}
+    if isinstance(data, dict):
+        # 与 PATCH /api/config 同一套迁移/剥密钥：旧 vendor_presets、遗留 api_key 不能
+        # 让切换模型 400，也不能被写回 config.yaml。
+        # Same migrations / secret stripping as PATCH: legacy keys must not 400 here and
+        # leftover api_key values must not be written back.
+        from core.api.settings import (
+            _migrate_legacy_local_asr_model,
+            _migrate_legacy_vendor_keys,
+            _strip_secrets,
+        )
+        _migrate_legacy_vendor_keys(data)
+        _migrate_legacy_local_asr_model(data)
+        _strip_secrets(data)
     llm = data.get("llm") if isinstance(data, dict) else None
     profiles = (llm or {}).get("profiles") if isinstance(llm, dict) else None
     profile = profiles.get(provider) if isinstance(profiles, dict) else None

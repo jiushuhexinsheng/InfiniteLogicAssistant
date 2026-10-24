@@ -151,3 +151,43 @@ describe('ServiceCard（ASR 本地面板已收口）', () => {
     expect(w.text()).not.toContain('本地 ASR 模型未就位')
   })
 })
+
+/** 编辑对象与 active 分离后的回归：兼容区必须读写「编辑对象」，不能读 active。 */
+describe('ServiceCard 编辑对象隔离', () => {
+  beforeEach(() => {
+    const snap: any = snapshot()
+    snap.tts.api_key_set.p2 = false
+    snap.tts.profiles.mimo.compat = { stream_options: true }
+    snap.tts.profiles.p2 = {
+      provider: 'openai', endpoint: 'https://b', model: 'x', voice: 'Bob', voices: ['Bob'],
+      format: 'wav', chat_path: '/v1/audio/speech', timeout: 30, models: [],
+      compat: { auth_header: 'api-key' },
+    }
+    editable.value = snap
+  })
+
+  it('编辑非 active profile：兼容行显示其自身值，改动只写它', async () => {
+    const w = mount(ServiceCard, { props: { section: ttsDef } })
+    const trigger = w.find('.cs-profrow .ui-select')
+    await trigger.trigger('click')
+    const opt = document.querySelector('.ui-select-option[data-value="p2"]') as HTMLElement
+    opt.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await w.vm.$nextTick()
+
+    const rows = w.findAll('.cr-row input')
+    expect((rows[0].element as HTMLInputElement).value).toBe('auth_header')
+
+    await rows[1].setValue('changed')
+
+    expect((editable.value as any).tts.profiles.p2.compat.auth_header).toBe('changed')
+    expect((editable.value as any).tts.profiles.mimo.compat).toEqual({ stream_options: true })
+  })
+
+  it('兼容值写回保持类型（false 仍是布尔）', async () => {
+    const w = mount(ServiceCard, { props: { section: ttsDef } })
+    const valueInput = w.findAll('.cr-row input')[1]
+    await valueInput.setValue('false')
+
+    expect((editable.value as any).tts.profiles.mimo.compat.stream_options).toBe(false)
+  })
+})

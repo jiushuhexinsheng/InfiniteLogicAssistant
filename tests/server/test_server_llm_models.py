@@ -94,3 +94,31 @@ def test_set_active_model_rejects_unknown_provider_or_model(client, isolated_set
                        json={"provider": "nope", "model": "m1"}).status_code == 400
     assert client.post("/api/llm/active-model",
                        json={"provider": "p1", "model": "not-listed"}).status_code == 400
+
+
+def test_set_active_model_migrates_legacy_keys_and_strips_secrets(client, isolated_settings):
+    """旧配置（vendor_presets / 遗留 api_key）也能切换模型：与 PATCH 走同一套迁移与剥密钥。
+    Legacy configs (vendor_presets / leftover api_key) can switch models too: same
+    migrations and secret stripping as PATCH."""
+    isolated_settings.CONFIG_FILE.write_text(
+        yaml.safe_dump({
+            "llm": {
+                "active": "p1",
+                "profiles": {
+                    "p1": {"provider": "openai", "endpoint": "https://a", "model": "m1",
+                           "models": ["m1", "m2"], "api_key": "sk-left-in-config"},
+                },
+            },
+            "vendor_presets": {"old": {"endpoint": "https://old"}},
+            "rag": {"auto_index": False},
+        }, allow_unicode=True),
+        encoding="utf-8",
+    )
+
+    r = client.post("/api/llm/active-model", json={"provider": "p1", "model": "m2"})
+
+    assert r.status_code == 200
+    saved = yaml.safe_load(isolated_settings.CONFIG_FILE.read_text(encoding="utf-8"))
+    assert "vendor_presets" not in saved
+    assert "api_key" not in saved["llm"]["profiles"]["p1"]
+    assert saved["llm"]["profiles"]["p1"]["model"] == "m2"

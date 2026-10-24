@@ -38,10 +38,12 @@ import { persistSection } from './profiles'
 import { useSettings } from './useSettings'
 import { api } from '../../../api'
 import { notify } from '../../../composables/useToast'
+import { useConfig } from '../../../composables/useApi'
 import type { ProviderSection } from './providerPresets'
 
 const props = defineProps<{ section: ProviderSection }>()
 const s = useSettings()
+const app = useConfig()
 
 const wizardOpen = ref(false)
 const editingId = ref<string | null>(null)
@@ -93,6 +95,7 @@ function openWizard(id: string | null): void {
 /** 保存后刷新快照。Refresh the snapshot after save. */
 async function afterSaved(): Promise<void> {
   await s.load()
+  app.refreshConfig()
 }
 
 /** 删除供应商：先删 profile，再清 secrets；清理失败只提示不回滚。Delete provider. */
@@ -111,6 +114,7 @@ async function removeProvider(id: string): Promise<void> {
     notify.err(`供应商「${id}」已删除，但密钥清理失败`)
   }
   await s.load()
+  app.refreshConfig()
   notify.ok(`已删除供应商「${id}」`)
 }
 
@@ -125,6 +129,7 @@ async function activate(id: string): Promise<void> {
     return
   }
   await s.load()
+  app.refreshConfig()
   notify.ok(`已将「${id}」设为当前供应商`)
 }
 </script>
