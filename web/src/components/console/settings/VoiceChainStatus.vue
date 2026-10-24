@@ -27,7 +27,7 @@ import { useConfig } from '../../../composables/useApi'
 import { useVoiceModuleStatus } from '../../../composables/useVoiceModuleStatus'
 import { ttsSettings } from '../../../composables/assistant/useTts'
 
-const emit = defineEmits<{ select: [tab: 'recognition' | 'synthesis'] }>()
+const emit = defineEmits<{ select: [tab: 'recognition' | 'synthesis' | 'llm'] }>()
 
 const app = useConfig()
 const { status } = useVoiceModuleStatus()
@@ -39,7 +39,7 @@ interface Node {
   detail: string
   reason: string
   tone: 'ok' | 'warn' | 'err' | 'neutral'
-  tab?: 'recognition' | 'synthesis'
+  tab?: 'recognition' | 'synthesis' | 'llm'
 }
 
 function nodeFrom(kind: 'vad' | 'kws' | 'asr', zh: string, en: string): Node {
@@ -75,7 +75,7 @@ const nodes = computed<Node[]>(() => {
     {
       id: 'llm', zh: 'LLM', en: 'Language Model',
       detail: llm?.llm_available ? (llm.llm_profile || 'API') : 'API 未配置',
-      reason: '', tone: llm?.llm_available ? 'ok' : 'err',
+      reason: '', tone: llm?.llm_available ? 'ok' : 'err', tab: 'llm',
     },
     {
       id: 'tts', zh: 'TTS', en: 'Text-to-Speech',

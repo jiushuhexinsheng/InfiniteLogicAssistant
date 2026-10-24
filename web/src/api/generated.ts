@@ -109,6 +109,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/voice/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Voice Schema
+         * @description 某能力的参数 schema；传 ``model`` 时按该模型的 family/streaming 调整专属字段。
+         *
+         *     Parameter schema for one capability; pass ``model`` to vary model-specific fields
+         *     by that model's family/streaming capability.
+         */
+        get: operations["voice_schema_api_voice_schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/engines/{kind}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Voice Engine Test
+         * @description 加载并实际跑一次本地引擎，返回耗时与结果（设置页「测试」按钮）。
+         *
+         *     Load and actually exercise one local engine, returning latency and a detail string
+         *     (the settings-page "Test" button). This deliberately tests the **local** engine
+         *     regardless of the configured mode.
+         */
+        post: operations["voice_engine_test_api_voice_engines__kind__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/voice/hardware": {
         parameters: {
             query?: never;
@@ -1020,6 +1067,13 @@ export interface components {
              * @default 0
              */
             num_threads: number;
+            /**
+             * Params
+             * @default {}
+             */
+            params: {
+                [key: string]: unknown;
+            };
         };
         /**
          * CallConfig
@@ -1622,6 +1676,12 @@ export interface components {
              * @default 2
              */
             num_threads: number;
+            /** Params */
+            params?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
             /**
              * Keywords Threshold
              * @default 0.25
@@ -2451,6 +2511,13 @@ export interface components {
              * @default
              */
             lang: string;
+            /**
+             * Params
+             * @default {}
+             */
+            params: {
+                [key: string]: unknown;
+            };
         };
         /**
          * UploadStatsResponse
@@ -2548,6 +2615,12 @@ export interface components {
              * @default 0
              */
             num_threads: number;
+            /** Params */
+            params?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
             /**
              * Silence Threshold
              * @default 0.02
@@ -2770,6 +2843,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    voice_schema_api_voice_schema_get: {
+        parameters: {
+            query?: {
+                kind?: string;
+                model?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    voice_engine_test_api_voice_engines__kind__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

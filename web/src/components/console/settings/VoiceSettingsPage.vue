@@ -21,7 +21,7 @@
 
     <div class="vs-body">
       <template v-if="tab === 'overview'">
-        <VoiceChainStatus @select="tab = $event" />
+        <VoiceChainStatus @select="onChainSelect" />
         <LocalModelsCard scope="overview" />
       </template>
 
@@ -67,6 +67,7 @@ import { useTtsEngine } from '../../../composables/assistant/useTtsEngine'
 import { sectionDefs } from './configDefs'
 import { settingsText as T } from '../../../locales/settings'
 import { useVoiceModuleStatus } from '../../../composables/useVoiceModuleStatus'
+import { useSettings } from './useSettings'
 
 type TabId = 'overview' | 'wake' | 'recognition' | 'synthesis' | 'hardware' | 'advanced'
 interface TabDef { id: TabId; labelZh: string; labelEn: string }
@@ -83,6 +84,14 @@ const tabs: TabDef[] = [
 const tab = ref<TabId>('overview')
 const { engine } = useTtsEngine()
 const { status, refreshVoiceStatus } = useVoiceModuleStatus()
+const settings = useSettings()
+
+/** 链路节点点击：语音节点跳 Tab，LLM 节点跳左侧「大模型」菜单。
+ *  Chain-node click: voice nodes jump a tab, the LLM node jumps to the 大模型 menu. */
+function onChainSelect(target: 'recognition' | 'synthesis' | 'llm') {
+  if (target === 'llm') settings.activeMenu.value = 'llm'
+  else tab.value = target
+}
 const asrDef = sectionDefs.find(d => d.key === 'asr')!
 const ttsDef = sectionDefs.find(d => d.key === 'tts')!
 

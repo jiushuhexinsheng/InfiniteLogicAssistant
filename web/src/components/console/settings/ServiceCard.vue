@@ -198,8 +198,7 @@ function renameCompat(_i: number, oldKey: string, newKey: string) {
 .cs-compat-title { font-size: var(--fs-2xs); font-weight: 600; color: var(--text-2); letter-spacing: .04em; }
 .cs-compat-hint { font-size: var(--fs-2xs); color: var(--text-3); }
 .cs-compat-shortcuts { display: flex; flex-wrap: wrap; gap: var(--sp-q6); }
-/* 双类选择器压过 UiButton 基础样式（同 VendorPicker chip 的特异性手法）。
-   Double-class selector outspecifies UiButton base styles (same trick as the VendorPicker chip). */
+/* 双类选择器压过 UiButton 基础样式。Double-class selector outspecifies UiButton base styles. */
 .cs-compat-shortcuts .cs-compat-chip.ui-btn {
   font-size: var(--fs-2xs); font-family: var(--font-mono); color: var(--text-3);
   background: rgba(15, 23, 42, .6); border: 1px solid var(--border-soft);
