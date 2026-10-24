@@ -36,6 +36,22 @@ async def test_persist_session_writes_task_json(tmp_path, monkeypatch):
     assert conv["summary"] == "算 1+1"  # 摘要优先任务目标
 
 
+@pytest.mark.asyncio
+async def test_persist_refuses_path_traversal_id(tmp_path, monkeypatch):
+    """纵深防御：即便有内部调用方造出越界 id，persist 也不能把 JSON 写出 data/tasks。
+    Defense in depth: even if an internal caller produces a traversing id, persist must
+    never write the JSON outside data/tasks."""
+    import core.session.history as history_mod
+    from core.orchestrator.session import Session
+    monkeypatch.setattr(config_mod, "ROOT_DIR", tmp_path)
+    monkeypatch.setattr(history_mod, "get_history_store",
+                        lambda: history_mod.HistoryStore(tmp_path / "history.db"))
+    s = Session(session_id="../../escape")
+    await state.persist(s, created=1700000000.0)
+    assert not (tmp_path / "escape.json").exists()
+    assert not (tmp_path / "data" / "escape.json").exists()
+
+
 # ─── 会话历史 ───
 
 def test_history_endpoints(client, monkeypatch, tmp_path):

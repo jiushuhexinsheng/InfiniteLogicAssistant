@@ -6,6 +6,7 @@ task stop, plus the run-stream helpers (shared by first connect and resume).
 """
 import asyncio
 import json
+import re
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -17,6 +18,10 @@ from core.logger import logger
 from core.orchestrator.events import DoneEvent, ErrorEvent
 
 router = APIRouter()
+
+# 会话 id 安全字符集：服务端 uuid hex（12 位）与前端生成的 id 都落在其中。
+# Safe session-id charset: covers server-side uuid hex and frontend-generated ids.
+_SAFE_SESSION_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 def _sse(payload: dict) -> str:
@@ -69,6 +74,13 @@ async def voice_utter(request: Request):
     session = Session()
     session_id = params.get("session_id")
     if isinstance(session_id, str) and session_id:
+        # session_id 会拼进 data/tasks/<id>.json 的写路径（api/state.py），只允许
+        # 服务端 uuid hex / 前端常规 id 的安全字符集，杜绝 ../ 目录穿越。
+        # session_id is spliced into the data/tasks/<id>.json write path (api/state.py);
+        # allow only the safe charset used by server-side uuid hex / frontend ids to
+        # rule out ../ path traversal.
+        if not _SAFE_SESSION_ID.fullmatch(session_id):
+            return JSONResponse({"ok": False, "error": "无效 session_id"}, status_code=400)
         # 该会话正阻塞在 ask()：拒绝本次 utter。否则会新建 Session 覆盖注册表，
         # 旧的 ask() 将永久挂死（前端 runTurn 也会 abort 掉那条流）。
         # 前端路由正确时走不到这里；它防的是前端出 bug 或有人直接打 API。
@@ -106,9 +118,11 @@ async def voice_utter(request: Request):
     # Same-id supersede (docs/designs/06): a new turn retires the old runner first
     # (including its disconnect grace), otherwise the grace would keep the old pipeline
     # alive for resume_grace_s — aligned with the frontend's runTurn abort.
-    old_run = state.get_run(session.id)
-    if old_run is not None:
-        await _retire_run(old_run)
+    # 注册/顶替必须同步完成（get→register→set_run 之间无 await），否则两个并发
+    # utter 会交错注册，留下孤儿 runner 或双写。旧运行的收尾放到顶替之后再 await。
+    # Registration/supersede must be synchronous (no await between get→register→set_run);
+    # otherwise two concurrent utters interleave and leave an orphan runner or double
+    # writes. The old run is only retired after the new one has claimed the slot.
     state.register(session, controller)
     events: asyncio.Queue = asyncio.Queue()
     runner = asyncio.ensure_future(
@@ -117,7 +131,9 @@ async def voice_utter(request: Request):
         run_id=f"run_{session.id}", session=session, controller=controller,
         events=events, runner=runner,
     )
-    state.set_run(session.id, run)
+    superseded = state.set_run(session.id, run)
+    if superseded is not None and superseded is not run:
+        await _retire_run(superseded)
 
     return StreamingResponse(_stream_run(run), media_type="text/event-stream")
 
@@ -173,20 +189,45 @@ def _arm_grace(run: state.RunHandle) -> None:
 
     run.grace_task = asyncio.ensure_future(_watchdog())
 
-async def _stream_run(run: state.RunHandle):
+def _supersede_consumer(run: state.RunHandle) -> int:
+    """让当前 SSE 消费者立即退出，返回新代次（resume 接管时调用）。
+
+    取消在途取事件的 future 会让旧生成器的 `asyncio.wait` 立刻返回；旧生成器
+    在 finally 中看到代次不匹配，不会误标断线或武装宽限。
+
+    Make the current SSE consumer exit immediately and return the new generation
+    (called when a resume takes over). Cancelling the in-flight getter makes the old
+    generator's asyncio.wait return at once; its finally sees the stale generation and
+    neither marks the run disconnected nor arms grace.
+    """
+    run.attach_id += 1
+    getter = run.live_getter
+    if getter is not None and not getter.done():
+        getter.cancel()
+    return run.attach_id
+
+
+async def _stream_run(run: state.RunHandle, *, attach_id: int | None = None):
     """编排事件 → SSE（唯一 seq 编号与 buffer 入口；空闲发 ping 保活，间隔见
     `server.ping_interval_s`，默认 15s）。
 
     首连与 /voice/resume 挂接共用。断线且未完成 → 进宽限；完成 → 收尾。
+    同一运行只允许一个活跃消费者：被 `_supersede_consumer` 换代后，旧生成器退出。
 
     Orchestration events → SSE (the single seq-numbering and buffer entry; idle
     pings every `server.ping_interval_s`, default 15s). Shared by the first
     connection and the /voice/resume attach. Disconnected while unfinished →
-    grace; finished → wrap-up.
+    grace; finished → wrap-up. One live consumer per run: after
+    `_supersede_consumer` bumps the generation, the old generator exits.
     """
+    if attach_id is None:
+        attach_id = run.attach_id
     getter = asyncio.ensure_future(run.events.get())
+    run.live_getter = getter
     try:
         while True:
+            if run.attach_id != attach_id:
+                break  # 已被新消费者接管。Superseded by a newer consumer.
             completed, _ = await asyncio.wait(
                 {run.runner, getter}, timeout=config.settings.server.ping_interval_s,
                 return_when=asyncio.FIRST_COMPLETED,
@@ -198,7 +239,10 @@ async def _stream_run(run: state.RunHandle):
                 yield _sse({"type": "ping"})
                 continue
             if getter in completed:
-                evt = getter.result()
+                try:
+                    evt = getter.result()
+                except asyncio.CancelledError:
+                    break  # 被 supersede 取消。Cancelled by a supersede.
                 evt["seq"] = run.next_seq
                 run.next_seq += 1
                 run.buffer.append(evt)
@@ -207,11 +251,15 @@ async def _stream_run(run: state.RunHandle):
                     run.finished = True
                     break
                 getter = asyncio.ensure_future(run.events.get())
+                run.live_getter = getter
             if run.runner in completed:
                 # runner 提前结束（异常兜底），避免客户端永久等待
                 if not run.events.empty():
                     continue
-                exc = run.runner.exception()
+                # 被取消的 runner 不取 exception()：那会抛出 CancelledError 把生成器炸掉。
+                # A cancelled runner must not call exception(): it raises CancelledError
+                # and blows up the generator.
+                exc = None if run.runner.cancelled() else run.runner.exception()
                 if exc is not None:
                     err = ErrorEvent(message=f"编排异常: {exc}").emit()
                     err["seq"] = run.next_seq
@@ -227,14 +275,17 @@ async def _stream_run(run: state.RunHandle):
                 break
     finally:
         getter.cancel()
-        if run.finished:
-            await _retire_run(run)
-        else:
-            # 客户端断开且回合未完 → 进宽限（重连可续播；到期看门狗收尾）。
-            # Client gone and the turn unfinished → grace (a reconnect resumes; the
-            # watchdog wraps up on expiry).
-            run.connected = False
-            _arm_grace(run)
+        if run.live_getter is getter:
+            run.live_getter = None
+        if run.attach_id == attach_id:
+            if run.finished:
+                await _retire_run(run)
+            else:
+                # 客户端断开且回合未完 → 进宽限（重连可续播；到期看门狗收尾）。
+                # Client gone and the turn unfinished → grace (a reconnect resumes; the
+                # watchdog wraps up on expiry).
+                run.connected = False
+                _arm_grace(run)
 
 @router.post("/voice/resume", response_model=ApiResponse)
 async def voice_resume(request: Request):
@@ -265,9 +316,15 @@ async def voice_resume(request: Request):
     if run.grace_task is not None and not run.grace_task.done():
         run.grace_task.cancel()
     run.connected = True
-    return StreamingResponse(_replay_then_live(run, last_seq), media_type="text/event-stream")
+    # 接管为唯一活跃消费者：旧连接（若有）立即退出，避免两条流争抢 events/seq。
+    # Take over as the sole live consumer: any old connection exits at once so two
+    # streams never race over events/seq.
+    attach_id = _supersede_consumer(run)
+    return StreamingResponse(_replay_then_live(run, last_seq, attach_id),
+                             media_type="text/event-stream")
 
-async def _replay_then_live(run: state.RunHandle, last_seq: int):
+async def _replay_then_live(run: state.RunHandle, last_seq: int,
+                            attach_id: int | None = None):
     """缺口回放 + 挂接实况（/voice/resume 的流体；抽成模块级便于直接驱动测试）。
 
     Replay the gap then attach to the live stream (the body of /voice/resume,
@@ -289,7 +346,7 @@ async def _replay_then_live(run: state.RunHandle, last_seq: int):
     # 挂接实况：断线期间积压在队列的事件由本连接续消费、续编号。
     # Attach live: events backloged in the queue during the outage are consumed
     # and numbered by this connection.
-    async for chunk in _stream_run(run):
+    async for chunk in _stream_run(run, attach_id=attach_id):
         yield chunk
 
 @router.post("/voice/answer", response_model=ApiResponse)

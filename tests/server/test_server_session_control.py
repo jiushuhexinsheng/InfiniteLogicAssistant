@@ -26,6 +26,29 @@ def test_voice_utter_rejected_while_session_awaiting_answer(client):
         state.cleanup("busy")
 
 
+def test_voice_utter_rejects_unsafe_session_id(client):
+    """session_id 会拼进 data/tasks/<id>.json 的写路径，必须拒绝路径分隔符等字符，
+    否则 ../ 可越界写文件。
+    session_id is spliced into the write path data/tasks/<id>.json, so path separators
+    and similar characters must be rejected — otherwise ../ writes outside the directory."""
+    r = client.post("/api/voice/utter", json={"text": "新的指令", "session_id": "../../escape"})
+    assert r.status_code == 400
+    assert "session_id" in r.json()["error"]
+
+
+def test_voice_utter_accepts_safe_session_id(client):
+    """正常 id（uuid hex / 字母数字连字符）不受净化误伤。
+    Normal ids (uuid hex / alphanumerics and hyphens) are not rejected by sanitisation."""
+    from core.api import state
+
+    try:
+        r = client.post("/api/voice/utter",
+                        json={"text": "新的指令", "session_id": "a1b2c3d4e5f6-ok"})
+        assert r.status_code == 200
+    finally:
+        state.cleanup("a1b2c3d4e5f6-ok")
+
+
 def test_voice_utter_allowed_when_session_not_awaiting(client):
     """会话未在等回答时正常放行（回归：守卫不能误伤正常续接）。
     A session that is not awaiting an answer proceeds normally (the guard must not block

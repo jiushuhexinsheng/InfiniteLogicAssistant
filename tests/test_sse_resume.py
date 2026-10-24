@@ -121,6 +121,66 @@ async def test_disconnect_arms_grace_and_resume_replays_gap(monkeypatch):
     assert state.get_run(session.id) is None
 
 
+@pytest.mark.asyncio
+async def test_stream_run_survives_cancelled_runner(monkeypatch):
+    """runner 被取消（如被新回合顶替）时，运行流应干净收尾，不能因
+    runner.exception() 抛 CancelledError 而把生成器炸掉。
+    A cancelled runner (e.g. superseded by a new turn) must still let the stream
+    close cleanly — runner.exception() raises CancelledError and must not escape."""
+    async def fake_persist(*a, **k):
+        return None
+
+    monkeypatch.setattr(state, "persist", fake_persist)
+    events: asyncio.Queue = asyncio.Queue()
+    runner = asyncio.ensure_future(asyncio.sleep(60))
+    session = Session()
+    run = state.RunHandle(run_id="rc", session=session, controller=StopController(),
+                          events=events, runner=runner)
+    state.runs[session.id] = run
+    runner.cancel()
+    await asyncio.sleep(0)
+
+    frames = [_parse(c) async for c in voice_api._stream_run(run)]
+    assert frames[-1]["type"] == "done"
+    assert run.finished is True
+
+
+@pytest.mark.asyncio
+async def test_new_consumer_supersedes_old(monkeypatch):
+    """resume 接管后旧消费者立即退出且不误触宽限；积压事件归新消费者。
+    After a resume takes over, the old consumer stops at once without arming grace;
+    backlogged events belong to the new consumer."""
+    monkeypatch.setattr(config_mod.settings.server, "resume_grace_s", 60)
+    async def fake_persist(*a, **k):
+        return None
+
+    monkeypatch.setattr(state, "persist", fake_persist)
+    events: asyncio.Queue = asyncio.Queue()
+    runner = asyncio.ensure_future(asyncio.sleep(60))
+    session = Session()
+    run = state.RunHandle(run_id="rs", session=session, controller=StopController(),
+                          events=events, runner=runner)
+    state.runs[session.id] = run
+
+    await events.put({"type": "content_delta", "text": "A"})
+    gen1 = voice_api._stream_run(run)
+    assert _parse(await gen1.__anext__())["text"] == "A"
+
+    attach = voice_api._supersede_consumer(run)
+    with pytest.raises(StopAsyncIteration):
+        await gen1.__anext__()
+    assert run.connected is True
+    assert run.grace_task is None
+
+    await events.put({"type": "content_delta", "text": "B"})
+    await events.put({"type": "done"})
+    frames = [_parse(c) async for c in
+              voice_api._replay_then_live(run, last_seq=1, attach_id=attach)]
+    assert [(f["seq"], f["type"], f.get("text")) for f in frames] == [
+        (2, "content_delta", "B"), (3, "done", None),
+    ]
+
+
 def test_resume_without_run_returns_404(client):
     """无运行句柄 → 404 no_run（前端走历史重载兜底）。No run handle → 404 no_run
     (the frontend falls back to reloading history)."""

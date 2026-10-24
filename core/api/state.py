@@ -48,6 +48,13 @@ class RunHandle:
     finished: bool = False          # done 已发出 / runner 收尾。done emitted / runner wrapped up.
     closed: bool = False            # 收尾已执行（幂等护栏）。Wrap-up already ran (idempotence guard).
     grace_task: "Any | None" = None  # 断线宽限看门狗。Disconnect grace watchdog.
+    # 当前 SSE 消费者的代次与在途取事件 future：resume 接管时递增代次并取消旧 future，
+    # 旧生成器据此立即退出（不再消费事件、也不误触宽限）。
+    # Generation of the current SSE consumer plus its in-flight getter future: a resume
+    # bumps the generation and cancels the old future, so the old generator exits at once
+    # (consuming nothing further and not arming grace).
+    attach_id: int = 0
+    live_getter: "Any | None" = None
 
 
 # 运行句柄注册表（key = session_id）。Run-handle registry (key = session_id).
@@ -191,8 +198,16 @@ async def persist(session: Session, created: float | None = None) -> None:
             ],
             "task": task_dict,
         }
-        (tasks_dir / f"{session.id}.json").write_text(
-            json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+        target = tasks_dir / f"{session.id}.json"
+        # 纵深防御：session.id 正常来自受校验的 API 入参，但落盘这一层仍须自证
+        # 目标在 tasks_dir 内，避免任何内部调用方绕过入口校验造成越界写。
+        # Defense in depth: session.id normally comes from validated API input, but
+        # this layer still proves the target stays inside tasks_dir.
+        if target.resolve().is_relative_to(tasks_dir.resolve()):
+            target.write_text(
+                json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+        else:
+            logger.warning("跳过任务落盘：非法 session_id {}", session.id)
         # 完整会话历史（控制台「历史」tab 数据源）
         try:
             from core.session.history import get_history_store

@@ -34,6 +34,7 @@ from .run import (  # noqa: E402  (聚合完 router 再导出)
     _replay_then_live,
     _retire_run,
     _stream_run,
+    _supersede_consumer,
 )
 
 __all__ = [
@@ -42,4 +43,5 @@ __all__ = [
     "_replay_then_live",
     "_retire_run",
     "_stream_run",
+    "_supersede_consumer",
 ]
