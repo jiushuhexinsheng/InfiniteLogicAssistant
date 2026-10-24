@@ -41,9 +41,41 @@
 
     <div v-else class="pw-form">
       <p class="pw-hint">{{ form.id }} · {{ form.protocol }} · {{ form.endpoint }}</p>
-      <p class="pw-hint">连接与模型配置将在下一步补齐。</p>
+
+      <SettingsField label="API Key" en="API Key" hint="只写不读；保存时写入 secrets 文件">
+        <UiChip v-if="keySet && !apiKey" tone="ok" :dot="false">Key 已设置（留空则不修改）</UiChip>
+        <UiInput v-model="apiKey" class="pw-key" type="password" placeholder="sk-..." />
+      </SettingsField>
+
+      <div class="pw-fetchrow">
+        <UiButton variant="secondary" size="sm" class="pw-fetch" :disabled="fetching" @click="fetchModels">
+          {{ fetching ? '获取中…' : '获取模型 / Fetch Models' }}
+        </UiButton>
+        <span v-if="fetchError" class="pw-err">{{ fetchError }}</span>
+      </div>
+
+      <FetchedModelList
+        v-if="fetched.length"
+        :models="fetched"
+        :added="models"
+        @add="addFetched"
+      />
+
+      <SettingsField label="模型列表" en="Models" hint="至少一个；获取失败可手动输入">
+        <ModelTable
+          :models="models"
+          :options="modelOptions"
+          @update:models="v => (models = v)"
+        />
+      </SettingsField>
+
       <div class="pw-actions">
         <UiButton variant="secondary" size="sm" @click="step = 1">上一步 / Back</UiButton>
+        <UiButton
+          variant="primary" size="sm" class="pw-save"
+          :disabled="!models.length || saving"
+          @click="save"
+        >{{ saving ? '保存中…' : '保存供应商' }}</UiButton>
       </div>
     </div>
   </UiModal>
@@ -60,15 +92,20 @@
  */
 import { computed, reactive, ref, watch } from 'vue'
 import SettingsField from './SettingsField.vue'
-import { UiButton, UiInput, UiModal, UiSelect } from '../../ui'
+import FetchedModelList from './FetchedModelList.vue'
+import ModelTable from './ModelTable.vue'
+import { UiButton, UiChip, UiInput, UiModal, UiSelect } from '../../ui'
+import { api } from '../../../api'
 import { presetsFor, type ProviderPreset, type ProviderSection } from './providerPresets'
+import { useSettings } from './useSettings'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
   section: ProviderSection
   editingId?: string | null
   profiles?: Record<string, any>
-}>(), { editingId: null, profiles: () => ({}) })
+  keySet?: boolean
+}>(), { editingId: null, profiles: () => ({}), keySet: false })
 
 const emit = defineEmits<{
   'update:modelValue': [v: boolean]
@@ -76,9 +113,16 @@ const emit = defineEmits<{
   close: []
 }>()
 
+const s = useSettings()
 const step = ref<1 | 2>(1)
 const editing = ref('')
 const form = reactive({ id: '', protocol: 'openai', endpoint: '' })
+const apiKey = ref('')
+const models = ref<string[]>([])
+const fetched = ref<string[]>([])
+const fetching = ref(false)
+const saving = ref(false)
+const fetchError = ref('')
 
 const presets = computed(() => presetsFor(props.section))
 const protocolOptions = computed(() => props.section === 'llm'
@@ -113,6 +157,16 @@ const urlError = computed(() => {
 /** 第一条错误（按钮旁显示）。First error, shown beside the button. */
 const firstError = computed(() => idError.value || urlError.value)
 
+/** 模型并集：当前 model 在前，再接 models（去空去重）。Current model first, then models. */
+function unionModels(listed: string[] | undefined, current: string | undefined): string[] {
+  const out: string[] = []
+  for (const raw of [current || '', ...(listed || [])]) {
+    const value = String(raw || '').trim()
+    if (value && !out.includes(value)) out.push(value)
+  }
+  return out
+}
+
 /** 打开/切换编辑对象时重置表单。Reset the form when opened or the edit target changes. */
 watch(() => [props.modelValue, props.editingId] as const, ([open, editingId]) => {
   if (!open) return
@@ -122,21 +176,106 @@ watch(() => [props.modelValue, props.editingId] as const, ([open, editingId]) =>
   form.id = editingId || ''
   form.protocol = profile?.provider || 'openai'
   form.endpoint = profile?.endpoint || ''
+  apiKey.value = ''
+  fetched.value = []
+  fetchError.value = ''
+  models.value = unionModels(profile?.models, profile?.model)
 }, { immediate: true })
+
+/** 模型输入候选：拉取结果 ∪ 当前表格。Combobox options: fetched ∪ current table. */
+const modelOptions = computed(() => {
+  const out = [...fetched.value]
+  for (const m of models.value) if (m && !out.includes(m)) out.push(m)
+  return out
+})
 
 /** 预设：填表并进入第 2 步；已存在的 ID 转为编辑该供应商。Preset fill. */
 function choosePreset(preset: ProviderPreset): void {
   form.id = preset.id
   form.protocol = preset.protocol
   form.endpoint = preset.endpoint
-  if (props.profiles[preset.id]) editing.value = preset.id
+  if (props.profiles[preset.id]) {
+    editing.value = preset.id
+    const existing = props.profiles[preset.id]
+    models.value = unionModels(existing.models, existing.model)
+  } else {
+    models.value = [...(preset.models || [])]
+  }
   step.value = 2
+}
+
+/** 拉取模型列表（不清空已有表格）。Fetch models without touching the configured table. */
+async function fetchModels(): Promise<void> {
+  fetching.value = true
+  fetchError.value = ''
+  try {
+    const r = await api.fetchModels(props.section, {
+      provider: form.protocol,
+      endpoint: form.endpoint,
+      chat_path: form.protocol === 'anthropic' ? '/v1/messages' : '/v1/chat/completions',
+      api_key: apiKey.value,
+      timeout: 30,
+    })
+    if (r.ok && r.models?.length) {
+      fetched.value = r.models
+    } else {
+      fetchError.value = r.error || '获取模型失败，可手动输入模型 ID'
+    }
+  } catch (e: any) {
+    fetchError.value = e?.message || '获取模型失败，可手动输入模型 ID'
+  } finally {
+    fetching.value = false
+  }
+}
+
+/** 把勾选到的模型并入表格。Merge picked models into the table. */
+function addFetched(picked: string[]): void {
+  models.value = unionModels([...models.value, ...picked], '')
 }
 
 /** 关闭并抛 close。Close and emit. */
 function close(): void {
   emit('update:modelValue', false)
   emit('close')
+}
+
+/** 保存：保留未被向导编辑的字段，只覆盖身份/模型，并按需写密钥。Save provider. */
+async function save(): Promise<void> {
+  if (!models.value.length || saving.value) return
+  saving.value = true
+  try {
+    const id = form.id.trim()
+    const existing = editing.value ? (props.profiles[editing.value] || {}) : {}
+    const listed = [...models.value]
+    const current = String(existing.model || '')
+    const profile: Record<string, any> = {
+      ...existing,
+      provider: form.protocol,
+      endpoint: form.endpoint.trim(),
+      chat_path: form.protocol === 'anthropic' ? '/v1/messages' : '/v1/chat/completions',
+      models: listed,
+      model: current && listed.includes(current) ? current : listed[0],
+    }
+    if (props.section === 'asr' && !profile.language) profile.language = 'zh'
+    if (props.section === 'tts') {
+      profile.format = profile.format || 'wav'
+      profile.voice = profile.voice || ''
+      profile.voices = profile.voices || []
+    }
+
+    const section = s.editable.value[props.section]
+    section.profiles[id] = profile
+    // 只有「一份 profile 都没有」时才自动设为 active，避免静默切走当前模型。
+    if (!Object.keys(props.profiles).length) section.active = id
+    if (apiKey.value) await api.putSecret(`${props.section}.profiles.${id}`, apiKey.value)
+    await s.saveModule(props.section)
+
+    emit('saved', id)
+    emit('update:modelValue', false)
+    emit('close')
+  } finally {
+    saving.value = false
+  }
 }
 </script>
 
@@ -151,6 +290,7 @@ function close(): void {
 }
 .pw-preset:hover { border-color: var(--brand-c2); }
 .pw-preset span { font-size: var(--fs-2xs); color: var(--text-3); }
+.pw-fetchrow { display: flex; align-items: center; gap: var(--sp-2); }
 .pw-err { margin: var(--sp-q6) 0 0; font-size: var(--fs-2xs); color: #f87171; }
 .pw-next-why { margin: 0 var(--sp-1) 0 0; }
 .pw-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2); }

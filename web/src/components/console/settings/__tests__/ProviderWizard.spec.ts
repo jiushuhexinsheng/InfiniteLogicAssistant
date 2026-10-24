@@ -1,11 +1,32 @@
 // @vitest-environment jsdom
 /** 向导第 1 步：ID/URL 校验、重名提示、编辑模式 ID 只读。Wizard step 1 validation and edit mode.
  *  面板由 UiModal Teleport 到 body，故用 document 查询而不是 wrapper.find。 */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import type { VueWrapper } from '@vue/test-utils'
 import ProviderWizard from '../ProviderWizard.vue'
+
+const mocks = vi.hoisted(() => ({
+  fetchModels: vi.fn(),
+  putSecret: vi.fn().mockResolvedValue({ ok: true }),
+  saveModule: vi.fn().mockResolvedValue(true),
+  editable: { value: { llm: { active: '', profiles: {} as Record<string, any> } } },
+}))
+
+vi.mock('../../../../api', () => ({
+  api: { fetchModels: mocks.fetchModels, putSecret: mocks.putSecret },
+}))
+vi.mock('../useSettings', () => ({
+  useSettings: () => ({ editable: mocks.editable, saveModule: mocks.saveModule }),
+}))
+
+beforeEach(() => {
+  mocks.fetchModels.mockReset()
+  mocks.putSecret.mockClear()
+  mocks.saveModule.mockClear()
+  mocks.editable.value.llm = { active: '', profiles: {} }
+})
 
 const PROFILES = { openai: { provider: 'openai', endpoint: 'https://api.openai.com', model: 'gpt-4o-mini' } }
 
@@ -17,9 +38,9 @@ afterEach(async () => {
   await flushPromises()
 })
 
-function mountWizard(editingId: string | null = null) {
+function mountWizard(editingId: string | null = null, profiles: Record<string, any> = PROFILES) {
   lastWrapper = mount(ProviderWizard, {
-    props: { modelValue: true, section: 'llm', editingId, profiles: PROFILES },
+    props: { modelValue: true, section: 'llm', editingId, profiles },
   })
   return lastWrapper
 }
@@ -82,5 +103,100 @@ describe('ProviderWizard 第 1 步', () => {
   it('编辑模式 ID 只读', () => {
     mountWizard('openai')
     expect(idInput().disabled).toBe(true)
+  })
+})
+
+/** 打开第 2 步：点第二个预设（DeepSeek，自带两个模型）。Open step 2 via a preset. */
+async function openPreset(): Promise<void> {
+  const preset = document.querySelectorAll<HTMLElement>('.pw-preset')[1]
+  preset.click()
+  await flushPromises()
+}
+
+describe('ProviderWizard 第 2 步', () => {
+  it('拉取成功渲染复选列表，添加所选进入模型表格', async () => {
+    mocks.fetchModels.mockResolvedValue({ ok: true, models: ['x', 'y'], count: 2 })
+    mountWizard()
+    await openPreset()
+
+    document.querySelector<HTMLElement>('.pw-fetch')!.click()
+    await flushPromises()
+    expect(document.body.textContent).toContain('共 2 个')
+
+    const first = document.querySelector<HTMLInputElement>('.fm-row input')!
+    first.checked = true
+    first.dispatchEvent(new Event('change'))
+    await nextTick()
+    document.querySelector<HTMLElement>('.fm-add')!.click()
+    await nextTick()
+
+    expect((document.body.textContent || '')).toContain('x')
+    expect(document.querySelector('.fm-row.added')).not.toBeNull()
+  })
+
+  it('保存新供应商：有 key 才写 secrets，model 取列表首项并 emit saved', async () => {
+    const w = mountWizard()
+    await openPreset()
+    const key = document.querySelector<HTMLInputElement>('.pw-key')!
+    key.value = 'sk-test'
+    key.dispatchEvent(new Event('input'))
+    await nextTick()
+
+    document.querySelector<HTMLElement>('.pw-save')!.click()
+    await flushPromises()
+
+    expect(mocks.putSecret).toHaveBeenCalledWith('llm.profiles.deepseek', 'sk-test')
+    expect(mocks.saveModule).toHaveBeenCalledWith('llm')
+    const saved = mocks.editable.value.llm.profiles.deepseek
+    expect(saved.model).toBe('deepseek-chat')
+    expect(saved.models).toEqual(['deepseek-chat', 'deepseek-reasoner'])
+    expect(w.emitted('saved')?.[0]).toEqual(['deepseek'])
+  })
+
+  it('未填 key 不调用 putSecret', async () => {
+    mountWizard()
+    await openPreset()
+    document.querySelector<HTMLElement>('.pw-save')!.click()
+    await flushPromises()
+    expect(mocks.putSecret).not.toHaveBeenCalled()
+    expect(mocks.saveModule).toHaveBeenCalled()
+  })
+
+  it('编辑已有供应商：预填并集，保存保留 compat/voices/旧 model', async () => {
+    const profiles = {
+      openai: {
+        provider: 'openai', endpoint: 'https://api.openai.com',
+        model: 'gpt-4o-mini', models: ['gpt-4o'],
+        compat: { stream_options: false }, voices: ['alloy'], language: 'en',
+      },
+    }
+    mountWizard('openai', profiles)
+    document.querySelector<HTMLElement>('.pw-next')!.click()
+    await flushPromises()
+
+    const rows = document.querySelectorAll('.mt-row input')
+    expect(rows).toHaveLength(2)
+
+    document.querySelector<HTMLElement>('.pw-save')!.click()
+    await flushPromises()
+
+    const saved = mocks.editable.value.llm.profiles.openai
+    expect(saved.model).toBe('gpt-4o-mini')          // 旧 model 仍在列表中则保留
+    expect(saved.models).toEqual(['gpt-4o-mini', 'gpt-4o'])
+    expect(saved.compat).toEqual({ stream_options: false })
+    expect(saved.voices).toEqual(['alloy'])
+    expect(saved.language).toBe('en')
+  })
+
+  it('拉取失败显示错误且不清空已有表格', async () => {
+    mocks.fetchModels.mockRejectedValue(new Error('403 Forbidden'))
+    mountWizard()
+    await openPreset()
+
+    document.querySelector<HTMLElement>('.pw-fetch')!.click()
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('403 Forbidden')
+    expect(document.querySelectorAll('.mt-row')).toHaveLength(2)
   })
 })
