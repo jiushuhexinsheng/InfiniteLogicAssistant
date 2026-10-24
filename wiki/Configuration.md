@@ -86,8 +86,9 @@ voice:
         language: "zh"
         timeout: 30
         chat_path: "/v1/chat/completions"
-  tts:                          # 可选后端 TTS；默认浏览器 SpeechSynthesis
+  tts:                          # TTS（mode: local=本地 Kokoro / api=云端 profile）
     enabled: false
+    quiet_native_logs: true     # 本地模式下隐藏 Kokoro 的 C++ 日志（重复词条/未知 token/跳过音素）；排查加载问题改 false
     profiles:
       openai:
         provider: xiaomi        # 例：小米 MiMo 预置音色（model=mimo-v2.5-tts，voice 填音色名）

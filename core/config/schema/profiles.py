@@ -147,6 +147,16 @@ class TtsSection(BaseModel):
     speaker: int = Field(0, ge=0)
     speed: float = Field(1.0, gt=0.0, le=4.0)
     lang: str = ""
+    # 本地 TTS 子进程的原生 stderr 开关。Kokoro 的 C++ 诊断（重复词条 / 未知 token /
+    # 跳过的音素）直写 stderr，sherpa-onnx 未暴露日志级别 API；默认在子进程里把 fd 2
+    # 指向空设备，只保留 Python 侧日志（agent.log 仍有「本地 TTS 就绪」）。
+    # 需要排查模型加载问题时设为 false 恢复原生输出。
+    # Native-stderr switch for the local TTS child. Kokoro's C++ diagnostics (duplicate
+    # lexicon entries / unknown tokens / skipped phonemes) write straight to stderr and
+    # sherpa-onnx exposes no log-level API; by default the child redirects fd 2 to the
+    # null device, keeping Python logs (agent.log still records engine readiness). Set
+    # false to restore native output when debugging model loading.
+    quiet_native_logs: bool = True
     params: dict[str, dict[str, Any]] = Field(default_factory=dict)
     enabled: bool = False
     active: str = ""   # 空 = 取第一个 profile（目录退役后无内置默认名）

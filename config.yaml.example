@@ -134,6 +134,11 @@ voice:
   # voiceclone 模型（mimo-v2.5-tts-voiceclone）则需额外配置 voice_ref 参考音频
   tts:
     enabled: false
+    # 本地模式（mode: local）下隐藏 Kokoro 的 C++ 原生日志（重复词条 / 未知 token /
+    # 跳过音素，均不影响合成结果）；排查模型加载问题时改 false。
+    # Hide Kokoro's native C++ logs in local mode (duplicate lexicon entries / unknown
+    # tokens / skipped phonemes — none affect the audio); set false to debug loading.
+    quiet_native_logs: true
     profiles:
       openai:
         provider: xiaomi

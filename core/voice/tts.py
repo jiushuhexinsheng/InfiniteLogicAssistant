@@ -18,6 +18,7 @@ TTS speech synthesis — supports two OpenAI-compatible protocols:
 import asyncio
 import atexit
 import base64
+import os
 import threading
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import asdict
@@ -42,13 +43,38 @@ _worker_engine: Any | None = None
 _worker_opts: dict | None = None
 
 
-def _tts_worker(opts: dict, text: str) -> bytes:
+def _silence_native_stderr() -> None:
+    """把当前进程的 stderr 指向空设备（仅用于 TTS 子进程）。
+
+    Kokoro 的 C++ 诊断直写 stderr，sherpa-onnx 没有日志级别 API；这些行
+    （重复词条 / 未知 token / 跳过音素）属于模型自带噪音，不影响合成结果。
+    子进程里关掉 fd 2 即可，父进程日志与 loguru 的文件 sink 都不受影响。
+
+    Point this process's stderr at the null device (TTS child only). Kokoro's C++
+    diagnostics write straight to stderr and sherpa-onnx exposes no log-level API;
+    those lines (duplicate lexicon entries / unknown tokens / skipped phonemes) are
+    model-borne noise with no effect on the output. Redirecting fd 2 in the child
+    leaves the parent's logs and loguru's file sink untouched.
+    """
+    try:
+        fd = os.open(os.devnull, os.O_WRONLY)
+        try:
+            os.dup2(fd, 2)
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+
+
+def _tts_worker(opts: dict, text: str, quiet: bool = True) -> bytes:
     """子进程入口：加载/复用引擎并合成（必须是模块级函数，Windows spawn 可导入）。
 
     Child-process entry: load/reuse the engine and synthesize. Must be module-level so
     Windows spawn can import it.
     """
     global _worker_engine, _worker_opts
+    if quiet:
+        _silence_native_stderr()
     if _worker_engine is None or opts != _worker_opts:
         from core.voice.local.sherpa_onnx import TtsEngine, TtsOptions
         engine = TtsEngine(TtsOptions(**opts))
@@ -167,9 +193,10 @@ async def _synthesize_local(text: str) -> tuple[bytes, str]:
     when unavailable — never silently falls back to the cloud (the user chose local).
     """
     loop = asyncio.get_running_loop()
+    quiet = bool(getattr(config_mod.settings.voice.tts, "quiet_native_logs", True))
     try:
         wav = await loop.run_in_executor(
-            _get_tts_pool(), _tts_worker, _local_options(), text)
+            _get_tts_pool(), _tts_worker, _local_options(), text, quiet)
     except Exception as e:  # noqa: BLE001
         raise TtsConfigError(
             f"本地 TTS 合成失败：{e}。请检查 voice.tts.local_model，"
