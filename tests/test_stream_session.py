@@ -172,6 +172,37 @@ async def test_local_mode_requires_local_asr(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_mute_discards_pre_roll_and_active_segment(monkeypatch):
+    """mute/unmute 必须清空预卷并重置 VAD/段状态：否则播报结束后第一段会混入
+    播报前的旧音频（回声护栏漏音）。
+    mute/unmute must clear the pre-roll and reset VAD/segment state; otherwise the
+    first segment after playback carries pre-playback audio (echo-guard leak)."""
+    import json
+
+    _pin(monkeypatch)
+    runtime = FakeRuntime()
+    session = StreamingSession(FakeWS(), {"type": "start"}, runtime=runtime)
+    await session.start_session()
+    await session._on_audio(_frame())          # 触发 speech_start。Starts a segment.
+    assert session._active is True
+    # 模拟预卷里还有残留帧（真实链路中播报前会累积 ~200ms）。Simulate leftover pre-roll.
+    session._pre_roll.append(np.zeros(audio.FRAME_SAMPLES, dtype=np.float32))
+
+    await session._on_control(json.dumps({"type": "mute"}))
+    assert session._active is False
+    assert len(session._pre_roll) == 0
+    assert runtime._vad.stream.accepted == []   # VAD 已重置。VAD reset.
+    assert session._frames == []
+
+    await session._on_audio(_frame())           # 播报期帧被丢弃。Frames dropped while muted.
+    assert len(session._pre_roll) == 0
+
+    await session._on_control(json.dumps({"type": "unmute"}))
+    assert len(session._pre_roll) == 0
+    assert runtime._vad.stream.accepted == []
+
+
+@pytest.mark.asyncio
 async def test_vad_unavailable_fails(monkeypatch):
     """VAD 模型不可用 → 会话拒绝启动（本项目没有云端 VAD 兜底）。"""
     _pin(monkeypatch)

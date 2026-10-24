@@ -96,7 +96,8 @@ class KwsEngine:
     def _load(self) -> bool:
         if self._loaded:
             return self._spotter is not None
-        self._loaded = True
+        # 只有成功才置 _loaded：失败不缓存，模型补装后下一会话会重试。
+        # Set _loaded only on success: failures are not cached, so a later session retries.
         try:
             import sherpa_onnx  # type: ignore[import-untyped]
 
@@ -127,6 +128,7 @@ class KwsEngine:
                 device=int(self.opts.device),
             )
             self._reason = ""
+            self._loaded = True
             logger.info("KWS 就绪：{}（provider={}）", d.name, provider)
             return True
         except Exception as e:  # noqa: BLE001

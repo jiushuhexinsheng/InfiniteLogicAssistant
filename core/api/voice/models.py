@@ -30,6 +30,30 @@ _HEALTH: dict[str, dict[str, Any]] = {}
 _HEALTH_TTL_S = 600
 
 
+def _health_key(kind: str) -> str:
+    """自检结果的缓存键 —— 必须包含**具体模型**，否则换模型后 600s 内会复用旧结论。
+
+    Cache key for self-test results — it must include the **specific model**, otherwise
+    switching models reuses the previous verdict for up to 600 s.
+    """
+    s = config.settings.voice
+    model = {
+        "vad": s.vad.model,
+        "kws": s.kws.model_dir,
+        "asr": s.asr.local_model,
+        "tts": s.tts.local_model,
+    }.get(kind, "")
+    return f"{kind}:{model}"
+
+
+def _get_health(kind: str) -> dict[str, Any] | None:
+    """取 TTL 内有效的自检结果；过期/不存在返回 None。Get a fresh self-test result."""
+    h = _HEALTH.get(_health_key(kind))
+    if h and (time.time() - float(h.get("at") or 0)) < _HEALTH_TTL_S:
+        return h
+    return None
+
+
 def _reset_health() -> None:
     """配置热重载后清空自检结果（模型/路径可能已变）。Clear on config reload."""
     _HEALTH.clear()
@@ -158,7 +182,7 @@ async def voice_engine_test(kind: str):
             "latency_ms": int((time.perf_counter() - started) * 1000),
             "detail": detail,
         }
-        _HEALTH[kind] = {**result, "at": time.time()}
+        _HEALTH[_health_key(kind)] = {**result, "at": time.time()}
         return result
     except Exception as e:  # noqa: BLE001
         result = {
@@ -168,7 +192,7 @@ async def voice_engine_test(kind: str):
             "latency_ms": int((time.perf_counter() - started) * 1000),
             "error": str(e),
         }
-        _HEALTH[kind] = {**result, "at": time.time()}
+        _HEALTH[_health_key(kind)] = {**result, "at": time.time()}
         return result
 
 
@@ -200,8 +224,8 @@ async def voice_capabilities():
 
     def apply_health(kind: str, d: dict) -> dict:
         """用最近一次自检结果覆盖存在性判断（TTL 内有效）。Apply latest self-test."""
-        h = _HEALTH.get(kind)
-        if h and (time.time() - float(h.get("at") or 0)) < _HEALTH_TTL_S:
+        h = _get_health(kind)
+        if h is not None:
             d["ready"] = bool(h.get("ready"))
             d["reason"] = "" if h.get("ready") else str(h.get("error") or h.get("detail") or "自检失败")
             d["last_test"] = {

@@ -79,7 +79,10 @@ class StreamingAsrEngine:
     def _load(self) -> bool:
         if self._loaded:
             return self._recognizer is not None
-        self._loaded = True
+        # 只有成功才把 _loaded 置真：失败（模型缺失/损坏/瞬时错误）下次会话会重试，
+        # 补装模型后无需重启或热重载即可自愈。
+        # Set _loaded only on success: failures (missing/corrupt model, transient error)
+        # retry on the next session, so installing the model self-heals without a restart.
         try:
             import sherpa_onnx  # type: ignore[import-untyped]
 
@@ -161,6 +164,7 @@ class StreamingAsrEngine:
                 return False
 
             self._reason = ""
+            self._loaded = True
             logger.info("本地 ASR 就绪：{}（family={}, provider={}）",
                         d.name, family, provider)
             return True

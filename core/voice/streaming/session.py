@@ -163,8 +163,10 @@ class StreamingSession:
         kind = msg.get("type")
         if kind == "mute":
             self._muted = True
+            self._discard_audio_state()
         elif kind == "unmute":
             self._muted = False
+            self._discard_audio_state()
         elif kind == "flush":
             await self._finish(reason="flush")
         elif kind == "cancel":
@@ -175,6 +177,25 @@ class StreamingSession:
         elif kind == "ping":
             await protocol.send(self.ws, {"type": "pong", "ts": int(time.time() * 1000)})
         # 未知控制消息忽略（向前兼容 / forward compatible）
+
+    def _discard_audio_state(self) -> None:
+        """丢弃预卷与当前段（mute/unmute 时调用）。
+
+        播报期间前端停止送帧，若不清理，`_pre_roll` 里播报前的 200ms 会被拼进
+        播报后的第一段，VAD/ASR 也带着旧状态（回声护栏漏音）。这里把两者一起复位。
+
+        Drop the pre-roll and the current segment (called on mute/unmute). While the
+        assistant speaks the frontend stops sending frames; without this cleanup the
+        200 ms of pre-playback audio in `_pre_roll` would be prepended to the first
+        segment after playback, and VAD/ASR would keep stale state (echo-guard leak).
+        """
+        self._pre_roll.clear()
+        if self._vad_stream is not None:
+            self._vad_stream.reset()
+        if self._active:
+            self._active = False
+            self._frames = []
+            self._asr_session = None
 
     # ── 音频帧 ──
 

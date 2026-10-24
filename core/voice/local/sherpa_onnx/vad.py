@@ -53,7 +53,9 @@ class VadEngine:
     def _load(self) -> bool:
         if self._loaded:
             return self._config is not None
-        self._loaded = True
+        # 只有成功才置 _loaded：失败不缓存，模型补装后下一会话会重试。
+        # Set _loaded only on success: failures are not cached, so installing the model
+        # makes the next session retry.
         try:
             import sherpa_onnx  # type: ignore[import-untyped]
 
@@ -102,6 +104,7 @@ class VadEngine:
             # Keep the config only; the detector is **stateful**, so each session gets its own.
             self._config = vad_cfg
             self._reason = ""
+            self._loaded = True
             return True
         except Exception as e:  # noqa: BLE001 - 详细原因回给设置页/日志
             self._reason = f"VAD 加载失败: {e}"

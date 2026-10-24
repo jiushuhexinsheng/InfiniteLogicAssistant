@@ -100,7 +100,8 @@ class TtsEngine:
     def _load(self) -> bool:
         if self._loaded:
             return self._tts is not None
-        self._loaded = True
+        # 只有成功才置 _loaded：失败不缓存，模型补装后下一会话会重试。
+        # Set _loaded only on success: failures are not cached, so a later session retries.
         try:
             import sherpa_onnx  # type: ignore[import-untyped]
 
@@ -146,6 +147,7 @@ class TtsEngine:
             )
             self._tts = sherpa_onnx.OfflineTts(tts_cfg)
             self._reason = ""
+            self._loaded = True
             logger.info("本地 TTS 就绪：{}（provider={}）", d.name, provider)
             return True
         except Exception as e:  # noqa: BLE001
