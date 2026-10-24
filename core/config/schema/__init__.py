@@ -34,7 +34,14 @@ from .sections import (
     ToolsSection,
 )
 from .settings import Settings
-from .voice import CallConfig, KwsConfig, VadConfig, VoiceSection, WakeWordConfig
+from .voice import (
+    CallConfig,
+    KwsConfig,
+    StreamingConfig,
+    VadConfig,
+    VoiceSection,
+    WakeWordConfig,
+)
 
 __all__ = [
     "AgentSection",
@@ -56,6 +63,7 @@ __all__ = [
     "RagSection",
     "ServerSection",
     "Settings",
+    "StreamingConfig",
     "TtsProfile",
     "TtsSection",
     "ToolsSection",

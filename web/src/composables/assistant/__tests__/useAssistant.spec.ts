@@ -44,7 +44,7 @@ describe('useAssistant init 透传配置', () => {
     const { callConfig } = await import('../store')
     useAssistant().init()
     expect(callConfig.open_window_s).toBe(8)
-    expect(callConfig.smart_turn_enabled).toBe(true)
+    expect(callConfig.relax_after_misses).toBe(2)
   })
 })
 

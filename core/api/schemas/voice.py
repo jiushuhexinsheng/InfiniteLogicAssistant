@@ -105,11 +105,7 @@ class CallConfig(BaseModel):
     open_window_s: float = 8.0
     l0_min_rms: float = 0.02
     l0_min_seconds: float = 0.5
-    smart_turn_enabled: bool = True
     local_asr_model: str = "models/asr/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
-    # 默认关（小米网关拒绝 text 部件）：见 config/schema/voice.py 同名字段（两处必须同步）。
-    # Off by default (Xiaomi gateway rejects text parts): same field in config/schema/voice.py (keep in sync).
-    merge_l2: bool = False
     # 会话过期 / miss 放宽阈值：见 config/schema/voice.py 同名字段（两处必须同步）。
     # Session expiry / miss-relax threshold: same fields in config/schema/voice.py (keep in sync).
     session_ttl_s: float = 300.0
@@ -122,11 +118,9 @@ class StreamingConfig(BaseModel):
     """
 
     enabled: bool = True
-    frame_ms: int = 20
     partial_interval_ms: int = 120
     endpoint_silence_ms: int = 700
     max_utterance_ms: int = 15000
-    commit_policy: Literal["active_only", "all"] = "active_only"
 
 
 class HardwareConfig(BaseModel):

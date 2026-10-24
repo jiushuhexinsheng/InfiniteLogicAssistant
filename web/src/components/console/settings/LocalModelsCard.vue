@@ -155,10 +155,6 @@
           @update:model-value="v => (s.ed().streaming.enabled = v)" />
       </SettingsField>
       <div class="cs-grid">
-        <SettingsField label="帧长（ms）" en="Frame (ms)">
-          <UiInput type="number" min="10" max="100" :model-value="s.ed().streaming.frame_ms"
-            @update:model-value="v => (s.ed().streaming.frame_ms = toNum(v))" />
-        </SettingsField>
         <SettingsField label="partial 间隔（ms）" en="Partial interval (ms)">
           <UiInput type="number" min="30" :model-value="s.ed().streaming.partial_interval_ms"
             @update:model-value="v => (s.ed().streaming.partial_interval_ms = toNum(v))" />

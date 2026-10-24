@@ -69,18 +69,16 @@ class StreamingConfig(BaseModel):
     Streaming voice session config (the WebSocket pipeline).
 
     VAD/KWS/ASR 都在同一路 WebSocket 里完成；前端只负责送 20 ms PCM 帧和渲染
-    partial/final。``commit_policy`` 决定哪些定稿进聊天记录：``active_only`` 只在
-    指令窗/作答/通话等「被消费」的场景提交，``all`` 连未唤醒的旁白也显示。
+    partial/final。帧长固定 20 ms（AudioWorklet），哪些定稿进聊天记录由前端
+    streamFlow 的场景分流决定 —— 两者都没有可配置开关。
     """
 
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
-    frame_ms: int = Field(20, ge=10, le=100)
     partial_interval_ms: int = Field(120, ge=30, le=1000)
     endpoint_silence_ms: int = Field(700, ge=100)
     max_utterance_ms: int = Field(15000, ge=1000)
-    commit_policy: Literal["active_only", "all"] = "active_only"
 
 
 class HardwareConfig(BaseModel):
@@ -229,9 +227,8 @@ class CallConfig(BaseModel):
 
     Call mode (wake-free continuous flow) config: entered by double-clicking the float
     ball; each VAD segment runs the three-stage judgement funnel (L0 rules → L1 local
-    transcription/turn → L2 cloud gate). `local_asr_model` missing/unloadable degrades
-    the funnel to L0+L2 (never blocks the mode); `smart_turn_enabled=False` degrades to
-    VAD-cut-as-turn-boundary (the legacy behaviour).
+    transcription/turn → L2 cloud gate). A missing/unloadable `local_asr_model`
+    degrades the funnel to L0+L2 (never blocks the mode).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -244,9 +241,6 @@ class CallConfig(BaseModel):
     # L0 energy/duration floor: segments below are non-speech (cleared throat), dropped locally.
     l0_min_rms: float = Field(0.02, ge=0.0, le=1.0)
     l0_min_seconds: float = Field(0.5, ge=0.0)
-    # Smart Turn（说完没复核）开关：关=以浏览器 VAD 静音切段为回合边界（旧行为）。
-    # Smart Turn switch: off = browser VAD cut is the turn boundary (legacy behaviour).
-    smart_turn_enabled: bool = True
     # 已迁移到 voice.asr.local_model（2026-10-12）：本地转写升格为 ASR 段设置、不再隶属
     # 通话开关。本键仅作迁移来源保留（extra="forbid" 删字段会让旧 config.yaml 启动即报错），
     # 运行时不再读取；启动/保存时若本键被显式写过则由 loader 迁移到新键。
@@ -255,17 +249,6 @@ class CallConfig(BaseModel):
     # migration source (extra="forbid" — dropping it would fail old config.yaml at
     # startup); nothing reads it at runtime and the loader migrates a user-written value.
     local_asr_model: str = "models/asr/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20"
-    # L2 合并调用：单次云端 chat 同时精转写+四分类（省一次上传与一轮 LLM）；
-    # False = 两步（cloud_transcribe + judge）。**默认关**——小米 ASR 网关明确拒绝
-    # 请求携带 text 部件（"text prompt is injected by the gateway" → 400），合并形状
-    # 对其先天不可用，每段先撞 400 再回落纯属浪费；两步路径功能零损失。支持
-    # 指令+音频同发的网关（如 OpenAI 系）可显式开启。
-    # L2 merged call: one cloud chat does ASR + the four-way judge. **Off by default** —
-    # the Xiaomi ASR gateway rejects text parts outright ("text prompt is injected by
-    # the gateway" → 400); the merged shape cannot work against it and every segment
-    # burned a doomed request before falling back. The two-step path loses nothing.
-    # Gateways that accept instruction+audio (OpenAI-style) can enable it explicitly.
-    merge_l2: bool = False
     # 通话会话无段落自动过期秒数（防会话泄漏；此前是 call.py 硬编码 _SESSION_TTL_S）。
     # Idle expiry of a call session in seconds (leak guard; formerly the hardcoded
     # _SESSION_TTL_S in call.py).

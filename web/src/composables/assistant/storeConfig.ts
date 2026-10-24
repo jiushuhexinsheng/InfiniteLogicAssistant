@@ -31,7 +31,7 @@ export const vadConfig: VadConfig = {
   listen_idle_s: 180,
 }
 /** 通话模式配置（/api/config 的 call 段覆盖默认值）。Call-mode config (the `call` block of /api/config overrides these defaults). */
-export const callConfig: CallConfig = { enabled: true, open_window_s: 8, l0_min_rms: 0.02, l0_min_seconds: 0.5, smart_turn_enabled: true, local_asr_model: '', merge_l2: false, session_ttl_s: 300, relax_after_misses: 2 }
+export const callConfig: CallConfig = { enabled: true, open_window_s: 8, l0_min_rms: 0.02, l0_min_seconds: 0.5, local_asr_model: '', session_ttl_s: 300, relax_after_misses: 2 }
 
 /** 浏览器硬件选项（输入/输出设备与麦克风处理）。Browser hardware options. */
 export interface HardwareConfig {

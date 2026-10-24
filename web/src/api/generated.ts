@@ -1106,20 +1106,10 @@ export interface components {
              */
             l0_min_seconds: number;
             /**
-             * Smart Turn Enabled
-             * @default true
-             */
-            smart_turn_enabled: boolean;
-            /**
              * Local Asr Model
              * @default models/asr/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20
              */
             local_asr_model: string;
-            /**
-             * Merge L2
-             * @default false
-             */
-            merge_l2: boolean;
             /**
              * Session Ttl S
              * @default 300
@@ -2279,11 +2269,6 @@ export interface components {
              */
             enabled: boolean;
             /**
-             * Frame Ms
-             * @default 20
-             */
-            frame_ms: number;
-            /**
              * Partial Interval Ms
              * @default 120
              */
@@ -2298,12 +2283,6 @@ export interface components {
              * @default 15000
              */
             max_utterance_ms: number;
-            /**
-             * Commit Policy
-             * @default active_only
-             * @enum {string}
-             */
-            commit_policy: "active_only" | "all";
         };
         /**
          * TaskLibraryItem

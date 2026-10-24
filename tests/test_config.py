@@ -447,32 +447,45 @@ def test_wake_and_vad_duplicates_in_api_schemas_stay_in_sync():
 
 
 def test_call_config_defaults():
-    """通话模式配置默认值：开、8s 开放窗口、0.5s/0.02 能量底线、Smart Turn 开。"""
+    """通话模式配置默认值：开、8s 开放窗口、0.5s/0.02 能量底线。"""
     from core.config.schema import CallConfig
     c = CallConfig()
     assert c.enabled is True
     assert c.open_window_s == 8.0
     assert c.l0_min_rms == 0.02
     assert c.l0_min_seconds == 0.5
-    assert c.smart_turn_enabled is True
     assert c.local_asr_model.endswith("bilingual-zh-en-2023-02-20")
+
+
+def test_call_config_rejects_retired_keys():
+    """已失效的 Smart Turn / L2 合并键必须被拒绝（extra=forbid），
+    防止旧文档引导用户写出「看着生效、实际无人读」的配置。
+    Retired Smart Turn / merge_l2 keys are rejected (extra=forbid) so stale docs cannot
+    lead users to write settings that look effective but are never read."""
+    import pytest
+    from pydantic import ValidationError
+    from core.config.schema import CallConfig
+
+    for key, value in (("smart_turn_enabled", True), ("merge_l2", False)):
+        with pytest.raises(ValidationError):
+            CallConfig(**{key: value})
+
+
+def test_streaming_config_rejects_retired_keys():
+    """未接线的 frame_ms / commit_policy 已删除：写进配置即报错。
+    The unwired frame_ms / commit_policy keys are gone: writing them fails validation."""
+    import pytest
+    from pydantic import ValidationError
+    from core.config.schema import StreamingConfig
+
+    for key, value in (("frame_ms", 20), ("commit_policy", "all")):
+        with pytest.raises(ValidationError):
+            StreamingConfig(**{key: value})
 
 
 def test_voice_section_has_call():
     from core.config.schema import VoiceSection
     assert hasattr(VoiceSection(), "call")
-
-
-def test_call_config_merge_l2_default():
-    """L2 合并调用**默认关闭**：小米 ASR 网关拒绝 text 部件（2026-10-11 实测 400
-    "ASR request must not include text parts"），合并形状对其先天不可用；两步路径
-    （转写+判定）功能零损失，支持指令+音频同发的网关可显式开启。
-    The L2 merged call defaults to **off**: the Xiaomi ASR gateway rejects text parts
-    (measured 400 "ASR request must not include text parts" on 2026-10-11), so the
-    merged shape cannot work against it; the two-step path loses nothing, and gateways
-    accepting instruction+audio can enable it explicitly."""
-    from core.config.schema import CallConfig
-    assert CallConfig().merge_l2 is False
 
 
 # ─── ASR 三模式（2026-10-12）：本地 / 云端 / 混合 ───
