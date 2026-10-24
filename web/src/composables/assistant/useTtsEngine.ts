@@ -35,15 +35,21 @@ export function useTtsEngine() {
    * @param e 目标引擎。Target engine.
    */
   function setEngine(e: TtsEngine) {
+    const previous = ttsSettings.value.engine
     ttsSettings.value.engine = e
     saveTts()
     // local/api 同时写后端 voice.tts.mode；browser 只影响前端播报。
     // local/api also persist the backend voice.tts.mode; browser is frontend-only.
-    if (e === 'local' || e === 'api') {
-      void api.patchConfig({ tts: { mode: e } })
-        .then(() => app.refreshConfig())
-        .catch(() => { /* 配置写入失败不阻塞前端选择；状态页会显示真实模式 */ })
-    }
+    if (e !== 'local' && e !== 'api') return
+    // 无变化且后端已是该模式 → 不写配置：PATCH 会触发热重载，把本地引擎与
+    // TTS 子进程池整体重建（模型重新加载）。仅在真正切换或前后端不一致时写。
+    // No-op and the backend already matches → skip the PATCH: it triggers a hot
+    // reload that rebuilds local engines and the TTS child pool (model reload).
+    // Write only on a real switch or a backend mismatch.
+    if (previous === e && app.config.value?.tts_mode === e) return
+    void api.patchConfig({ tts: { mode: e } })
+      .then(() => app.refreshConfig())
+      .catch(() => { /* 配置写入失败不阻塞前端选择；状态页会显示真实模式 */ })
   }
 
   return { engine, apiAvailable, setEngine }
