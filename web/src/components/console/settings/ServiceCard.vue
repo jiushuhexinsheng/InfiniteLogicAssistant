@@ -82,8 +82,13 @@
         />
         <span v-if="fetchError" class="cs-err">{{ fetchError }}</span>
       </div>
-      <FetchedModelList v-if="fetched.length" :models="fetched" :added="modelList" @add="addFetched" />
       <ModelTable :models="modelList" :options="modelOptions" @update:models="setModels" />
+      <FetchedModelDialog
+        v-model="fetchedOpen"
+        :models="fetched"
+        :added="modelList"
+        @add="addFetched"
+      />
     </div>
 
     <!-- 高级兼容：键值行；内置快捷项并入键 combobox（不再是独立 chip 行）。 -->
@@ -104,7 +109,7 @@ import { computed, ref, watch } from 'vue'
 import SettingsField from './SettingsField.vue'
 import SettingsCard from './SettingsCard.vue'
 import CompatEditor from './CompatEditor.vue'
-import FetchedModelList from './FetchedModelList.vue'
+import FetchedModelDialog from './FetchedModelDialog.vue'
 import ModelTable from './ModelTable.vue'
 import SettingsButton from './SettingsButton.vue'
 import DetectionStatusDot from './DetectionStatusDot.vue'
@@ -195,6 +200,7 @@ function setCompatEntries(entries: Array<[string, string]>): void {
 
 /** 拉取结果与错误（模型管理块）。Fetched models and error for the model block. */
 const fetched = ref<string[]>([])
+const fetchedOpen = ref(false)
 const fetching = ref(false)
 const fetchError = ref('')
 
@@ -246,6 +252,7 @@ async function fetchModels(): Promise<void> {
     })
     if (r.ok && r.models?.length) {
       fetched.value = r.models
+      fetchedOpen.value = true
     } else {
       fetchError.value = r.error || '获取模型失败，可手动输入模型 ID'
     }

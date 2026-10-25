@@ -16,7 +16,7 @@
       </div>
     </div>
     <div class="fm-rows">
-      <label v-for="m in models" :key="m" class="fm-row" :class="{ added: isAdded(m) }">
+      <label v-for="m in models" :key="m" class="fm-row" :class="{ added: isAdded(m), picked: picked.includes(m) }">
         <input
           type="checkbox"
           :checked="picked.includes(m)"
@@ -84,8 +84,15 @@ function addPicked(): void {
 .fm-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); margin-bottom: var(--sp-2); }
 .fm-count { font-size: var(--fs-2xs); color: var(--text-3); }
 .fm-actions { display: flex; align-items: center; gap: var(--sp-1); }
-.fm-rows { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
-.fm-row { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-2xs); color: var(--text-2); padding: 2px var(--sp-1); border-radius: var(--r-sm); cursor: pointer; }
+.fm-rows { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.fm-rows input[type="checkbox"] { accent-color: var(--brand-c2); width: 14px; height: 14px; flex-shrink: 0; }
+.fm-row {
+  display: flex; align-items: center; gap: var(--sp-2);
+  font-size: var(--fs-2xs); color: var(--text-2);
+  padding: var(--sp-q6) var(--sp-2); border-radius: var(--r-sm); cursor: pointer;
+  border: 1px solid transparent;
+}
+.fm-row.picked { background: rgba(103, 232, 249, .07); border-color: rgba(103, 232, 249, .25); color: var(--text-1); }
 .fm-row:hover:not(.added) { background: rgba(103, 232, 249, .06); }
 .fm-row.added { opacity: .55; cursor: not-allowed; }
 .fm-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

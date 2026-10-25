@@ -134,10 +134,12 @@ describe('ProviderWizard 第 2 步', () => {
     first.dispatchEvent(new Event('change'))
     await nextTick()
     document.querySelector<HTMLElement>('.fm-add')!.click()
-    await nextTick()
+    await flushPromises()
 
-    expect((document.body.textContent || '')).toContain('x')
-    expect(document.querySelector('.fm-row.added')).not.toBeNull()
+    const values = [...document.querySelectorAll<HTMLInputElement>('.mt-row input')]
+      .map(i => i.value)
+    expect(values).toContain('x')
+    expect(document.body.textContent).not.toContain('选择要添加的模型')   // 添加后弹窗关闭
   })
 
   it('保存新供应商：有 key 才写 secrets，model 取列表首项并 emit saved', async () => {

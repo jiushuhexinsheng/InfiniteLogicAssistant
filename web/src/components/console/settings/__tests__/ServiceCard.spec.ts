@@ -211,6 +211,17 @@ describe('ServiceCard 模型管理', () => {
     expect(prof.model).toBe('mimo-v2.6-tts')
   })
 
+  it('获取成功后打开选择弹窗', async () => {
+    vi.mocked(api.fetchModels).mockResolvedValue({ ok: true, models: ['x', 'y'], count: 2 } as any)
+    const w = mount(ServiceCard, { props: { section: ttsDef } })
+
+    await w.find('.cs-fetch button').trigger('click')
+    await new Promise(r => setTimeout(r, 0))
+
+    expect(document.body.textContent).toContain('选择要添加的模型')
+    expect(document.querySelectorAll('.fm-row')).toHaveLength(2)
+  })
+
   it('获取模型带上 profile name（服务端按 secrets 解析密钥）', async () => {
     vi.mocked(api.fetchModels).mockResolvedValue({ ok: true, models: ['x'], count: 1 } as any)
     const w = mount(ServiceCard, { props: { section: ttsDef } })

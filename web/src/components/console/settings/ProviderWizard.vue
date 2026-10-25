@@ -57,8 +57,8 @@
         <span v-if="fetchError" class="pw-err">{{ fetchError }}</span>
       </div>
 
-      <FetchedModelList
-        v-if="fetched.length"
+      <FetchedModelDialog
+        v-model="fetchedOpen"
         :models="fetched"
         :added="models"
         @add="addFetched"
@@ -96,7 +96,7 @@
  */
 import { computed, reactive, ref, watch } from 'vue'
 import SettingsField from './SettingsField.vue'
-import FetchedModelList from './FetchedModelList.vue'
+import FetchedModelDialog from './FetchedModelDialog.vue'
 import ModelTable from './ModelTable.vue'
 import { UiChip, UiInput, UiModal, UiSelect } from '../../ui'
 import SettingsButton from './SettingsButton.vue'
@@ -126,6 +126,7 @@ const form = reactive({ id: '', protocol: 'openai', endpoint: '' })
 const apiKey = ref('')
 const models = ref<string[]>([])
 const fetched = ref<string[]>([])
+const fetchedOpen = ref(false)
 const fetching = ref(false)
 const saving = ref(false)
 const fetchError = ref('')
@@ -233,6 +234,7 @@ async function fetchModels(): Promise<void> {
     })
     if (r.ok && r.models?.length) {
       fetched.value = r.models
+      fetchedOpen.value = true
     } else {
       fetchError.value = r.error || '获取模型失败，可手动输入模型 ID'
     }
