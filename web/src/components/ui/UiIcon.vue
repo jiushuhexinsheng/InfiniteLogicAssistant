@@ -7,7 +7,7 @@ import { computed } from 'vue'
 import type { Component } from 'vue'
 import {
   AudioWaveform, Ear, Mic, Sparkles, Brain, Wrench, MessageSquare, MessagesSquare, Check, CircleAlert,
-  Search, Send, Trash2, ChevronDown, X, Play, Square, Ellipsis, User,
+  Search, Send, Trash2, ChevronDown, ChevronRight, ArrowDown, X, Play, Square, Ellipsis, User,
   Globe, CalendarClock, Database, Bot, Zap, Clock, Infinity as InfinityIcon,
   Settings, Volume2, Plus, CirclePlus, Activity, BarChart3, History, List, Sun, Moon, Loader2,
   Copy, FileText, Image as ImageIcon, Shield, Library,
@@ -31,6 +31,8 @@ const ICONS: Record<string, Component> = {
   send: Send,
   trash: Trash2,
   'chevron-down': ChevronDown,
+  'chevron-right': ChevronRight,
+  'arrow-down': ArrowDown,
   close: X,
   play: Play,
   stop: Square,

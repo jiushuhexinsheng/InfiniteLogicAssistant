@@ -32,7 +32,7 @@
       <h4 class="vo-group-title">{{ group.zh }} <i>{{ group.en }}</i></h4>
       <div class="vo-grid">
         <VoiceStatusTile
-          v-for="tile in group.tiles"
+          v-for="(tile, idx) in group.tiles"
           :key="tile.id"
           :order="tile.order"
           :zh="tile.zh"
@@ -41,10 +41,12 @@
           :tone="tile.tone"
           :mode="tile.mode"
           :reason="tile.reason"
-          :arrow="tile.order < tiles.length"
+          :arrow="idx < group.tiles.length - 1"
           @select="emitSelect(tile.tab)"
         />
       </div>
+      <!-- 层与层之间：一个向下的箭头（最后一层不画）。 -->
+      <div v-if="group.id !== 'out'" class="vo-down"><ChainArrow direction="down" /></div>
     </section>
 
     <p v-if="testSummary" class="vo-test-summary">自检：{{ testSummary }}</p>
@@ -84,6 +86,7 @@ import { computed, onMounted, ref } from 'vue'
 import SettingsCard from './SettingsCard.vue'
 import SettingsButton from './SettingsButton.vue'
 import VoiceStatusTile from './VoiceStatusTile.vue'
+import ChainArrow from './ChainArrow.vue'
 import { api } from '../../../api'
 import { useConfig } from '../../../composables/useApi'
 import { useVoiceModuleStatus } from '../../../composables/useVoiceModuleStatus'
@@ -294,6 +297,7 @@ const providers = computed<string[]>(() => hw.value?.providers || [])
 }
 .vo-group-title i { font-style: normal; font-weight: 400; opacity: .75; margin-left: var(--sp-q6); }
 .vo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--sp-2); }
+.vo-down { display: flex; justify-content: flex-end; padding-right: var(--sp-3); margin-top: -2px; }
 .vo-test-summary { margin: 0; font-size: var(--fs-2xs); color: var(--text-3); }
 .vo-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--sp-2); }
 .vo-fact {

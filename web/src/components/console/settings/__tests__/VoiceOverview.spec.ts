@@ -58,7 +58,8 @@ describe('VoiceOverview', () => {
     await flushPromises()
 
     expect(w.findAll('.voice-tile')).toHaveLength(7)
-    expect(w.findAll('.vt-arrow')).toHaveLength(6)
+    expect(w.findAll('.vt-arrow')).toHaveLength(4)   // 每层最后一张不显示
+    expect(w.findAll('.vo-down')).toHaveLength(2)   // 输入层→理解层、理解层→输出层
     expect(w.text()).toContain('输入')
     expect(w.text()).toContain('理解')
     expect(w.text()).toContain('输出')

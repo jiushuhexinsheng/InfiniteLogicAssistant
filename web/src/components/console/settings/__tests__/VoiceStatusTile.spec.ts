@@ -28,7 +28,7 @@ describe('VoiceStatusTile', () => {
     const w = mount(VoiceStatusTile, {
       props: { order: 2, zh: 'VAD', en: 'Voice', detail: '本地', tone: 'ok', arrow: true },
     })
-    expect(w.find('.vt-arrow').exists()).toBe(true)
+    expect(w.find('.vt-arrow .chain-arrow').exists()).toBe(true)
   })
 
   it('err 状态带错误样式', () => {
