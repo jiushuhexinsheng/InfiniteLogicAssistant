@@ -515,3 +515,100 @@ async def test_tool_rejection_feeds_reason_to_llm(monkeypatch, asking_policy):
     assert result.startswith("Error: 操作者拒绝调用 write_file")
     assert "这个文件不能动" in result, "拒绝理由必须回喂给 LLM"
     assert "请调整方案" in result, "应包含纠偏指引，防止原样重试"
+
+
+@pytest.mark.asyncio
+async def test_execute_waits_while_paused_then_resumes(monkeypatch):
+    """safe wait：暂停期间在步骤边界阻塞，恢复后继续完成。
+    Safe wait blocks at the step boundary and continues after resume."""
+    from core.orchestrator.control import PauseController, PauseMode
+
+    monkeypatch.setattr("core.orchestrator.executor.get_llm_client",
+                        lambda: _FakeLLM([[_done(content="完成")]]))
+    s = Session()
+    s.channel = _Channel([])
+    pause = PauseController()
+    pause.pause(PauseMode.SAFE_WAIT)
+    fut = __import__("asyncio").ensure_future(
+        execute_task(Task("t", "做事", risk="read"), s, CancellationToken(), pause=pause))
+    await __import__("asyncio").sleep(0.05)
+    assert not fut.done()
+    pause.resume()
+    r = await __import__("asyncio").wait_for(fut, 2)
+    assert r["status"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_execute_safe_stop_aborts_stream_and_continues(monkeypatch):
+    """safe stop：中断当前流，暂停；恢复后以续写继续。Safe stop aborts and resumes."""
+    import asyncio
+    from core.orchestrator.control import PauseController, PauseMode
+
+    class _PauseLLM:
+        def __init__(self):
+            self.calls = 0
+
+        def retry_stream_chat(self, messages, tools=None):
+            async def gen():
+                self.calls += 1
+                if self.calls == 1:
+                    yield {"type": "content_delta", "text": "部分内容"}
+                    pause.pause(PauseMode.SAFE_STOP)
+                    yield {"type": "content_delta", "text": "不应出现"}
+                    yield _done(content="部分内容不应出现")
+                else:
+                    yield {"type": "content_delta", "text": "完整回答"}
+                    yield _done(content="完整回答")
+            return gen()
+
+    pause = PauseController()
+    # get_llm_client 在生产里是单例；这里必须复用同一实例，否则 calls 计数每轮归零、
+    # 第二轮又走「首次」分支重新 pause，导致 safe stop 永远续写不出 done。
+    # get_llm_client is a singleton in production; reuse the same instance here, else the
+    # calls counter resets each round and the second round re-pauses, so resume never completes.
+    llm = _PauseLLM()
+    monkeypatch.setattr("core.orchestrator.executor.get_llm_client", lambda: llm)
+    s = Session()
+    s.channel = _Channel([])
+    fut = asyncio.ensure_future(
+        execute_task(Task("t", "做事", risk="read"), s, CancellationToken(), pause=pause))
+    for _ in range(100):
+        if pause.paused:
+            break
+        await asyncio.sleep(0.01)
+    assert pause.paused
+    assert not fut.done()
+    pause.resume()
+    r = await asyncio.wait_for(fut, 2)
+    assert r["status"] == "done"
+    assert "完整回答" in s.messages[-1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_execute_stop_aborts_running_stream(monkeypatch):
+    """流在跑时停止：不再继续收内容，返回 stopped。Stopping mid-stream halts
+    consumption and returns stopped."""
+    import asyncio
+
+    from core.orchestrator.control import CancellationToken
+
+    token = CancellationToken()
+
+    class _StopLLM:
+        def retry_stream_chat(self, messages, tools=None, **kwargs):
+            async def gen():
+                yield {"type": "content_delta", "text": "第一段。"}
+                token.cancel()
+                yield {"type": "content_delta", "text": "不应出现"}
+                yield _done(content="第一段。不应出现")
+            return gen()
+
+    monkeypatch.setattr("core.orchestrator.executor.get_llm_client", lambda: _StopLLM())
+    s = Session()
+    s.channel = _Channel([])
+    events: asyncio.Queue = asyncio.Queue()
+    r = await asyncio.wait_for(
+        execute_task(Task("t", "做事", risk="read"), s, token, events), 2)
+    assert r["status"] == "stopped"
+    deltas = "".join(e.get("text", "") for e in _drain(events) if e["type"] == "content_delta")
+    assert "不应出现" not in deltas

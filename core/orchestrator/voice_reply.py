@@ -32,6 +32,19 @@ _MAX_HOLD = 400
 _SENTENCE_SPLIT = re.compile(r"(?<=[。！？!?；;\n])")
 
 
+def _partial_marker_tail(buf: str) -> int:
+    """buf 末尾有多少字符可能是某个标记的前缀（0 = 没有）。
+
+    How many trailing characters could be a prefix of a marker (0 = none).
+    """
+    best = 0
+    for mark in (VOICE_MARK, BODY_MARK):
+        for k in range(1, min(len(mark) - 1, len(buf)) + 1):
+            if buf.endswith(mark[:k]):
+                best = max(best, k)
+    return best
+
+
 def _fallback_speech(text: str) -> str:
     """从正文取首句作为语音总结。Take the first sentence as a speech fallback."""
     clean = text.strip()
@@ -69,8 +82,12 @@ class VoiceReplySplitter:
         if not delta:
             return ""
         if self._state in ("content", "plain"):
-            self._content += delta
-            return delta
+            # 正文态仍要提防迟到的标记（模型先写正文、后补【语音】是实测出现的顺序）：
+            # 标记本身绝不外吐，语音段也不能混进正文。
+            # Content mode still guards against late markers (the model writing the body
+            # first and appending 【语音】 afterwards is observed in practice): markers
+            # never leak out and the speech segment never joins the body.
+            return self._feed_stream(delta)
 
         self._buf += delta
         if self._state == "detect":
@@ -94,22 +111,81 @@ class VoiceReplySplitter:
                 return out
 
         if self._state == "speech":
-            idx = self._buf.find(BODY_MARK)
-            if idx >= 0:
-                self._speech = self._buf[:idx].strip()
-                rest = self._buf[idx + len(BODY_MARK):].lstrip("\r\n")
-                self._buf = ""
-                self._state = "content"
-                self._content += rest
-                return rest
-            if len(self._buf) > _MAX_HOLD:
-                # 漏了正文标记：整段按正文处理，语音走兜底。
-                self._state = "plain"
-                out, self._buf = self._buf, ""
-                self._content += out
-                return out
-            return ""
+            return self._feed_speech()
         return ""
+
+    def _feed_stream(self, delta: str) -> str:
+        """正文态：流式放行正文，但拦下迟到的标记与其前缀。
+
+        Content/plain mode: stream the body through while intercepting late markers and
+        their prefixes. A 【语音】 encountered here switches to the speech segment
+        (body-first layouts); a 【正文】 is simply dropped.
+        """
+        self._buf += delta
+        out = ""
+        while True:
+            iv = self._buf.find(VOICE_MARK)
+            ib = self._buf.find(BODY_MARK)
+            cands = [(i, m) for i, m in ((iv, VOICE_MARK), (ib, BODY_MARK)) if i >= 0]
+            if not cands:
+                # 尾部的完整标记前缀先扣住（下一个增量可能补全）。
+                # Hold a full-marker prefix at the tail (the next delta may complete it).
+                hold = _partial_marker_tail(self._buf)
+                safe = self._buf[:len(self._buf) - hold] if hold else self._buf
+                self._buf = self._buf[len(safe):]
+                self._content += safe
+                return out + safe
+            idx, mark = min(cands, key=lambda c: c[0])
+            head = self._buf[:idx]
+            out += head
+            self._content += head
+            self._buf = self._buf[idx + len(mark):]
+            if mark == BODY_MARK:
+                continue          # 正文标记：丢掉标记，正文继续。
+            self._state = "speech"
+            return out + self._feed_speech()
+
+    def _feed_speech(self) -> str:
+        """语音段：等【正文】标记，返回标记之后的正文增量。Speech segment handling."""
+        idx = self._buf.find(BODY_MARK)
+        if idx >= 0:
+            self._speech = self._buf[:idx].strip()
+            rest = self._buf[idx + len(BODY_MARK):].lstrip("\r\n")
+            self._buf = ""
+            self._state = "content"
+            self._content += rest
+            return rest
+        if len(self._buf) > _MAX_HOLD:
+            # 漏了正文标记：整段按正文处理，语音走兜底。
+            self._state = "plain"
+            out, self._buf = self._buf, ""
+            self._content += out
+            return out
+        return ""
+
+    def snapshot(self) -> tuple[str, str]:
+        """不改变状态的当前进度 (语音总结, 正文) —— 暂停中断时取已生成部分，
+        恢复后继续 feed，正文不会丢也不会被清空。
+
+        Non-destructive (speech, content) snapshot of the progress so far — taken on a
+        pause abort; feeding continues afterwards without losing the generated text.
+        """
+        if self._state == "content":
+            return self._speech or _fallback_speech(self._content), self._content
+        if self._state == "speech":
+            text = self._buf.strip()
+            speech = self._speech or text or _fallback_speech(self._content)
+            if self._content:
+                return speech[:_SPEECH_MAX], self._content
+            return speech[:_SPEECH_MAX], text
+        if self._state == "plain":
+            # 正文模式下 _buf 只可能停着被扣住的标记前缀：收尾时当普通正文吐出去。
+            # In plain mode _buf only ever holds a held-back marker prefix: flush it
+            # as ordinary body text at the end.
+            content = self._content + self._buf
+            return _fallback_speech(content), content
+        content = (self._content + self._buf).strip()
+        return (_fallback_speech(content), content) if content else ("", "")
 
     def finish(self) -> tuple[str, str]:
         """结束：返回 (语音总结, 正文)。Finish and return (speech, content)."""
@@ -119,9 +195,17 @@ class VoiceReplySplitter:
             text = self._buf.strip()
             self._buf = ""
             speech = self._speech or text or _fallback_speech(self._content)
-            return speech[:_SPEECH_MAX], text or self._content
+            if self._content:
+                # 正文已流出去过（正文在前、总结补在末尾）：总结不得顶掉正文。
+                # The body already streamed (body-first layout with a trailing summary):
+                # the summary must not replace it.
+                return speech[:_SPEECH_MAX], self._content
+            return speech[:_SPEECH_MAX], text
         if self._state == "plain":
-            content = self._content or self._buf
+            # 正文模式下 _buf 只可能停着被扣住的标记前缀：收尾时当普通正文吐出去。
+            # In plain mode _buf only ever holds a held-back marker prefix: flush it
+            # as ordinary body text at the end.
+            content = self._content + self._buf
             return _fallback_speech(content), content
         # detect：整段当正文
         content = (self._content + self._buf).strip()

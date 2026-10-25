@@ -19,7 +19,7 @@ from core.memory.context import get_facts_store
 from core.memory.extract import extract_and_store
 from core.orchestrator.clarify import run_clarify
 from core.orchestrator.confirm import confirm_if_needed
-from core.orchestrator.control import StopController
+from core.orchestrator.control import CancellationToken, PauseController, StopController
 from core.orchestrator.events import (
     AnswerEvent, ContentDeltaEvent, DoneEvent, ErrorEvent, QuestionEvent,
     TaskStateEvent, from_llm_event,
@@ -239,7 +239,9 @@ class EventQueueChannel(OperatorChannel):
         return True
 
 
-async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str) -> str:
+async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str,
+                           pause: PauseController | None = None,
+                           cancel: CancellationToken | None = None) -> str:
     """生成闲聊回复：流式发射 content_delta 事件并把完整回复记入会话历史。
 
     Generate a chit-chat reply: stream content_delta events and record the full
@@ -249,18 +251,45 @@ async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str) -
     messages.extend(session.summary(8))  # 含当前用户消息 → 多轮闲聊
     splitter = VoiceReplySplitter()
     # 走 LLM client：与任务执行共享重试/熔断/模型 failover
-    async for evt in get_llm_client().retry_stream_chat(messages):
-        if evt["type"] == "content_delta":
-            visible = splitter.feed(str(evt.get("text") or ""))
-            if visible:
-                await events.put(ContentDeltaEvent(text=visible).emit())
-        elif evt["type"] == "reasoning_delta":
-            # 思考流转发（与 executor 路径一致，修复断链）
-            # Forward the reasoning stream (consistent with the executor path;
-            # fixes the broken chain).
-            forwarded = from_llm_event(evt)
-            if forwarded is not None:
-                await events.put(forwarded)
+    while True:
+        aborted = False
+        stopped = False
+        async for evt in get_llm_client().retry_stream_chat(messages):
+            if cancel is not None and cancel.is_cancelled:
+                # 停止按钮：流在跑也要立刻收手（取消令牌优先于暂停）。
+                # Stop button: quit the running stream at once (cancel outranks pause).
+                stopped = True
+                break
+            if evt["type"] == "content_delta":
+                if pause is not None and pause.abort_llm:
+                    aborted = True
+                    break
+                visible = splitter.feed(str(evt.get("text") or ""))
+                if visible:
+                    await events.put(ContentDeltaEvent(text=visible).emit())
+            elif evt["type"] == "reasoning_delta":
+                # 思考流转发（与 executor 路径一致，修复断链）
+                # Forward the reasoning stream (consistent with the executor path;
+                # fixes the broken chain).
+                forwarded = from_llm_event(evt)
+                if forwarded is not None:
+                    await events.put(forwarded)
+        if stopped or not aborted:
+            break
+        # 暂停中断：保住已生成部分，停住等恢复，再让模型从中断处续写
+        # （splitter 不清空 —— 续写增量直接接在已生成正文后面）。
+        # Paused abort: keep what was produced, park until resume, then have the model
+        # continue from the break (the splitter is NOT reset — the continuation feeds
+        # straight onto the text already shown).
+        assert pause is not None
+        _, partial = splitter.snapshot()
+        await pause.wait_if_paused()
+        if partial:
+            messages.append({"role": "assistant", "content": partial})
+        messages.append({"role": "system", "content":
+                         "上一段回答因操作者暂停而中断。请从中断处继续，不要重复已输出的内容。"})
+    if pause is not None and pause.paused:
+        await pause.wait_if_paused()
     speech, content = splitter.finish()
     if content:
         session.append("assistant", content)  # 记录完整回复到会话历史
@@ -269,7 +298,8 @@ async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str) -
 
 async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
                        controller: StopController, channel: OperatorChannel | None = None,
-                       messages: list[dict] | None = None, mode: str = "chat") -> None:
+                       messages: list[dict] | None = None, mode: str = "chat",
+                       pause: PauseController | None = None) -> None:
     """完整编排，产出事件（以 done 事件收尾）。channel 缺省用 SSE 队列通道。
 
     messages 为前端多轮历史种子（含当前用户消息）；缺省时把 text 记为当前用户消息。
@@ -314,7 +344,8 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
         session.set_state(SessionState.CHIT_CHAT)
         speech = ""
         try:
-            speech = await _chit_chat_reply(session, events, text)
+            speech = await _chit_chat_reply(
+                session, events, text, pause=pause, cancel=controller.token)
         except Exception as e:
             await events.put(ErrorEvent(message=str(e)).emit())
         if speech:
@@ -322,6 +353,8 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
         await events.put(DoneEvent().emit())
         return
 
+    if pause is not None:
+        await pause.wait_if_paused()
     session.set_state(SessionState.FORMING_TASK)
     task: Task = await form_task(intent)
     session.task = task
@@ -371,7 +404,7 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
         return
 
     session.set_state(SessionState.EXECUTING)
-    result = await execute_task(task, session, controller.token, events)
+    result = await execute_task(task, session, controller.token, events, pause=pause)
     # 任务后异步提取事实写长期记忆（不阻塞回复，失败静默）；
     # session 供提取看最近对话（解指代）并写溯源 origin（docs/designs/04）。
     if result.get("status") in ("done", "failed"):

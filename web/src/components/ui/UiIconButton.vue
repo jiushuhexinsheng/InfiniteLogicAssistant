@@ -20,7 +20,7 @@
 /** 图标按钮 Props：提示文本/变体/圆形/紧凑/禁用/按钮类型。Icon button props: tooltip text, variant, circle, compact, disabled, button type. */
 withDefaults(defineProps<{
   title?: string
-  variant?: 'ghost' | 'brand'
+  variant?: 'ghost' | 'brand' | 'danger'
   circle?: boolean
   compact?: boolean
   disabled?: boolean
@@ -41,6 +41,9 @@ withDefaults(defineProps<{
 }
 .ui-icon-btn:disabled { opacity: .4; cursor: not-allowed; }
 .ib-ghost:hover:not(:disabled) { background: rgba(51, 65, 85, .55); color: var(--text-1); }
+/* 危险变体：停止/删除类操作，红调 hover（不抢主视觉，只在悬停时警示）。
+   Danger variant: stop/delete actions; red-tinted hover (alerts only on hover, never shouts). */
+.ib-danger:hover:not(:disabled) { background: rgba(248, 113, 113, .16); color: #f87171; }
 /* 紧凑：密集行微操作，豁免全局触达下限。Compact: micro-actions in dense rows, exempt from the global target floor. */
 .ui-icon-btn.compact { min-height: auto; min-width: auto; padding: var(--sp-1); border-radius: var(--r-sm); }
 

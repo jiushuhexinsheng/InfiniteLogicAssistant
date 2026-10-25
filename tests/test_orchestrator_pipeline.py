@@ -238,7 +238,7 @@ async def test_background_extract_task_is_referenced(monkeypatch):
     async def fake_form_task(intent):
         return Task(id="t1", goal="测试", params={}, missing=[], risk="read")
 
-    async def fake_execute(task, session, token, events):
+    async def fake_execute(task, session, token, events, pause=None):
         return {"status": "done", "summary": "完成", "steps": []}
 
     monkeypatch.setattr(pl, "judge_intent", fake_judge)
@@ -629,3 +629,91 @@ async def test_chat_mode_never_asks_completion(monkeypatch):
     events: asyncio.Queue = asyncio.Queue()
     await pl.run_pipeline("做事", s, events, StopController(), channel=_Ch())   # 缺省 mode
     assert asked == [], "对话模式不应发完成确认"
+
+
+@pytest.mark.asyncio
+async def test_chit_chat_pauses_and_continues(monkeypatch):
+    """闲聊也受暂停控制：safe stop 中断当前生成，恢复后以续写补完。
+    Chit-chat honours pause too: safe stop aborts generation and resume continues it."""
+    from core.orchestrator.pipeline import run_pipeline
+    from core.orchestrator.control import PauseController, PauseMode, StopController
+    from core.orchestrator.intent import IntentResult
+    from core.orchestrator.session import Session
+
+    pause = PauseController()
+
+    class _PauseLLM:
+        def __init__(self):
+            self.calls = 0
+
+        async def retry_stream_chat(self, messages, tools=None, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                yield {"type": "content_delta", "text": "前半段。"}
+                pause.pause(PauseMode.SAFE_STOP)
+                yield {"type": "content_delta", "text": "不应出现"}
+                yield {"type": "done", "message": {"role": "assistant", "content": "前半段。不应出现"}}
+            else:
+                yield {"type": "content_delta", "text": "后半段。"}
+                yield {"type": "done", "message": {"role": "assistant", "content": "后半段。"}}
+
+    async def fake_judge(text):
+        return IntentResult(type="chit_chat", summary="打招呼")
+
+    llm = _PauseLLM()
+    monkeypatch.setattr("core.orchestrator.pipeline.judge_intent", fake_judge)
+    monkeypatch.setattr("core.orchestrator.pipeline.get_llm_client", lambda: llm)
+    s = Session()
+    events: asyncio.Queue = asyncio.Queue()
+    fut = asyncio.ensure_future(
+        run_pipeline("你好", s, events, StopController(), pause=pause))
+    for _ in range(100):
+        if pause.paused:
+            break
+        await asyncio.sleep(0.01)
+    assert pause.paused
+    pause.resume()
+    await asyncio.wait_for(fut, 2)
+
+    # 会话历史里是两段拼接的完整正文（中断部分保留、续写接上）。
+    # The session history holds the two segments joined: the aborted part is kept and
+    # the continuation is appended.
+    reply = next(m["content"] for m in s.messages if m.get("role") == "assistant")
+    assert "前半段。" in reply and "后半段。" in reply
+    assert "不应出现" not in reply
+    assert llm.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_chit_chat_stop_aborts_generation(monkeypatch):
+    """停止要真的停：取消令牌置位后不得再吐内容。Stop must really stop: once the
+    token is cancelled no further content may be emitted."""
+    from core.orchestrator.pipeline import run_pipeline
+    from core.orchestrator.control import StopController
+    from core.orchestrator.intent import IntentResult
+    from core.orchestrator.session import Session
+
+    class _StopLLM:
+        async def retry_stream_chat(self, messages, tools=None, **kwargs):
+            yield {"type": "content_delta", "text": "第一段。"}
+            ctrl.token.cancel()          # 模拟用户按停止。Simulate the stop button.
+            yield {"type": "content_delta", "text": "不应出现"}
+
+    async def fake_judge(text):
+        return IntentResult(type="chit_chat", summary="打招呼")
+
+    ctrl = StopController()
+    monkeypatch.setattr("core.orchestrator.pipeline.judge_intent", fake_judge)
+    monkeypatch.setattr("core.orchestrator.pipeline.get_llm_client", lambda: _StopLLM())
+    s = Session()
+    events: asyncio.Queue = asyncio.Queue()
+    await asyncio.wait_for(
+        run_pipeline("你好", s, events, ctrl), 2)
+
+    texts = []
+    while not events.empty():
+        e = events.get_nowait()
+        if e.get("type") == "content_delta":
+            texts.append(e["text"])
+    assert "第一段。" in "".join(texts)
+    assert "不应出现" not in "".join(texts)

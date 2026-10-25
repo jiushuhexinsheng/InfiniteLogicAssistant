@@ -55,7 +55,7 @@ def test_voice_utter_forwards_messages(client, monkeypatch):
     """测试 voice/utter 透传历史消息。Tests voice/utter forwarding the messages history."""
     captured = {}
 
-    async def fake_run(text, session, events, controller, channel=None, messages=None, mode="chat"):
+    async def fake_run(text, session, events, controller, channel=None, messages=None, mode="chat", pause=None):
         captured["messages"] = messages
         await events.put({"type": "done"})
 
@@ -76,7 +76,7 @@ def test_voice_utter_task_done(client, monkeypatch):
     async def fake_form(intent):
         return Task("t", "算 1+1", {}, [], "read")
 
-    async def fake_execute(task, session, cancel, events=None):
+    async def fake_execute(task, session, cancel, events=None, pause=None):
         return {"status": "done", "summary": "= 2", "steps": []}
 
     async def fake_extract(task, result, store, session=None):
@@ -124,7 +124,7 @@ def test_voice_utter_passes_mode_to_pipeline(client, monkeypatch):
     captured: dict = {}
 
     async def fake_run_pipeline(text, session, events, controller, channel=None,
-                                messages=None, mode="chat"):
+                                messages=None, mode="chat", pause=None):
         captured["mode"] = mode
 
     # voice.py 在函数内 `from core.orchestrator.pipeline import run_pipeline`，

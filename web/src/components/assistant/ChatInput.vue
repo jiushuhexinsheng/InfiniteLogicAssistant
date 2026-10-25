@@ -12,8 +12,14 @@
       排队 {{ queueCount }} 条 · 点击清空
     </button>
     <div class="chat-input-row">
-      <!-- 模型切换器：按供应商分组的全局模型下拉（切换即写配置）。 -->
-      <ModelPicker class="ci-model" />
+      <!-- 模型切换器：按供应商分组的全局模型下拉（切换即写配置）。
+           回合进行中让位给暂停/停止（窄面板里两者并存会把输入框挤成一条缝，
+           且回合中切模型没有意义）。
+           Model picker: the global grouped model dropdown (a switch writes config).
+           While a turn runs it yields to pause/stop (both side by side would pinch the
+           textarea to a sliver in this narrow panel, and switching models mid-turn is
+           meaningless). -->
+      <ModelPicker v-if="!turnActive" class="ci-model" />
       <!-- 消息输入框：Enter 发送，Shift+Enter 换行；UiTextarea 自动增高至 4 行。
            Message textarea: Enter to send, Shift+Enter for newline; UiTextarea autosizes to 4 rows. -->
       <UiTextarea
@@ -26,6 +32,9 @@
         :disabled="disabled"
         @keydown.enter.exact.prevent="onEnter"
       />
+      <!-- 回合控制：暂停/继续 + 停止（回合进行中才出现）。
+           Run controls: pause/resume + stop (only while a turn is live). -->
+      <RunControls />
       <!-- 发送按钮。Send button. -->
       <UiIconButton
         title="发送"
@@ -44,7 +53,9 @@
 import { ref, nextTick } from 'vue'
 import { UiIconButton, UiIcon, UiTextarea } from '../ui'
 import ModelPicker from './ModelPicker.vue'
+import RunControls from './RunControls.vue'
 import { outboxCount as queueCount, clearQueued } from '../../composables/assistant/useChat'
+import { turnActive } from '../../composables/assistant/useChatPause'
 
 /**
  * 组件属性定义。Component props definition.

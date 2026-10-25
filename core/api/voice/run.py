@@ -15,7 +15,8 @@ from core import config as config
 from core.api import state
 from core.api.schemas import AckResponse, ApiResponse
 from core.logger import logger
-from core.orchestrator.events import DoneEvent, ErrorEvent
+from core.orchestrator.control import PauseController, PauseMode
+from core.orchestrator.events import DoneEvent, ErrorEvent, TaskStateEvent
 
 router = APIRouter()
 
@@ -113,6 +114,7 @@ async def voice_utter(request: Request):
             except Exception:
                 pass
     controller = StopController()
+    pause = PauseController()
     # ── 同 id 旧运行取代（docs/designs/06）：新回合先收尾旧 runner（含其断线宽限），
     #    否则宽限机制会让旧管线多跑 resume_grace_s 才停 —— 与前端 runTurn abort 对齐。
     # Same-id supersede (docs/designs/06): a new turn retires the old runner first
@@ -126,9 +128,10 @@ async def voice_utter(request: Request):
     state.register(session, controller)
     events: asyncio.Queue = asyncio.Queue()
     runner = asyncio.ensure_future(
-        run_pipeline(text, session, events, controller, messages=messages, mode=mode))
+        run_pipeline(text, session, events, controller, messages=messages, mode=mode,
+                     pause=pause))
     run = state.RunHandle(
-        run_id=f"run_{session.id}", session=session, controller=controller,
+        run_id=f"run_{session.id}", session=session, controller=controller, pause=pause,
         events=events, runner=runner,
     )
     superseded = state.set_run(session.id, run)
@@ -399,9 +402,52 @@ async def task_stop(session_id: str):
     ctrl = state.get_controller(session_id)
     if ctrl:
         ctrl.stop_task()
+    # 停止优先于暂停：执行循环可能正卡在 wait_if_paused() 的闸门上，不解除就永远
+    # 轮不到检查取消令牌，stop 变成空操作。
+    # Stop outranks pause: the execution loop may be blocked at the wait_if_paused()
+    # gate; without releasing it the cancel token is never checked and stop is a no-op.
+    run = state.get_run(session_id)
+    if run is not None and getattr(run, "pause", None) is not None:
+        run.pause.resume()
     session = state.get_session(session_id)
     channel = getattr(session, "channel", None) if session else None
     abandon = getattr(channel, "abandon", None)
     if callable(abandon):
         abandon()
     return {"ok": True, "ack": "stop"}
+
+
+@router.post("/task/{session_id}/pause", response_model=AckResponse)
+async def task_pause(session_id: str, request: Request):
+    """暂停该会话的编排（三档：wait / stop / force，参照 DSH task-control）。
+
+    Pause the session's orchestration (wait / stop / force, mirroring DSH task-control).
+    """
+    body = await request.body()
+    try:
+        params = json.loads(body.decode("utf-8")) if body else {}
+    except Exception:
+        return JSONResponse({"ok": False, "error": "无效 JSON"}, status_code=400)
+    raw = str(params.get("mode") or "wait").strip().lower()
+    try:
+        mode = PauseMode(raw)
+    except ValueError:
+        return JSONResponse({"ok": False, "error": f"未知暂停模式: {raw}"}, status_code=400)
+    run = state.get_run(session_id)
+    if run is None or getattr(run, "pause", None) is None:
+        return JSONResponse({"ok": False, "error": "没有正在运行的会话"}, status_code=404)
+    run.pause.pause(mode)
+    await run.events.put(TaskStateEvent(
+        state="paused", summary=mode.value).emit())
+    return {"ok": True, "ack": "pause", "mode": mode.value}
+
+
+@router.post("/task/{session_id}/pause/resume", response_model=AckResponse)
+async def task_pause_resume(session_id: str):
+    """恢复被暂停的编排。Resume a paused orchestration."""
+    run = state.get_run(session_id)
+    if run is None or getattr(run, "pause", None) is None:
+        return JSONResponse({"ok": False, "error": "没有正在运行的会话"}, status_code=404)
+    run.pause.resume()
+    await run.events.put(TaskStateEvent(state="resumed").emit())
+    return {"ok": True, "ack": "resume"}

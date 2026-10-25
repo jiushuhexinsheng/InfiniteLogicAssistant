@@ -42,6 +42,8 @@ class RunHandle:
     controller: StopController
     events: "Any"  # asyncio.Queue（延迟导入避免环）。asyncio.Queue (deferred to avoid a cycle).
     runner: "Any"  # asyncio.Task。asyncio.Task.
+    # 暂停控制器（与停止并列）。Pause controller (parallel to stop).
+    pause: "Any" = None
     buffer: deque = field(default_factory=lambda: deque(maxlen=config.settings.server.sse_buffer_events))
     next_seq: int = 1
     connected: bool = True

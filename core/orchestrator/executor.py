@@ -20,7 +20,7 @@ from core.memory.context import build_context_with_sources
 from core.orchestrator.blocks import HISTORY_LEN, PREVIEW_LEN, llm_tool_feed, make_block
 from core.orchestrator.condense import maybe_condense
 from core.orchestrator.confirm import confirm_tool
-from core.orchestrator.control import CancellationToken
+from core.orchestrator.control import CancellationToken, PauseController
 from core.orchestrator.events import BlockEvent, ContentDeltaEvent, ToolEndEvent, ToolStartEvent, from_llm_event
 from core.orchestrator.session import Session
 from core.orchestrator.task import Task
@@ -41,7 +41,8 @@ def should_use_multi_agent(task: Task) -> bool:
 
 
 async def execute_task(task: Task, session: Session, cancel: CancellationToken,
-                       events: asyncio.Queue | None = None) -> dict:
+                       events: asyncio.Queue | None = None,
+                       pause: PauseController | None = None) -> dict:
     """执行任务：复杂任务转多智能体协调者；简单任务走 ReAct。
 
     events 非空时流式发射 tool_start/tool_end/usage/content_delta（SSE 实时呈现）。
@@ -119,6 +120,8 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
     ]
     steps = []
     for step in range(max_steps):
+        if pause is not None:
+            await pause.wait_if_paused()
         if cancel.is_cancelled:
             return {"status": "stopped", "summary": "已停止", "steps": steps}
         # 滚动压缩（docs/designs/08 批2）：只动本轮 LLM 视角，超阈值折叠中间段；
@@ -135,13 +138,24 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
         except Exception:
             pass
         try:
+            if pause is not None:
+                await pause.wait_if_paused()
             cancel.throw_if_cancelled()
             assistant_message = None
             splitter = VoiceReplySplitter()
             # 渐进式 schema（docs/designs/08 批4）：tools.lazy_groups 组降级为简介。
             # Progressive schemas (docs/designs/08 batch 4): groups in tools.lazy_groups degrade to stubs.
+            pause_aborted = False
             async for evt in get_llm_client().retry_stream_chat(
                     history, tools=TOOLS.schemas(stub_groups=config.settings.tools.lazy_groups)):
+                if pause is not None and pause.abort_llm:
+                    pause_aborted = True
+                    break
+                if cancel.is_cancelled:
+                    # 停止按钮：流在跑也要立刻收手（不能等到步骤边界）。
+                    # Stop button: quit the running stream at once (not only at step
+                    # boundaries).
+                    return {"status": "stopped", "summary": "已停止", "steps": steps}
                 if evt["type"] == "done":
                     assistant_message = evt["message"]
                 elif evt["type"] == "content_delta":
@@ -156,6 +170,16 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
                     forwarded = from_llm_event(evt)
                     if forwarded is not None:
                         await events.put(forwarded)
+            if pause_aborted and pause is not None:
+                # 快照而非 finish：暂停中断只取已生成部分，不破坏解析器状态。
+                # Snapshot (not finish): a pause abort only reads what was produced.
+                _, partial = splitter.snapshot()
+                if partial:
+                    history.append({"role": "assistant", "content": partial})
+                await pause.wait_if_paused()
+                history.append({"role": "system", "content":
+                                "上一段回答因操作者暂停而中断。请从中断处继续，不要重复已输出的内容。"})
+                continue
             if assistant_message is None:
                 return {"status": "failed", "summary": "LLM 返回空消息", "steps": steps}
 
@@ -166,6 +190,8 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
                     str(assistant_message.get("content") or ""))
             assistant_message = {**assistant_message, "content": visible_content}
             history.append(assistant_message)
+            if pause is not None:
+                await pause.wait_if_paused()
             tool_calls = assistant_message.get("tool_calls") or []
             if not tool_calls:
                 content = visible_content or "完成"
@@ -194,7 +220,23 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
                 # 高风险工具先确认（基于工具实际风险，而非任务声明的 risk）
                 conf = await confirm_tool(session, name, args)
                 if conf:
-                    result = await TOOLS.acall(name, args, cancel=cancel, session=session)
+                    if pause is not None:
+                        await pause.wait_if_paused()
+                        tool_task = asyncio.ensure_future(
+                            TOOLS.acall(name, args, cancel=cancel, session=session))
+                        force_task = asyncio.ensure_future(pause.wait_force())
+                        done, _ = await asyncio.wait(
+                            {tool_task, force_task}, return_when=asyncio.FIRST_COMPLETED)
+                        if force_task in done and not tool_task.done():
+                            tool_task.cancel()
+                            await asyncio.gather(tool_task, return_exceptions=True)
+                            pause.record_interrupted(name, args, TOOLS.risk(name))
+                            result = f"Error: 工具 {name} 被暂停中断（恢复后可重跑或跳过）"
+                        else:
+                            force_task.cancel()
+                            result = await tool_task
+                    else:
+                        result = await TOOLS.acall(name, args, cancel=cancel, session=session)
                 else:
                     # 拒绝理由回喂 LLM 作为纠偏信号（截断防注入）；无理由时文案
                     # 仅在尾部多一段指引，模型不会把同一调用原样重试。

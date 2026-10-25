@@ -132,3 +132,64 @@ def test_library_detail_unknown_404(client, tmp_path, monkeypatch):
     import core.api.library as lib
     monkeypatch.setattr(lib, "_get_store", lambda: store_mod.TaskStore(tmp_path / "lib2.sqlite"))
     assert client.get("/api/library/999999").status_code == 404
+
+
+def test_stop_releases_paused_run(client):
+    """暂停中的 run 被 stop 时必须一并恢复暂停闸门 —— 否则执行循环阻塞在
+    wait_if_paused()，取消令牌永远没人检查，stop 形同虚设。
+    Stopping a paused run must also release the pause gate — otherwise the execution
+    loop stays blocked in wait_if_paused(), the cancel token is never checked, and
+    stop is a no-op."""
+    import asyncio
+    from core.api import state
+    from core.orchestrator.control import PauseController, PauseMode, StopController
+    from core.orchestrator.session import Session
+
+    session = Session(session_id="pause-stop")
+    pause = PauseController()
+    pause.pause(PauseMode.SAFE_WAIT)
+    ctrl = StopController()
+    state.register(session, ctrl)
+    run = state.RunHandle(run_id="run_ps", session=session, controller=ctrl,
+                          pause=pause, events=asyncio.Queue(), runner=None)
+    state.runs[session.id] = run
+    try:
+        r = client.post("/api/task/pause-stop/stop")
+        assert r.status_code == 200
+        assert ctrl.token.is_cancelled
+        assert pause.paused is False, "stop 必须解除暂停，否则循环卡死在闸门"
+    finally:
+        state.cleanup(session.id)
+
+
+def test_pause_and_resume_endpoints(client):
+    """暂停端点三档模式 + 恢复；无运行时 404。Pause modes and resume; 404 without a run."""
+    import asyncio
+    from core.api import state
+    from core.orchestrator.control import PauseController, PauseMode
+    from core.orchestrator.session import Session
+
+    session = Session(session_id="pause-sess")
+    pause = PauseController()
+    run = state.RunHandle(
+        run_id="run_pause", session=session, controller=__import__(
+            "core.orchestrator.control", fromlist=["StopController"]).StopController(),
+        pause=pause, events=asyncio.Queue(),
+        runner=None,
+    )
+    state.runs[session.id] = run
+    try:
+        r = client.post("/api/task/pause-sess/pause", json={"mode": "stop"})
+        assert r.status_code == 200
+        assert r.json()["mode"] == "stop"
+        assert pause.paused is True and pause.mode == PauseMode.SAFE_STOP
+
+        assert client.post("/api/task/pause-sess/pause", json={"mode": "bogus"}).status_code == 400
+
+        r2 = client.post("/api/task/pause-sess/pause/resume")
+        assert r2.status_code == 200
+        assert pause.paused is False
+    finally:
+        state.cleanup(session.id)
+
+    assert client.post("/api/task/ghost/pause", json={"mode": "wait"}).status_code == 404

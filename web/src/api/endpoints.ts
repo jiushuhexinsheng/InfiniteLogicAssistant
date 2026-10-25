@@ -115,6 +115,11 @@ export const api = {
   },
   /** 停止任务。Stop task. */
   stopTask: (sessionId: string) => post<ApiResponse>(`/task/${sessionId}/stop`),
+  /** 暂停任务（wait / stop / force 三档，参照 DSH）。Pause the task (wait / stop / force). */
+  pauseTask: (sessionId: string, mode: 'wait' | 'stop' | 'force' = 'stop') =>
+    post<ApiResponse>(`/task/${sessionId}/pause`, { mode }),
+  /** 恢复被暂停的任务。Resume a paused task. */
+  resumeTask: (sessionId: string) => post<ApiResponse>(`/task/${sessionId}/pause/resume`),
   /** 获取环境变量。Get environment variables. */
   getEnv: () => get<{ ok: boolean; content: string }>('/env'),
 

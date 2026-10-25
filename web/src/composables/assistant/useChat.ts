@@ -10,6 +10,7 @@ import type { Block } from '../../blocks/types'
 import type { ChatMessage } from './store'
 import { CANCEL_RE, enqueue, clearOutbox, flushOutbox } from './useChatOutbox'
 import { sendAnswer } from './useChatAnswer'
+import { resetPause } from './useChatPause'
 import { resetIdleDeadline } from './wake/orchState'
 
 // ─── 导出门面：outbox / 分叉编辑 / 工具 / 作答拆出为同目录子模块，原导入路径与
@@ -36,6 +37,7 @@ let abortController: AbortController | null = null
 export function abortChat() {
   abortController?.abort()
   abortController = null
+  resetPause()
   const sid = currentSessionId.value
   if (sid) void api.stopTask?.(sid)?.catch?.(() => { /* 尽力而为。Best effort. */ })
 }
@@ -76,6 +78,7 @@ export async function runTurn() {
   const alive = () => gen === runGen
   const text = last.text
   state.value = 'thinking'
+  resetPause()   // 新回合从不暂停态起步。A new turn never starts paused.
   const history = buildHistory()
 
   // 中止上一次未结束的流（防并发覆盖）。
@@ -174,6 +177,7 @@ export async function runTurn() {
       if (!alive()) return
       if (sessionId) currentSessionId.value = sessionId
       pendingQuestion.value = null
+      resetPause()   // 回合收尾：暂停标志不留到下一轮。Turn over: no stale pause flag.
       finalizeBlocks(turnBlocks as unknown as Block[])
       flushSync()
       partialText.value = ''
@@ -189,6 +193,7 @@ export async function runTurn() {
       if (!alive()) return
       // 用户主动取消（cancelTool 触发），非错误。
       // User actively cancels (triggered by cancelTool), not an error.
+      resetPause()
       if (textFlushTimer) { clearTimeout(textFlushTimer); textFlushTimer = null }
       finalizeBlocks(turnBlocks as unknown as Block[])
       partialText.value = ''
@@ -200,6 +205,7 @@ export async function runTurn() {
       if (!alive()) return
       if (textFlushTimer) { clearTimeout(textFlushTimer); textFlushTimer = null }
       console.error('[Asst] LLM error:', msg)
+      resetPause()
       addMessage('system', '出错了: ' + msg)
       pendingQuestion.value = null
       speakAuto('出错了：' + msg)

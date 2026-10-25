@@ -12,6 +12,9 @@
       title="停止朗读"
       @click="stopSpeak('ui')"
     ><UiIcon name="stop" :size="13" /></UiIconButton>
+    <!-- 回合控制：暂停/继续 + 停止（回合进行中才出现）。
+         Run controls: pause/resume + stop (only while a turn is live). -->
+    <RunControls />
     <!-- 清空对话按钮。Clear conversation button. -->
     <UiIconButton title="清空对话" @click="emit('clear')"><UiIcon name="trash" :size="14" /></UiIconButton>
     <!-- 关闭面板按钮。Close panel button. -->
@@ -21,6 +24,7 @@
 
 <script setup lang="ts">
 import { UiIconButton, UiIcon } from '../ui'
+import RunControls from './RunControls.vue'
 import { speaking, stopSpeak } from '../../composables/assistant/useTts'
 import type { AsstState } from '../../composables/useAssistant'
 import type { StateVisual } from '../../composables/useAssistantVisuals'

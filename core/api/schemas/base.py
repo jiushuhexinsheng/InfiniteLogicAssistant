@@ -32,3 +32,5 @@ class AckResponse(ApiResponse):
     Operation acknowledgement response.
     """
     ack: str = ""
+    # 暂停模式（仅 pause 端点返回）。Pause mode (returned by the pause endpoint only).
+    mode: str | None = None

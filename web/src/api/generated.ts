@@ -335,6 +335,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/task/{session_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Task Pause
+         * @description 暂停该会话的编排（三档：wait / stop / force，参照 DSH task-control）。
+         *
+         *     Pause the session's orchestration (wait / stop / force, mirroring DSH task-control).
+         */
+        post: operations["task_pause_api_task__session_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/task/{session_id}/pause/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Task Pause Resume
+         * @description 恢复被暂停的编排。Resume a paused orchestration.
+         */
+        post: operations["task_pause_resume_api_task__session_id__pause_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/voice/call/start": {
         parameters: {
             query?: never;
@@ -998,6 +1040,8 @@ export interface components {
              * @default
              */
             ack: string;
+            /** Mode */
+            mode?: string | null;
         };
         /**
          * AgentConfigOut
@@ -3131,6 +3175,68 @@ export interface operations {
         };
     };
     task_stop_api_task__session_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AckResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    task_pause_api_task__session_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AckResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    task_pause_resume_api_task__session_id__pause_resume_post: {
         parameters: {
             query?: never;
             header?: never;
