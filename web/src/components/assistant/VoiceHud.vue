@@ -153,7 +153,7 @@ const ariaLabel = computed(() =>
 }
 .voice-hud.side-right .vh-pill::after { right: -6px; border-width: 1px 1px 0 0; }
 .voice-hud.side-left .vh-pill::after { left: -6px; border-width: 0 0 1px 1px; }
-.vh-wave { width: 80px; }
+/* 宽度由 VoiceWaveform 自己持有（避免父级覆盖导致调整不生效）。 */
 
 /* 文本段：只在有识别文本时出现，向左/右伸出。 */
 .vh-box {
