@@ -13,7 +13,7 @@
       :loading="loading"
     >
       <UiIcon v-if="icon" :name="icon" :size="12" />
-      <BiLabel :zh="zh" :en="en" />
+      <BiLabel :zh="zh" :en="en" layout="stack" />
     </UiButton>
   </span>
 </template>
@@ -48,5 +48,6 @@ withDefaults(defineProps<{
 
 <style scoped>
 .settings-action-wrap { display: inline-flex; }
+.settings-action :deep(.bi-label) { align-items: center; }
 .settings-action :deep(.bi-en) { opacity: .75; }
 </style>

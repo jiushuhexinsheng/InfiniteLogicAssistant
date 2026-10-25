@@ -9,6 +9,7 @@ describe('SettingsButton', () => {
     const w = mount(SettingsButton, { props: { zh: '新增供应商', en: 'Add Provider' } })
     expect(w.text()).toContain('新增供应商')
     expect(w.text()).toContain('Add Provider')
+    expect(w.find('.bi-label').classes()).toContain('stack')
   })
 
   it('点击触发父级监听（原生事件透传）', async () => {
