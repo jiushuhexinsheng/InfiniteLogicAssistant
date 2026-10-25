@@ -124,6 +124,7 @@
         label-zh="ASR 模式" label-en="ASR Mode"
         @update:model-value="v => (s.ed().asr.mode = v)"
       />
+      <p class="cs-hint">本地 / 混合模式边说边出字（流式）；云端模式在段落结束后整段出字。</p>
       <ModelConfigCard
         v-if="s.ed().asr.mode !== 'cloud'"
         kind="asr" title-zh="本地 ASR 模型" title-en="Local ASR (sherpa-onnx)"

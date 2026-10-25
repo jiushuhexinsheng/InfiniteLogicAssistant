@@ -8,10 +8,11 @@ import VoiceWaveform from '../VoiceWaveform.vue'
 describe('VoiceWaveform', () => {
   beforeEach(() => resetMicLevel())
 
-  it('渲染固定数量波形柱并带活跃态', () => {
+  it('渲染连续波形路径（不再分割成柱）并带活跃态', () => {
     reportMicLevel(0.2)
     const w = mount(VoiceWaveform, { props: { active: true } })
-    expect(w.findAll('.vw-bar')).toHaveLength(32)
+    expect(w.findAll('.vw-bar')).toHaveLength(0)
+    expect(w.findAll('path').length).toBeGreaterThan(0)
     expect(w.find('.voice-waveform').classes()).toContain('active')
   })
 

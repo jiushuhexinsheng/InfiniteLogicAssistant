@@ -136,7 +136,7 @@ const ariaLabel = computed(() =>
   border: 1px solid var(--border-soft);
   border-radius: var(--r-full);
   backdrop-filter: blur(12px) saturate(140%);
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--shadow-2), inset 0 1px 0 rgba(255,255,255,.045);
   flex: none;
 }
 /* 尖角指向球。Tail points at the ball. */
@@ -155,7 +155,7 @@ const ariaLabel = computed(() =>
 .vh-dot.pulse { animation: vh-pulse 1.2s ease-in-out infinite; }
 @keyframes vh-pulse { 50% { opacity: .35; transform: scale(.85); } }
 .vh-wave { width: 80px; }
-.vh-label { font-size: 13px; line-height: 1; color: var(--muted, var(--text-3)); white-space: nowrap; }
+.vh-label { font-size: 13px; line-height: 1; color: var(--text-2); white-space: nowrap; }
 
 /* 文本段：只在有识别文本时出现，向左/右伸出。 */
 .vh-box {
@@ -165,7 +165,7 @@ const ariaLabel = computed(() =>
   background: var(--panel-bg, rgba(15, 23, 42, .82));
   border: 1px solid var(--border-soft); border-radius: var(--r-md);
   backdrop-filter: blur(12px) saturate(140%);
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--shadow-2), inset 0 1px 0 rgba(255,255,255,.045);
   animation: vh-grow .18s var(--ease-out, ease-out) both;
 }
 @keyframes vh-grow { from { opacity: 0; transform: translateX(4px); } to { opacity: 1; transform: none; } }
@@ -192,9 +192,11 @@ const ariaLabel = computed(() =>
 .voice-hud.ready .vh-box { border-color: rgba(52, 211, 153, .55); }
 .voice-hud.ready .vh-dot { background: #34d399; box-shadow: 0 0 6px rgba(52,211,153,.7); }
 .voice-hud.ready .vh-text { color: #d1fae5; }
+.voice-hud.ready .voice-waveform { color: #34d399; filter: drop-shadow(0 0 4px rgba(52,211,153,.30)); }
 /* 旁白：虚线灰框。Ghost: dashed grey. */
 .voice-hud.ghost .vh-box { border-style: dashed; border-color: var(--border-base); background: rgba(15,23,42,.45); }
 .voice-hud.ghost .vh-text { color: var(--text-3); }
+.voice-hud.ghost .voice-waveform { color: var(--text-3); filter: none; }
 .voice-hud.ghost .vh-dot { background: var(--text-3); box-shadow: none; }
 .voice-hud:hover .vh-pill { border-color: var(--brand-c2); }
 
