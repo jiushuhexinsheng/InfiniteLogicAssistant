@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/icon.svg" width="84" height="84" alt="无限逻辑"></p>
+
 # 无限逻辑 · 语音全控智能体
 
 用语音（或文字）控制电脑上的一切：唤醒 → 说话 → 意图判断 → 任务编排（澄清/确认/执行/汇报）→

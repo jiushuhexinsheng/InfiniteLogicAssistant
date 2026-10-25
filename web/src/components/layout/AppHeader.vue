@@ -1,7 +1,7 @@
 <template>
   <header class="app-header">
     <button class="ah-brand" type="button" @click="router.push('/')" aria-label="返回首页">
-      <span class="ah-mark"><UiIcon name="infinity" :size="16" /></span>
+      <img class="ah-mark" src="/icon.svg" alt="" width="32" height="32" />
       <span class="ah-name">
         <b>无限逻辑</b>
         <span class="ah-name-en mono">INFINITE LOGIC</span>
@@ -31,7 +31,6 @@
 
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
-import { UiIcon } from '../ui'
 import NavSystemInfo from './NavSystemInfo.vue'
 
 const router = useRouter()
@@ -52,8 +51,7 @@ const route = useRoute()
 }
 .ah-mark {
   width: 32px; height: 32px; border-radius: var(--r-md);
-  background: var(--brand-grad); color: var(--text-on-brand);
-  display: grid; place-items: center; flex-shrink: 0;
+  display: block; flex-shrink: 0;
 }
 /* 品牌名双行：中文 + 英文小字（与控制台侧栏 sb-name 同构）。
    Two-line brand: Chinese + English caption (mirrors sb-name in the console sidebar). */

@@ -47,6 +47,7 @@ robocopy "%~dp0." "%STAGE%" main.py server.py start.bat install_deps.bat require
 robocopy "%~dp0core" "%STAGE%\core" /E /XD __pycache__ /NJH /NJS /NFL /NDL >nul
 robocopy "%~dp0scripts" "%STAGE%\scripts" /E /NJH /NJS /NFL /NDL >nul
 robocopy "%~dp0skills" "%STAGE%\skills" /E /NJH /NJS /NFL /NDL >nul
+robocopy "%~dp0assets" "%STAGE%\assets" /E /NJH /NJS /NFL /NDL >nul
 
 REM ---- 3. Config file (template only, never the local one with keys) ----
 if not exist "%STAGE%\config.yaml" (

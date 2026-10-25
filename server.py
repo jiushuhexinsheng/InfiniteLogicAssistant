@@ -158,6 +158,7 @@ WEB_DIST_DIR = config.ROOT_DIR / "web" / "dist"
 # are gone. `.wasm` stays: it is not model-specific and still applies to browser assets.
 _EXTRA_TYPES = {
     ".wasm": "application/wasm",
+    ".webmanifest": "application/manifest+json",
 }
 for _ext, _ct in _EXTRA_TYPES.items():
     mimetypes.add_type(_ct, _ext)

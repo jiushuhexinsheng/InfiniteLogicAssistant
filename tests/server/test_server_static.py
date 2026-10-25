@@ -43,6 +43,16 @@ def test_cache_headers(client):
     assert client.get("/some/route").headers.get("cache-control") == "no-cache"
 
 
+def test_webmanifest_content_type(client):
+    """PWA manifest 需要正确的 MIME，否则 Chrome 不识别安装信息。
+    The PWA manifest needs the right MIME or Chrome ignores it."""
+    dist = server_module.WEB_DIST_DIR
+    (dist / "manifest.webmanifest").write_text("{}", encoding="utf-8")
+    resp = client.get("/manifest.webmanifest")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/manifest+json")
+
+
 def test_unknown_api_404(client):
     """测试未知 API 路径返回 404。Tests unknown API paths returning 404."""
     resp = client.get("/api/nope")
