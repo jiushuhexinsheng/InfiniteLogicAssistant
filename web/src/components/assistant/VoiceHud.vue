@@ -169,8 +169,11 @@ const ariaLabel = computed(() =>
   box-shadow: var(--shadow-2), inset 0 1px 0 rgba(255,255,255,.045);
 }
 /* 显示/消失动画。Enter/leave animation. */
-.vh-box-enter-active, .vh-box-leave-active {
-  transition: opacity .18s var(--ease-out, ease-out), transform .18s var(--ease-out, ease-out);
+.vh-box-enter-active {
+  transition: opacity .34s var(--ease-out, ease-out), transform .34s cubic-bezier(.22, 1, .36, 1);
+}
+.vh-box-leave-active {
+  transition: opacity .28s ease-in, transform .28s ease-in;
 }
 .vh-box-enter-from, .vh-box-leave-to { opacity: 0; transform: translateX(8px) scale(.97); }
 .vh-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
