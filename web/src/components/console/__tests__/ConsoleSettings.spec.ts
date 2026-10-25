@@ -96,7 +96,7 @@ describe('ConsoleSettings 语音统一页', () => {
       '概览', '唤醒', '识别', '合成', '硬件', '高级',
     ])
     expect(w.text()).toContain('语音总览')
-    expect(w.findAll('.chain-node').length).toBe(7)
+    expect(w.findAll('.voice-tile').length).toBe(7)
     expect(w.text()).toContain('麦克风')
     expect(w.text()).toContain('VAD')
     expect(w.text()).toContain('TTS')

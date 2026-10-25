@@ -20,10 +20,7 @@
     </div>
 
     <div class="vs-body">
-      <template v-if="tab === 'overview'">
-        <VoiceChainStatus @select="onChainSelect" />
-        <LocalModelsCard scope="overview" />
-      </template>
+      <VoiceOverview v-if="tab === 'overview'" @select="onChainSelect" />
 
       <VoiceCard v-else-if="tab === 'wake'" />
 
@@ -58,7 +55,7 @@
 import { computed, onMounted, ref } from 'vue'
 import LocalModelsCard from './LocalModelsCard.vue'
 import ModelProviderPanel from './ModelProviderPanel.vue'
-import VoiceChainStatus from './VoiceChainStatus.vue'
+import VoiceOverview from './VoiceOverview.vue'
 import VoiceCard from './VoiceCard.vue'
 import TtsEngineCard from './TtsEngineCard.vue'
 import TtsSettings from '../../assistant/TtsSettings.vue'
