@@ -261,7 +261,7 @@ const providers = computed<string[]>(() => hw.value?.providers || [])
 </script>
 
 <style scoped>
-.vo-toolbar { display: flex; align-items: center; gap: var(--sp-1); }
+.vo-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-1); }
 .vo-summary {
   display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
   padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border-soft);
@@ -296,8 +296,12 @@ const providers = computed<string[]>(() => hw.value?.providers || [])
   letter-spacing: .06em; font-weight: 600;
 }
 .vo-group-title i { font-style: normal; font-weight: 400; opacity: .75; margin-left: var(--sp-q6); }
-.vo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--sp-2); }
-.vo-down { display: flex; justify-content: flex-end; padding-right: var(--sp-3); margin-top: -2px; }
+.vo-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  /* 列间距加宽，给横向箭头留出不与卡片重叠的空间。 */
+  gap: var(--sp-2) 28px;
+}
+.vo-down { display: flex; justify-content: center; margin-top: var(--sp-1); }
 .vo-test-summary { margin: 0; font-size: var(--fs-2xs); color: var(--text-3); }
 .vo-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--sp-2); }
 .vo-fact {

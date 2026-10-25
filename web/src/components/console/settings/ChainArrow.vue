@@ -21,5 +21,9 @@ withDefaults(defineProps<{ direction?: 'right' | 'down' }>(), { direction: 'righ
   background: rgba(103, 232, 249, .08);
   box-shadow: 0 0 8px rgba(103, 232, 249, .18);
 }
-.chain-arrow.down { color: #67e8f9; }
+.chain-arrow.down {
+  width: 24px; height: 24px; color: #67e8f9;
+  border-width: 2px; box-shadow: 0 0 10px rgba(103, 232, 249, .28);
+}
+.chain-arrow.down :deep(svg) { stroke-width: 2.8; }
 </style>

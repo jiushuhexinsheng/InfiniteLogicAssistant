@@ -58,7 +58,7 @@ defineEmits<{ select: [] }>()
 .vt-detail { font-size: var(--fs-2xs); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vt-dot { width: 7px; height: 7px; border-radius: 50%; margin-top: 6px; background: var(--text-3); flex-shrink: 0; }
 .vt-arrow {
-  position: absolute; right: -13px; top: 50%; transform: translateY(-50%);
+  position: absolute; right: -24px; top: 50%; transform: translateY(-50%);
   z-index: 1;
 }
 .voice-tile.ok .vt-dot { background: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, .6); }
