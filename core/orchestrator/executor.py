@@ -32,12 +32,17 @@ from core.prompts import DESCRIBE_NOTE, EXECUTOR_SYSTEM as _SYSTEM, RAG_CITE_NOT
 
 
 def should_use_multi_agent(task: Task) -> bool:
-    """复杂任务（启用多智能体且多参数/长目标）转协调者。
+    """只有意图判断为 complex 且启用多智能体时才转协调者。
 
-    Route complex tasks (multi-agent enabled and multi-param or long goal) to the
-    coordinator.
+    判据不再是「参数多/目标长」—— 那只是文本形状，与真复杂度无关；复杂度由
+    judge_intent 给出，执行层只按它路由。
+
+    Route to the coordinator only when intent judging says "complex" and multi-agent
+    is enabled. The old heuristics (many params / long goal) measured text shape, not
+    real complexity; complexity now comes from judge_intent and execution just routes
+    on it.
     """
-    return config.settings.agent.multi_agent and (len(task.params) >= 2 or len(task.goal) > 30)
+    return config.settings.agent.multi_agent and task.complexity == "complex"
 
 
 async def execute_task(task: Task, session: Session, cancel: CancellationToken,
@@ -116,7 +121,13 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
     sys_prompt = f"{base}\n\n" + "\n\n".join(context_lines) if context_lines else base
     history = [
         {"role": "system", "content": sys_prompt},
-        {"role": "user", "content": f"任务目标：{task.goal}\n参数：{json.dumps(task.params, ensure_ascii=False)}"},
+        # 用户原话直接作为首条消息（不再套「任务目标」外壳 —— 闲聊与任务同一条管线，
+        # 套壳会让模型把「你好」当成任务名）。
+        # The raw utterance is the first message (no "task goal" wrapper — chat and
+        # tasks share one pipeline, and the wrapper made the model treat "你好" as a
+        # task title).
+        {"role": "user", "content": task.goal + (
+            f"\n参考参数：{json.dumps(task.params, ensure_ascii=False)}" if task.params else "")},
     ]
     steps = []
     for step in range(max_steps):

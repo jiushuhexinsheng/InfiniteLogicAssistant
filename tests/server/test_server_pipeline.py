@@ -15,14 +15,19 @@ from _helpers import _FakeLLMClient
 def test_voice_utter_session_cleaned_up(client, monkeypatch):
     """测试语音对话结束后会话与控制器被清理。Tests sessions and controllers being cleaned up after voice utterances end."""
     async def fake_judge(text):
-        return IntentResult(type="chit_chat", summary="打招呼")
+        return IntentResult(summary="打招呼")
 
-    _FAKE_EVENTS = [
-        {"type": "content_delta", "text": "你好"},
-        {"type": "done", "message": {"role": "assistant", "content": "你好"}},
-    ]
+    async def fake_execute(task, session, cancel, events=None, pause=None):
+        return {"status": "done", "summary": "你好", "steps": []}
+
+    async def fake_extract(*a, **k):
+        return None
+
     monkeypatch.setattr(pipeline_mod, "judge_intent", fake_judge)
-    monkeypatch.setattr(pipeline_mod, "get_llm_client", lambda: _FakeLLMClient(_FAKE_EVENTS))
+    monkeypatch.setattr(pipeline_mod, "execute_task", fake_execute)
+    monkeypatch.setattr(pipeline_mod, "extract_and_store", fake_extract)
+    monkeypatch.setattr(pipeline_mod, "get_facts_store", lambda: object())
+
     resp = client.post("/api/voice/utter", json={"text": "你好"})
     assert resp.status_code == 200
     # 流结束（done）后会话与控制器应从注册表移除
@@ -31,17 +36,26 @@ def test_voice_utter_session_cleaned_up(client, monkeypatch):
     assert state.session_ts == {}
 
 
-def test_voice_utter_chit_chat(client, monkeypatch):
-    """测试闲聊意图的流式响应。Tests the streaming response for chit-chat intents."""
-    async def fake_judge(text):
-        return IntentResult(type="chit_chat", summary="打招呼")
+def test_voice_utter_streams_executor_events(client, monkeypatch):
+    """执行器发出的事件经 SSE 直通前端，末帧是 done。
+    Events emitted by the executor reach the frontend over SSE; the last frame is done."""
+    from core.orchestrator.events import ContentDeltaEvent
 
-    _FAKE_EVENTS = [
-        {"type": "content_delta", "text": "你好"},
-        {"type": "done", "message": {"role": "assistant", "content": "你好"}},
-    ]
+    async def fake_judge(text):
+        return IntentResult(summary="打招呼")
+
+    async def fake_execute(task, session, cancel, events=None, pause=None):
+        await events.put(ContentDeltaEvent(text="你好").emit())
+        return {"status": "done", "summary": "你好", "steps": []}
+
+    async def fake_extract(*a, **k):
+        return None
+
     monkeypatch.setattr(pipeline_mod, "judge_intent", fake_judge)
-    monkeypatch.setattr(pipeline_mod, "get_llm_client", lambda: _FakeLLMClient(_FAKE_EVENTS))
+    monkeypatch.setattr(pipeline_mod, "execute_task", fake_execute)
+    monkeypatch.setattr(pipeline_mod, "extract_and_store", fake_extract)
+    monkeypatch.setattr(pipeline_mod, "get_facts_store", lambda: object())
+
     resp = client.post("/api/voice/utter", json={"text": "你好"})
     assert resp.status_code == 200
     assert "content_delta" in resp.text and "你好" in resp.text
@@ -68,13 +82,11 @@ def test_voice_utter_forwards_messages(client, monkeypatch):
     assert captured["messages"] == [{"role": "user", "content": "a"}, {"role": "assistant", "content": "b"}]
 
 
-def test_voice_utter_task_done(client, monkeypatch):
-    """测试任务意图执行后发送 task_state 事件。Tests task intents emitting task_state events after execution."""
+def test_voice_utter_executes_and_reports(client, monkeypatch):
+    """一轮输入走执行循环并以 task_state=done 收尾。
+    One turn runs the execution loop and ends with task_state=done."""
     async def fake_judge(text):
-        return IntentResult(type="task", summary="算 1+1")
-
-    async def fake_form(intent):
-        return Task("t", "算 1+1", {}, [], "read")
+        return IntentResult(summary="算 1+1")
 
     async def fake_execute(task, session, cancel, events=None, pause=None):
         return {"status": "done", "summary": "= 2", "steps": []}
@@ -83,7 +95,6 @@ def test_voice_utter_task_done(client, monkeypatch):
         pass  # 避免真实 LLM 提取
 
     monkeypatch.setattr(pipeline_mod, "judge_intent", fake_judge)
-    monkeypatch.setattr(pipeline_mod, "form_task", fake_form)
     monkeypatch.setattr(pipeline_mod, "execute_task", fake_execute)
     monkeypatch.setattr(pipeline_mod, "extract_and_store", fake_extract)
     resp = client.post("/api/voice/utter", json={"text": "算 1+1"})

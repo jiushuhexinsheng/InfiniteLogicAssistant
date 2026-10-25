@@ -105,7 +105,7 @@ async def test_execute_uses_coordinator_for_complex(monkeypatch):
     s.channel = _Channel([])
     r = await execute_task(
         Task("t", "这是一个很长的复杂任务目标需要拆分成多个子任务来处理",
-             params={"a": 1, "b": 2}, risk="read"),
+             params={"a": 1, "b": 2}, risk="read", complexity="complex"),
         s, CancellationToken(),
     )
     assert r["status"] == "done"
@@ -161,7 +161,7 @@ async def test_execute_multi_agent_streams_summary_and_records(monkeypatch):
     events: asyncio.Queue = asyncio.Queue()
     r = await execute_task(
         Task("t", "这是一个很长的复杂任务目标需要拆分成多个子任务来处理",
-             params={"a": 1, "b": 2}, risk="read"),
+             params={"a": 1, "b": 2}, risk="read", complexity="complex"),
         s, CancellationToken(), events,
     )
     assert r["status"] == "done"
@@ -612,3 +612,41 @@ async def test_execute_stop_aborts_running_stream(monkeypatch):
     assert r["status"] == "stopped"
     deltas = "".join(e.get("text", "") for e in _drain(events) if e["type"] == "content_delta")
     assert "不应出现" not in deltas
+
+
+@pytest.mark.asyncio
+async def test_execute_uses_coordinator_only_when_intent_complex(monkeypatch):
+    """复杂度由意图判断给出：complex 且启用多智能体才走协调者，长目标本身不算。
+    Complexity comes from intent judging: only "complex" with multi-agent enabled goes
+    to the coordinator — a long goal alone does not."""
+    from core import config as config_mod
+
+    calls = []
+
+    async def fake_coordinator(task, session, cancel, events=None):
+        calls.append(task.goal)
+        return {"status": "done", "summary": "多智能体结果", "subtasks": []}
+
+    monkeypatch.setattr("core.orchestrator.executor.run_coordinator", fake_coordinator)
+    monkeypatch.setattr(config_mod, "get_settings",
+                        lambda: config_mod.Settings(agent=config_mod.AgentSection(multi_agent=True)))
+
+    # 长目标 + 多参数，但意图判为 simple → 单智能体 ReAct
+    fake = _FakeLLM([[_done(content="单智能体完成")]])
+    monkeypatch.setattr("core.orchestrator.executor.get_llm_client", lambda: fake)
+
+    s = Session()
+    s.channel = _Channel([])
+    r = await execute_task(
+        Task("t", "这是一个很长很长很长的目标需要拆分成多个子任务来处理", params={"a": 1, "b": 2},
+             risk="read", complexity="simple"),
+        s, CancellationToken(),
+    )
+    assert calls == [], "simple 意图不得走多智能体"
+    assert r["status"] == "done"
+
+    # complex → 协调者
+    r2 = await execute_task(
+        Task("t2", "小目标", risk="read", complexity="complex"), s, CancellationToken())
+    assert calls == ["小目标"]
+    assert "多智能体结果" in r2["summary"]

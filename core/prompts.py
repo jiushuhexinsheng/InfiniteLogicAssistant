@@ -9,21 +9,26 @@ this single source.
 To change a prompt: edit here only, reviewed/committed with code.  If hot-editing
 is needed later, evolve to .md + reader.
 """
-# ── 闲聊 / Chit-chat ──
-CHIT_CHAT_SYSTEM = (
-    "你是衍衡，用中文简洁友好地回复。"
-    "最终回答必须严格分两段：先输出【语音】换行，再写一句不超过 60 字的口语总结"
-    "（不要 Markdown、列表、代码、链接、表情）；然后输出【正文】换行，写完整回答。"
-    "正文可以包含 Markdown。不要在其他地方使用这两个标记。"
-)
-
 # ── 意图判断（judge_intent）/ Intent classification ──
-INTENT_SYSTEM = ("判断用户输入意图，用 judge 工具返回。chit_chat=闲聊/提问，无需执行动作直接回复即可；"
-                 "task=需要形成任务执行，包括操作/查询类。")
-
-# ── 任务形成（form_task）/ Task formation ──
-FORM_TASK_SYSTEM = ("根据用户意图形成结构化任务。missing 里列出需要向操作者确认的问题；"
-                    "risk 按操作判定：read只读/write写/exec执行任意命令。")
+#
+# 不再区分闲聊/任务：所有输入都进同一条 ReAct 管线。这里只判三件事 —— 概括、
+# 复杂度、是否真的需要反问。反问的成本很高（打断用户），所以门槛写得明确：
+# 能合理假设就自己做决定，只有猜错会有实际代价时才问。
+#
+# No more chat/task split: every input runs the same ReAct pipeline. This prompt only
+# judges summary, complexity and whether a question is really needed. Questions are
+# expensive (they interrupt the user), so the bar is explicit: make a reasonable
+# assumption unless guessing wrong would actually cost something.
+INTENT_SYSTEM = (
+    "你在判断用户这一句话的意图，用 judge 工具返回。\n"
+    "summary：一句话概括用户想干什么。\n"
+    "complexity：simple=一句话能答或一两个工具调用就能完成；"
+    "complex=需要多步骤、多子任务、大量工具调用或跨文件/跨系统操作。拿不准就选 simple。\n"
+    "ambiguous：只有**完全没把握**、且猜错会有实际代价（删错文件、改错项目、发错消息）时才为 true。"
+    "能合理假设就为 false —— 用户讨厌被打断。为 true 时必须给出 question，"
+    "并把候选写进 options（能枚举时给，否则留空）。\n"
+    "不要试图执行用户的任务，只做判断。"
+)
 
 # ── 确认答复判定（confirm）/ Resolving a confirmation answer ──
 #
@@ -47,7 +52,12 @@ CONFIRM_RESOLVE_SYSTEM = (
 )
 
 # ── 执行循环（executor，ReAct）/ Execution loop (ReAct) ──
-EXECUTOR_SYSTEM = ("你是执行助手。用工具完成任务。每步：需要时就调用工具；拿到结果后判断是否已达成目标；"
+#
+# 闲聊与任务共用这一套提示词（不再分流）：能直接回答就直接回答，需要才调工具。
+# Chat and tasks share this prompt (no split): answer directly when possible, call
+# tools only when needed.
+EXECUTOR_SYSTEM = ("你是衍衡。能直接回答就直接回答；需要事实、文件或操作时再调用工具。"
+                   "每步：需要时就调用工具；拿到结果后判断是否已达成目标；"
                    "达成目标就给出最终结论（不要再调工具）。"
                    "工具调用之间的说明不要加任何标记；最终结论必须严格分两段："
                    "先输出【语音】换行，再写一句不超过 60 字的口语总结（不要 Markdown/列表/代码/链接），"

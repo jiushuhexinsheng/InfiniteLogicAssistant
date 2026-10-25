@@ -61,10 +61,9 @@ export async function streamUtter(
   const body: Record<string, unknown> = { text }
   if (opts?.messages?.length) body.messages = opts.messages
   if (opts?.sessionId) body.session_id = opts.sessionId
-  // 助手模式随请求下发（后端据此决定完成后是否询问并存档）。
-  // The assistant mode travels with the request (the backend uses it to decide whether to
-  // ask and archive on completion).
-  if (opts?.mode) body.mode = opts.mode
+  // mode 仅为兼容旧调用方保留在类型里，不再下发：对话/任务模式已删除。
+  // mode stays in the type only for legacy callers and is never sent: the chat/task
+  // mode is gone.
 
   // ── seq 游标与断线恢复（docs/designs/06）──
   // lastSeq：已消费的最大事件序号（服务端回放 seq≤lastSeq 的帧会被跳过 —— 重连不重复）。

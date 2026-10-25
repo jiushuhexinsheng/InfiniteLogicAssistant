@@ -61,10 +61,10 @@ class SessionState(str, enum.Enum):
 
     IDLE = "idle"
     UNDERSTANDING = "understanding"
-    CHIT_CHAT = "chit_chat"
-    FORMING_TASK = "forming_task"
+    # 只在真的没把握时出现一次（不是任务模式的澄清循环）。
+    # Happens at most once per turn, and only when genuinely unguessable (not the old
+    # task-mode clarification loop).
     CLARIFYING = "clarifying"
-    CONFIRMING = "confirming"
     EXECUTING = "executing"
     REPORTING = "reporting"
     STOPPED = "stopped"
@@ -83,12 +83,9 @@ class OperatorChannel(Protocol):
 
 
 _ALLOWED: dict[SessionState, set[SessionState]] = {
-    SessionState.IDLE: {SessionState.UNDERSTANDING, SessionState.CHIT_CHAT},
-    SessionState.UNDERSTANDING: {SessionState.CHIT_CHAT, SessionState.FORMING_TASK, SessionState.IDLE},
-    SessionState.CHIT_CHAT: {SessionState.IDLE},
-    SessionState.FORMING_TASK: {SessionState.CLARIFYING, SessionState.CONFIRMING, SessionState.EXECUTING, SessionState.IDLE},
-    SessionState.CLARIFYING: {SessionState.FORMING_TASK, SessionState.CONFIRMING, SessionState.EXECUTING, SessionState.IDLE},
-    SessionState.CONFIRMING: {SessionState.EXECUTING, SessionState.IDLE},
+    SessionState.IDLE: {SessionState.UNDERSTANDING},
+    SessionState.UNDERSTANDING: {SessionState.CLARIFYING, SessionState.EXECUTING, SessionState.IDLE},
+    SessionState.CLARIFYING: {SessionState.EXECUTING, SessionState.IDLE},
     SessionState.EXECUTING: {SessionState.REPORTING, SessionState.IDLE, SessionState.STOPPED},
     SessionState.REPORTING: {SessionState.IDLE},
     SessionState.STOPPED: {SessionState.IDLE},

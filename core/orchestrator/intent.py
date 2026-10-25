@@ -1,10 +1,22 @@
 # -*- coding: utf-8 -*-
-"""意图判断 — 输入是「闲聊」还是「需要形成任务」
+"""意图判断 — 概括说法、判断复杂度、决定是否真的需要反问
 
-Intent judgment — whether the input is chit-chat or needs to form a task.
+不再区分「闲聊 / 任务」：每一轮都走同一条 ReAct 管线（工具常开，模型自己决定要不要
+调用）。本模块只回答三个问题：
+
+- summary：用户想干什么（一句话）；
+- complexity：是否复杂到值得交给多智能体；
+- ambiguous：是否真的没把握 —— 只有猜错会有实际代价时才反问，能合理假设就直接做。
+
+Intent judging — summarise, gauge complexity, and decide whether a question is really
+needed. There is no chat/task split any more: every turn runs the same ReAct pipeline
+with tools always available. This module only answers: what does the user want, is it
+complex enough for the multi-agent path, and is it genuinely unguessable (ask only
+then; otherwise make a reasonable assumption and get on with it).
 """
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from core import config
 from core.llm.client import get_llm_client
@@ -15,14 +27,41 @@ _JUDGE_TOOL = {
     "type": "function",
     "function": {
         "name": "judge",
-        "description": "判断用户输入是闲聊还是要形成任务执行",
+        "description": "概括用户意图、判断复杂度、判断是否真的需要反问",
         "parameters": {
             "type": "object",
             "properties": {
-                "type": {"type": "string", "enum": ["chit_chat", "task"]},
-                "summary": {"type": "string", "description": "一句话概括用户意图"},
+                "summary": {"type": "string", "description": "一句话概括用户想干什么"},
+                "complexity": {
+                    "type": "string",
+                    "enum": ["simple", "complex"],
+                    "description": (
+                        "simple=一句话能答/一两个工具调用就能完成；"
+                        "complex=需要多步骤、多子任务或大量工具调用"
+                    ),
+                },
+                "ambiguous": {
+                    "type": "boolean",
+                    "description": (
+                        "只有完全没把握、且猜错会有实际代价（删错文件、改错项目等）才为 true；"
+                        "能合理假设就为 false"
+                    ),
+                },
+                "question": {"type": "string", "description": "ambiguous 为 true 时，要问用户的那一个关键问题"},
+                "options": {
+                    "type": "array",
+                    "description": "可选：给用户的选择项（能枚举时给，否则留空走文本输入）",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "value": {"type": "string"},
+                            "label": {"type": "string"},
+                        },
+                        "required": ["value", "label"],
+                    },
+                },
             },
-            "required": ["type", "summary"],
+            "required": ["summary", "complexity", "ambiguous"],
         },
     },
 }
@@ -30,30 +69,48 @@ _JUDGE_TOOL = {
 
 @dataclass
 class IntentResult:
-    """意图判断结果：type 为 chit_chat（闲聊）或 task（需要形成任务），summary 为一句话概括。
+    """意图判断结果：概括 + 复杂度 + 是否真的需要反问。
 
-    Intent judgment result: type is "chit_chat" or "task", and summary is a
-    one-sentence description of the user intent.
+    Intent result: summary, complexity, and whether a clarification question is really
+    necessary (with that one question and its optional choices).
     """
 
-    type: str  # "chit_chat" | "task"
     summary: str
+    complexity: str = "simple"   # simple | complex
+    ambiguous: bool = False
+    question: str = ""
+    options: list[dict] = field(default_factory=list)
 
 
-# 记忆类陈述关键词：命中即确定性判为任务（不依赖 LLM 判断）
-_MEMORY_HINTS = ("记住", "以后", "偏好", "我喜欢", "我希望", "帮我记", "默认", "记得")
+def _parse_options(raw: Any) -> list[dict]:
+    """把 LLM 给的选项规范化为 [{value, label}]（容忍纯字符串）。
+
+    Normalise the LLM's options into [{value, label}] (plain strings tolerated).
+    """
+    out: list[dict] = []
+    for entry in raw or []:
+        if isinstance(entry, str) and entry.strip():
+            out.append({"value": entry.strip(), "label": entry.strip()})
+        elif isinstance(entry, dict):
+            value = str(entry.get("value") or entry.get("label") or "").strip()
+            if value:
+                out.append({"value": value, "label": str(entry.get("label") or value)})
+    return out
 
 
 async def judge_intent(text: str) -> IntentResult:
-    """判断意图。记忆类陈述规则判为 task；其余走 LLM，失败/无工具兜底为 task。
+    """判断意图：概括、复杂度、是否需要反问。任何失败都兜底为「照常执行」。
 
-    Judge the intent. Memory-like statements are classified as task by rule; the
-    rest go to the LLM, falling back to task on failure or when no tool call is
-    returned.
+    Judge the intent: summary, complexity, and whether to ask. Any failure falls back
+    to "just proceed" — a judging hiccup must never block the turn.
+
+    Args:
+        text: 用户原话。The user's utterance.
+
+    Returns:
+        意图判断结果。The intent result.
     """
-    if any(h in text for h in _MEMORY_HINTS):
-        logger.info("judge_intent(规则): {} → task", text)
-        return IntentResult(type="task", summary=f"记住用户偏好：{text.strip()}")
+    fallback = IntentResult(summary=text.strip()[:50] or text.strip())
     messages = [
         {"role": "system", "content": INTENT_SYSTEM},
         {"role": "user", "content": text},
@@ -62,16 +119,30 @@ async def judge_intent(text: str) -> IntentResult:
         async for evt in get_llm_client().retry_stream_chat(
             messages, tools=[_JUDGE_TOOL], temperature=config.settings.agent.structured_temperature,
         ):
-            if evt["type"] == "done":
-                msg = evt["message"]
-                tc = (msg.get("tool_calls") or [{}])[0]
-                raw = tc.get("function", {}).get("arguments") or "{}"
-                data = json.loads(raw) if isinstance(raw, str) else raw
-                t = data.get("type") if data.get("type") in ("chit_chat", "task") else "task"
-                logger.info("judge_intent(LLM): {} → {}", text, t)
-                return IntentResult(type=t, summary=str(data.get("summary", text[:50])))
-        logger.info("judge_intent(无工具兜底): {} → task", text)
-        return IntentResult(type="task", summary=text[:50])
+            if evt["type"] != "done":
+                continue
+            tc = (evt["message"].get("tool_calls") or [{}])[0]
+            raw = tc.get("function", {}).get("arguments") or "{}"
+            data = json.loads(raw) if isinstance(raw, str) else raw
+            if not isinstance(data, dict):
+                return fallback
+            complexity = data.get("complexity")
+            question = str(data.get("question") or "").strip()
+            result = IntentResult(
+                summary=str(data.get("summary") or "").strip() or fallback.summary,
+                complexity=complexity if complexity in ("simple", "complex") else "simple",
+                # 标了 ambiguous 却没给问题 = 问不出来，按不反问处理（否则卡在空问题前）。
+                # ambiguous without a question cannot be asked: treat it as unambiguous.
+                ambiguous=bool(data.get("ambiguous")) and bool(question),
+                question=question,
+                options=_parse_options(data.get("options")),
+            )
+            logger.info("judge_intent: {} → {} / {} / {}",
+                        text, result.summary, result.complexity,
+                        "ask" if result.ambiguous else "proceed")
+            return result
+        logger.info("judge_intent(无工具兜底): {}", text)
+        return fallback
     except Exception as e:
-        logger.warning("judge_intent 兜底为 task: {}", e)
-        return IntentResult(type="task", summary=text[:50])
+        logger.warning("judge_intent 兜底: {}", e)
+        return fallback

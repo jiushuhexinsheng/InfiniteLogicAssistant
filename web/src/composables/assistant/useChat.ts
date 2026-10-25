@@ -1,6 +1,6 @@
 import { reactive } from 'vue'
 import { api, streamUtter } from '../../api'
-import { state, messages, tokenUsage, partialText, genId, addMessage, buildHistory, MAX_MESSAGES, pendingQuestion, currentSessionId, assistantMode, textProjection, wakeKeywords } from './store'
+import { state, messages, tokenUsage, partialText, genId, addMessage, buildHistory, MAX_MESSAGES, pendingQuestion, currentSessionId, textProjection, wakeKeywords } from './store'
 import { speakAuto, stopSpeak } from './useTts'
 import { matchOption } from './answerMatch'
 import { detectWake } from './wakeMatch'
@@ -213,7 +213,7 @@ export async function runTurn() {
       flushOutbox()
     },
   }, { messages: history, sessionId: currentSessionId.value || undefined,
-       signal: abortController.signal, mode: assistantMode.value })
+       signal: abortController.signal })
   // 流结束（含未走 onDone 的路径）强制同步文本投影，保证 text 与块一致。
   // Force-sync the text projection when the stream ends (including paths without
   // onDone), keeping text consistent with the blocks.

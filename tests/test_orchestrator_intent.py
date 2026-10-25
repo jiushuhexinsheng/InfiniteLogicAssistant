@@ -10,7 +10,7 @@ from core.orchestrator.intent import IntentResult, judge_intent
 from core.orchestrator.session import Session, SessionState
 
 
-def _done_with_tool(type_: str, summary: str) -> dict:
+def _done_with_args(args: dict) -> dict:
     return {
         "type": "done",
         "message": {
@@ -18,7 +18,7 @@ def _done_with_tool(type_: str, summary: str) -> dict:
             "content": "",
             "tool_calls": [{
                 "id": "j", "type": "function",
-                "function": {"name": "judge", "arguments": json.dumps({"type": type_, "summary": summary})},
+                "function": {"name": "judge", "arguments": json.dumps(args)},
             }],
         },
     }
@@ -44,12 +44,18 @@ def test_session_state_transitions():
     s = Session()
     assert s.state == SessionState.IDLE
     s.set_state(SessionState.UNDERSTANDING)
-    s.set_state(SessionState.FORMING_TASK)
     s.set_state(SessionState.CLARIFYING)
     s.set_state(SessionState.EXECUTING)
     s.set_state(SessionState.REPORTING)
     s.set_state(SessionState.IDLE)
     assert s.state == SessionState.IDLE
+
+
+def test_session_task_mode_states_are_gone():
+    """任务模式的专用状态已删除（不再区分对话/任务）。
+    The task-mode-only states are gone (no more chat/task split)."""
+    for name in ("CHIT_CHAT", "FORMING_TASK", "CONFIRMING"):
+        assert not hasattr(SessionState, name), f"{name} 应随任务模式一起删除"
 
 
 def test_session_illegal_transition_raises():
@@ -80,38 +86,80 @@ def test_session_summary_trims():
 # ── 意图判断 ──
 
 @pytest.mark.asyncio
-async def test_judge_intent_task(monkeypatch):
-    """任务类意图返回 task 结果。Task-like intents return a task result."""
-    fake = _FakeLLM([[_done_with_tool("task", "把文件复制到下载")]])
+async def test_judge_returns_summary_with_simple_defaults(monkeypatch):
+    """只回 summary 时：simple 复杂度、不反问。Summary alone means simple and unambiguous."""
+    fake = _FakeLLM([[_done_with_args({"summary": "把文件复制到下载"})]])
     monkeypatch.setattr("core.orchestrator.intent.get_llm_client", lambda: fake)
     r = await judge_intent("把桌面readme.txt复制到下载")
-    assert r == IntentResult(type="task", summary="把文件复制到下载")
+    assert r == IntentResult(summary="把文件复制到下载", complexity="simple", ambiguous=False)
 
 
 @pytest.mark.asyncio
-async def test_judge_intent_chit_chat(monkeypatch):
-    """闲聊类意图返回 chit_chat。Chit-chat intents return chit_chat."""
-    fake = _FakeLLM([[_done_with_tool("chit_chat", "打招呼")]])
+async def test_judge_complex_intent(monkeypatch):
+    """复杂意图（多步骤/多子任务）标记为 complex。Complex intents are flagged."""
+    fake = _FakeLLM([[_done_with_args({"summary": "整理并分析整个项目", "complexity": "complex"})]])
     monkeypatch.setattr("core.orchestrator.intent.get_llm_client", lambda: fake)
-    r = await judge_intent("你好呀")
-    assert r.type == "chit_chat"
+    r = await judge_intent("把整个项目梳理一遍，写报告，再列修复清单")
+    assert r.complexity == "complex"
 
 
 @pytest.mark.asyncio
-async def test_judge_intent_memory_hint_is_task():
-    """记忆类陈述按规则判为任务。Memory statements are ruled as tasks without calling the LLM."""
-    # 记忆类陈述规则判为任务，不走 LLM
-    r = await judge_intent("记住，我平时用中文交流")
-    assert r.type == "task"
-    assert "记住用户偏好" in r.summary
+async def test_judge_ambiguous_carries_question_and_options(monkeypatch):
+    """没把握时只返回一个问题与可选选项（供一次反问）。Ambiguity carries one question."""
+    fake = _FakeLLM([[_done_with_args({
+        "summary": "删除文件",
+        "ambiguous": True,
+        "question": "要删除哪个文件？",
+        "options": [{"value": "a.txt", "label": "a.txt"}, {"value": "b.txt", "label": "b.txt"}],
+    })]])
+    monkeypatch.setattr("core.orchestrator.intent.get_llm_client", lambda: fake)
+    r = await judge_intent("把那个文件删了")
+    assert r.ambiguous is True
+    assert r.question == "要删除哪个文件？"
+    assert [o["value"] for o in r.options] == ["a.txt", "b.txt"]
 
 
 @pytest.mark.asyncio
-async def test_judge_intent_fallback_to_task(monkeypatch):
-    """LLM 故障时兜底为任务。Falls back to task when the LLM fails."""
+async def test_judge_ambiguous_without_question_downgrades(monkeypatch):
+    """标了 ambiguous 却没给问题 → 不算反问（否则会卡在一个空问题前）。
+    ambiguous without a question is downgraded — otherwise the turn would park on an
+    empty question."""
+    fake = _FakeLLM([[_done_with_args({"summary": "做事", "ambiguous": True})]])
+    monkeypatch.setattr("core.orchestrator.intent.get_llm_client", lambda: fake)
+    r = await judge_intent("做事")
+    assert r.ambiguous is False
+
+
+@pytest.mark.asyncio
+async def test_judge_invalid_complexity_falls_back_to_simple(monkeypatch):
+    """非法复杂度回退 simple（别把普通请求误送进多智能体）。
+    An invalid complexity falls back to simple (never push an ordinary request into the
+    multi-agent path)."""
+    fake = _FakeLLM([[_done_with_args({"summary": "你好", "complexity": "huge"})]])
+    monkeypatch.setattr("core.orchestrator.intent.get_llm_client", lambda: fake)
+    r = await judge_intent("你好")
+    assert r.complexity == "simple"
+
+
+@pytest.mark.asyncio
+async def test_judge_fallback_when_llm_fails(monkeypatch):
+    """LLM 故障时兜底：用原文摘要、simple、不反问（照常执行）。
+    On LLM failure: summarise the raw text, simple, no question (just proceed)."""
     class _Boom:
         def retry_stream_chat(self, messages, tools=None, **kwargs):
             raise RuntimeError("llm down")
     monkeypatch.setattr("core.orchestrator.intent.get_llm_client", lambda: _Boom())
     r = await judge_intent("打开记事本")
-    assert r.type == "task"
+    assert r.summary == "打开记事本"
+    assert r.complexity == "simple"
+    assert r.ambiguous is False
+
+
+@pytest.mark.asyncio
+async def test_judge_no_tool_call_falls_back(monkeypatch):
+    """模型没走工具调用 → 同样兜底而非报错。No tool call also falls back."""
+    fake = _FakeLLM([[{"type": "done", "message": {"role": "assistant", "content": "嗯"}}]])
+    monkeypatch.setattr("core.orchestrator.intent.get_llm_client", lambda: fake)
+    r = await judge_intent("嗯")
+    assert r.summary == "嗯"
+    assert r.ambiguous is False

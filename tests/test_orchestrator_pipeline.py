@@ -159,108 +159,74 @@ async def test_channel_notify_puts_event():
 
 
 @pytest.mark.asyncio
-async def test_chit_chat_records_assistant_reply(monkeypatch):
-    """闲聊回复记录进会话历史。Chit-chat replies are recorded into the session history."""
-    from core.orchestrator.pipeline import run_pipeline
+async def test_pipeline_runs_one_react_path_for_every_turn(monkeypatch):
+    """不再区分闲聊/任务：所有输入都交给 execute_task 的执行循环。
+    No chat/task split any more: every input goes through execute_task's loop."""
+    from core.orchestrator import pipeline as pl
     from core.orchestrator.control import StopController
-    from core.orchestrator.session import Session
     from core.orchestrator.intent import IntentResult
+    from core.orchestrator.session import Session
+
+    seen_task = {}
 
     async def fake_judge(text):
-        return IntentResult(type="chit_chat", summary="打招呼")
+        return IntentResult(summary="打个招呼")
 
-    monkeypatch.setattr("core.orchestrator.pipeline.judge_intent", fake_judge)
-    monkeypatch.setattr("core.orchestrator.pipeline.get_llm_client", lambda: _FakeLLMClient())
+    async def fake_execute(task, session, token, events, pause=None):
+        seen_task.update(goal=task.goal, complexity=task.complexity)
+        return {"status": "done", "summary": "你好呀", "steps": []}
+
+    async def fake_extract(*a, **k):
+        return None
+
+    monkeypatch.setattr(pl, "judge_intent", fake_judge)
+    monkeypatch.setattr(pl, "execute_task", fake_execute)
+    monkeypatch.setattr(pl, "extract_and_store", fake_extract)
+    monkeypatch.setattr(pl, "get_facts_store", lambda: object())
+
     s = Session()
     events: asyncio.Queue = asyncio.Queue()
-    await run_pipeline("你好", s, events, StopController())
-    # 闲聊回复应记录进会话历史（供完整历史保存）
-    assert any(m.get("role") == "assistant" and "你好呀" in m.get("content", "") for m in s.messages)
+    await pl.run_pipeline("你好", s, events, StopController())
+
+    assert seen_task == {"goal": "你好", "complexity": "simple"}
+    evts = _drain(events)
+    assert evts[0]["type"] == "task_state" and evts[0]["state"] == "understanding"
+    assert evts[-1]["type"] == "done"
+    assert any(e.get("type") == "task_state" and e.get("state") == "done" for e in evts)
 
 
 @pytest.mark.asyncio
 async def test_run_pipeline_seeds_messages(monkeypatch):
-    """管道把多轮历史与当前输入一起喂给 LLM。The pipeline seeds the LLM with multi-turn history plus the current input."""
-    from core.orchestrator.pipeline import run_pipeline
+    """管道把多轮历史与当前输入一起放进会话。The pipeline seeds multi-turn history plus the current input."""
+    from core.orchestrator import pipeline as pl
     from core.orchestrator.control import StopController
-    from core.orchestrator.session import Session
     from core.orchestrator.intent import IntentResult
+    from core.orchestrator.session import Session
 
     async def fake_judge(text):
-        return IntentResult(type="chit_chat", summary="打招呼")
+        return IntentResult(summary="打招呼")
 
-    def check(messages):
-        # 断言多轮历史被带入：最后一个 user 消息是当前输入
-        assert messages[-1]["role"] == "user" and messages[-1]["content"] == "你好"
-        assert any(m["content"] == "昨天聊过" for m in messages)
+    async def fake_execute(task, session, token, events, pause=None):
+        session.append("assistant", "你好呀")
+        return {"status": "done", "summary": "你好呀", "steps": []}
 
-    monkeypatch.setattr("core.orchestrator.pipeline.judge_intent", fake_judge)
-    monkeypatch.setattr("core.orchestrator.pipeline.get_llm_client", lambda: _FakeLLMClient(check=check))
+    async def fake_extract(*a, **k):
+        return None
+
+    monkeypatch.setattr(pl, "judge_intent", fake_judge)
+    monkeypatch.setattr(pl, "execute_task", fake_execute)
+    monkeypatch.setattr(pl, "extract_and_store", fake_extract)
+    monkeypatch.setattr(pl, "get_facts_store", lambda: object())
+
     s = Session()
     events: asyncio.Queue = asyncio.Queue()
-    await run_pipeline(
+    await pl.run_pipeline(
         "你好", s, events, StopController(),
         messages=[{"role": "user", "content": "昨天聊过"}],
     )
     assert any(m["content"] == "你好" for m in s.messages)
     assert any(m["content"] == "昨天聊过" for m in s.messages)
-    # 闲聊回复记录进会话（供完整历史保存）
     assert s.messages[-1]["role"] == "assistant"
-    assert (await events.get())["type"] == "task_state"
-    assert (await events.get())["type"] == "content_delta"
-    summary_evt = await events.get()
-    assert summary_evt["type"] == "task_state" and summary_evt["summary"]
-    assert (await events.get())["type"] == "done"
-
-
-@pytest.mark.asyncio
-async def test_background_extract_task_is_referenced(monkeypatch):
-    """后台记忆提取任务被持引用，且完成后自动移除（防 GC 导致静默丢失）。
-    The background fact-extraction task is kept referenced and auto-discarded on
-    completion (prevents silently losing it to GC).
-    """
-    from core.orchestrator import pipeline as pl
-    from core.orchestrator.control import StopController
-    from core.orchestrator.intent import IntentResult
-    from core.orchestrator.session import Session
-    from core.orchestrator.task import Task
-
-    started = asyncio.Event()
-    release = asyncio.Event()
-
-    async def fake_extract(task, result, store, session=None):
-        started.set()
-        await release.wait()
-
-    async def fake_judge(text):
-        return IntentResult(type="task", summary="测试任务")
-
-    async def fake_form_task(intent):
-        return Task(id="t1", goal="测试", params={}, missing=[], risk="read")
-
-    async def fake_execute(task, session, token, events, pause=None):
-        return {"status": "done", "summary": "完成", "steps": []}
-
-    monkeypatch.setattr(pl, "judge_intent", fake_judge)
-    monkeypatch.setattr(pl, "form_task", fake_form_task)
-    monkeypatch.setattr(pl, "execute_task", fake_execute)
-    monkeypatch.setattr(pl, "extract_and_store", fake_extract)
-    monkeypatch.setattr(pl, "get_facts_store", lambda: object())
-
-    pl._bg_tasks.clear()
-    session = Session()
-    events: asyncio.Queue = asyncio.Queue()
-    await pl.run_pipeline("做事", session, events, StopController())
-    await asyncio.wait_for(started.wait(), timeout=1)
-
-    # 任务在飞行中被引用持有（旧实现无此集合 → AttributeError）
-    assert len(pl._bg_tasks) == 1, "后台提取任务未被持引用，可能被 GC 回收"
-
-    release.set()
-    await asyncio.gather(*pl._bg_tasks)
-    await asyncio.sleep(0)
-    # 完成后 done_callback 已将其丢弃
-    assert len(pl._bg_tasks) == 0, "已完成的后台任务未被清理，引用集会持续增长"
 
 
 @pytest.mark.asyncio
@@ -342,40 +308,23 @@ async def test_ask_real_answer_wins_and_racing_poison_is_discarded():
 
 
 # ─── 流水线测试助手 ───
-# 注意：流水线里 judge_intent / form_task / execute_task / run_clarify / extract_and_store
-# 都是被 await 的，桩必须写成 async def —— 用同步 lambda 会报
-# "object dict can't be used in 'await' expression"。
+# 流水线里 judge_intent / execute_task / extract_and_store 都是被 await 的，桩必须写成
+# async def —— 用同步 lambda 会报 "object dict can't be used in 'await' expression"。
 # These are all awaited by the pipeline, so the fakes must be async functions.
 
-def _intent_task():
-    """构造一个「任务」意图。Build a task intent."""
-    from core.orchestrator.intent import IntentResult
-    return IntentResult(type="task", summary="做事")
+class _Channel:
+    """预设答案的会话通道，并记录提问。A channel with preset answers that records questions."""
 
+    def __init__(self, answers=None):
+        self.answers = list(answers or [])
+        self.asked: list[dict] = []
 
-async def _fake_judge(text):
-    """判定为任务意图。Classify as a task intent."""
-    return _intent_task()
+    async def ask(self, question, *, kind="text", options=None):
+        self.asked.append({"question": question, "kind": kind, "options": options or []})
+        return self.answers.pop(0)
 
-
-def _done_result():
-    """构造一个成功结果。Build a successful result."""
-    return {"status": "done", "summary": "完成", "steps": []}
-
-
-async def _fake_execute(*a, **k):
-    """返回成功结果。Return a successful result."""
-    return _done_result()
-
-
-async def _fake_clarify(sess, task):
-    """澄清无额外产出。Clarification yields nothing."""
-    return {}
-
-
-async def _noop(*a, **k):
-    """空协程。An empty coroutine."""
-    return None
+    async def notify(self, text):
+        pass
 
 
 def _drain(q: asyncio.Queue) -> list:
@@ -386,334 +335,243 @@ def _drain(q: asyncio.Queue) -> list:
     return out
 
 
-# ─── 预填钩子（减少询问）───
+async def _noop(*a, **k):
+    """空协程。An empty coroutine."""
+    return None
+
+
+# ─── 反问：只在真的没把握时问一次 ───
 
 @pytest.mark.asyncio
-async def test_pipeline_prefills_params_from_similar_task(monkeypatch):
-    """命中相似历史任务时，以历史参数作为 confirmed 重新 form_task（这样 missing 才会变小），
-    并发出 notify 让用户看到。
-
-    On a similar historical hit, form_task is re-run with the historical params as
-    `confirmed` (only then does `missing` shrink) and a notify is emitted so the user sees it.
-    """
+async def test_pipeline_asks_once_when_ambiguous_then_executes(monkeypatch):
+    """没把握时只问一个问题（带选项），回答并入目标后继续执行。
+    When unguessable: ask exactly one question (with options), fold the answer into the
+    goal and carry on."""
     from core.orchestrator import pipeline as pl
     from core.orchestrator.control import StopController
-    from core.orchestrator.session import Session
-    from core.orchestrator.task import MissingItem, Task
+    from core.orchestrator.intent import IntentResult
+    from core.orchestrator.session import Answer, Session
 
-    calls: list = []
+    async def fake_judge(text):
+        return IntentResult(summary="删除文件", ambiguous=True, question="要删除哪个文件？",
+                            options=[{"value": "a.txt", "label": "a.txt"},
+                                     {"value": "b.txt", "label": "b.txt"}])
 
-    async def fake_form(intent, confirmed=None):
-        calls.append(confirmed)
-        if confirmed:
-            return Task(id="t2", goal="复制文件", params=dict(confirmed), missing=[], risk="read")
-        return Task(id="t1", goal="复制文件", params={},
-                    missing=[MissingItem(question="目标位置？")], risk="read")
+    seen = {}
 
-    async def fake_find(goal, **kw):
-        return {"id": 1, "goal": goal, "params": {"dest": "下载"}, "created": "2026-09-13"}
+    async def fake_execute(task, session, token, events, pause=None):
+        seen["goal"] = task.goal
+        return {"status": "done", "summary": "已删除", "steps": []}
 
-    monkeypatch.setattr(pl, "form_task", fake_form)
-    monkeypatch.setattr(pl, "find_similar", fake_find)
-    monkeypatch.setattr(pl, "judge_intent", _fake_judge)
-    monkeypatch.setattr(pl, "execute_task", _fake_execute)
+    monkeypatch.setattr(pl, "judge_intent", fake_judge)
+    monkeypatch.setattr(pl, "execute_task", fake_execute)
     monkeypatch.setattr(pl, "extract_and_store", _noop)
     monkeypatch.setattr(pl, "get_facts_store", lambda: object())
 
+    ch = _Channel([Answer(text="", choice="b.txt")])
     s = Session()
+    s.channel = ch
     events: asyncio.Queue = asyncio.Queue()
-    await pl.run_pipeline("复制文件", s, events, StopController())
+    await pl.run_pipeline("把那个文件删了", s, events, StopController(), channel=ch)
 
-    assert calls == [None, {"dest": "下载"}], "第二次调用必须带 confirmed（历史参数）"
-    assert s.task.params == {"dest": "下载"}
-    notes = [e.get("text", "") for e in _drain(events) if e.get("type") == "task_state"]
-    assert any("历史任务" in t for t in notes), "用户应能看到「参考了历史任务」"
+    assert len(ch.asked) == 1
+    assert ch.asked[0]["kind"] == "choice"
+    assert ch.asked[0]["question"] == "要删除哪个文件？"
+    assert "b.txt" in seen["goal"], "回答必须并入目标，否则模型等于没听见"
+    assert "把那个文件删了" in seen["goal"]
 
 
 @pytest.mark.asyncio
-async def test_pipeline_skips_prefill_when_no_similar(monkeypatch):
-    """无相似历史时不二次调用 form_task（避免无谓的 LLM 调用）。
-    With no similar history, form_task is not called a second time."""
+async def test_pipeline_abandoned_answer_cancels_without_executing(monkeypatch):
+    """弃题（或空回答）不执行，直接以 cancelled 收束 —— 绝不用猜测继续。
+    An abandoned (or empty) answer cancels the turn instead of executing on a guess."""
     from core.orchestrator import pipeline as pl
     from core.orchestrator.control import StopController
-    from core.orchestrator.session import Session
-    from core.orchestrator.task import MissingItem, Task
-
-    calls: list = []
-
-    async def fake_form(intent, confirmed=None):
-        calls.append(confirmed)
-        return Task(id="t1", goal="导出报表", params={},
-                    missing=[MissingItem(question="哪个季度？")], risk="read")
-
-    async def fake_find(goal, **kw):
-        return None
-
-    monkeypatch.setattr(pl, "form_task", fake_form)
-    monkeypatch.setattr(pl, "find_similar", fake_find)
-    monkeypatch.setattr(pl, "judge_intent", _fake_judge)
-    monkeypatch.setattr(pl, "run_clarify", _fake_clarify)
-    monkeypatch.setattr(pl, "execute_task", _fake_execute)
-    monkeypatch.setattr(pl, "extract_and_store", _noop)
-    monkeypatch.setattr(pl, "get_facts_store", lambda: object())
-
-    s = Session()
-    events: asyncio.Queue = asyncio.Queue()
-    await pl.run_pipeline("导出报表", s, events, StopController())
-    assert calls == [None], "无相似历史时不应二次调用 form_task"
-
-
-@pytest.mark.asyncio
-async def test_pipeline_clarify_abandon_emits_cancelled(monkeypatch):
-    """澄清期间弃题（stop 端点投的毒丸）→ 管线立即取消：done(cancelled)、不执行任务。
-    Abandoning during clarification cancels the pipeline at once: a cancelled done is
-    emitted and the task never executes."""
-    from core.orchestrator import pipeline as pl
-    from core.orchestrator.control import StopController
+    from core.orchestrator.intent import IntentResult
     from core.orchestrator.session import ABANDON_REASON, Answer, Session
-    from core.orchestrator.task import MissingItem, Task
 
-    class _AbandonChannel:
-        """返回弃题毒丸的通道（stop 端点投递后 ask() 的返回值）。"""
+    async def fake_judge(text):
+        return IntentResult(summary="删除文件", ambiguous=True, question="删哪个？")
 
-        async def ask(self, q, *, kind="text", options=None):
-            return Answer(text="", choice=None, reason=ABANDON_REASON)
-
-        async def notify(self, text):
-            pass
-
-    executed = {"n": 0}
+    called = []
 
     async def fake_execute(*a, **k):
-        executed["n"] += 1
-        return _done_result()
+        called.append(True)
+        return {"status": "done", "summary": "x", "steps": []}
 
-    async def fake_form(intent, confirmed=None):
-        return Task(id="t1", goal="复制文件", params={},
-                    missing=[MissingItem(question="目标位置？")], risk="read")
+    monkeypatch.setattr(pl, "judge_intent", fake_judge)
+    monkeypatch.setattr(pl, "execute_task", fake_execute)
 
-    async def fake_find(goal, **kw):
-        return None
+    ch = _Channel([Answer(text="", choice=None, reason=ABANDON_REASON)])
+    s = Session()
+    s.channel = ch
+    events: asyncio.Queue = asyncio.Queue()
+    await pl.run_pipeline("把那个文件删了", s, events, StopController(), channel=ch)
 
-    monkeypatch.setattr(pl, "judge_intent", _fake_judge)
-    monkeypatch.setattr(pl, "form_task", fake_form)
-    monkeypatch.setattr(pl, "find_similar", fake_find)
+    assert called == [], "弃题后绝不能继续执行"
+    evts = _drain(events)
+    done_evt = next(e for e in evts if e.get("type") == "task_state" and e.get("state") == "done")
+    assert done_evt["status"] == "cancelled"
+    assert evts[-1]["type"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_does_not_ask_when_confident(monkeypatch):
+    """有把握时一次都不问（减少打断）。A confident turn asks nothing."""
+    from core.orchestrator import pipeline as pl
+    from core.orchestrator.control import StopController
+    from core.orchestrator.intent import IntentResult
+    from core.orchestrator.session import Session
+
+    async def fake_judge(text):
+        return IntentResult(summary="查天气")
+
+    async def fake_execute(task, session, token, events, pause=None):
+        return {"status": "done", "summary": "晴", "steps": []}
+
+    monkeypatch.setattr(pl, "judge_intent", fake_judge)
+    monkeypatch.setattr(pl, "execute_task", fake_execute)
+    monkeypatch.setattr(pl, "extract_and_store", _noop)
+    monkeypatch.setattr(pl, "get_facts_store", lambda: object())
+
+    ch = _Channel([])
+    s = Session()
+    s.channel = ch
+    events: asyncio.Queue = asyncio.Queue()
+    await pl.run_pipeline("今天天气", s, events, StopController(), channel=ch)
+    assert ch.asked == []
+
+
+# ─── 复杂度 → 多智能体；mode 参数已失效 ───
+
+@pytest.mark.asyncio
+async def test_pipeline_passes_complexity_to_task(monkeypatch):
+    """意图判出的复杂度随 Task 交给执行器（复杂才可能走多智能体）。
+    The judged complexity rides along on the Task (only complex may go multi-agent)."""
+    from core.orchestrator import pipeline as pl
+    from core.orchestrator.control import StopController
+    from core.orchestrator.intent import IntentResult
+    from core.orchestrator.session import Session
+
+    seen = {}
+
+    async def fake_judge(text):
+        return IntentResult(summary="大工程", complexity="complex")
+
+    async def fake_execute(task, session, token, events, pause=None):
+        seen["complexity"] = task.complexity
+        return {"status": "done", "summary": "完成", "steps": []}
+
+    monkeypatch.setattr(pl, "judge_intent", fake_judge)
     monkeypatch.setattr(pl, "execute_task", fake_execute)
     monkeypatch.setattr(pl, "extract_and_store", _noop)
     monkeypatch.setattr(pl, "get_facts_store", lambda: object())
 
     s = Session()
     events: asyncio.Queue = asyncio.Queue()
-    # channel 必须经参数传入：run_pipeline 缺省会自建 EventQueueChannel 覆盖 session.channel
-    await pl.run_pipeline("复制文件", s, events, StopController(), channel=_AbandonChannel())
-
-    assert executed["n"] == 0, "弃题后绝不执行任务"
-    states = [e for e in _drain(events) if e.get("type") == "task_state"]
-    cancelled = [e for e in states if e.get("status") == "cancelled"]
-    assert cancelled, f"应发 done(cancelled)，实际事件: {states}"
-    assert "放弃" in (cancelled[-1].get("summary") or ""), "取消摘要应说明是操作者放弃"
-
-
-# ─── 完成确认 + 存档（mode="task"）───
-
-def _task_without_missing():
-    """构造一个无缺失信息的任务。Build a task with nothing missing."""
-    from core.orchestrator.task import Task
-    return Task(id="t1", goal="做事", params={}, missing=[], risk="read")
-
-
-async def _fake_form_plain(intent, confirmed=None):
-    """不产生缺失信息的 form_task 桩（必须 async —— 流水线会 await 它）。
-    A form_task stub that produces nothing missing (must be async; the pipeline awaits it)."""
-    return _task_without_missing()
+    await pl.run_pipeline("把整个项目梳理一遍", s, events, StopController())
+    assert seen["complexity"] == "complex"
 
 
 @pytest.mark.asyncio
-async def test_task_mode_asks_completion_and_records_on_yes(monkeypatch):
-    """任务模式下完成时发确认提问；答「完成了」才存档。
-    In task mode a completion question is asked and the task is archived only on "completed"."""
+async def test_pipeline_mode_is_accepted_but_ignored(monkeypatch):
+    """旧前端的 mode="task" 不再触发完成追问或任务库存档（参数保留仅为兼容）。
+    The legacy mode="task" no longer triggers a completion question or a library write
+    (the parameter survives only for compatibility)."""
     from core.orchestrator import pipeline as pl
     from core.orchestrator.control import StopController
-    from core.orchestrator.session import Answer, Session
+    from core.orchestrator.intent import IntentResult
+    from core.orchestrator.session import Session
 
-    recorded: list = []
+    async def fake_judge(text):
+        return IntentResult(summary="做事")
 
-    class _Ch:
-        def __init__(self):
-            self.kinds, self.options, self.notified = [], [], []
-        async def ask(self, q, *, kind="text", options=None):
-            self.kinds.append(kind)
-            self.options.append(options or [])
-            self.notified.append(q)
-            return Answer(choice="yes")
-        async def notify(self, text):
-            self.notified.append(text)
+    async def fake_execute(task, session, token, events, pause=None):
+        return {"status": "done", "summary": "完成", "steps": []}
 
-    class _Store:
-        async def record(self, task, result, session_id="", source_text=""):
-            recorded.append((task.goal, session_id))
-
-    monkeypatch.setattr(pl, "_get_task_store", lambda: _Store())
-    monkeypatch.setattr(pl, "judge_intent", _fake_judge)
-    monkeypatch.setattr(pl, "form_task", _fake_form_plain)
-    monkeypatch.setattr(pl, "execute_task", _fake_execute)
+    monkeypatch.setattr(pl, "judge_intent", fake_judge)
+    monkeypatch.setattr(pl, "execute_task", fake_execute)
     monkeypatch.setattr(pl, "extract_and_store", _noop)
     monkeypatch.setattr(pl, "get_facts_store", lambda: object())
 
+    ch = _Channel([])
     s = Session()
-    ch = _Ch()
+    s.channel = ch
     events: asyncio.Queue = asyncio.Queue()
     await pl.run_pipeline("做事", s, events, StopController(), channel=ch, mode="task")
-
-    assert ch.kinds == ["choice"], "完成确认必须是 choice 类"
-    assert [o["value"] for o in ch.options[0]] == ["yes", "no"]
-    assert recorded == [("做事", s.id)]
+    assert ch.asked == [], "任务模式已删除，不应再追问「完成了吗」"
 
 
 @pytest.mark.asyncio
-async def test_task_mode_no_record_when_not_completed(monkeypatch):
-    """答「没完成」不存档。Answering "not completed" does not archive."""
+async def test_pipeline_passes_pause_controller(monkeypatch):
+    """暂停控制器要一路传到执行器（管线层不许半路丢掉）。
+    The pause controller must reach the executor (the pipeline must not drop it)."""
     from core.orchestrator import pipeline as pl
-    from core.orchestrator.control import StopController
-    from core.orchestrator.session import Answer, Session
-
-    recorded: list = []
-
-    class _Ch:
-        async def ask(self, q, *, kind="text", options=None):
-            return Answer(choice="no")
-        async def notify(self, text):
-            pass
-
-    class _Store:
-        async def record(self, task, result, session_id="", source_text=""):
-            recorded.append(task.goal)
-
-    monkeypatch.setattr(pl, "_get_task_store", lambda: _Store())
-    monkeypatch.setattr(pl, "judge_intent", _fake_judge)
-    monkeypatch.setattr(pl, "form_task", _fake_form_plain)
-    monkeypatch.setattr(pl, "execute_task", _fake_execute)
-    monkeypatch.setattr(pl, "extract_and_store", _noop)
-    monkeypatch.setattr(pl, "get_facts_store", lambda: object())
-
-    s = Session()
-    events: asyncio.Queue = asyncio.Queue()
-    await pl.run_pipeline("做事", s, events, StopController(), channel=_Ch(), mode="task")
-    assert recorded == []
-
-
-@pytest.mark.asyncio
-async def test_chat_mode_never_asks_completion(monkeypatch):
-    """对话模式（缺省）完全不问、不存档 —— 向后兼容回归。
-    Chat mode (the default) never asks and never archives — a backward-compatibility regression."""
-    from core.orchestrator import pipeline as pl
-    from core.orchestrator.control import StopController
-    from core.orchestrator.session import Answer, Session
-
-    asked: list = []
-
-    class _Ch:
-        async def ask(self, q, *, kind="text", options=None):
-            asked.append(q)
-            return Answer(choice="yes")
-        async def notify(self, text):
-            pass
-
-    monkeypatch.setattr(pl, "judge_intent", _fake_judge)
-    monkeypatch.setattr(pl, "form_task", _fake_form_plain)
-    monkeypatch.setattr(pl, "execute_task", _fake_execute)
-    monkeypatch.setattr(pl, "extract_and_store", _noop)
-    monkeypatch.setattr(pl, "get_facts_store", lambda: object())
-
-    s = Session()
-    events: asyncio.Queue = asyncio.Queue()
-    await pl.run_pipeline("做事", s, events, StopController(), channel=_Ch())   # 缺省 mode
-    assert asked == [], "对话模式不应发完成确认"
-
-
-@pytest.mark.asyncio
-async def test_chit_chat_pauses_and_continues(monkeypatch):
-    """闲聊也受暂停控制：safe stop 中断当前生成，恢复后以续写补完。
-    Chit-chat honours pause too: safe stop aborts generation and resume continues it."""
-    from core.orchestrator.pipeline import run_pipeline
-    from core.orchestrator.control import PauseController, PauseMode, StopController
+    from core.orchestrator.control import PauseController, StopController
     from core.orchestrator.intent import IntentResult
     from core.orchestrator.session import Session
+
+    async def fake_judge(text):
+        return IntentResult(summary="做事")
+
+    seen = {}
+
+    async def fake_execute(task, session, token, events, pause=None):
+        seen["pause"] = pause
+        return {"status": "done", "summary": "完成", "steps": []}
+
+    monkeypatch.setattr(pl, "judge_intent", fake_judge)
+    monkeypatch.setattr(pl, "execute_task", fake_execute)
+    monkeypatch.setattr(pl, "extract_and_store", _noop)
+    monkeypatch.setattr(pl, "get_facts_store", lambda: object())
 
     pause = PauseController()
-
-    class _PauseLLM:
-        def __init__(self):
-            self.calls = 0
-
-        async def retry_stream_chat(self, messages, tools=None, **kwargs):
-            self.calls += 1
-            if self.calls == 1:
-                yield {"type": "content_delta", "text": "前半段。"}
-                pause.pause(PauseMode.SAFE_STOP)
-                yield {"type": "content_delta", "text": "不应出现"}
-                yield {"type": "done", "message": {"role": "assistant", "content": "前半段。不应出现"}}
-            else:
-                yield {"type": "content_delta", "text": "后半段。"}
-                yield {"type": "done", "message": {"role": "assistant", "content": "后半段。"}}
-
-    async def fake_judge(text):
-        return IntentResult(type="chit_chat", summary="打招呼")
-
-    llm = _PauseLLM()
-    monkeypatch.setattr("core.orchestrator.pipeline.judge_intent", fake_judge)
-    monkeypatch.setattr("core.orchestrator.pipeline.get_llm_client", lambda: llm)
     s = Session()
     events: asyncio.Queue = asyncio.Queue()
-    fut = asyncio.ensure_future(
-        run_pipeline("你好", s, events, StopController(), pause=pause))
-    for _ in range(100):
-        if pause.paused:
-            break
-        await asyncio.sleep(0.01)
-    assert pause.paused
-    pause.resume()
-    await asyncio.wait_for(fut, 2)
-
-    # 会话历史里是两段拼接的完整正文（中断部分保留、续写接上）。
-    # The session history holds the two segments joined: the aborted part is kept and
-    # the continuation is appended.
-    reply = next(m["content"] for m in s.messages if m.get("role") == "assistant")
-    assert "前半段。" in reply and "后半段。" in reply
-    assert "不应出现" not in reply
-    assert llm.calls == 2
+    await pl.run_pipeline("做事", s, events, StopController(), pause=pause)
+    assert seen["pause"] is pause
 
 
 @pytest.mark.asyncio
-async def test_chit_chat_stop_aborts_generation(monkeypatch):
-    """停止要真的停：取消令牌置位后不得再吐内容。Stop must really stop: once the
-    token is cancelled no further content may be emitted."""
-    from core.orchestrator.pipeline import run_pipeline
+async def test_background_extract_task_is_referenced(monkeypatch):
+    """后台记忆提取任务被持引用，且完成后自动移除（防 GC 导致静默丢失）。
+    The background fact-extraction task is kept referenced and auto-discarded on
+    completion (prevents silently losing it to GC).
+    """
+    from core.orchestrator import pipeline as pl
     from core.orchestrator.control import StopController
     from core.orchestrator.intent import IntentResult
     from core.orchestrator.session import Session
 
-    class _StopLLM:
-        async def retry_stream_chat(self, messages, tools=None, **kwargs):
-            yield {"type": "content_delta", "text": "第一段。"}
-            ctrl.token.cancel()          # 模拟用户按停止。Simulate the stop button.
-            yield {"type": "content_delta", "text": "不应出现"}
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def fake_extract(task, result, store, session=None):
+        started.set()
+        await release.wait()
 
     async def fake_judge(text):
-        return IntentResult(type="chit_chat", summary="打招呼")
+        return IntentResult(summary="测试任务")
 
-    ctrl = StopController()
-    monkeypatch.setattr("core.orchestrator.pipeline.judge_intent", fake_judge)
-    monkeypatch.setattr("core.orchestrator.pipeline.get_llm_client", lambda: _StopLLM())
-    s = Session()
+    async def fake_execute(task, session, token, events, pause=None):
+        return {"status": "done", "summary": "完成", "steps": []}
+
+    monkeypatch.setattr(pl, "judge_intent", fake_judge)
+    monkeypatch.setattr(pl, "execute_task", fake_execute)
+    monkeypatch.setattr(pl, "extract_and_store", fake_extract)
+    monkeypatch.setattr(pl, "get_facts_store", lambda: object())
+
+    pl._bg_tasks.clear()
+    session = Session()
     events: asyncio.Queue = asyncio.Queue()
-    await asyncio.wait_for(
-        run_pipeline("你好", s, events, ctrl), 2)
+    await pl.run_pipeline("做事", session, events, StopController())
+    await asyncio.wait_for(started.wait(), timeout=1)
 
-    texts = []
-    while not events.empty():
-        e = events.get_nowait()
-        if e.get("type") == "content_delta":
-            texts.append(e["text"])
-    assert "第一段。" in "".join(texts)
-    assert "不应出现" not in "".join(texts)
+    # 任务在飞行中被引用持有（旧实现无此集合 → AttributeError）
+    assert len(pl._bg_tasks) == 1, "后台提取任务未被持引用，可能被 GC 回收"
+
+    release.set()
+    await asyncio.gather(*pl._bg_tasks)
+    await asyncio.sleep(0)
+    # 完成后 done_callback 已将其丢弃
+    assert len(pl._bg_tasks) == 0, "已完成的后台任务未被清理，引用集会持续增长"

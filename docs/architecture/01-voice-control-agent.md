@@ -43,7 +43,7 @@
 
 | 目标 | 说明 |
 |------|------|
-| 语音全控 | 唤醒 → 说话 → 判断意图 → 形成任务 → 澄清 → 确认 → 执行 → 汇报；一切可语音触发 |
+| 语音全控 | 唤醒 → 说话 → 判断意图 →（必要时问一次）→ 执行 → 汇报；一切可语音触发 |
 | 无沙箱 | 不设安全区；以「人类在环确认 + 审计」替代强制沙箱（见 §6） |
 | 模块极清 | 每个模块单一职责、可独立测试、可插拔；目录即架构 |
 | 全链路可控 | 任何时刻可停止整个任务/当前进程；流式可观测（复用 SSE） |
@@ -57,7 +57,7 @@
 ┌──────────────────────────────────────────────────────────────┐
 │  交互层  Voice（浏览器唤醒/ASR/TTS）· Web 控制台（Vue）      │
 ├──────────────────────────────────────────────────────────────┤
-│  编排层  Orchestrator：会话 → 意图 → 任务 → 澄清 → 确认 → 执行 │
+│  编排层  Orchestrator：会话 → 意图 →（问一次）→ 执行 → 汇报 │
 │          └── 停止/中止控制器（贯穿所有层）                     │
 ├──────────────────────────────────────────────────────────────┤
 │  智能体层 Agent：协调者 + 规划 / 执行 / 检索 / 批评 子代理       │
@@ -98,13 +98,12 @@
 │   ├── voice/                  # 语音层：ASR（__init__.py）+ TTS（tts.py，OpenAI 兼容双协议）
 │   ├── orchestrator/           # ★ 编排层（核心，全部自研）
 │   │   ├── session.py          #   会话状态机与管理
-│   │   ├── intent.py           #   意图判断：闲聊 or 任务（结构化输出）
-│   │   ├── task.py             #   任务形成：goal / params / missing / risk
-│   │   ├── clarify.py          #   澄清循环：把缺失信息转问题，等操作者回答
-│   │   ├── confirm.py          #   高风险操作确认（工具实际风险 read/write/exec）
+│   │   ├── intent.py           #   意图判断：概括 / 复杂度 / 是否真的需要反问
+│   │   ├── task.py             #   本轮目标：goal / params / risk / complexity
+│   │   ├── confirm.py          #   工具级确认（工具实际风险 read/write/exec）
 │   │   ├── executor.py         #   执行循环：plan → act → observe → reflect
-│   │   ├── control.py          #   ★ 停止控制器（CancellationToken → stop_task）
-│   │   ├── pipeline.py         #   编排主链：意图→任务→澄清→确认→执行→汇报（SSE）
+│   │   ├── control.py          #   ★ 停止/暂停控制器（CancellationToken / PauseController）
+│   │   ├── pipeline.py         #   编排主链：判断→（问一次）→执行→汇报（SSE）
 │   │   └── events.py           #   SSE 事件模型（task_state/tool_start/question/done...）
 │   ├── agent/                  # ★ 多智能体
 │   │   ├── coordinator.py      #   协调者：LLM 拆解/分派（独立并发≤4）/critic 审查/合并
@@ -169,22 +168,25 @@
 
 ### 3.2 编排层（核心，全部自研）
 
-**会话状态机** `session.py`：
+**会话状态机** `session.py`（2026-10 收敛：不再区分闲聊/任务）：
 
 ```
-idle ──唤醒/输入──▶ understanding ──闲聊──▶ chit_chat ──▶ idle
-                        │
-                        ▼ 是任务
-                  forming_task ──▶ clarifying ──(提问/等答)──▶ confirming ──▶ executing ──▶ reporting ──▶ idle
-                        │                                                     │
-                        └────────── 任何状态 ◀── stop / pause / cancel ◀─────┘
+idle ──唤醒/输入──▶ understanding ──(完全没把握?)──▶ clarifying ──(问一次/等答)──┐
+                        │                                                      │
+                        └──────────────────────────────▶ executing ──▶ reporting ──▶ idle
+                        │                                │
+                        └──── 任何状态 ◀── stop / pause / cancel ◀────┘
 ```
 
-**intent.py（意图判断）**：用结构化输出（现有 tool-calling 机制）让 LLM 输出 `{type: chit_chat | task, summary, task_type}`。闲聊直接回复；任务进入 task.py。
+**意图判断** `intent.py`：结构化输出 `{summary, complexity: simple|complex, ambiguous, question?, options?}`。
+不判「闲聊还是任务」—— 所有输入都进同一条 ReAct 管线，工具常开，由模型自己决定要不要调用。
+`ambiguous` 的门槛很高：只有**完全没把握、且猜错有实际代价**时才为 true；能合理假设就直接做（用户讨厌被打断）。
+`complex` 才可能交给多智能体。
 
-**task.py（任务形成）**：LLM 结构化提取 `{goal, params, missing: [需要问操作者的信息], risk: read|write|exec}`。这是"先对话判断是否需要形成任务、需要问什么"的关键一步。
+**本轮目标** `task.py`：`{goal, params, risk, complexity}`。不再有 LLM 的 `form_task` 结构化步骤，
+也不再有任务级澄清循环与任务级确认 —— 目标就是用户原话（若有反问，附上回答）。
 
-**clarify.py（澄清循环）**：把 `missing` 转成自然语言问题（"想对哪个文件操作？删除还是移动？"），通过语音/面板问操作者，**阻塞等待回答**；收到回答后回填参数，循环直到 `missing` 为空。每轮带最多提问次数上限，防止无限追问。
+**确认** `confirm.py`：只保留**工具级**确认（基于 `TOOLS.risk`），任务级确认已删除。
 
 **confirm.py（确认层）**：确认决策基于**工具实际风险**（`TOOLS.risk`，而非任务声明的 risk，避免任务被误标 read 时高风险工具无确认执行）。
 `read`（只读）自动放行；`write`/`exec`（删除/覆盖/执行任意命令等）需操作者明确确认；

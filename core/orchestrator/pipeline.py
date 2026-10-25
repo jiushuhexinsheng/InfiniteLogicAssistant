@@ -1,66 +1,34 @@
 # -*- coding: utf-8 -*-
-"""编排管线 — 一次语音输入 → 意图 →（闲聊回复 | 任务：澄清→确认→执行→汇报）
+"""编排管线 — 一次输入 → 判断意图 →（必要时问一次）→ 执行 → 汇报
 
-事件写进 asyncio.Queue，由 server 的 SSE 生成器消费；
+不再区分闲聊与任务：每一轮都是同一条 ReAct 管线（工具常开，由模型自己决定要不要
+调用）。意图判断只负责三件事：概括、复杂度、是否真的需要反问 —— 只在完全没把握、
+猜错有实际代价时问且只问一次。事件写进 asyncio.Queue，由 server 的 SSE 生成器消费；
 ask() 抛出 question 事件后阻塞，等待 /api/voice/answer 投递回答（人类在环）。
 
-Orchestration pipeline — one voice input → intent → (chit-chat reply | task:
-clarify → confirm → execute → report). Events are written into an asyncio.Queue
-consumed by the server's SSE generator; ask() blocks after emitting a question
-event until /api/voice/answer delivers the answer (human in the loop).
+Orchestration pipeline — one input → judge intent → (ask once only when genuinely
+unguessable) → execute → report. There is no chat/task split: every turn is the same
+ReAct pipeline with tools always available; the model decides whether to call them.
+Intent judging only summarises, gauges complexity and decides whether one question is
+really needed. Events go into an asyncio.Queue consumed by the SSE generator; ask()
+blocks after emitting a question until /api/voice/answer delivers the answer.
 """
 import asyncio
+from datetime import datetime
 from uuid import uuid4
 
 from core import config
-from core.llm.client import get_llm_client
 from core.logger import logger
 from core.memory.context import get_facts_store
 from core.memory.extract import extract_and_store
-from core.orchestrator.clarify import run_clarify
-from core.orchestrator.confirm import confirm_if_needed
-from core.orchestrator.control import CancellationToken, PauseController, StopController
+from core.orchestrator.control import PauseController, StopController
 from core.orchestrator.events import (
-    AnswerEvent, ContentDeltaEvent, DoneEvent, ErrorEvent, QuestionEvent,
-    TaskStateEvent, from_llm_event,
+    AnswerEvent, DoneEvent, QuestionEvent, TaskStateEvent,
 )
 from core.orchestrator.executor import execute_task
 from core.orchestrator.intent import judge_intent
 from core.orchestrator.session import ABANDON_REASON, Answer, OperatorChannel, Session, SessionState
-from core.orchestrator.task import Task, form_task
-from core.orchestrator.voice_reply import VoiceReplySplitter
-from core.prompts import CHIT_CHAT_SYSTEM
-from core.tasks.store import TaskStore
-
-# 任务库存储（懒加载单例，便于测试替换）。
-# Task-library store (lazy singleton, easy to swap in tests).
-_task_store: TaskStore | None = None
-
-
-def _get_task_store() -> TaskStore:
-    """取任务库存储。Get the task-library store.
-
-    Returns:
-        任务库存储。The task store.
-    """
-    global _task_store
-    if _task_store is None:
-        _task_store = TaskStore()
-    return _task_store
-
-
-async def find_similar(goal: str) -> dict | None:
-    """查找相似的历史成功任务（无命中返回 None）。
-
-    Find a similar archived successful task, or None.
-
-    Args:
-        goal: 目标任务。The target goal.
-
-    Returns:
-        历史任务或 None。The archived task, or None.
-    """
-    return await _get_task_store().find_similar(goal)
+from core.orchestrator.task import Task
 
 # 后台任务引用集：CPython 的事件循环对 Task 仅持弱引用，不保留句柄的任务
 # 可能在执行完成前被垃圾回收。done 回调里顺带观察异常（task.exception()）——
@@ -86,14 +54,6 @@ def _on_bg_done(t: asyncio.Task) -> None:
     exc = t.exception()
     if exc is not None:
         logger.warning("后台任务未捕获异常: {}", exc)
-
-# 完成确认的两个固定选项（任务模式用）。
-# The two fixed options of the completion confirmation (used in task mode).
-COMPLETION_OPTIONS = [
-    {"value": "yes", "label": "完成了"},
-    {"value": "no", "label": "没完成"},
-]
-
 
 def _spawn_bg(coro) -> asyncio.Task:
     """启动后台任务并持有引用，完成后自动丢弃。
@@ -239,63 +199,6 @@ class EventQueueChannel(OperatorChannel):
         return True
 
 
-async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str,
-                           pause: PauseController | None = None,
-                           cancel: CancellationToken | None = None) -> str:
-    """生成闲聊回复：流式发射 content_delta 事件并把完整回复记入会话历史。
-
-    Generate a chit-chat reply: stream content_delta events and record the full
-    reply into the session history.
-    """
-    messages = [{"role": "system", "content": CHIT_CHAT_SYSTEM}]
-    messages.extend(session.summary(8))  # 含当前用户消息 → 多轮闲聊
-    splitter = VoiceReplySplitter()
-    # 走 LLM client：与任务执行共享重试/熔断/模型 failover
-    while True:
-        aborted = False
-        stopped = False
-        async for evt in get_llm_client().retry_stream_chat(messages):
-            if cancel is not None and cancel.is_cancelled:
-                # 停止按钮：流在跑也要立刻收手（取消令牌优先于暂停）。
-                # Stop button: quit the running stream at once (cancel outranks pause).
-                stopped = True
-                break
-            if evt["type"] == "content_delta":
-                if pause is not None and pause.abort_llm:
-                    aborted = True
-                    break
-                visible = splitter.feed(str(evt.get("text") or ""))
-                if visible:
-                    await events.put(ContentDeltaEvent(text=visible).emit())
-            elif evt["type"] == "reasoning_delta":
-                # 思考流转发（与 executor 路径一致，修复断链）
-                # Forward the reasoning stream (consistent with the executor path;
-                # fixes the broken chain).
-                forwarded = from_llm_event(evt)
-                if forwarded is not None:
-                    await events.put(forwarded)
-        if stopped or not aborted:
-            break
-        # 暂停中断：保住已生成部分，停住等恢复，再让模型从中断处续写
-        # （splitter 不清空 —— 续写增量直接接在已生成正文后面）。
-        # Paused abort: keep what was produced, park until resume, then have the model
-        # continue from the break (the splitter is NOT reset — the continuation feeds
-        # straight onto the text already shown).
-        assert pause is not None
-        _, partial = splitter.snapshot()
-        await pause.wait_if_paused()
-        if partial:
-            messages.append({"role": "assistant", "content": partial})
-        messages.append({"role": "system", "content":
-                         "上一段回答因操作者暂停而中断。请从中断处继续，不要重复已输出的内容。"})
-    if pause is not None and pause.paused:
-        await pause.wait_if_paused()
-    speech, content = splitter.finish()
-    if content:
-        session.append("assistant", content)  # 记录完整回复到会话历史
-    return speech
-
-
 async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
                        controller: StopController, channel: OperatorChannel | None = None,
                        messages: list[dict] | None = None, mode: str = "chat",
@@ -303,12 +206,14 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
     """完整编排，产出事件（以 done 事件收尾）。channel 缺省用 SSE 队列通道。
 
     messages 为前端多轮历史种子（含当前用户消息）；缺省时把 text 记为当前用户消息。
+    mode 仅为兼容旧前端保留，不参与任何分支。
 
     Full orchestration that emits events (ending with a done event). The channel
     defaults to the SSE queue channel. messages is the frontend multi-turn history
-    seed (including the current user message); when absent, text is recorded as
-    the current user message.
+    seed (including the current user message); when absent, text is recorded as the
+    current user message. mode survives only for legacy frontends and drives nothing.
     """
+    del mode  # 旧前端的对话/任务模式已删除。The legacy chat/task mode is gone.
     if channel is None:
         channel = EventQueueChannel(events, session.id)
     session.channel = channel
@@ -340,66 +245,37 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
     await events.put(TaskStateEvent(state="understanding", session_id=session.id).emit())
 
     intent = await judge_intent(text)
-    if intent.type == "chit_chat":
-        session.set_state(SessionState.CHIT_CHAT)
-        speech = ""
-        try:
-            speech = await _chit_chat_reply(
-                session, events, text, pause=pause, cancel=controller.token)
-        except Exception as e:
-            await events.put(ErrorEvent(message=str(e)).emit())
-        if speech:
-            await events.put(TaskStateEvent(state="done", status="done", summary=speech).emit())
-        await events.put(DoneEvent().emit())
-        return
-
-    if pause is not None:
-        await pause.wait_if_paused()
-    session.set_state(SessionState.FORMING_TASK)
-    task: Task = await form_task(intent)
-    session.task = task
-
-    if task.missing:
-        # 先用历史成功任务预填：必须以 confirmed **重新** form_task，否则 missing 已由首次
-        # form_task 算好、只填 task.params 不会让它变小（本功能的关键点）。
-        # Prefill from a similar archived task first: form_task must be re-run with
-        # `confirmed`, because `missing` has already been computed by the first call and
-        # prefilling task.params alone would not shrink it — the crux of this feature.
-        # 匹配用**用户原话**而非 task.goal：goal 是 LLM 归一化的产物，同一句话两次
-        # 跑出的 goal 可能只相似 ~0.31（实测），使同一件事不可匹配。
-        # Match on the user's ORIGINAL utterance, not task.goal: the goal is LLM-normalised
-        # and the same sentence can yield goals only ~0.31 similar (measured), which makes
-        # identical tasks unmatchable.
-        hist = await find_similar(text)
-        if hist is not None:
-            await session.notify(f"参考了历史任务，已预填 {len(hist['params'])} 个参数")
-            task = await form_task(intent, confirmed=hist["params"])
-            session.task = task
-            task.params = {**hist["params"], **task.params}
-    if task.missing:
+    logger.info("编排意图: {} → {}（{}）", text, intent.summary, intent.complexity)
+    goal = text
+    if intent.ambiguous and intent.question:
+        # 只问一次：问完就把回答并进目标继续做，绝不进入多轮澄清循环。
+        # Ask at most once: fold the answer into the goal and carry on — never a
+        # multi-round clarification loop.
         session.set_state(SessionState.CLARIFYING)
-        clarified = await run_clarify(session, task)
-        if clarified is None:
-            # 操作者弃题（放弃本题）：与确认拒绝同一收束（done cancelled），
-            # 绝不带着残缺参数往下执行。
-            await events.put(TaskStateEvent(state="done", status="cancelled",
-                                            summary="操作者放弃本题，任务取消").emit())
+        answer = await session.ask(
+            intent.question,
+            kind="choice" if intent.options else "text",
+            options=intent.options,
+        )
+        extra = (answer.choice or answer.text or "").strip()
+        if answer.reason == ABANDON_REASON or not extra:
+            # 弃题/空回答：不以猜测继续。Abandoned or empty: never proceed on a guess.
+            await events.put(TaskStateEvent(
+                state="done", status="cancelled", summary="操作者未回答，本轮取消").emit())
             await events.put(DoneEvent().emit())
             return
-        task.params = clarified
+        goal = f"{text}\n补充说明：{extra}"
 
-    session.set_state(SessionState.CONFIRMING)
-    conf = await confirm_if_needed(task, f"执行任务：{task.goal}", session)
-    if not conf:
-        # 拒绝理由（操作者自拟文本 / 超时标记）带进摘要，用户能看见「为什么取消」；
-        # 策略 deny 与无通道路径 reason 为空 → 摘要与改造前逐字一致。
-        # The refusal rationale (operator text / timeout marker) goes into the
-        # summary so the user sees *why* the task was cancelled; policy-deny and
-        # no-channel paths leave reason empty, so that summary is byte-identical
-        # to the pre-change wording.
-        detail = f"（{conf.reason}）" if conf.reason else ""
-        await events.put(TaskStateEvent(state="done", status="cancelled",
-                                        summary=f"操作者未确认{detail}，任务取消").emit())
+    task = Task(
+        id=uuid4().hex[:12], goal=goal, params={}, risk="read",
+        complexity=intent.complexity, created=datetime.now().isoformat(),
+    )
+    session.task = task
+
+    if controller.token.is_cancelled:
+        # 判断/反问期间用户按了停止。Stopped while judging or asking.
+        await events.put(TaskStateEvent(
+            state="done", status="stopped", summary="已停止", steps=[]).emit())
         await events.put(DoneEvent().emit())
         return
 
@@ -409,16 +285,6 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
     # session 供提取看最近对话（解指代）并写溯源 origin（docs/designs/04）。
     if result.get("status") in ("done", "failed"):
         _spawn_bg(extract_and_store(task, result, get_facts_store(), session=session))
-    # 任务模式：完成后询问「完成了吗」，答「完成了」才存档（需求：只记录成功的任务）。
-    # Task mode: ask whether the task is done and archive only on "completed" — the
-    # requirement is to record successful tasks only.
-    if mode == "task" and result.get("status") == "done":
-        answer = await session.ask("这个任务完成了吗？", kind="choice", options=COMPLETION_OPTIONS)
-        if answer.choice == "yes":
-            try:
-                await _get_task_store().record(task, result, session_id=session.id, source_text=text)
-            except Exception as e:
-                logger.warning("任务存档失败: {}", e)  # 存档失败不该影响汇报
 
     session.set_state(SessionState.REPORTING)
     await events.put(TaskStateEvent(
