@@ -57,7 +57,8 @@ function urlInput(): HTMLInputElement {
   return document.querySelector('input[placeholder="https://api.example.com"]') as HTMLInputElement
 }
 function nextButton(): HTMLButtonElement {
-  return document.querySelector('.pw-next') as HTMLButtonElement
+  // SettingsButton 的根是 span 包装，禁用态在内层 button 上。
+  return document.querySelector('.pw-next button') as HTMLButtonElement
 }
 async function type(el: HTMLInputElement, value: string): Promise<void> {
   el.value = value

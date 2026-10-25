@@ -3,10 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 vi.mock('../../../../api', () => ({
-  api: { patchConfig: vi.fn(), getConfigFull: vi.fn(), getDetection: vi.fn() },
+  api: { patchConfig: vi.fn(), getConfigFull: vi.fn(), getDetection: vi.fn(), fetchModels: vi.fn() },
 }))
 
 import { editable } from '../state'
+import { api } from '../../../../api'
 import ServiceCard from '../ServiceCard.vue'
 import { sectionDefs } from '../configDefs'
 
@@ -93,10 +94,9 @@ describe('ServiceCard（语音合成扩展）', () => {
    *  profile.voices feeds the voice combobox suggestions (UiCombobox replaced the native datalist). */
   it('voices 进入音色组合框建议（聚焦弹出项目风格面板）', async () => {
     const w = mount(ServiceCard, { props: { section: ttsDef } })
-    // 模型字段已移出 ServiceCard（由供应商向导维护），此处只剩 voice 组合框。
-    // The model field moved out of ServiceCard (owned by the provider wizard); only voice remains.
+    // 模型字段已移出字段区；模型表格每行也是 combobox，故用当前值定位 voice。
+    // The model field left the field area; model rows are comboboxes too, so locate by value.
     const combos = w.findAll('.ui-combo input')
-    expect(combos.length, '仅 voice 组合框').toBe(1)
     // 按当前值定位 voice 输入（不依赖字段渲染顺序）。Locate the voice input by its
     // current value (no reliance on field render order).
     const voiceInput = combos.find(i => (i.element as HTMLInputElement).value === 'Chloe')
@@ -189,5 +189,38 @@ describe('ServiceCard 编辑对象隔离', () => {
     await valueInput.setValue('false')
 
     expect((editable.value as any).tts.profiles.mimo.compat.stream_options).toBe(false)
+  })
+})
+
+
+/** 参数页模型管理：表格直接编辑 profile.models，获取模型带 profile name。 */
+describe('ServiceCard 模型管理', () => {
+  beforeEach(() => {
+    editable.value = structuredClone(snapshot()) as any
+  })
+
+  it('模型表格包含当前模型，编辑后写回 models 并同步 model', async () => {
+    const w = mount(ServiceCard, { props: { section: ttsDef } })
+    const inputs = w.findAll('.mt-row input')
+    expect((inputs[0].element as HTMLInputElement).value).toBe('mimo-v2.5-tts')
+
+    await inputs[0].setValue('mimo-v2.6-tts')
+
+    const prof = (editable.value as any).tts.profiles.mimo
+    expect(prof.models).toEqual(['mimo-v2.6-tts'])
+    expect(prof.model).toBe('mimo-v2.6-tts')
+  })
+
+  it('获取模型带上 profile name（服务端按 secrets 解析密钥）', async () => {
+    vi.mocked(api.fetchModels).mockResolvedValue({ ok: true, models: ['x'], count: 1 } as any)
+    const w = mount(ServiceCard, { props: { section: ttsDef } })
+
+    const fetchBtn = w.find('.cs-fetch button')
+    await fetchBtn.trigger('click')
+    await new Promise(r => setTimeout(r, 0))
+
+    const payload = vi.mocked(api.fetchModels).mock.calls[0][1]
+    expect(payload.name).toBe('mimo')
+    expect(vi.mocked(api.fetchModels).mock.calls[0][0]).toBe('tts')
   })
 })

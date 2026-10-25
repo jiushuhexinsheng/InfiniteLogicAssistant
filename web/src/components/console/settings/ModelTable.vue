@@ -9,12 +9,13 @@
         placeholder="model-id"
         @update:model-value="v => updateRow(i, String(v))"
       />
-      <UiButton variant="secondary" size="sm" hover="danger" class="mt-del" @click="removeRow(i)">
-        删除
-      </UiButton>
+      <SettingsButton
+        variant="secondary" hover="danger" class="mt-del"
+        zh="删除" en="Delete" @click="removeRow(i)"
+      />
     </div>
     <p v-if="!rows.length" class="mt-empty">尚未添加模型</p>
-    <UiButton variant="secondary" size="sm" class="mt-add" @click="addRow">＋ 添加模型</UiButton>
+    <SettingsButton variant="secondary" class="mt-add" zh="添加模型" en="Add model" @click="addRow" />
   </div>
 </template>
 
@@ -27,7 +28,8 @@
  * emits a trimmed, de-duplicated list; external `props.models` changes resync the rows.
  */
 import { nextTick, ref, watch } from 'vue'
-import { UiButton, UiCombobox } from '../../ui'
+import { UiCombobox } from '../../ui'
+import SettingsButton from './SettingsButton.vue'
 
 const props = withDefaults(defineProps<{
   models: string[]

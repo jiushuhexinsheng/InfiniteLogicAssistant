@@ -1,9 +1,16 @@
 <template>
   <!-- 模型供应商：列表面板 + 新增/编辑向导（大模型 / ASR / TTS 共用）。
        Model providers: list + add/edit wizard, shared by LLM / ASR / TTS. -->
-  <SettingsCard title="模型供应商" title-en="Model Providers">
+  <SettingsCard class="provider-card" title="模型供应商" title-en="Model Providers">
+    <template #actions>
+      <SettingsButton
+        variant="primary" icon="plus"
+        zh="新增供应商" en="Add Provider" @click="openWizard(null)"
+      />
+    </template>
     <ProviderList
       :providers="providers"
+      :show-add="false"
       @add="openWizard(null)"
       @edit="openWizard"
       @remove="removeProvider"
@@ -32,6 +39,7 @@
 import { computed, ref } from 'vue'
 import SettingsCard from './SettingsCard.vue'
 import ProviderList from './ProviderList.vue'
+import SettingsButton from './SettingsButton.vue'
 import ProviderWizard from './ProviderWizard.vue'
 import type { ProviderSummary } from './providerTypes'
 import { persistSection } from './profiles'
@@ -133,3 +141,11 @@ async function activate(id: string): Promise<void> {
   notify.ok(`已将「${id}」设为当前供应商`)
 }
 </script>
+
+
+<style scoped>
+/* 供应商卡片按内容高度收缩（保留 3 行左右），把剩余高度让给参数卡。
+   The provider card keeps a content-sized height (about three rows), leaving the rest
+   to the parameter card. */
+.provider-card { flex: 0 0 auto; max-height: 320px; }
+</style>

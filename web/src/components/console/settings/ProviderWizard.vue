@@ -31,11 +31,12 @@
       </SettingsField>
 
       <div class="pw-actions">
-        <UiButton variant="secondary" size="sm" @click="close">取消 / Cancel</UiButton>
+        <SettingsButton variant="secondary" zh="取消" en="Cancel" @click="close" />
         <span v-if="firstError" class="pw-err pw-next-why">{{ firstError }}</span>
-        <UiButton variant="primary" size="sm" class="pw-next" :disabled="!!firstError" @click="step = 2">
-          下一步 / Next
-        </UiButton>
+        <SettingsButton
+          variant="primary" class="pw-next" :disabled="!!firstError"
+          zh="下一步" en="Next" @click="step = 2"
+        />
       </div>
     </div>
 
@@ -48,9 +49,11 @@
       </SettingsField>
 
       <div class="pw-fetchrow">
-        <UiButton variant="secondary" size="sm" class="pw-fetch" :disabled="fetching" @click="fetchModels">
-          {{ fetching ? '获取中…' : '获取模型 / Fetch Models' }}
-        </UiButton>
+        <SettingsButton
+          variant="secondary" class="pw-fetch" :disabled="fetching"
+          :zh="fetching ? '获取中…' : '获取模型'" :en="fetching ? 'Fetching…' : 'Fetch models'"
+          @click="fetchModels"
+        />
         <span v-if="fetchError" class="pw-err">{{ fetchError }}</span>
       </div>
 
@@ -70,12 +73,13 @@
       </SettingsField>
 
       <div class="pw-actions">
-        <UiButton variant="secondary" size="sm" @click="step = 1">上一步 / Back</UiButton>
-        <UiButton
-          variant="primary" size="sm" class="pw-save"
-          :disabled="!models.length || saving"
+        <SettingsButton variant="secondary" zh="上一步" en="Back" @click="step = 1" />
+        <SettingsButton
+          variant="primary" class="pw-save"
+          :disabled="!models.length || saving" :loading="saving"
+          :zh="saving ? '保存中…' : '保存供应商'" :en="saving ? 'Saving…' : 'Save provider'"
           @click="save"
-        >{{ saving ? '保存中…' : '保存供应商' }}</UiButton>
+        />
       </div>
     </div>
   </UiModal>
@@ -94,7 +98,8 @@ import { computed, reactive, ref, watch } from 'vue'
 import SettingsField from './SettingsField.vue'
 import FetchedModelList from './FetchedModelList.vue'
 import ModelTable from './ModelTable.vue'
-import { UiButton, UiChip, UiInput, UiModal, UiSelect } from '../../ui'
+import { UiChip, UiInput, UiModal, UiSelect } from '../../ui'
+import SettingsButton from './SettingsButton.vue'
 import { api } from '../../../api'
 import { presetsFor, type ProviderPreset, type ProviderSection } from './providerPresets'
 import { useSettings } from './useSettings'

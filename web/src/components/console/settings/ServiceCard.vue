@@ -7,15 +7,18 @@
       <div class="cs-card-btns">
         <DetectionStatusDot :status="detectionStatus" :detail="detectionDetail" />
         <!-- 测试连接：进行中显示「测试中…」；结果 toast 之外，旁边状态点持续可见。 -->
-        <UiButton variant="secondary" size="sm" :disabled="s.detecting.value" @click="s.detectOne(section.name)">
-          <UiIcon v-if="s.detecting.value" name="loader-2" :size="12" class="cs-spin" />
-          <BiLabel :zh="s.detecting.value ? '测试中…' : T.testConnection.zh"
-                   :en="s.detecting.value ? 'Testing…' : T.testConnection.en" />
-        </UiButton>
-        <UiButton variant="primary" size="sm" :disabled="!s.editable.value || s.saving.value" @click="s.saveModule(section.key)">
-          <BiLabel :zh="s.saving.value ? T.saving.zh : T.save.zh"
-                   :en="s.saving.value ? T.saving.en : T.save.en" />
-        </UiButton>
+        <SettingsButton
+          variant="secondary" :loading="s.detecting.value"
+          :zh="s.detecting.value ? '测试中…' : '测试连接'"
+          :en="s.detecting.value ? 'Testing…' : 'Test connection'"
+          @click="s.detectOne(section.name)"
+        />
+        <SettingsButton
+          variant="primary" :disabled="!s.editable.value" :loading="s.saving.value"
+          :zh="s.saving.value ? '保存中…' : '保存'"
+          :en="s.saving.value ? 'Saving…' : 'Save'"
+          @click="s.saveModule(section.key)"
+        />
       </div>
     </template>
 
@@ -47,9 +50,9 @@
         <template v-else-if="f === 'voices'">
           <div v-for="(_, i) in (profile().voices || [])" :key="i" class="cs-voicerow">
             <UiInput :model-value="profile().voices[i]" @update:model-value="v => (profile().voices[i] = v)" placeholder="如 alloy" />
-            <UiButton variant="secondary" size="sm" hover="danger" @click="profile().voices.splice(i, 1)">删除</UiButton>
+            <SettingsButton variant="secondary" hover="danger" zh="删除" en="Delete" @click="profile().voices.splice(i, 1)" />
           </div>
-          <UiButton variant="secondary" size="sm" @click="addVoice">＋ 新增音色</UiButton>
+          <SettingsButton variant="secondary" zh="新增音色" en="Add voice" @click="addVoice" />
         </template>
         <UiInput
           v-else
@@ -65,7 +68,22 @@
       <UiChip :tone="keySet ? 'ok' : 'warn'" :dot="false">
         API Key：{{ keySet ? '已设置' : '未设置' }}
       </UiChip>
-      <UiButton variant="secondary" size="sm" @click="s.openKeyModal(section.key, editTarget)">设置</UiButton>
+      <SettingsButton zh="设置密钥" en="Set key" @click="s.openKeyModal(section.key, editTarget)" />
+    </div>
+
+    <!-- 模型管理（与供应商向导共用 ModelTable / FetchedModelList 组件）。 -->
+    <div class="cs-models">
+      <div class="cs-models-head">
+        <span class="cs-models-title">模型列表 · Models</span>
+        <SettingsButton
+          variant="secondary" class="cs-fetch" :disabled="fetching"
+          :zh="fetching ? '获取中…' : '获取模型'" :en="fetching ? 'Fetching…' : 'Fetch models'"
+          @click="fetchModels"
+        />
+        <span v-if="fetchError" class="cs-err">{{ fetchError }}</span>
+      </div>
+      <FetchedModelList v-if="fetched.length" :models="fetched" :added="modelList" @add="addFetched" />
+      <ModelTable :models="modelList" :options="modelOptions" @update:models="setModels" />
     </div>
 
     <!-- 高级兼容：键值行；内置快捷项并入键 combobox（不再是独立 chip 行）。 -->
@@ -86,14 +104,16 @@ import { computed, ref, watch } from 'vue'
 import SettingsField from './SettingsField.vue'
 import SettingsCard from './SettingsCard.vue'
 import CompatEditor from './CompatEditor.vue'
+import FetchedModelList from './FetchedModelList.vue'
+import ModelTable from './ModelTable.vue'
+import SettingsButton from './SettingsButton.vue'
 import DetectionStatusDot from './DetectionStatusDot.vue'
-import { UiButton, UiChip, UiCombobox, UiIcon, UiInput, UiSelect, UiToggle } from '../../ui'
-import BiLabel from './BiLabel.vue'
-import { settingsText as T } from '../../../locales/settings'
+import { UiChip, UiCombobox, UiInput, UiSelect, UiToggle } from '../../ui'
 import type { SegOption } from '../../ui/UiSegmented.vue'
 import { useSettings } from './useSettings'
 import { fieldLabel, fieldLabelEn, isNumericField, type SectionDef } from './configDefs'
 import { parseCompatValue } from './profiles'
+import { api } from '../../../api'
 
 /** 组件 props：服务模块定义（来自 configDefs.sectionDefs）。Service section definition. */
 const props = defineProps<{ section: SectionDef }>()
@@ -173,6 +193,75 @@ function setCompatEntries(entries: Array<[string, string]>): void {
   )
 }
 
+/** 拉取结果与错误（模型管理块）。Fetched models and error for the model block. */
+const fetched = ref<string[]>([])
+const fetching = ref(false)
+const fetchError = ref('')
+
+/** 编辑对象的模型列表（当前 model 在前，再接 models）。Models of the editing target. */
+const modelList = computed<string[]>(() => {
+  const prof = profile()
+  const out: string[] = []
+  for (const raw of [prof.model || '', ...(prof.models || [])]) {
+    const value = String(raw || '').trim()
+    if (value && !out.includes(value)) out.push(value)
+  }
+  return out
+})
+
+/** 模型输入候选：拉取结果 ∪ 当前列表。Combobox options: fetched ∪ current. */
+const modelOptions = computed<string[]>(() => {
+  const out = [...fetched.value]
+  for (const m of modelList.value) if (!out.includes(m)) out.push(m)
+  return out
+})
+
+/** 写回模型列表；当前模型被删时回落到第一项。Write models back; fall back when current removed. */
+function setModels(list: string[]): void {
+  const prof = profile()
+  const clean: string[] = []
+  for (const raw of list) {
+    const value = String(raw || '').trim()
+    if (value && !clean.includes(value)) clean.push(value)
+  }
+  prof.models = clean
+  if (!clean.includes(prof.model)) prof.model = clean[0] || ''
+}
+
+/** 把勾选到的模型并入列表。Merge picked models. */
+function addFetched(picked: string[]): void {
+  setModels([...modelList.value, ...picked])
+}
+
+/** 拉取模型（带 profile name，服务端按 secrets 解析已存密钥）。Fetch models. */
+async function fetchModels(): Promise<void> {
+  const prof = profile()
+  fetching.value = true
+  fetchError.value = ''
+  try {
+    const r = await api.fetchModels(props.section.key, {
+      ...prof,
+      name: editTarget.value,
+      api_key: '',
+    })
+    if (r.ok && r.models?.length) {
+      fetched.value = r.models
+    } else {
+      fetchError.value = r.error || '获取模型失败，可手动输入模型 ID'
+    }
+  } catch (e: any) {
+    fetchError.value = e?.message || '获取模型失败，可手动输入模型 ID'
+  } finally {
+    fetching.value = false
+  }
+}
+
+// 切换编辑对象时清空上一次的拉取结果。Clear fetched results when the edit target changes.
+watch(editTarget, () => {
+  fetched.value = []
+  fetchError.value = ''
+})
+
 /** 向 profile.voices 追加一个空音色行。Append an empty voice row. */
 function addVoice(): void {
   const prof = profile()
@@ -185,6 +274,10 @@ function addVoice(): void {
 .cs-card-btns { display: flex; align-items: center; gap: var(--sp-2); }
 .cs-profrow { display: flex; align-items: flex-end; gap: var(--sp-2); }
 .cs-keyrow { display: flex; align-items: center; gap: var(--sp-2); }
+.cs-models { border-top: var(--divider-dashed); padding-top: var(--sp-q10); display: flex; flex-direction: column; gap: var(--sp-2); }
+.cs-models-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.cs-models-title { font-size: var(--fs-2xs); font-weight: 600; color: var(--text-2); letter-spacing: .04em; }
+.cs-err { font-size: var(--fs-2xs); color: #f87171; }
 .cs-voicerow { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
 .cs-voicerow :deep(.ui-input) { flex: 1; min-width: 0; }
 .cs-compat { border-top: var(--divider-dashed); padding-top: var(--sp-q10); display: flex; flex-direction: column; gap: var(--sp-2); }

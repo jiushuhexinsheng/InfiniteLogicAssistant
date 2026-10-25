@@ -7,7 +7,7 @@
       <div class="pr-title">
         <span class="pr-name">{{ provider.name || provider.id }}</span>
         <UiChip v-if="provider.active" tone="ok" :dot="false">当前</UiChip>
-        <span class="pr-meta">{{ provider.protocol || 'openai' }} · {{ provider.modelCount }} 模型</span>
+        <span class="pr-meta">{{ protocolLabel(provider.protocol) }} · {{ provider.modelCount }} 模型</span>
       </div>
       <span class="pr-url">{{ provider.endpoint || '未填 Endpoint' }}</span>
     </div>
@@ -15,25 +15,36 @@
       {{ provider.keySet ? 'Key 已设置' : 'Key 未设置' }}
     </UiChip>
     <div class="pr-actions" @click.stop>
-      <UiButton
+      <SettingsButton
         v-if="!provider.active"
-        variant="ghost" size="sm" class="pr-activate"
-        @click="$emit('activate')"
-      >设为当前</UiButton>
-      <UiButton variant="secondary" size="sm" class="pr-edit" @click="$emit('edit')">编辑</UiButton>
-      <UiButton variant="secondary" size="sm" hover="danger" class="pr-del" @click="$emit('remove')">
-        删除
-      </UiButton>
+        variant="ghost" class="pr-activate"
+        zh="设为当前" en="Set active" @click="$emit('activate')"
+      />
+      <SettingsButton variant="secondary" class="pr-edit" zh="编辑" en="Edit" @click="$emit('edit')" />
+      <SettingsButton
+        variant="secondary" hover="danger" class="pr-del"
+        zh="删除" en="Delete" @click="$emit('remove')"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 /** 单条供应商摘要（由页面按 models ∪ model 计算 modelCount）。One provider summary. */
-import { UiButton, UiChip } from '../../ui'
+import { UiChip } from '../../ui'
+import SettingsButton from './SettingsButton.vue'
 import type { ProviderSummary } from './providerTypes'
 
 defineProps<{ provider: ProviderSummary }>()
+
+/** 协议显示名（避免与供应商名重复成「openai openai」）。Protocol display label. */
+function protocolLabel(protocol: string): string {
+  const key = (protocol || 'openai').toLowerCase()
+  if (key === 'openai') return 'OpenAI 兼容'
+  if (key === 'anthropic') return 'Anthropic'
+  if (key === 'gemini') return 'Gemini'
+  return protocol
+}
 
 defineEmits<{ edit: []; remove: []; activate: [] }>()
 </script>

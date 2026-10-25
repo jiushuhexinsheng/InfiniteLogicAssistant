@@ -16,9 +16,11 @@
     <p v-else class="pl-empty">
       还没有供应商。点击「新增供应商」开始；已有自填 profile 也会显示在这里。
     </p>
-    <UiButton variant="secondary" size="sm" class="pl-add" @click="$emit('add')">
-      新增供应商 / Add Provider
-    </UiButton>
+    <SettingsButton
+      v-if="showAdd"
+      variant="secondary" class="pl-add"
+      zh="新增供应商" en="Add Provider" @click="$emit('add')"
+    />
 
     <ConfirmDialog
       v-model="confirmOpen"
@@ -33,11 +35,12 @@
 <script setup lang="ts">
 /** 供应商列表 + 删除确认。Provider list with inline delete confirmation. */
 import { computed, ref } from 'vue'
-import { ConfirmDialog, UiButton } from '../../ui'
+import { ConfirmDialog } from '../../ui'
+import SettingsButton from './SettingsButton.vue'
 import ProviderRow from './ProviderRow.vue'
 import type { ProviderSummary } from './providerTypes'
 
-const props = defineProps<{ providers: ProviderSummary[] }>()
+const props = withDefaults(defineProps<{ providers: ProviderSummary[]; showAdd?: boolean }>(), { showAdd: true })
 
 const emit = defineEmits<{
   add: []

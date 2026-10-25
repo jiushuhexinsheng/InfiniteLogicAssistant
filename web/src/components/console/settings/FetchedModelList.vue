@@ -6,11 +6,13 @@
     <div class="fm-head">
       <span class="fm-count">共 {{ models.length }} 个，未添加 {{ available.length }} 个</span>
       <div class="fm-actions">
-        <UiButton variant="ghost" size="sm" class="fm-all" @click="selectAll">全选</UiButton>
-        <UiButton variant="ghost" size="sm" class="fm-invert" @click="invert">反选</UiButton>
-        <UiButton variant="secondary" size="sm" class="fm-add" :disabled="!picked.length" @click="addPicked">
-          添加所选{{ picked.length ? `（${picked.length}）` : '' }}
-        </UiButton>
+        <SettingsButton variant="ghost" class="fm-all" zh="全选" en="All" @click="selectAll" />
+        <SettingsButton variant="ghost" class="fm-invert" zh="反选" en="Invert" @click="invert" />
+        <SettingsButton
+          variant="secondary" class="fm-add" :disabled="!picked.length"
+          :zh="`添加所选${picked.length ? `（${picked.length}）` : ''}`" en="Add selected"
+          @click="addPicked"
+        />
       </div>
     </div>
     <div class="fm-rows">
@@ -31,7 +33,7 @@
 <script setup lang="ts">
 /** 拉取结果复选列表。Fetched-model checkbox list. */
 import { computed, ref } from 'vue'
-import UiButton from '../../ui/UiButton.vue'
+import SettingsButton from './SettingsButton.vue'
 
 const props = withDefaults(defineProps<{
   models: string[]

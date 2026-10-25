@@ -13,14 +13,14 @@
       @update:value="v => setValue(i, v)"
       @remove="remove(i)"
     />
-    <UiButton variant="secondary" size="sm" class="cr-add" @click="add">＋ 新增兼容键</UiButton>
+    <SettingsButton variant="secondary" class="cr-add" zh="新增兼容键" en="Add compat key" @click="add" />
   </div>
 </template>
 
 <script setup lang="ts">
 /** 兼容键值编辑器（受控：entries 进，update 出）。Controlled compat editor. */
 import { computed, ref, watch } from 'vue'
-import { UiButton } from '../../ui'
+import SettingsButton from './SettingsButton.vue'
 import CompatRow from './CompatRow.vue'
 import { COMPAT_SHORTCUTS } from './profiles'
 

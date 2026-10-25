@@ -168,7 +168,7 @@ describe('ConsoleSettings 大模型页', () => {
 
     expect(w.find('.pr-row').exists()).toBe(true)
     expect(w.text()).toContain('模型供应商')
-    expect(w.text()).not.toContain('获取模型')
+    expect(w.find('.cs-models').exists()).toBe(true)
     expect(w.find('.det-dot').exists()).toBe(true)
   })
 

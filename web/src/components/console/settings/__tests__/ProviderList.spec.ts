@@ -18,7 +18,7 @@ describe('ProviderList', () => {
     const w = mountList()
     const rows = w.findAll('.pr-row')
     expect(rows).toHaveLength(2)
-    expect(rows[0].text()).toContain('openai')
+    expect(rows[0].text()).toContain('OpenAI 兼容')
     expect(rows[0].text()).toContain('https://a')
     expect(rows[0].text()).toContain('当前')
     expect(rows[0].text()).toContain('2')
