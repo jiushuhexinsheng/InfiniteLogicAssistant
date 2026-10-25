@@ -3,13 +3,13 @@
        Voice overview dashboard: readiness + mode chips + seven capability tiles
        (input / understanding / output) + read-only facts. -->
   <SettingsCard title="语音总览" title-en="Voice Overview">
-    <template #actions>
+    <div class="vo-toolbar">
       <SettingsButton zh="刷新状态" en="Refresh" @click="refresh" />
       <SettingsButton
         class="vo-test-all" zh="测试全部" en="Test all"
         :loading="testingAll" @click="testAll"
       />
-    </template>
+    </div>
 
     <div class="vo-summary">
       <div class="vo-score" :class="scoreTone">
@@ -17,7 +17,11 @@
         <em>链路就绪 · Ready</em>
       </div>
       <div class="vo-chips">
-        <button v-for="chip in modeChips" :key="chip.id" type="button" class="vo-chip" @click="emitSelect(chip.tab)">
+        <button
+          v-for="chip in modeChips" :key="chip.id" type="button"
+          class="vo-chip" :class="`chip-${chip.id}`" @click="emitSelect(chip.tab)"
+        >
+          <span class="vo-chip-dot" aria-hidden="true"></span>
           <span class="vo-chip-label">{{ chip.label }}</span>
           <span class="vo-chip-value">{{ chip.value }}</span>
         </button>
@@ -37,6 +41,7 @@
           :tone="tile.tone"
           :mode="tile.mode"
           :reason="tile.reason"
+          :arrow="tile.order < tiles.length"
           @select="emitSelect(tile.tab)"
         />
       </div>
@@ -253,6 +258,7 @@ const providers = computed<string[]>(() => hw.value?.providers || [])
 </script>
 
 <style scoped>
+.vo-toolbar { display: flex; align-items: center; gap: var(--sp-1); }
 .vo-summary {
   display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
   padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border-soft);
@@ -265,16 +271,22 @@ const providers = computed<string[]>(() => hw.value?.providers || [])
 .vo-score.ok b { color: #34d399; }
 .vo-score.warn b { color: #fbbf24; }
 .vo-score.err b { color: #f87171; }
-.vo-chips { display: flex; gap: var(--sp-1); flex-wrap: wrap; margin-left: auto; }
+.vo-chips { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-left: auto; }
 .vo-chip {
-  display: inline-flex; align-items: baseline; gap: var(--sp-q6);
-  padding: var(--sp-1) var(--sp-2); border-radius: var(--r-full);
-  border: 1px solid var(--border-soft); background: transparent;
-  color: var(--text-2); font-size: var(--fs-2xs); cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; min-width: 84px; min-height: 44px;
+  padding: var(--sp-1) var(--sp-3); border-radius: var(--r-md);
+  border: 1px solid var(--border-soft); background: rgba(15, 23, 42, .45);
+  color: var(--text-2); cursor: pointer; text-align: center; line-height: 1.3;
 }
-.vo-chip:hover { border-color: var(--brand-c2); color: var(--brand-c2); }
-.vo-chip-label { color: var(--text-3); }
-.vo-chip-value { color: var(--text-1); }
+.vo-chip:hover { border-color: var(--brand-c2); background: rgba(103, 232, 249, .06); }
+.vo-chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
+.chip-vad .vo-chip-dot { background: var(--brand-c2); }
+.chip-kws .vo-chip-dot { background: #a78bfa; }
+.chip-asr .vo-chip-dot { background: #34d399; }
+.chip-tts .vo-chip-dot { background: #fbbf24; }
+.vo-chip-label { color: var(--text-3); font-size: var(--fs-2xs); letter-spacing: .04em; }
+.vo-chip-value { color: var(--text-1); font-size: var(--fs-2xs); }
 .vo-group { display: flex; flex-direction: column; gap: var(--sp-2); }
 .vo-group-title {
   margin: 0; font-size: var(--fs-2xs); color: var(--text-3);

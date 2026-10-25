@@ -58,6 +58,7 @@ describe('VoiceOverview', () => {
     await flushPromises()
 
     expect(w.findAll('.voice-tile')).toHaveLength(7)
+    expect(w.findAll('.vt-arrow')).toHaveLength(6)
     expect(w.text()).toContain('输入')
     expect(w.text()).toContain('理解')
     expect(w.text()).toContain('输出')

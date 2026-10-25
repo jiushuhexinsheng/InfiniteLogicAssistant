@@ -24,6 +24,13 @@ describe('VoiceStatusTile', () => {
     expect(w.emitted('select')).toHaveLength(1)
   })
 
+  it('arrow 为 true 时显示链路箭头', () => {
+    const w = mount(VoiceStatusTile, {
+      props: { order: 2, zh: 'VAD', en: 'Voice', detail: '本地', tone: 'ok', arrow: true },
+    })
+    expect(w.find('.vt-arrow').exists()).toBe(true)
+  })
+
   it('err 状态带错误样式', () => {
     const w = mount(VoiceStatusTile, {
       props: { order: 4, zh: 'ASR', en: 'Speech', detail: '未就绪', tone: 'err' },
