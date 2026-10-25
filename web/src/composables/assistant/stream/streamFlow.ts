@@ -23,7 +23,7 @@ import {
 } from '../wake/orchState'
 import {
   beginRecognition, setInterim, finalizeTranscript, showGhost, setStreamPhase,
-  markHudAccepted,
+  markHudAccepted, markHudDropped,
 } from '../storeTranscript'
 import { missStatusLine } from './missStatus'
 
@@ -92,8 +92,8 @@ async function handleFinal(ev: StreamEvent): Promise<void> {
     wake: (ev.wake || null) as Record<string, unknown> | null,
   })
   restoreBase()
-  if (!text) return
-  if (inEchoGuard()) return
+  if (!text) { markHudDropped(); return }
+  if (inEchoGuard()) { markHudDropped(); return }
 
   // 1) 待答问题：唤醒词优先弃题，否则作答。Pending question: wake abandons, else answers.
   const pq = pendingQuestion.value
@@ -106,6 +106,7 @@ async function handleFinal(ev: StreamEvent): Promise<void> {
         enterWakeCooldown()
         sendToLlm(wake.command)
       } else {
+        markHudDropped()
         enterCommandWindow()
       }
       return
@@ -133,6 +134,7 @@ async function handleFinal(ev: StreamEvent): Promise<void> {
       enterWakeCooldown()
       sendToLlm(text)
     } else {
+      markHudDropped()
       armCommandTimer()
     }
     return
@@ -148,6 +150,7 @@ async function handleFinal(ev: StreamEvent): Promise<void> {
         clearFollowupTimer()
         sendToLlm(wake.command)
       } else {
+        markHudDropped()
         enterCommandWindow()
       }
       return
@@ -165,7 +168,11 @@ async function handleFinal(ev: StreamEvent): Promise<void> {
       sendToLlm(wake.command)
       return
     }
-    if (await tryEnterCallFromStandby()) return
+    if (await tryEnterCallFromStandby()) {
+      markHudDropped()
+      return
+    }
+    markHudDropped()
     enterCommandWindow()
     return
   }
@@ -196,6 +203,7 @@ async function judgeCall(text: string, ev: StreamEvent): Promise<void> {
     statusLine.value = ''
     sendToLlm(r.text)
   } else {
+    markHudDropped()
     statusLine.value = r?.ok ? missStatusLine(r.stage, r.reason) : '语音判定失败，请重试'
   }
 }

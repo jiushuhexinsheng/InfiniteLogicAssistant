@@ -52,6 +52,25 @@ describe('VoiceHud', () => {
     expect(box.find('.vh-caret').exists()).toBe(true)
   })
 
+  it('定稿后尚未决定去向时文本段保持可见', () => {
+    liveTranscript.value = {
+      ...liveTranscript.value, status: 'idle', finalText: '查天气', interim: '',
+    }
+    hudOutcome.value = 'pending'
+    const w = mountHud()
+    expect(w.find('.vh-box').exists()).toBe(true)
+    expect(w.find('.vh-text').text()).toContain('查天气')
+  })
+
+  it('判定不发送后文本段消失', () => {
+    liveTranscript.value = {
+      ...liveTranscript.value, status: 'idle', finalText: '电视声', interim: '',
+    }
+    hudOutcome.value = 'dropped'
+    const w = mountHud()
+    expect(w.find('.vh-box').exists()).toBe(false)
+  })
+
   it('可提交时转绿并显示勾', () => {
     liveTranscript.value = {
       ...liveTranscript.value, status: 'finalized', finalText: '查天气', interim: '',

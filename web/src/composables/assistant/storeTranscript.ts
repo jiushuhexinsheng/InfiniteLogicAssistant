@@ -25,9 +25,24 @@ export const streamPhase = ref<StreamPhase>('idle')
 export const streamError = ref('')
 
 /** 识别结果去向（HUD）：idle / ghost（未进入对话）/ accepted（已作为 LLM 输入）。 */
-export type HudOutcome = 'idle' | 'ghost' | 'accepted'
+export type HudOutcome = 'idle' | 'pending' | 'ghost' | 'accepted' | 'dropped'
 export const hudOutcome = ref<HudOutcome>('idle')
 let hudTimer: ReturnType<typeof setTimeout> | null = null
+
+/** 定稿后、尚未决定去向：显示框保持可见，直到 accepted / ghost / dropped。 */
+export function markHudPending(): void {
+  if (hudTimer) { clearTimeout(hudTimer); hudTimer = null }
+  hudOutcome.value = 'pending'
+}
+
+/** 判定为不发送（回声/未命中/通话 miss 等）：短暂保留后淡出。 */
+export function markHudDropped(): void {
+  if (hudTimer) { clearTimeout(hudTimer); hudTimer = null }
+  hudOutcome.value = 'dropped'
+  hudTimer = setTimeout(() => {
+    if (hudOutcome.value === 'dropped') hudOutcome.value = 'idle'
+  }, 900)
+}
 
 /** 标记本条定稿已被接受为 LLM 输入（短暂显示绿色「→ LLM」）。 */
 export function markHudAccepted(): void {
@@ -135,6 +150,7 @@ export function finalizeTranscript(
   partialText.value = ''
   statusLine.value = text ? '识别完成' : '没听清，请再说一次'
   setStreamPhase('finalized')
+  markHudPending()
   finalTimer = setTimeout(() => {
     if (liveTranscript.value.status === 'finalized') {
       liveTranscript.value = { ...liveTranscript.value, status: 'idle', ghostText: '' }

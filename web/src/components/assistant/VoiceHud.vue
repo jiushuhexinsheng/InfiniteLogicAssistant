@@ -11,17 +11,19 @@
     @click="$emit('open')"
   >
     <!-- 文本段（仅识别阶段出现）。Text segment, shown only while there is transcript text. -->
-    <span v-if="showBox" class="vh-box">
-      <span class="vh-body">
-        <span class="vh-role">你</span>
-        <span class="vh-text">{{ transcriptText }}<span v-if="recognizing" class="vh-caret" aria-hidden="true"></span></span>
+    <Transition name="vh-box">
+      <span v-if="showBox" class="vh-box">
+        <span class="vh-body">
+          <span class="vh-role">你</span>
+          <span class="vh-text">{{ transcriptText }}<span v-if="recognizing" class="vh-caret" aria-hidden="true"></span></span>
+        </span>
+        <span class="vh-end">
+          <span v-if="indicator === 'spinner'" class="vh-spin" aria-hidden="true"></span>
+          <span v-else-if="indicator === 'ok'" class="vh-check" aria-hidden="true">✓</span>
+          <span v-else-if="indicator === 'dash'" class="vh-dash" aria-hidden="true">—</span>
+        </span>
       </span>
-      <span class="vh-end">
-        <span v-if="indicator === 'spinner'" class="vh-spin" aria-hidden="true"></span>
-        <span v-else-if="indicator === 'ok'" class="vh-check" aria-hidden="true">✓</span>
-        <span v-else-if="indicator === 'dash'" class="vh-dash" aria-hidden="true">—</span>
-      </span>
-    </span>
+    </Transition>
 
     <!-- 胶囊：状态压成 10px 小字 / 图标。Pill: status shrunk to 10px text/icon. -->
     <span class="vh-pill">
@@ -63,6 +65,8 @@ const recognizing = computed(() =>
   liveTranscript.value.status === 'recognizing' || streamPhase.value === 'recognizing')
 /** 已接受为 LLM 输入。Accepted as LLM input. */
 const accepted = computed(() => hudOutcome.value === 'accepted')
+/** 定稿后尚未决定去向（框保持可见）。Finalised but not yet routed. */
+const pending = computed(() => hudOutcome.value === 'pending')
 /** 旁白。Discarded bystander text. */
 const ghost = computed(() => hudOutcome.value === 'ghost')
 /** 麦克风活跃（波形起伏）。Mic-live phases. */
@@ -73,16 +77,15 @@ const micLive = computed(() => [
 /** 识别文本。Recognition text. */
 const transcriptText = computed(() => {
   if (recognizing.value) return liveTranscript.value.interim
-  if (accepted.value) return liveTranscript.value.finalText
   if (ghost.value) return liveTranscript.value.ghostText
-  if (liveTranscript.value.status === 'finalized') return liveTranscript.value.finalText
+  if (accepted.value || pending.value) return liveTranscript.value.finalText
   return ''
 })
 
 /** 是否伸出文本段。Whether to extend the text segment. */
 const showBox = computed(() =>
-  recognizing.value || accepted.value || ghost.value ||
-  (liveTranscript.value.status === 'finalized' && !!transcriptText.value))
+  !!transcriptText.value &&
+  (recognizing.value || accepted.value || ghost.value || pending.value))
 
 /** 状态徽章的 kind（每种状态独立配色/动效）。Status badge kind. */
 const statusKind = computed<VoiceStatusKind>(() => {
@@ -113,7 +116,7 @@ const indicator = computed(() => {
   if (streamError.value) return 'dash'
   if (accepted.value) return 'ok'
   if (ghost.value) return 'dash'
-  if (recognizing.value) return 'spinner'
+  if (recognizing.value || pending.value) return 'spinner'
   return ''
 })
 
@@ -164,9 +167,12 @@ const ariaLabel = computed(() =>
   border: 1px solid var(--border-soft); border-radius: var(--r-md);
   backdrop-filter: blur(12px) saturate(140%);
   box-shadow: var(--shadow-2), inset 0 1px 0 rgba(255,255,255,.045);
-  animation: vh-grow .18s var(--ease-out, ease-out) both;
 }
-@keyframes vh-grow { from { opacity: 0; transform: translateX(4px); } to { opacity: 1; transform: none; } }
+/* 显示/消失动画。Enter/leave animation. */
+.vh-box-enter-active, .vh-box-leave-active {
+  transition: opacity .18s var(--ease-out, ease-out), transform .18s var(--ease-out, ease-out);
+}
+.vh-box-enter-from, .vh-box-leave-to { opacity: 0; transform: translateX(8px) scale(.97); }
 .vh-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .vh-role { font-size: 12px; color: var(--text-3); line-height: 1.1; }
 .vh-text {
