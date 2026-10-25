@@ -24,6 +24,20 @@ export const streamPhase = ref<StreamPhase>('idle')
 /** 最近一次流式错误（保持到用户下一次启动/切换）。Latest streaming error (kept until retry). */
 export const streamError = ref('')
 
+/** 识别结果去向（HUD）：idle / ghost（未进入对话）/ accepted（已作为 LLM 输入）。 */
+export type HudOutcome = 'idle' | 'ghost' | 'accepted'
+export const hudOutcome = ref<HudOutcome>('idle')
+let hudTimer: ReturnType<typeof setTimeout> | null = null
+
+/** 标记本条定稿已被接受为 LLM 输入（短暂显示绿色「→ LLM」）。 */
+export function markHudAccepted(): void {
+  if (hudTimer) { clearTimeout(hudTimer); hudTimer = null }
+  hudOutcome.value = 'accepted'
+  hudTimer = setTimeout(() => {
+    if (hudOutcome.value === 'accepted') hudOutcome.value = 'idle'
+  }, 2000)
+}
+
 /** 设置阶段；error 时保留原因，其他阶段清空错误。Set the phase; keep the reason on error. */
 export function setStreamPhase(phase: StreamPhase, error = '') {
   streamPhase.value = phase
@@ -65,6 +79,8 @@ let finalTimer: ReturnType<typeof setTimeout> | null = null
 /** 开始一段识别：清空中间稿并进入「正在识别」。Begin a segment. */
 export function beginRecognition(segmentId = 0) {
   if (finalTimer) { clearTimeout(finalTimer); finalTimer = null }
+  if (hudTimer) { clearTimeout(hudTimer); hudTimer = null }
+  hudOutcome.value = 'idle'
   setStreamPhase('recognizing')
   liveTranscript.value = {
     ...liveTranscript.value,
@@ -123,6 +139,7 @@ export function finalizeTranscript(
     if (liveTranscript.value.status === 'finalized') {
       liveTranscript.value = { ...liveTranscript.value, status: 'idle', ghostText: '' }
       setStreamPhase('ready')
+      if (hudOutcome.value === 'ghost') hudOutcome.value = 'idle'
     }
   }, 1500)
 }
@@ -130,6 +147,8 @@ export function finalizeTranscript(
 /** 未进聊天记录的定稿（旁白/未唤醒）短暂显示为 ghost。Show a discarded final briefly. */
 export function showGhost(text: string) {
   if (!text) return
+  if (hudTimer) { clearTimeout(hudTimer); hudTimer = null }
+  hudOutcome.value = 'ghost'
   liveTranscript.value = {
     ...liveTranscript.value,
     status: 'finalized',
@@ -141,6 +160,8 @@ export function showGhost(text: string) {
 /** 清空全部识别显示状态（关麦/出错）。Clear every transcript surface. */
 export function clearTranscript() {
   if (finalTimer) { clearTimeout(finalTimer); finalTimer = null }
+  if (hudTimer) { clearTimeout(hudTimer); hudTimer = null }
+  hudOutcome.value = 'idle'
   liveTranscript.value = {
     segmentId: 0,
     interim: '',

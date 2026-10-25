@@ -15,6 +15,22 @@ import { ref } from 'vue'
  */
 export const micLevel = ref(0)
 
+/** 波形历史采样数（约 0.6–1s，取决于上报频率）。Waveform history length. */
+const HISTORY_LEN = 32
+/** 最近若干次电平（HUD 单一滚动波形的数据源）。Recent levels for the HUD waveform. */
+export const micHistory = ref<number[]>(new Array(HISTORY_LEN).fill(0))
+
+/** 波形采样数。Waveform sample count. */
+export function historySize(): number {
+  return HISTORY_LEN
+}
+
+/** 把最近历史映射成波形柱高度（px）。Map the recent history to bar heights. */
+export function waveHeights(count = HISTORY_LEN, min = 2, span = 18): number[] {
+  const recent = micHistory.value.slice(-count)
+  return recent.map(level => Math.round(min + Math.min(1, Math.max(0, level)) * span))
+}
+
 /** 声波条 4 根的高度权重（错落感）。Per-bar height weights for the sound bars. */
 export const EQ_MULTIPLIERS = [1, 0.6, 0.85, 0.5] as const
 
@@ -39,9 +55,11 @@ export function reportMicLevel(rms: number): void {
   const target = Math.min(1, Math.max(0, rms / RMS_DIVISOR))
   const alpha = target > micLevel.value ? RISE_ALPHA : FALL_ALPHA
   micLevel.value = micLevel.value + (target - micLevel.value) * alpha
+  micHistory.value = [...micHistory.value.slice(1), micLevel.value]
 }
 
 /** 麦克风停止/段录音器收尾时归零（声波条回落基线）。Zero on mic stop. */
 export function resetMicLevel(): void {
   micLevel.value = 0
+  micHistory.value = new Array(HISTORY_LEN).fill(0)
 }

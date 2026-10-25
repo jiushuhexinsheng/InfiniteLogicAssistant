@@ -23,6 +23,7 @@ import {
 } from '../wake/orchState'
 import {
   beginRecognition, setInterim, finalizeTranscript, showGhost, setStreamPhase,
+  markHudAccepted,
 } from '../storeTranscript'
 import { missStatusLine } from './missStatus'
 
@@ -34,6 +35,12 @@ export interface StreamEvent {
 
 /** 一段识别开始前的助手状态（final 时据此恢复分流语义）。State before recognition. */
 let baseState: AsstState | null = null
+
+/** 把定稿作为 LLM 输入送出（HUD 标记「已提交」）。Send a final to the LLM. */
+function sendToLlm(text: string): void {
+  markHudAccepted()
+  st.deps?.sendText(text)
+}
 
 function restoreBase(): void {
   if (state.value !== 'transcribing') return
@@ -97,13 +104,14 @@ async function handleFinal(ev: StreamEvent): Promise<void> {
       if (wake.command) {
         st.turnToken++
         enterWakeCooldown()
-        st.deps?.sendText(wake.command)
+        sendToLlm(wake.command)
       } else {
         enterCommandWindow()
       }
       return
     }
     const hit = matchOption(text, pq.options)
+    markHudAccepted()
     await st.deps?.sendAnswer(hit ? '' : text, hit?.value, 'voice', pq)
     return
   }
@@ -123,7 +131,7 @@ async function handleFinal(ev: StreamEvent): Promise<void> {
       statusLine.value = ''
       st.failures = 0
       enterWakeCooldown()
-      st.deps?.sendText(text)
+      sendToLlm(text)
     } else {
       armCommandTimer()
     }
@@ -138,14 +146,14 @@ async function handleFinal(ev: StreamEvent): Promise<void> {
       if (wake.command) {
         enterWakeCooldown()
         clearFollowupTimer()
-        st.deps?.sendText(wake.command)
+        sendToLlm(wake.command)
       } else {
         enterCommandWindow()
       }
       return
     }
     clearFollowupTimer()
-    st.deps?.sendText(text)
+    sendToLlm(text)
     return
   }
 
@@ -154,7 +162,7 @@ async function handleFinal(ev: StreamEvent): Promise<void> {
     if (wake.command) {
       st.turnToken++
       enterWakeCooldown()
-      st.deps?.sendText(wake.command)
+      sendToLlm(wake.command)
       return
     }
     if (await tryEnterCallFromStandby()) return
@@ -186,7 +194,7 @@ async function judgeCall(text: string, ev: StreamEvent): Promise<void> {
     markTurnEnded()
     if (state.value === 'recording') state.value = 'listening'
     statusLine.value = ''
-    st.deps?.sendText(r.text)
+    sendToLlm(r.text)
   } else {
     statusLine.value = r?.ok ? missStatusLine(r.stage, r.reason) : '语音判定失败，请重试'
   }

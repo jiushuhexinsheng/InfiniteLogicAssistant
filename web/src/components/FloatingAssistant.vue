@@ -1,33 +1,20 @@
 <template>
   <Teleport to="body">
-    <!-- 漂浮单元：状态胶囊 + 迷你条 + 悬浮球同处一个容器，行方向由球所在的半边决定。
-         间距交给 flex，球的位置只由 pos 决定，不看两个同伴的宽度。
-         Floating dock: status pill, mini bar and ball share one container whose row direction
-         follows the half the ball sits in. Flex owns the gaps, so the ball's position depends
-         only on `pos`, never on how wide its neighbours are. -->
+    <!-- 漂浮单元：语音 HUD + 悬浮球同处一个容器，行方向由球所在的半边决定。
+         间距交给 flex，球的位置只由 pos 决定，不看 HUD 的宽度。
+         Floating dock: voice HUD and ball share one container whose row direction follows the
+         half the ball sits in. Flex owns the gap, so the ball's position depends only on
+         `pos`, never on the HUD width. -->
     <div class="asst-dock" :class="`ball-${ballSide}`" :style="dockStyle">
-      <!-- 迷你播放条：面板收起时实时展示当前/最近一条信息。Mini player bar: shows current/latest message in real time when panel is collapsed -->
-      <MiniPlayer
-        :expanded="asst.expanded.value"
+      <!-- 语音 HUD：单一波形 + 识别过程 + 去向状态（替代旧状态胶囊与迷你条）。
+           Voice HUD: one waveform + recognition journey + outcome (replaces pill + mini bar). -->
+      <VoiceHud
         :state="asst.state.value"
         :visual="asst.visual.value"
-        :messages="asst.messages.value"
-        :partial-text="asst.partialText.value"
-        :status-line="asst.statusLine.value"
-        :mini-dismiss="miniDismiss"
-        @open="asst.expanded.value = true"
-        @dismiss="miniDismiss = true"
-      />
-
-      <!-- 状态胶囊：把「双击开通话 / 通话聆听中」带到球边上，面板展开时淡出让位。
-           Status pill: carries copy such as "双击开通话 / 通话聆听中" beside the ball, fading out
-           while the panel is expanded. -->
-      <StatusPill
-        :visual="asst.visual.value"
-        :state="asst.state.value"
         :wake-hint="asst.wakeHint.value"
         :visible="!asst.expanded.value"
         :side="ballSide"
+        @open="asst.expanded.value = true"
       />
 
       <!-- 悬浮球（多层：图标 + 状态环 + mic 语音开关徽章）。Floating ball (multi-layer: icon + status ring + mic voice toggle badge) -->
@@ -90,8 +77,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import FloatBall from './assistant/FloatBall.vue'
-import MiniPlayer from './assistant/MiniPlayer.vue'
-import StatusPill from './assistant/StatusPill.vue'
+import VoiceHud from './assistant/VoiceHud.vue'
 import AssistantPanel from './assistant/AssistantPanel.vue'
 import MiniHistory from './assistant/MiniHistory.vue'
 import QuestionCard from './assistant/QuestionCard.vue'
@@ -109,8 +95,6 @@ const route = useRoute()
 
 /** 新消息红点标记。New message dot indicator. */
 const messageDot = ref(false)
-/** 迷你播放条是否已关闭。Whether the mini player bar has been dismissed. */
-const miniDismiss = ref(false)
 /** 悬浮球当前位置（像素坐标）。Current position of the floating ball (pixel coordinates). */
 const pos = ref({
   x: typeof window !== 'undefined' ? window.innerWidth - 80 : 0,
@@ -173,11 +157,6 @@ watch(() => props.asst.messages.value.length, (n) => {
   if (!props.asst.expanded.value && n > 0) messageDot.value = true
 })
 
-// 新消息到达时重新显示迷你播放条。Re-show mini player bar when a new message arrives.
-watch(() => props.asst.messages.value[props.asst.messages.value.length - 1]?.id, () => {
-  miniDismiss.value = false
-})
-
 /** 根据悬浮球位置计算面板定位样式。Calculate panel position style based on float ball position. */
 const panelStyle = computed(() => ({
   right: Math.max(0, Math.min(viewport.value.w - pos.value.x - 380, viewport.value.w - 380)) + 'px',
@@ -207,10 +186,6 @@ const panelStyle = computed(() => ({
 .panel-enter-active { transition: all var(--dur-base) ease-out; }
 .panel-leave-active { transition: all var(--dur-base) ease-in; }
 .panel-enter-from, .panel-leave-to { opacity: 0; transform: translateY(12px) scale(0.96); }
-
-/* 迷你条过渡动画。Mini bar transition animation. */
-.mini-enter-active, .mini-leave-active { transition: all var(--dur-base) ease; }
-.mini-enter-from, .mini-leave-to { opacity: 0; transform: translateX(-8px); }
 
 /* 面板 footer：顶部分隔线 + 通栏按钮。Panel footer: top divider + full-width button. */
 .open-console-wrap {
