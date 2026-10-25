@@ -26,7 +26,7 @@
     <!-- 胶囊：状态压成 10px 小字 / 图标。Pill: status shrunk to 10px text/icon. -->
     <span class="vh-pill">
       <span class="vh-dot" :class="{ pulse: micLive }" aria-hidden="true"></span>
-      <VoiceWaveform class="vh-wave" :active="micLive" :bars="16" />
+      <VoiceWaveform class="vh-wave" :active="micLive" :bars="32" />
       <span class="vh-label">{{ pillLabel }}</span>
     </span>
   </button>
@@ -130,8 +130,8 @@ const ariaLabel = computed(() =>
 
 /* 胶囊：原形态，保持紧凑。Pill: the original compact shape. */
 .vh-pill {
-  position: relative; display: flex; align-items: center; gap: var(--sp-2);
-  height: 38px; padding: 0 var(--sp-3);
+  position: relative; display: flex; align-items: center; gap: var(--sp-3);
+  height: 49px; padding: 0 var(--sp-4);
   background: var(--panel-bg, rgba(15, 23, 42, .82));
   border: 1px solid var(--border-soft);
   border-radius: var(--r-full);
@@ -141,27 +141,27 @@ const ariaLabel = computed(() =>
 }
 /* 尖角指向球。Tail points at the ball. */
 .vh-pill::after {
-  content: ""; position: absolute; top: 50%; width: 8px; height: 8px;
+  content: ""; position: absolute; top: 50%; width: 10px; height: 10px;
   transform: translateY(-50%) rotate(45deg);
   background: inherit; border: solid var(--border-soft);
 }
-.voice-hud.side-right .vh-pill::after { right: -5px; border-width: 1px 1px 0 0; }
-.voice-hud.side-left .vh-pill::after { left: -5px; border-width: 0 0 1px 1px; }
+.voice-hud.side-right .vh-pill::after { right: -6px; border-width: 1px 1px 0 0; }
+.voice-hud.side-left .vh-pill::after { left: -6px; border-width: 0 0 1px 1px; }
 .vh-dot {
-  width: 6px; height: 6px; border-radius: 50%; flex: none;
+  width: 8px; height: 8px; border-radius: 50%; flex: none;
   background: var(--vh-color, var(--brand-c2));
   box-shadow: 0 0 6px color-mix(in srgb, var(--vh-color, var(--brand-c2)) 70%, transparent);
 }
 .vh-dot.pulse { animation: vh-pulse 1.2s ease-in-out infinite; }
 @keyframes vh-pulse { 50% { opacity: .35; transform: scale(.85); } }
-.vh-wave { width: 40px; }
-.vh-label { font-size: 10px; line-height: 1; color: var(--muted, var(--text-3)); white-space: nowrap; }
+.vh-wave { width: 80px; }
+.vh-label { font-size: 13px; line-height: 1; color: var(--muted, var(--text-3)); white-space: nowrap; }
 
 /* 文本段：只在有识别文本时出现，向左/右伸出。 */
 .vh-box {
   display: flex; align-items: center; gap: var(--sp-2);
-  height: 46px; min-width: 200px; max-width: 246px;
-  padding: 5px var(--sp-2);
+  height: 60px; min-width: 260px; max-width: 320px;
+  padding: 7px var(--sp-3);
   background: var(--panel-bg, rgba(15, 23, 42, .82));
   border: 1px solid var(--border-soft); border-radius: var(--r-md);
   backdrop-filter: blur(12px) saturate(140%);
@@ -170,19 +170,19 @@ const ariaLabel = computed(() =>
 }
 @keyframes vh-grow { from { opacity: 0; transform: translateX(4px); } to { opacity: 1; transform: none; } }
 .vh-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.vh-role { font-size: 9px; color: var(--text-3); line-height: 1.1; }
+.vh-role { font-size: 12px; color: var(--text-3); line-height: 1.1; }
 .vh-text {
-  font-size: var(--fs-xs); color: var(--text-1); line-height: 1.4;
+  font-size: var(--fs-md); color: var(--text-1); line-height: 1.4;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .vh-caret {
-  display: inline-block; width: 2px; height: 11px; margin-left: 2px;
+  display: inline-block; width: 2px; height: 14px; margin-left: 2px;
   vertical-align: -1px; background: var(--brand-c2);
   animation: vh-blink 1s steps(2, start) infinite;
 }
 @keyframes vh-blink { 50% { opacity: 0; } }
-.vh-end { flex: none; width: 15px; display: grid; place-items: center; font-size: 11px; color: var(--brand-c2); }
-.vh-spin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid rgba(103,232,249,.25); border-top-color: var(--brand-c2); animation: vh-spin .8s linear infinite; }
+.vh-end { flex: none; width: 20px; display: grid; place-items: center; font-size: 14px; color: var(--brand-c2); }
+.vh-spin { width: 13px; height: 13px; border-radius: 50%; border: 2px solid rgba(103,232,249,.25); border-top-color: var(--brand-c2); animation: vh-spin .8s linear infinite; }
 @keyframes vh-spin { to { transform: rotate(360deg); } }
 .vh-check { color: #34d399; }
 .vh-dash { color: var(--text-3); }
