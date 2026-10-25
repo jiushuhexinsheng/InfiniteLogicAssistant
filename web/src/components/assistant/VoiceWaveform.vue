@@ -41,7 +41,7 @@ const props = withDefaults(defineProps<{
 /** 每个实例独立的渐变 id（同页多实例不串色）。Per-instance gradient id. */
 const gid = `vw-${Math.random().toString(36).slice(2, 8)}`
 
-const WIDTH = 120
+const WIDTH = 180
 const HEIGHT = 34
 const CENTER = HEIGHT / 2
 const REST_AMP = 2
@@ -66,7 +66,7 @@ const bandPath = computed(() => {
 
 <style scoped>
 .voice-waveform {
-  display: block; width: 120px; height: 34px; flex: none;
+  display: block; width: 180px; height: 34px; flex: none;
   transition: opacity var(--dur-base), filter var(--dur-base);
   filter: drop-shadow(0 0 5px rgba(103, 232, 249, .30));
 }

@@ -26,7 +26,7 @@
     <!-- 胶囊：状态压成 10px 小字 / 图标。Pill: status shrunk to 10px text/icon. -->
     <span class="vh-pill">
       <VoiceStatusBadge :kind="statusKind" />
-      <VoiceWaveform class="vh-wave" :active="micLive" :bars="48" :tone="ghost ? 'muted' : 'rgb'" />
+      <VoiceWaveform class="vh-wave" :active="micLive" :bars="72" :tone="ghost ? 'muted' : 'rgb'" />
     </span>
   </button>
 </template>
