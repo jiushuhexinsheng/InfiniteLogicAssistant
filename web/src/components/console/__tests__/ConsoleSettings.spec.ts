@@ -116,6 +116,10 @@ describe('ConsoleSettings 语音统一页', () => {
     await flushPromises()
     await openTab(w, '识别')
     expect(w.text()).toContain('识别引擎（VAD / KWS / ASR）')
+    expect(w.find('.cs-status').text()).not.toContain('TTS')
+    expect(w.find('.cs-status').text()).toContain('VAD')
+    expect(w.text()).toContain('自检本地 VAD')
+    expect(w.text()).toContain('去唤醒页修改唤醒词')
     expect(w.text()).not.toContain('ASR 语音识别（API Profile）')
 
     await w.find('.ud-head').trigger('click')
@@ -164,6 +168,30 @@ describe('ConsoleSettings 语音统一页', () => {
     expect(body.kws).toBeTruthy()
     expect(body.asr).toBeTruthy()
     expect(body.streaming).toBeTruthy()
+  })
+
+  it('识别页一键本地只切识别三能力，不碰 TTS', async () => {
+    vi.mocked(api.getModels).mockResolvedValue({
+      ok: true,
+      models: {
+        vad: [{ path: 'models/vad/v.onnx', name: 'v', valid: true }],
+        kws: [{ path: 'models/kws/k', name: 'k', valid: true }],
+        asr: [{ path: 'models/asr/a', name: 'a', valid: true }],
+        tts: [{ path: 'models/tts/t', name: 't', valid: true }],
+      },
+    } as any)
+    vi.mocked(api.patchConfig).mockResolvedValue({ ok: true, restart_required: false } as any)
+    const w = mount(ConsoleSettings)
+    await flushPromises()
+    await openTab(w, '识别')
+    ;(editable.value as any).tts.mode = 'api'
+
+    await w.find('.use-local').trigger('click')
+    await flushPromises()
+
+    expect((editable.value as any).asr.mode).toBe('local')
+    expect((editable.value as any).tts.mode).toBe('api')
+    expect(vi.mocked(api.patchConfig).mock.calls.at(-1)?.[0]).toHaveProperty('asr')
   })
 
   it('editable 未加载时一张卡都不渲染且不抛错', async () => {

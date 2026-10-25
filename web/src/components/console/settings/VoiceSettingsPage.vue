@@ -34,7 +34,7 @@
             @click="saveRecognition"
           />
         </div>
-        <LocalModelsCard scope="recognition" hide-save />
+        <LocalModelsCard scope="recognition" hide-save @navigate="tab = $event" />
         <UiDisclosure v-model="cloudOpen" class="vs-cloud">
           <template #head>
             <span class="vs-cloud-head">云端 ASR 配置 <i>Cloud ASR</i> · 仅 cloud / hybrid 使用</span>

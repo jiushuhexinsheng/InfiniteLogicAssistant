@@ -5,17 +5,17 @@
   <SettingsCard :title="title" :title-en="titleEn">
     <template #actions>
       <template v-if="show('recognition') || show('tts')">
-        <UiButton variant="secondary" size="sm" :disabled="loading" @click="oneClickLocal">
-          <BiLabel :zh="T.useLocal.zh" :en="T.useLocal.en" />
+        <UiButton variant="secondary" size="sm" class="use-local" :disabled="loading" @click="oneClickLocal">
+          <BiLabel :zh="useLocalLabel.zh" :en="useLocalLabel.en" layout="stack" />
         </UiButton>
         <UiButton variant="ghost" size="sm" :disabled="loading" @click="refresh">
           <BiLabel :zh="loading ? T.scanning.zh : T.refreshModels.zh"
-                   :en="loading ? T.scanning.en : T.refreshModels.en" />
+                   :en="loading ? T.scanning.en : T.refreshModels.en" layout="stack" />
         </UiButton>
       </template>
       <UiButton v-if="!hideSave" variant="primary" size="sm" :disabled="!s.editable.value || s.saving.value" @click="save">
         <BiLabel :zh="s.saving.value ? T.saving.zh : T.save.zh"
-                 :en="s.saving.value ? T.saving.en : T.save.en" />
+                 :en="s.saving.value ? T.saving.en : T.save.en" layout="stack" />
       </UiButton>
     </template>
 
@@ -41,14 +41,14 @@
       </div>
 
       <!-- 引擎自检：实际加载并跑一次，给出耗时/结果（模型存在性之外的第二道确认）。 -->
-      <div v-if="show('recognition') || show('tts')" class="cs-tests">
+      <div v-if="testKinds.length" class="cs-tests">
         <UiButton
           v-for="k in testKinds" :key="k" variant="secondary" size="sm"
           :disabled="testing === k" @click="testEngine(k)"
         >
           <BiLabel
-            :zh="testing === k ? `测试 ${k.toUpperCase()}…` : `测试 ${k.toUpperCase()}`"
-            :en="testing === k ? `Testing ${k.toUpperCase()}…` : `Test ${k.toUpperCase()}`"
+            :zh="testing === k ? `自检本地 ${k.toUpperCase()}…` : `自检本地 ${k.toUpperCase()}`"
+            :en="testing === k ? `Self-testing ${k.toUpperCase()}…` : `Self-test ${k.toUpperCase()}`"
           />
         </UiButton>
         <template v-for="k in testKinds" :key="`r-${k}`">
@@ -69,6 +69,9 @@
         label-zh="VAD 模式" label-en="VAD Mode"
         @update:model-value="v => (s.ed().vad.mode = v)"
       />
+      <p v-if="s.ed().vad.mode === 'off'" class="cs-warn">
+        VAD 已关闭：流式语音将无法启动（本地/云端 ASR 都需要 VAD 分段）。
+      </p>
       <ModelConfigCard
         kind="vad" title-zh="本地 VAD 模型" title-en="Local VAD (sherpa-onnx)"
         :model-value="s.ed().vad.model"
@@ -91,6 +94,11 @@
         ]"
         label-zh="KWS 模式" label-en="KWS Mode"
         @update:model-value="v => (s.ed().kws.mode = v)"
+      />
+      <p class="cs-note">当前唤醒词：<strong>{{ currentWakeWords }}</strong></p>
+      <SettingsButton
+        class="kws-wake-link" zh="去唤醒页修改唤醒词" en="Edit wake words"
+        @click="$emit('navigate', 'wake')"
       />
       <ModelConfigCard
         v-if="s.ed().kws.mode !== 'off'"
@@ -216,6 +224,7 @@ import SettingsField from './SettingsField.vue'
 import BiLabel from './BiLabel.vue'
 import ModelConfigCard from './ModelConfigCard.vue'
 import SourceModeSwitch from './SourceModeSwitch.vue'
+import SettingsButton from './SettingsButton.vue'
 import type { SchemaField } from './SchemaForm.vue'
 import { UiButton, UiInput, UiSelect, UiToggle } from '../../ui'
 import { settingsText as T } from '../../../locales/settings'
@@ -234,13 +243,38 @@ const props = withDefaults(defineProps<{
   hideSave?: boolean
 }>(), { scope: 'all', hideSave: false })
 
+defineEmits<{ navigate: [tab: 'wake'] }>()
+
 /** 当前段落是否渲染。Whether a section renders in this scope. */
 function show(section: string): boolean {
   return props.scope === 'all' || props.scope === section
 }
 
-/** 当前 Tab 可测试的引擎。Local engines testable in this scope. */
-const testKinds = computed(() => props.scope === 'tts' ? ['tts'] : ['vad', 'kws', 'asr'])
+/** 当前 Tab 可自检的引擎：只在对应模式为本地时出现。Locally testable engines. */
+const testKinds = computed<string[]>(() => {
+  const e = s.ed()
+  if (!e) return []
+  if (props.scope === 'tts') return e.tts.mode === 'local' ? ['tts'] : []
+  if (props.scope === 'recognition') {
+    const kinds: string[] = []
+    if (e.vad.mode === 'local') kinds.push('vad')
+    if (e.kws.mode === 'local') kinds.push('kws')
+    if (e.asr.mode === 'local' || e.asr.mode === 'hybrid') kinds.push('asr')
+    return kinds
+  }
+  return ['vad', 'kws', 'asr']
+})
+
+/** 一键本地按钮文案（识别页不碰 TTS）。One-click label per scope. */
+const useLocalLabel = computed(() => {
+  if (props.scope === 'recognition') return { zh: '一键本地识别', en: 'Use local recognition' }
+  if (props.scope === 'tts') return { zh: '一键本地 TTS', en: 'Use local TTS' }
+  return { zh: T.useLocal.zh, en: T.useLocal.en }
+})
+
+/** 当前唤醒词（KWS 区展示）。Current wake words. */
+const currentWakeWords = computed(() =>
+  (s.ed()?.wake_word?.keywords || []).filter(Boolean).join(' / '))
 
 /** 模型切换时按 modelId 保存/恢复模型专属参数（通用参数 provider/线程不随模型走）。
  *  Save/restore model-specific params by modelId; common provider/threads stay shared. */
@@ -393,12 +427,15 @@ const statusRows = computed<StatusRow[]>(() => {
   if (e.tts.mode === 'local' && ttsSettings.value.engine !== 'local') {
     ttsRow.text += ' · 播放：浏览器'
   }
-  return [
+  const rows = [
     capRow('VAD', c.vad, e.vad.mode),
     capRow('KWS', c.kws, e.kws.mode),
     capRow('ASR', c.asr, e.asr.mode),
     ttsRow,
   ]
+  if (props.scope === 'recognition') return rows.slice(0, 3)
+  if (props.scope === 'tts') return [ttsRow]
+  return rows
 })
 
 /** 模型下拉选项（value = 相对项目根路径）。Model options (value = root-relative path). */
@@ -423,7 +460,7 @@ function toNum(v: string): number | '' {
 }
 
 /** 当前选中模型无效时，自动改用该能力下第一个有效模型（只改表单，不自动保存）。 */
-function ensureSelection() {
+function ensureSelection(kinds: string[] = ['vad', 'kws', 'asr', 'tts']) {
   const e = s.ed()
   if (!e) return
   const fix = (kind: string, current: string, set: (v: string) => void) => {
@@ -432,17 +469,35 @@ function ensureSelection() {
     const first = list.find((m) => m.valid)
     if (first) set(first.path)
   }
-  fix('vad', e.vad.model, (v) => { e.vad.model = v })
-  fix('kws', e.kws.model_dir, (v) => { e.kws.model_dir = v })
-  fix('asr', e.asr.local_model, (v) => { e.asr.local_model = v })
-  fix('tts', e.tts.local_model, (v) => { e.tts.local_model = v })
+  if (kinds.includes('vad')) fix('vad', e.vad.model, (v) => { e.vad.model = v })
+  if (kinds.includes('kws')) fix('kws', e.kws.model_dir, (v) => { e.kws.model_dir = v })
+  if (kinds.includes('asr')) fix('asr', e.asr.local_model, (v) => { e.asr.local_model = v })
+  if (kinds.includes('tts')) fix('tts', e.tts.local_model, (v) => { e.tts.local_model = v })
 }
 
-/** 一键本地：四能力切本地并选有效模型；TTS 没有 Kokoro 时保持 API。 */
+/** 一键本地：按当前 Tab 只切换本页负责的能力，绝不越界改 TTS。 */
 function oneClickLocal() {
   const e = s.ed()
   if (!e) return
   const valid = (kind: string) => (models.value[kind] || []).filter((m) => m.valid)
+
+  if (props.scope === 'tts') {
+    const ttsReady = (models.value.tts || []).some(
+      (m) => m.valid && m.path === e.tts.local_model,
+    )
+    if (!ttsReady) {
+      notify.err('没有可用的本地 TTS 模型，请先下载或刷新模型')
+      return
+    }
+    ensureSelection(['tts'])
+    e.tts.mode = 'local'
+    ttsSettings.value.engine = 'local'
+    saveTts()
+    notify.ok('已切换为本地 TTS（保存中）')
+    void s.saveModule('tts')
+    return
+  }
+
   if (!valid('vad').length) {
     notify.err('没有可用的本地 VAD 模型，请先下载或刷新模型')
     return
@@ -451,10 +506,17 @@ function oneClickLocal() {
     notify.err('没有可用的本地 ASR 模型，请先下载或刷新模型')
     return
   }
-  ensureSelection()
+  ensureSelection(['vad', 'kws', 'asr'])
   e.vad.mode = 'local'
   e.kws.mode = valid('kws').length ? 'local' : 'api'
   e.asr.mode = 'local'
+
+  if (props.scope === 'recognition') {
+    notify.ok('已切换为本地识别（保存中）')
+    void s.saveModule('recognition')
+    return
+  }
+
   const ttsReady = (models.value.tts || []).some(
     (m) => m.valid && m.path === e.tts.local_model,
   )
@@ -521,6 +583,7 @@ onMounted(refresh)
 <style scoped>
 .cs-note { font-size: var(--fs-2xs); color: var(--text-3); line-height: 1.6; margin: 0; }
 .cs-note code, .cs-hint code { font-family: var(--font-mono); }
+.cs-warn { margin: var(--sp-q6) 0 0; font-size: var(--fs-2xs); color: #fbbf24; line-height: 1.6; }
 .cs-hint { font-size: var(--fs-2xs); color: var(--text-3); margin: var(--sp-q6) 0 0; line-height: 1.5; }
 .cs-title {
   margin: var(--sp-3) 0 var(--sp-1);
