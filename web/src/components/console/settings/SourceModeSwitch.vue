@@ -7,7 +7,8 @@
     </span>
     <UiSegmented
       :model-value="modelValue"
-      :options="opts"
+      :options="options"
+      layout="stack"
       :aria-label="labelZh"
       @update:model-value="v => emit('update:modelValue', String(v))"
     />
@@ -16,7 +17,6 @@
 
 <script setup lang="ts">
 /** 本地/API 来源切换器（VAD/KWS/ASR/TTS 共用）。Shared local/API source switch. */
-import { computed } from 'vue'
 import { UiSegmented } from '../../ui'
 
 interface ModeOption {
@@ -41,10 +41,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{ 'update:modelValue': [v: string] }>()
 
-const opts = computed(() => props.options.map(o => ({
-  value: o.value,
-  label: o.en ? `${o.label} / ${o.en}` : o.label,
-})))
+
 </script>
 
 <style scoped>

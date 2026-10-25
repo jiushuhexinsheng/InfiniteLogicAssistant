@@ -86,7 +86,7 @@
         :model-value="s.ed().kws.mode"
         :options="[
           { value: 'local', label: '本地', en: 'Local' },
-          { value: 'api', label: '文本', en: 'Text' },
+          { value: 'api', label: '转写后判定', en: 'After ASR' },
           { value: 'off', label: '关闭', en: 'Off' },
         ]"
         label-zh="KWS 模式" label-en="KWS Mode"
