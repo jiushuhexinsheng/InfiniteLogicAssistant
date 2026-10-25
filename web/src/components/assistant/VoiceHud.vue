@@ -13,7 +13,7 @@
     <!-- 文本段（仅识别阶段出现）。Text segment, shown only while there is transcript text. -->
     <span v-if="showBox" class="vh-box">
       <span class="vh-body">
-        <span class="vh-role">衍衡</span>
+        <span class="vh-role">你</span>
         <span class="vh-text">{{ transcriptText }}<span v-if="recognizing" class="vh-caret" aria-hidden="true"></span></span>
       </span>
       <span class="vh-end">
@@ -26,7 +26,7 @@
     <!-- 胶囊：状态压成 10px 小字 / 图标。Pill: status shrunk to 10px text/icon. -->
     <span class="vh-pill">
       <VoiceStatusBadge :kind="statusKind" />
-      <VoiceWaveform class="vh-wave" :active="micLive" :bars="32" :tone="ghost ? 'muted' : 'rgb'" />
+      <VoiceWaveform class="vh-wave" :active="micLive" :bars="48" :tone="ghost ? 'muted' : 'rgb'" />
     </span>
   </button>
 </template>

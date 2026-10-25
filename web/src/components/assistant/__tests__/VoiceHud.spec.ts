@@ -46,7 +46,7 @@ describe('VoiceHud', () => {
     const w = mountHud()
     const box = w.find('.vh-box')
     expect(box.exists()).toBe(true)
-    expect(box.find('.vh-role').text()).toBe('衍衡')
+    expect(box.find('.vh-role').text()).toBe('你')
     expect(box.text()).not.toContain('KWS')
     expect(box.find('.vh-text').text()).toContain('帮我查一下天气')
     expect(box.find('.vh-caret').exists()).toBe(true)
