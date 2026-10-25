@@ -14,6 +14,7 @@
           @click="s.detectOne(section.name)"
         />
         <SettingsButton
+          v-if="!hideSave"
           variant="primary" :disabled="!s.editable.value" :loading="s.saving.value"
           :zh="s.saving.value ? '保存中…' : '保存'"
           :en="s.saving.value ? 'Saving…' : 'Save'"
@@ -74,7 +75,7 @@
     <!-- 模型管理（与供应商向导共用 ModelTable / FetchedModelList 组件）。 -->
     <div class="cs-models">
       <div class="cs-models-head">
-        <span class="cs-models-title">模型列表 · Models</span>
+        <span class="cs-models-title">云端模型 ID · API Models</span>
         <SettingsButton
           variant="secondary" class="cs-fetch" :disabled="fetching"
           :zh="fetching ? '获取中…' : '获取模型'" :en="fetching ? 'Fetching…' : 'Fetch models'"
@@ -121,7 +122,7 @@ import { parseCompatValue } from './profiles'
 import { api } from '../../../api'
 
 /** 组件 props：服务模块定义（来自 configDefs.sectionDefs）。Service section definition. */
-const props = defineProps<{ section: SectionDef }>()
+const props = withDefaults(defineProps<{ section: SectionDef; hideSave?: boolean }>(), { hideSave: false })
 
 /** 设置页单例状态与操作。Settings singleton. */
 const s = useSettings()

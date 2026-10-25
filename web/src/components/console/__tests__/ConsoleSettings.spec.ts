@@ -111,11 +111,15 @@ describe('ConsoleSettings 语音统一页', () => {
     expect(w.text()).not.toContain('语音总览')
   })
 
-  it('识别 Tab 同时显示本地引擎与 ASR API Profile', async () => {
+  it('识别 Tab 显示本地引擎；云端 Profile 在本地模式下折叠、展开后可见', async () => {
     const w = mount(ConsoleSettings)
     await flushPromises()
     await openTab(w, '识别')
     expect(w.text()).toContain('识别引擎（VAD / KWS / ASR）')
+    expect(w.text()).not.toContain('ASR 语音识别（API Profile）')
+
+    await w.find('.ud-head').trigger('click')
+    await flushPromises()
     expect(w.text()).toContain('ASR 语音识别（API Profile）')
   })
 
@@ -139,6 +143,27 @@ describe('ConsoleSettings 语音统一页', () => {
     expect(w.text()).toContain('参考音频（voiceclone）')
     expect(w.text()).toContain('音色列表（下拉候选）')
     expect(w.find('.tts-settings-stub').exists()).toBe(true)
+  })
+
+  it('识别页：单保存提交识别四段，云端配置在本地模式下默认折叠', async () => {
+    vi.mocked(api.patchConfig).mockResolvedValue({ ok: true, restart_required: false } as any)
+    const w = mount(ConsoleSettings)
+    await flushPromises()
+    await openTab(w, '识别')
+
+    expect(w.text()).toContain('保存识别配置')
+    expect(w.text()).not.toContain('ASR 语音识别（API Profile）')
+
+    vi.mocked(api.patchConfig).mockClear()
+    await w.find('.vs-save-recognition').trigger('click')
+    await flushPromises()
+
+    expect(api.patchConfig).toHaveBeenCalledTimes(1)
+    const body = vi.mocked(api.patchConfig).mock.calls[0][0] as Record<string, any>
+    expect(body.vad).toBeTruthy()
+    expect(body.kws).toBeTruthy()
+    expect(body.asr).toBeTruthy()
+    expect(body.streaming).toBeTruthy()
   })
 
   it('editable 未加载时一张卡都不渲染且不抛错', async () => {

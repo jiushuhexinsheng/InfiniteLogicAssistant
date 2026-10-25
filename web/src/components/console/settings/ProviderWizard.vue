@@ -64,7 +64,7 @@
         @add="addFetched"
       />
 
-      <SettingsField label="模型列表" en="Models" hint="至少一个；获取失败可手动输入">
+      <SettingsField label="云端模型 ID" en="Cloud model IDs" hint="至少一个；获取失败可手动输入">
         <ModelTable
           :models="models"
           :options="modelOptions"

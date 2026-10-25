@@ -13,7 +13,7 @@
                    :en="loading ? T.scanning.en : T.refreshModels.en" />
         </UiButton>
       </template>
-      <UiButton variant="primary" size="sm" :disabled="!s.editable.value || s.saving.value" @click="save">
+      <UiButton v-if="!hideSave" variant="primary" size="sm" :disabled="!s.editable.value || s.saving.value" @click="save">
         <BiLabel :zh="s.saving.value ? T.saving.zh : T.save.zh"
                  :en="s.saving.value ? T.saving.en : T.save.en" />
       </UiButton>
@@ -70,7 +70,7 @@
         @update:model-value="v => (s.ed().vad.mode = v)"
       />
       <ModelConfigCard
-        kind="vad" title-zh="VAD 模型配置" title-en="VAD Model"
+        kind="vad" title-zh="本地 VAD 模型" title-en="Local VAD (sherpa-onnx)"
         :model-value="s.ed().vad.model"
         :model-options="modelOptions('vad')"
         :values="s.ed().vad"
@@ -94,7 +94,7 @@
       />
       <ModelConfigCard
         v-if="s.ed().kws.mode !== 'off'"
-        kind="kws" title-zh="KWS 模型配置" title-en="KWS Model"
+        kind="kws" title-zh="本地 KWS 模型" title-en="Local KWS (sherpa-onnx)"
         :model-value="s.ed().kws.model_dir"
         :model-options="modelOptions('kws')"
         :values="s.ed().kws"
@@ -118,7 +118,7 @@
       />
       <ModelConfigCard
         v-if="s.ed().asr.mode !== 'cloud'"
-        kind="asr" title-zh="ASR 模型配置" title-en="ASR Model"
+        kind="asr" title-zh="本地 ASR 模型" title-en="Local ASR (sherpa-onnx)"
         :model-value="s.ed().asr.local_model"
         :model-options="modelOptions('asr')"
         :values="s.ed().asr"
@@ -135,7 +135,7 @@
       <p class="cs-hint">引擎选择（本地 Kokoro / API）在「合成」Tab 顶部；这里配置本地 Kokoro 的模型与推理硬件。</p>
       <ModelConfigCard
         v-if="ttsSettings.engine === 'local'"
-        kind="tts" title-zh="TTS 模型配置" title-en="TTS Model"
+        kind="tts" title-zh="本地 TTS 模型" title-en="Local TTS"
         :model-value="s.ed().tts.local_model"
         :model-options="modelOptions('tts')"
         :values="s.ed().tts"
@@ -231,7 +231,8 @@ const s = useSettings()
  *  Section of this card inside the 语音 page; one component reused per tab. */
 const props = withDefaults(defineProps<{
   scope?: 'all' | 'overview' | 'recognition' | 'tts' | 'hardware' | 'advanced'
-}>(), { scope: 'all' })
+  hideSave?: boolean
+}>(), { scope: 'all', hideSave: false })
 
 /** 当前段落是否渲染。Whether a section renders in this scope. */
 function show(section: string): boolean {

@@ -25,9 +25,26 @@
       <VoiceCard v-else-if="tab === 'wake'" @navigate="tab = $event" />
 
       <template v-else-if="tab === 'recognition'">
-        <LocalModelsCard scope="recognition" />
-        <ModelProviderPanel section="asr" />
-        <ServiceCard :section="asrDef" />
+        <div class="vs-actions">
+          <SettingsButton
+            class="vs-save-recognition" variant="primary"
+            :loading="settings.saving.value"
+            :zh="settings.saving.value ? '保存中…' : '保存识别配置'"
+            :en="settings.saving.value ? 'Saving…' : 'Save recognition'"
+            @click="saveRecognition"
+          />
+        </div>
+        <LocalModelsCard scope="recognition" hide-save />
+        <UiDisclosure v-model="cloudOpen" class="vs-cloud">
+          <template #head>
+            <span class="vs-cloud-head">云端 ASR 配置 <i>Cloud ASR</i> · 仅 cloud / hybrid 使用</span>
+          </template>
+          <template #collapsed>
+            <span class="vs-cloud-hint">供应商 / API Key / 云端模型 ID（当前折叠）</span>
+          </template>
+          <ModelProviderPanel section="asr" :compact="false" />
+          <ServiceCard :section="asrDef" hide-save />
+        </UiDisclosure>
       </template>
 
       <template v-else-if="tab === 'synthesis'">
@@ -52,16 +69,18 @@
  *
  * Voice settings page: the former four menu entries collapse into six tabs.
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import LocalModelsCard from './LocalModelsCard.vue'
 import ModelProviderPanel from './ModelProviderPanel.vue'
 import VoiceOverview from './VoiceOverview.vue'
 import VoiceCard from './VoiceCard.vue'
 import TtsEngineCard from './TtsEngineCard.vue'
+import SettingsButton from './SettingsButton.vue'
 import TtsSettings from '../../assistant/TtsSettings.vue'
 import ServiceCard from './ServiceCard.vue'
 import { useTtsEngine } from '../../../composables/assistant/useTtsEngine'
 import { sectionDefs } from './configDefs'
+import { UiDisclosure } from '../../ui'
 import { settingsText as T } from '../../../locales/settings'
 import { useVoiceModuleStatus } from '../../../composables/useVoiceModuleStatus'
 import { useSettings } from './useSettings'
@@ -79,9 +98,19 @@ const tabs: TabDef[] = [
 ]
 
 const tab = ref<TabId>('overview')
+const settings = useSettings()
+/** 云端 ASR 配置是否展开：本地模式默认折叠。Whether the cloud ASR block is open. */
+const cloudOpen = ref(true)
+watch(() => settings.sec('asr')?.mode, (mode) => {
+  if (mode) cloudOpen.value = mode !== 'local'
+}, { immediate: true })
+
+/** 识别 Tab 统一保存：本地引擎 + 云端 profile 一次 PATCH。Unified recognition save. */
+function saveRecognition(): void {
+  void settings.saveModule('recognition')
+}
 const { engine } = useTtsEngine()
 const { status, refreshVoiceStatus } = useVoiceModuleStatus()
-const settings = useSettings()
 
 /** 链路节点点击：语音节点跳 Tab，LLM 节点跳左侧「大模型」菜单。
  *  Chain-node click: voice nodes jump a tab, the LLM node jumps to the 大模型 menu. */
@@ -168,4 +197,12 @@ onMounted(() => { void refreshVoiceStatus() })
 .vs-body :deep(.cs-card-body) {
   overflow: visible;
 }
+</style>
+
+
+<style scoped>
+.vs-actions { display: flex; justify-content: flex-end; }
+.vs-cloud-head { font-size: var(--fs-2xs); color: var(--text-2); }
+.vs-cloud-head i { font-style: normal; color: var(--text-3); }
+.vs-cloud-hint { font-size: var(--fs-2xs); color: var(--text-3); }
 </style>

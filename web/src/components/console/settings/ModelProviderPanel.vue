@@ -1,7 +1,7 @@
 <template>
   <!-- 模型供应商：列表面板 + 新增/编辑向导（大模型 / ASR / TTS 共用）。
        Model providers: list + add/edit wizard, shared by LLM / ASR / TTS. -->
-  <SettingsCard class="provider-card" title="模型供应商" title-en="Model Providers">
+  <SettingsCard :class="{ 'provider-card': compact }" title="模型供应商" title-en="Model Providers">
     <template #actions>
       <SettingsButton
         variant="primary" icon="plus"
@@ -49,7 +49,7 @@ import { notify } from '../../../composables/useToast'
 import { useConfig } from '../../../composables/useApi'
 import type { ProviderSection } from './providerPresets'
 
-const props = defineProps<{ section: ProviderSection }>()
+const props = withDefaults(defineProps<{ section: ProviderSection; compact?: boolean }>(), { compact: true })
 const s = useSettings()
 const app = useConfig()
 

@@ -95,6 +95,16 @@ export function menuDot(id: string): boolean {
  * @param id 模块 key。Module key.
  * @returns PATCH 请求体。The PATCH request body.
  */
+/** ASR 段可提交字段（显式挑字段，只读标记不回送）。Submittable ASR fields. */
+function _asrBody(e: any): Record<string, any> {
+  return {
+    active: e.asr.active, profiles: e.asr.profiles, mode: e.asr.mode,
+    local_model: e.asr.local_model, streaming: e.asr.streaming,
+    provider: e.asr.provider, device: e.asr.device, num_threads: e.asr.num_threads,
+    params: e.asr.params,
+  }
+}
+
 export function moduleBody(id: string): Record<string, any> {
   const e = editable.value as any
   if (id === 'voice') return { wake_word: e.wake_word, vad: e.vad }
@@ -151,13 +161,11 @@ export function moduleBody(id: string): Record<string, any> {
   // The ASR section is not plain profile-shaped: the transcription mode and the local
   // model dir must ride along, or the fall-through below would silently drop the user's
   // mode selection. The read-only local_model_present is never sent back.
-  if (id === 'asr') return {
-    asr: {
-      active: e.asr.active, profiles: e.asr.profiles, mode: e.asr.mode,
-      local_model: e.asr.local_model, streaming: e.asr.streaming,
-      provider: e.asr.provider, device: e.asr.device, num_threads: e.asr.num_threads,
-      params: e.asr.params,
-    },
+  if (id === 'asr') return { asr: _asrBody(e) }
+  // 识别 Tab 的统一保存：本地引擎（VAD/KWS/ASR）+ 云端 ASR profile 一次提交。
+  // Unified recognition save: local engines plus the cloud ASR profile in one PATCH.
+  if (id === 'recognition') {
+    return { vad: e.vad, kws: e.kws, asr: _asrBody(e), streaming: e.streaming }
   }
   return { [id]: { active: e[id].active, profiles: e[id].profiles } }
 }
