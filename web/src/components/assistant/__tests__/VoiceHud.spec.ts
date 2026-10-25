@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 
-import { state, statusLine } from '../../../composables/assistant/store'
+import { callActive, state, statusLine } from '../../../composables/assistant/store'
 import {
   clearTranscript, hudOutcome, liveTranscript, markHudAccepted,
   setInterim, setStreamPhase,
@@ -23,6 +23,7 @@ describe('VoiceHud', () => {
     clearTranscript()
     state.value = 'idle'
     statusLine.value = ''
+    callActive.value = false
     setStreamPhase('ready')
   })
 
@@ -79,6 +80,14 @@ describe('VoiceHud', () => {
     const w = mountHud({ state: 'responding' })
     expect(w.find('.vh-pill').text()).toContain('回复')
     expect(w.find('.vh-box').exists()).toBe(false)
+  })
+
+  it('通话模式显示独立「通话中」徽章', () => {
+    state.value = 'listening'
+    callActive.value = true
+    const w = mountHud()
+    expect(w.find('.vsb').classes()).toContain('k-call')
+    expect(w.find('.vsb-label').text()).toBe('通话中')
   })
 
   it('点击发出 open', async () => {

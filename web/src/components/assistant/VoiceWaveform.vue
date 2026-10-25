@@ -3,13 +3,23 @@
        One continuous waveform (no segmented bars): the recent real mic-level envelope. -->
   <svg
     class="voice-waveform"
-    :class="{ active, dim: !active }"
+    :class="{ active, dim: !active, muted: tone === 'muted' }"
     :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
     preserveAspectRatio="none"
     role="img"
     aria-hidden="true"
   >
-    <path :d="bandPath" fill="currentColor" />
+    <defs>
+      <linearGradient :id="gid" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#22d3ee" />
+        <stop offset="0.22" stop-color="#818cf8" />
+        <stop offset="0.45" stop-color="#e879f9" />
+        <stop offset="0.68" stop-color="#fbbf24" />
+        <stop offset="0.86" stop-color="#34d399" />
+        <stop offset="1" stop-color="#22d3ee" />
+      </linearGradient>
+    </defs>
+    <path :d="bandPath" :fill="`url(#${gid})`" />
   </svg>
 </template>
 
@@ -18,10 +28,18 @@
 import { computed } from 'vue'
 import { micHistory } from '../../composables/assistant/micLevel'
 
-const props = withDefaults(defineProps<{ active?: boolean; bars?: number }>(), {
+const props = withDefaults(defineProps<{
+  active?: boolean
+  bars?: number
+  tone?: 'rgb' | 'muted'
+}>(), {
   active: true,
   bars: 32,
+  tone: 'rgb',
 })
+
+/** 每个实例独立的渐变 id（同页多实例不串色）。Per-instance gradient id. */
+const gid = `vw-${Math.random().toString(36).slice(2, 8)}`
 
 const WIDTH = 80
 const HEIGHT = 34
@@ -49,10 +67,15 @@ const bandPath = computed(() => {
 <style scoped>
 .voice-waveform {
   display: block; width: 80px; height: 34px; flex: none;
-  color: var(--brand-c2);
-  transition: opacity var(--dur-base), color var(--dur-base);
-  filter: drop-shadow(0 0 4px rgba(103, 232, 249, .28));
+  transition: opacity var(--dur-base), filter var(--dur-base);
+  filter: drop-shadow(0 0 5px rgba(103, 232, 249, .30));
 }
+.voice-waveform path { animation: vw-hue 12s linear infinite; transform-origin: center; }
+@keyframes vw-hue { to { filter: hue-rotate(360deg); } }
 .voice-waveform.active { opacity: .95; }
 .voice-waveform.dim { opacity: .35; filter: none; }
+.voice-waveform.dim path { animation-duration: 18s; }
+.voice-waveform.muted { opacity: .35; filter: grayscale(1); }
+.voice-waveform.muted path { animation: none; }
+@media (prefers-reduced-motion: reduce) { .voice-waveform path { animation: none; } }
 </style>

@@ -14,6 +14,13 @@ describe('VoiceWaveform', () => {
     expect(w.findAll('.vw-bar')).toHaveLength(0)
     expect(w.findAll('path').length).toBeGreaterThan(0)
     expect(w.find('.voice-waveform').classes()).toContain('active')
+    expect(w.find('linearGradient').exists()).toBe(true)
+    expect(w.find('path').attributes('fill')).toMatch(/^url\(#/)
+  })
+
+  it('muted 音调用于旁白（去色）', () => {
+    const w = mount(VoiceWaveform, { props: { active: false, tone: 'muted' } })
+    expect(w.find('.voice-waveform').classes()).toContain('muted')
   })
 
   it('非活跃态变暗', () => {

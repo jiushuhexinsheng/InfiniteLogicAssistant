@@ -25,9 +25,8 @@
 
     <!-- 胶囊：状态压成 10px 小字 / 图标。Pill: status shrunk to 10px text/icon. -->
     <span class="vh-pill">
-      <span class="vh-dot" :class="{ pulse: micLive }" aria-hidden="true"></span>
-      <VoiceWaveform class="vh-wave" :active="micLive" :bars="32" />
-      <span class="vh-label">{{ pillLabel }}</span>
+      <VoiceStatusBadge :kind="statusKind" />
+      <VoiceWaveform class="vh-wave" :active="micLive" :bars="32" :tone="ghost ? 'muted' : 'rgb'" />
     </span>
   </button>
 </template>
@@ -42,10 +41,12 @@
  * stays in the chat panel.
  */
 import { computed } from 'vue'
+import VoiceStatusBadge, { type VoiceStatusKind } from './VoiceStatusBadge.vue'
 import VoiceWaveform from './VoiceWaveform.vue'
 import type { AsstState } from '../../composables/useAssistant'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
 import { liveTranscript, hudOutcome, streamError, streamPhase } from '../../composables/assistant/storeTranscript'
+import { callActive } from '../../composables/assistant/store'
 
 const props = withDefaults(defineProps<{
   state: AsstState
@@ -83,22 +84,27 @@ const showBox = computed(() =>
   recognizing.value || accepted.value || ghost.value ||
   (liveTranscript.value.status === 'finalized' && !!transcriptText.value))
 
-/** 胶囊状态小字（保持 10px）。Pill status label. */
-const pillLabel = computed(() => {
-  if (streamError.value) return '错误'
-  if (streamPhase.value === 'loading') return '加载'
-  if (accepted.value) return '就绪'
-  if (ghost.value) return '旁白'
-  if (recognizing.value) return '识别'
+/** 状态徽章的 kind（每种状态独立配色/动效）。Status badge kind. */
+const statusKind = computed<VoiceStatusKind>(() => {
+  if (streamError.value) return 'error'
+  if (accepted.value) return 'ready'
+  if (ghost.value) return 'ghost'
+  if (recognizing.value) return 'recognizing'
   switch (props.state) {
-    case 'listening':
-    case 'standby': return '聆听'
-    case 'recording': return '请说'
-    case 'awaiting_answer': return '待答'
-    case 'thinking': return '思考'
-    case 'tool_calling': return '工具'
-    case 'responding': return '回复'
-    default: return '双击开启语音'
+    case 'thinking': return 'thinking'
+    case 'tool_calling': return 'tool'
+    case 'responding': return 'responding'
+    case 'awaiting_answer': return 'awaiting'
+    default: break
+  }
+  if (callActive.value && ['listening', 'recording', 'standby', 'transcribing'].includes(props.state)) {
+    return 'call'
+  }
+  switch (props.state) {
+    case 'listening': return 'listening'
+    case 'standby': return 'standby'
+    case 'recording': return 'command'
+    default: return 'idle'
   }
 })
 
@@ -116,7 +122,7 @@ const hudStyle = computed(() => ({ '--vh-color': props.visual.color }))
 
 /** 无障碍标签。Accessibility label. */
 const ariaLabel = computed(() =>
-  `${pillLabel.value}${transcriptText.value ? '：' + transcriptText.value : ''}`)
+  `${statusKind.value}${transcriptText.value ? '：' + transcriptText.value : ''}`)
 </script>
 
 <style scoped>
@@ -147,15 +153,7 @@ const ariaLabel = computed(() =>
 }
 .voice-hud.side-right .vh-pill::after { right: -6px; border-width: 1px 1px 0 0; }
 .voice-hud.side-left .vh-pill::after { left: -6px; border-width: 0 0 1px 1px; }
-.vh-dot {
-  width: 8px; height: 8px; border-radius: 50%; flex: none;
-  background: var(--vh-color, var(--brand-c2));
-  box-shadow: 0 0 6px color-mix(in srgb, var(--vh-color, var(--brand-c2)) 70%, transparent);
-}
-.vh-dot.pulse { animation: vh-pulse 1.2s ease-in-out infinite; }
-@keyframes vh-pulse { 50% { opacity: .35; transform: scale(.85); } }
 .vh-wave { width: 80px; }
-.vh-label { font-size: 13px; line-height: 1; color: var(--text-2); white-space: nowrap; }
 
 /* 文本段：只在有识别文本时出现，向左/右伸出。 */
 .vh-box {
@@ -190,14 +188,12 @@ const ariaLabel = computed(() =>
 /* 可提交：胶囊与文本段一起转绿。Ready: pill and segment turn green. */
 .voice-hud.ready .vh-pill,
 .voice-hud.ready .vh-box { border-color: rgba(52, 211, 153, .55); }
-.voice-hud.ready .vh-dot { background: #34d399; box-shadow: 0 0 6px rgba(52,211,153,.7); }
 .voice-hud.ready .vh-text { color: #d1fae5; }
 .voice-hud.ready .voice-waveform { color: #34d399; filter: drop-shadow(0 0 4px rgba(52,211,153,.30)); }
 /* 旁白：虚线灰框。Ghost: dashed grey. */
 .voice-hud.ghost .vh-box { border-style: dashed; border-color: var(--border-base); background: rgba(15,23,42,.45); }
 .voice-hud.ghost .vh-text { color: var(--text-3); }
 .voice-hud.ghost .voice-waveform { color: var(--text-3); filter: none; }
-.voice-hud.ghost .vh-dot { background: var(--text-3); box-shadow: none; }
 .voice-hud:hover .vh-pill { border-color: var(--brand-c2); }
 
 @media (prefers-reduced-motion: reduce) {
