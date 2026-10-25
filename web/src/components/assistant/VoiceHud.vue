@@ -27,7 +27,7 @@
 
     <!-- 胶囊：状态压成 10px 小字 / 图标。Pill: status shrunk to 10px text/icon. -->
     <span class="vh-pill">
-      <VoiceStatusBadge :kind="statusKind" />
+      <VoiceStatusBadge :kind="statusKind" :wake-word="firstWakeWord" />
       <VoiceWaveform class="vh-wave" :active="micLive" :bars="72" :tone="ghost ? 'muted' : 'rgb'" />
     </span>
   </button>
@@ -48,7 +48,7 @@ import VoiceWaveform from './VoiceWaveform.vue'
 import type { AsstState } from '../../composables/useAssistant'
 import type { StateVisual } from '../../composables/useAssistantVisuals'
 import { liveTranscript, hudOutcome, streamError, streamPhase } from '../../composables/assistant/storeTranscript'
-import { callActive } from '../../composables/assistant/store'
+import { callActive, wakeKeywords } from '../../composables/assistant/store'
 
 const props = withDefaults(defineProps<{
   state: AsstState
@@ -111,6 +111,9 @@ const statusKind = computed<VoiceStatusKind>(() => {
   }
 })
 
+/** 第一个唤醒词（静待提示用）。First wake word for the standby hint. */
+const firstWakeWord = computed(() => wakeKeywords.value.find(k => k && k.trim()) || '')
+
 /** 文本段右侧图标。Right icon of the text segment. */
 const indicator = computed(() => {
   if (streamError.value) return 'dash'
@@ -170,10 +173,10 @@ const ariaLabel = computed(() =>
 }
 /* 显示/消失动画。Enter/leave animation. */
 .vh-box-enter-active {
-  transition: opacity .34s var(--ease-out, ease-out), transform .34s cubic-bezier(.22, 1, .36, 1);
+  transition: opacity .55s var(--ease-out, ease-out), transform .55s cubic-bezier(.22, 1, .36, 1);
 }
 .vh-box-leave-active {
-  transition: opacity .28s ease-in, transform .28s ease-in;
+  transition: opacity .42s ease-in, transform .42s ease-in;
 }
 .vh-box-enter-from, .vh-box-leave-to { opacity: 0; transform: translateX(8px) scale(.97); }
 .vh-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }

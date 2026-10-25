@@ -25,6 +25,11 @@ describe('VoiceStatusBadge', () => {
     expect(w.find('.vsb-label').text()).toBe(label)
   })
 
+  it('静待时提示用唤醒词唤醒', () => {
+    const w = mount(VoiceStatusBadge, { props: { kind: 'standby', wakeWord: '衍衡' } })
+    expect(w.find('.vsb-label').text()).toBe('说「衍衡」唤醒')
+  })
+
   it('聆听/通话带呼吸环，思考带三点，回复带均衡条', () => {
     expect(mount(VoiceStatusBadge, { props: { kind: 'listening' } }).find('.vsb-ring').exists()).toBe(true)
     expect(mount(VoiceStatusBadge, { props: { kind: 'call' } }).find('.vsb-ring').exists()).toBe(true)

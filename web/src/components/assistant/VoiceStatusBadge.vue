@@ -11,7 +11,7 @@
       <span v-else class="vsb-dot"></span>
       <span v-if="ring" class="vsb-ring"></span>
     </span>
-    <span class="vsb-label">{{ LABELS[kind] }}</span>
+    <span class="vsb-label">{{ label }}</span>
   </span>
 </template>
 
@@ -23,7 +23,11 @@ export type VoiceStatusKind =
   | 'idle' | 'listening' | 'call' | 'command' | 'recognizing' | 'ready'
   | 'ghost' | 'thinking' | 'tool' | 'responding' | 'awaiting' | 'standby' | 'error'
 
-const props = defineProps<{ kind: VoiceStatusKind }>()
+const props = withDefaults(defineProps<{
+  kind: VoiceStatusKind
+  /** 唤醒词（静待时用于提示怎么说）。Wake word shown in standby. */
+  wakeWord?: string
+}>(), { wakeWord: '' })
 
 /** 状态文案。State labels. */
 const LABELS: Record<VoiceStatusKind, string> = {
@@ -41,6 +45,12 @@ const LABELS: Record<VoiceStatusKind, string> = {
   standby: '静待',
   error: '错误',
 }
+
+/** 实际文案：静待时提示用唤醒词唤醒。Display label (standby prompts the wake word). */
+const label = computed(() =>
+  props.kind === 'standby' && props.wakeWord
+    ? `说「${props.wakeWord}」唤醒`
+    : LABELS[props.kind])
 
 /** 需要呼吸环的状态。States with the breathing ring. */
 const ring = computed(() =>
