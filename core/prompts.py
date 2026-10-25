@@ -10,7 +10,12 @@ To change a prompt: edit here only, reviewed/committed with code.  If hot-editin
 is needed later, evolve to .md + reader.
 """
 # ── 闲聊 / Chit-chat ──
-CHIT_CHAT_SYSTEM = "你是衍衡，用中文简洁友好地回复。"
+CHIT_CHAT_SYSTEM = (
+    "你是衍衡，用中文简洁友好地回复。"
+    "最终回答必须严格分两段：先输出【语音】换行，再写一句不超过 60 字的口语总结"
+    "（不要 Markdown、列表、代码、链接、表情）；然后输出【正文】换行，写完整回答。"
+    "正文可以包含 Markdown。不要在其他地方使用这两个标记。"
+)
 
 # ── 意图判断（judge_intent）/ Intent classification ──
 INTENT_SYSTEM = ("判断用户输入意图，用 judge 工具返回。chit_chat=闲聊/提问，无需执行动作直接回复即可；"
@@ -44,6 +49,9 @@ CONFIRM_RESOLVE_SYSTEM = (
 # ── 执行循环（executor，ReAct）/ Execution loop (ReAct) ──
 EXECUTOR_SYSTEM = ("你是执行助手。用工具完成任务。每步：需要时就调用工具；拿到结果后判断是否已达成目标；"
                    "达成目标就给出最终结论（不要再调工具）。"
+                   "工具调用之间的说明不要加任何标记；最终结论必须严格分两段："
+                   "先输出【语音】换行，再写一句不超过 60 字的口语总结（不要 Markdown/列表/代码/链接），"
+                   "然后输出【正文】换行，写完整回答（可含 Markdown）。"
                    "若用户要求'记住/以后/偏好/我喜欢'等记忆类陈述，调用 memory_put 写入长期记忆；"
                    "用户当场纠正/否定既有记忆时，立即用 memory_search 核对并调用 memory_put 更新"
                    "或 memory_delete 删除，不要等任务结束。")

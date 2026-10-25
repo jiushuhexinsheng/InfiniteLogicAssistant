@@ -28,6 +28,7 @@ from core.orchestrator.executor import execute_task
 from core.orchestrator.intent import judge_intent
 from core.orchestrator.session import ABANDON_REASON, Answer, OperatorChannel, Session, SessionState
 from core.orchestrator.task import Task, form_task
+from core.orchestrator.voice_reply import VoiceReplySplitter
 from core.prompts import CHIT_CHAT_SYSTEM
 from core.tasks.store import TaskStore
 
@@ -238,7 +239,7 @@ class EventQueueChannel(OperatorChannel):
         return True
 
 
-async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str) -> None:
+async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str) -> str:
     """生成闲聊回复：流式发射 content_delta 事件并把完整回复记入会话历史。
 
     Generate a chit-chat reply: stream content_delta events and record the full
@@ -246,12 +247,13 @@ async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str) -
     """
     messages = [{"role": "system", "content": CHIT_CHAT_SYSTEM}]
     messages.extend(session.summary(8))  # 含当前用户消息 → 多轮闲聊
-    reply_parts: list[str] = []
+    splitter = VoiceReplySplitter()
     # 走 LLM client：与任务执行共享重试/熔断/模型 failover
     async for evt in get_llm_client().retry_stream_chat(messages):
         if evt["type"] == "content_delta":
-            await events.put(ContentDeltaEvent(text=evt["text"]).emit())
-            reply_parts.append(evt["text"])
+            visible = splitter.feed(str(evt.get("text") or ""))
+            if visible:
+                await events.put(ContentDeltaEvent(text=visible).emit())
         elif evt["type"] == "reasoning_delta":
             # 思考流转发（与 executor 路径一致，修复断链）
             # Forward the reasoning stream (consistent with the executor path;
@@ -259,8 +261,10 @@ async def _chit_chat_reply(session: Session, events: asyncio.Queue, text: str) -
             forwarded = from_llm_event(evt)
             if forwarded is not None:
                 await events.put(forwarded)
-    if reply_parts:
-        session.append("assistant", "".join(reply_parts))  # 记录完整回复到会话历史
+    speech, content = splitter.finish()
+    if content:
+        session.append("assistant", content)  # 记录完整回复到会话历史
+    return speech
 
 
 async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
@@ -308,10 +312,13 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
     intent = await judge_intent(text)
     if intent.type == "chit_chat":
         session.set_state(SessionState.CHIT_CHAT)
+        speech = ""
         try:
-            await _chit_chat_reply(session, events, text)
+            speech = await _chit_chat_reply(session, events, text)
         except Exception as e:
             await events.put(ErrorEvent(message=str(e)).emit())
+        if speech:
+            await events.put(TaskStateEvent(state="done", status="done", summary=speech).emit())
         await events.put(DoneEvent().emit())
         return
 

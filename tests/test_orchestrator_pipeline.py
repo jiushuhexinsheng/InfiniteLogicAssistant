@@ -208,6 +208,8 @@ async def test_run_pipeline_seeds_messages(monkeypatch):
     assert s.messages[-1]["role"] == "assistant"
     assert (await events.get())["type"] == "task_state"
     assert (await events.get())["type"] == "content_delta"
+    summary_evt = await events.get()
+    assert summary_evt["type"] == "task_state" and summary_evt["summary"]
     assert (await events.get())["type"] == "done"
 
 

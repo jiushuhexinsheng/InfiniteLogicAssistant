@@ -24,6 +24,7 @@ from core.orchestrator.control import CancellationToken
 from core.orchestrator.events import BlockEvent, ContentDeltaEvent, ToolEndEvent, ToolStartEvent, from_llm_event
 from core.orchestrator.session import Session
 from core.orchestrator.task import Task
+from core.orchestrator.voice_reply import VoiceReplySplitter, split_voice_reply
 from core.tools import TOOLS
 from core.tools.policy import decide
 
@@ -136,30 +137,43 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
         try:
             cancel.throw_if_cancelled()
             assistant_message = None
+            splitter = VoiceReplySplitter()
             # 渐进式 schema（docs/designs/08 批4）：tools.lazy_groups 组降级为简介。
             # Progressive schemas (docs/designs/08 batch 4): groups in tools.lazy_groups degrade to stubs.
             async for evt in get_llm_client().retry_stream_chat(
                     history, tools=TOOLS.schemas(stub_groups=config.settings.tools.lazy_groups)):
                 if evt["type"] == "done":
                     assistant_message = evt["message"]
+                elif evt["type"] == "content_delta":
+                    visible = splitter.feed(str(evt.get("text") or ""))
+                    if visible and events is not None:
+                        await events.put(ContentDeltaEvent(text=visible).emit())
                 elif events is not None:
-                    # 经 from_llm_event 统一口径转发：content_delta / reasoning_delta / usage
-                    # （reasoning_delta 此前被静默丢弃 —— 思考流断链的修复点）
-                    # Forward through from_llm_event (single convention): content_delta /
-                    # reasoning_delta / usage. reasoning_delta used to be silently dropped —
-                    # the fix for the broken thinking stream.
+                    # reasoning_delta / usage 等经统一口径转发；正文由 splitter 接管
+                    # （语音段不进入聊天流）。
+                    # Forward reasoning/usage through the shared adapter; body content is
+                    # owned by the splitter (the speech segment never reaches chat).
                     forwarded = from_llm_event(evt)
                     if forwarded is not None:
                         await events.put(forwarded)
             if assistant_message is None:
                 return {"status": "failed", "summary": "LLM 返回空消息", "steps": steps}
 
+            speech, visible_content = splitter.finish()
+            if not visible_content:
+                # 无流式增量（测试桩/非流式路径）：直接解析最终消息。
+                speech, visible_content = split_voice_reply(
+                    str(assistant_message.get("content") or ""))
+            assistant_message = {**assistant_message, "content": visible_content}
             history.append(assistant_message)
             tool_calls = assistant_message.get("tool_calls") or []
             if not tool_calls:
-                summary = assistant_message.get("content") or "完成"
-                session.append("assistant", summary)
-                return {"status": "done", "summary": summary, "steps": steps}
+                content = visible_content or "完成"
+                session.append("assistant", content)
+                # done.summary 只承载语音总结；完整正文已作为 content 流/消息落库。
+                # done.summary carries the spoken summary only; the full body is already
+                # streamed and persisted as content.
+                return {"status": "done", "summary": speech or "完成", "steps": steps}
 
             async def run_one_tc(tc: dict, step: int) -> tuple[dict, dict, str] | None:
                 """执行单个工具调用，返回 (steps条目, tool消息[原文], LLM口径正文)；取消返回 None。
