@@ -1,13 +1,7 @@
 // @vitest-environment jsdom
-/** 语音 HUD：聆听/识别/可提交/旁白/回复状态与点击打开。 */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+/** 语音条 v3：空闲只留胶囊，有识别文本才向右伸出文本段；状态图标化/缩小。 */
+import { beforeEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
-
-vi.mock('../../../composables/useApi', () => ({
-  useConfig: () => ({
-    config: { value: { kws_mode: 'local', asr_mode: 'cloud' } },
-  }),
-}))
 
 import { state, statusLine } from '../../../composables/assistant/store'
 import {
@@ -27,53 +21,64 @@ function mountHud(over: Record<string, unknown> = {}) {
 describe('VoiceHud', () => {
   beforeEach(() => {
     clearTranscript()
-    state.value = 'listening'
+    state.value = 'idle'
     statusLine.value = ''
     setStreamPhase('ready')
   })
 
-  it('聆听态显示唤醒提示与实时波形', () => {
+  it('空闲只显示原胶囊，不伸出文本段', () => {
     const w = mountHud()
-    expect(w.text()).toContain('聆听中')
-    expect(w.text()).toContain('衍衡')
-    expect(w.find('.voice-waveform').classes()).toContain('active')
-    expect(w.text()).toContain('本地 KWS')
+    expect(w.find('.vh-pill').text()).toContain('双击开启语音')
+    expect(w.find('.vh-box').exists()).toBe(false)
   })
 
-  it('识别中显示中间稿与光标', () => {
+  it('聆听态状态压成小字，无文本时不伸段', () => {
+    state.value = 'listening'
+    const w = mountHud()
+    expect(w.find('.vh-pill').text()).toContain('聆听')
+    expect(w.find('.vh-box').exists()).toBe(false)
+  })
+
+  it('识别中向右伸出文本段：角色行只有「衍衡」，不显示引擎走向', () => {
+    state.value = 'transcribing'
     setInterim('帮我查一下天气', 1)
-    const w = mountHud({ state: 'transcribing' })
-    expect(w.text()).toContain('正在识别')
-    expect(w.text()).toContain('帮我查一下天气')
-    expect(w.find('.vh-caret').exists()).toBe(true)
+    const w = mountHud()
+    const box = w.find('.vh-box')
+    expect(box.exists()).toBe(true)
+    expect(box.find('.vh-role').text()).toBe('衍衡')
+    expect(box.text()).not.toContain('KWS')
+    expect(box.find('.vh-text').text()).toContain('帮我查一下天气')
+    expect(box.find('.vh-caret').exists()).toBe(true)
   })
 
-  it('可提交时转绿并出现 → LLM 芯片', () => {
+  it('可提交时转绿并显示勾', () => {
     liveTranscript.value = {
       ...liveTranscript.value, status: 'finalized', finalText: '查天气', interim: '',
     }
     markHudAccepted()
     const w = mountHud()
     expect(w.find('.voice-hud').classes()).toContain('ready')
-    expect(w.text()).toContain('已提交')
-    expect(w.find('.vh-chip.green').exists()).toBe(true)
+    expect(w.find('.vh-check').exists()).toBe(true)
+    expect(w.text()).not.toContain('已提交')
   })
 
-  it('旁白显示未进入对话且不显示回复文本', () => {
+  it('旁白用虚线框，且不显示「未进入对话」说明', () => {
     liveTranscript.value = {
       ...liveTranscript.value, status: 'finalized', finalText: '', ghostText: '电视声',
     }
     hudOutcome.value = 'ghost'
     const w = mountHud()
     expect(w.find('.voice-hud').classes()).toContain('ghost')
-    expect(w.text()).toContain('未进入对话')
+    expect(w.find('.vh-pill').text()).toContain('旁白')
     expect(w.text()).toContain('电视声')
+    expect(w.text()).not.toContain('未进入对话')
+    expect(w.text()).not.toContain('未上传')
   })
 
-  it('回复阶段只显示状态，不显示回复内容', () => {
+  it('回复阶段只保留胶囊状态，不展开文本段', () => {
     const w = mountHud({ state: 'responding' })
-    expect(w.text()).toContain('正在回复')
-    expect(w.find('.vh-text').text()).toBe('')
+    expect(w.find('.vh-pill').text()).toContain('回复')
+    expect(w.find('.vh-box').exists()).toBe(false)
   })
 
   it('点击发出 open', async () => {
