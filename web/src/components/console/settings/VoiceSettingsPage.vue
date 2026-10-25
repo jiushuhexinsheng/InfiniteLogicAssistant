@@ -22,7 +22,7 @@
     <div class="vs-body">
       <VoiceOverview v-if="tab === 'overview'" @select="onChainSelect" />
 
-      <VoiceCard v-else-if="tab === 'wake'" />
+      <VoiceCard v-else-if="tab === 'wake'" @navigate="tab = $event" />
 
       <template v-else-if="tab === 'recognition'">
         <LocalModelsCard scope="recognition" />

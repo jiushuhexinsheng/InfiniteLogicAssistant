@@ -81,9 +81,9 @@ def capability_schema(kind: str, family: str = "", streaming: bool | None = None
         return common + [
             {
                 "key": "keywords_threshold", "target": "kws", "type": "slider", "group": "model",
-                "label": _bi("关键词检测阈值", "Keyword threshold"),
+                "label": _bi("唤醒灵敏度（关键词阈值）", "Wake sensitivity (keyword threshold)"),
                 "default": 0.25, "min": 0, "max": 1, "step": 0.01,
-                "hint": _bi("越低越灵敏（漏报少、误报多）", "Lower is more sensitive"),
+                "hint": _bi("越低越灵敏（漏报少、误报多）；只影响本地 KWS 唤醒", "Lower is more sensitive; local KWS wake only"),
             },
             {
                 "key": "keywords_score", "target": "kws", "type": "number", "group": "model",

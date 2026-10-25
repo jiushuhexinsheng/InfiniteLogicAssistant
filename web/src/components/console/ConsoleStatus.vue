@@ -24,8 +24,8 @@
       <div class="kv">
         <template v-if="ww">
           <span>唤醒词</span><b>{{ (ww.keywords ?? []).join(' / ') }}</b>
-          <span>灵敏度</span><b>{{ ww.sensitivity }}</b>
-          <span>模型</span><b class="mono">{{ ww.model_path }}</b>
+          <span>唤醒启用</span><b>{{ ww.enabled ? '开' : '关' }}</b>
+          <span>灵敏度</span><b>识别页 · KWS 阈值</b>
         </template>
         <template v-if="vad">
           <span>静音阈值</span><b>{{ vad.silence_threshold }}</b>
