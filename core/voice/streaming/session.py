@@ -39,6 +39,18 @@ from core.voice.local.runtime import get_runtime
 from core.voice.local.sherpa_onnx import audio
 from core.voice.streaming import protocol
 
+# 预卷时长（毫秒）：本地 VAD 的 speech_detected 比真实语音起点晚 250–500 ms
+# （TEN-VAD 自身窗口约 260 ms，再叠加 vad.min_speech_ms 的判定门限）。预卷短于这个
+# 滞后就会把「衍衡」这类短词的首字切掉，只剩尾字——300 ms 门限下实测触发滞后约
+# 500 ms，旧的 200 ms 预卷会整字丢失。1 s 足以覆盖，每连接只占约 64 KB。
+# Pre-roll (ms): the local VAD's speech_detected trails the true onset by 250–500 ms
+# (TEN-VAD's own ~260 ms window plus the vad.min_speech_ms gate). A shorter pre-roll
+# clips the first syllable of short words such as 「衍衡」 — with the 300 ms gate the
+# measured lag is ~500 ms, and the old 200 ms pre-roll dropped the whole first word.
+# 1 s covers it and costs only ~64 KB per connection.
+PRE_ROLL_MS = 1000
+_PRE_ROLL_FRAMES = max(1, PRE_ROLL_MS // audio.FRAME_MS)
+
 
 class SessionError(RuntimeError):
     """会话无法启动（模型缺失/配置不可用）。The session cannot start."""
@@ -79,7 +91,7 @@ class StreamingSession:
         self._muted = False
         self._segment_id = 0
         self._frames: list[np.ndarray] = []
-        self._pre_roll: deque[np.ndarray] = deque(maxlen=10)   # ~200 ms
+        self._pre_roll: deque[np.ndarray] = deque(maxlen=_PRE_ROLL_FRAMES)
         self._last_partial = ""
         self._last_partial_at = 0.0
         self._started_at = 0.0
@@ -181,13 +193,13 @@ class StreamingSession:
     def _discard_audio_state(self) -> None:
         """丢弃预卷与当前段（mute/unmute 时调用）。
 
-        播报期间前端停止送帧，若不清理，`_pre_roll` 里播报前的 200ms 会被拼进
+        播报期间前端停止送帧，若不清理，`_pre_roll` 里播报前的音频会被拼进
         播报后的第一段，VAD/ASR 也带着旧状态（回声护栏漏音）。这里把两者一起复位。
 
         Drop the pre-roll and the current segment (called on mute/unmute). While the
         assistant speaks the frontend stops sending frames; without this cleanup the
-        200 ms of pre-playback audio in `_pre_roll` would be prepended to the first
-        segment after playback, and VAD/ASR would keep stale state (echo-guard leak).
+        pre-playback audio in `_pre_roll` would be prepended to the first segment after
+        playback, and VAD/ASR would keep stale state (echo-guard leak).
         """
         self._pre_roll.clear()
         if self._vad_stream is not None:

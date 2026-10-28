@@ -30,17 +30,19 @@ class FakeWS:
 
 
 class FakeVadStream:
-    """按帧数结束一段的 VAD 桩。VAD stub that ends a segment after N frames."""
+    """按帧数结束一段的 VAD 桩；可模拟触发滞后。VAD stub that ends a segment after N frames."""
 
-    def __init__(self, end_after: int = 3) -> None:
+    def __init__(self, end_after: int = 3, trigger_after: int = 1) -> None:
         self.accepted: list[np.ndarray] = []
         self.speech = False
         self.end_after = end_after
+        self.trigger_after = trigger_after
         self.ended = False
 
     def accept(self, samples: np.ndarray, _sr: int) -> None:
         self.accepted.append(np.asarray(samples, dtype=np.float32))
-        self.speech = True
+        if len(self.accepted) >= self.trigger_after:
+            self.speech = True
 
     def speech_detected(self) -> bool:
         return self.speech
@@ -80,12 +82,15 @@ class FakeAsrSession:
 class FakeAsrEngine:
     def __init__(self, ok: bool = True) -> None:
         self.ok = ok
+        self.sessions: list[FakeAsrSession] = []
 
     def status(self) -> tuple[bool, str]:
         return self.ok, "" if self.ok else "ASR 模型不存在"
 
     def create_session(self) -> FakeAsrSession:
-        return FakeAsrSession()
+        session = FakeAsrSession()
+        self.sessions.append(session)
+        return session
 
 
 class FakeKwsEngine:
@@ -172,6 +177,33 @@ async def test_local_mode_requires_local_asr(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_pre_roll_covers_vad_trigger_lag(monkeypatch):
+    """VAD 触发滞后时不吞首字：触发前收到的帧必须全部喂给 ASR。
+
+    TEN-VAD 的 speech_detected 比真实语音起点晚 250–500 ms；预卷短于这个滞后会把
+    「衍衡」这类短词的首字切掉。这里让 VAD 到第 30 帧才报 speech，断言 ASR 收到了
+    触发前的 29 帧预卷（旧实现 maxlen=10 会丢首字）。
+
+    When the VAD triggers late, every frame received before the trigger must reach the
+    ASR stream; otherwise the first syllable of a short word is clipped. The fake VAD
+    only reports speech at frame 30, so frames 1–29 must arrive via the pre-roll (the
+    old maxlen=10 would clip them).
+    """
+    _pin(monkeypatch)
+    runtime = FakeRuntime()
+    runtime._vad.stream = FakeVadStream(end_after=40, trigger_after=30)
+    ws = FakeWS()
+    session = StreamingSession(ws, {"type": "start"}, runtime=runtime)
+    await session.start_session()
+
+    for _ in range(40):
+        await session._on_audio(_frame())
+
+    assert [m for m in ws.sent if m["type"] == "final"]
+    assert runtime._asr.sessions[0].accepted == 40   # 30 帧预卷 + 触发后 10 帧
+
+
+@pytest.mark.asyncio
 async def test_mute_discards_pre_roll_and_active_segment(monkeypatch):
     """mute/unmute 必须清空预卷并重置 VAD/段状态：否则播报结束后第一段会混入
     播报前的旧音频（回声护栏漏音）。
@@ -185,7 +217,7 @@ async def test_mute_discards_pre_roll_and_active_segment(monkeypatch):
     await session.start_session()
     await session._on_audio(_frame())          # 触发 speech_start。Starts a segment.
     assert session._active is True
-    # 模拟预卷里还有残留帧（真实链路中播报前会累积 ~200ms）。Simulate leftover pre-roll.
+    # 模拟预卷里还有残留帧（真实链路中播报前会累积预卷）。Simulate leftover pre-roll.
     session._pre_roll.append(np.zeros(audio.FRAME_SAMPLES, dtype=np.float32))
 
     await session._on_control(json.dumps({"type": "mute"}))
