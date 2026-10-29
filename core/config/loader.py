@@ -313,6 +313,45 @@ def _migrate_legacy_local_asr_model(data: dict) -> None:
         )
 
 
+_LEGACY_VAD_KEYS = ("silence_duration_ms", "max_duration_ms", "upload_throttle_ms")
+
+
+def _migrate_legacy_vad_keys(data: dict) -> None:
+    """流式链路退役的 VAD 键（2026-10-29）：建模前直接剥除。
+
+    ``silence_duration_ms`` / ``max_duration_ms`` / ``upload_throttle_ms`` 属于旧浏览器
+    RMS 切段链路的时长/成本闸，流式链路已无消费者。Settings 是 extra=forbid，不剥掉
+    旧 config.yaml 会直接启动失败；PATCH 路径也调用本函数，首次保存即从磁盘清理。
+
+    Retired VAD keys (2026-10-29): ``silence_duration_ms`` / ``max_duration_ms`` /
+    ``upload_throttle_ms`` belonged to the old browser-RMS segmentation chain; the
+    streaming chain has no consumers for them. Settings is extra=forbid, so an old
+    config.yaml would fail to boot unless they are stripped; the PATCH path calls this
+    too, so the first save also cleans them from disk.
+
+    Args:
+        data: YAML 读出的原始配置字典（就地修改）。The raw config dict (mutated in place).
+    """
+    sections = []
+    voice = data.get("voice")
+    if isinstance(voice, dict):
+        sections.append(voice.get("vad"))
+    sections.append(data.get("vad"))          # 旧扁平结构 / legacy flat layout
+
+    stripped = False
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        for key in _LEGACY_VAD_KEYS:
+            if section.pop(key, None) is not None:
+                stripped = True
+    if stripped:
+        _print_notice(
+            "[配置] voice.vad 的 silence_duration_ms / max_duration_ms / upload_throttle_ms "
+            "已随流式语音链路退役，这些键已被忽略"
+        )
+
+
 def _build() -> Settings:
     """构建 Settings：必要时从 example 模板创建配置文件，读取 YAML、注入密钥并校验。
 
@@ -339,6 +378,7 @@ def _build() -> Settings:
     _inject_secrets(data, _load_secrets())
     _migrate_legacy_vendor_keys(data)
     _migrate_legacy_local_asr_model(data)
+    _migrate_legacy_vad_keys(data)
     from pydantic import ValidationError
 
     try:

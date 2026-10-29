@@ -61,7 +61,7 @@ def capability_schema(kind: str, family: str = "", streaming: bool | None = None
             {
                 "key": "min_speech_ms", "target": "vad", "type": "number", "group": "model",
                 "label": _bi("最短语音时长（ms）", "Min speech (ms)"),
-                "default": 300, "min": 0, "max": 3000, "step": 50,
+                "default": 100, "min": 0, "max": 3000, "step": 50,
             },
         ]
         if family != "silero":

@@ -293,3 +293,27 @@ describe('streamUtter 断线恢复', () => {
     vi.unstubAllGlobals()
   })
 })
+
+describe('call 端点携带 call_id', () => {
+  it('callStart/callStop/callJudge 的请求体都带 call_id', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true }),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+    const { api } = await import('./api')
+
+    await api.callStart({ call_id: 'A' })
+    await api.callStop({ call_id: 'A' })
+    await api.callJudge('你好', {
+      durationMs: 1000, rms: 0.1, tabFocused: true, inOpenWindow: false, callId: 'A',
+    })
+
+    const bodies = mockFetch.mock.calls.map((c) => JSON.parse((c[1] as RequestInit).body as string))
+    expect(bodies[0]).toEqual({ call_id: 'A' })
+    expect(bodies[1]).toEqual({ call_id: 'A' })
+    expect(bodies[2].call_id).toBe('A')
+    vi.unstubAllGlobals()
+  })
+})

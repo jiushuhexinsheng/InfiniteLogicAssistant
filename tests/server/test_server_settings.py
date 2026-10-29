@@ -149,6 +149,39 @@ def test_patch_config_tolerates_legacy_vendor_presets(isolated_settings):
         assert tc.get("/api/config").status_code == 200
 
 
+def test_patch_config_strips_retired_vad_keys(isolated_settings):
+    """旧配置带三个退役 VAD 键：照常启动与 PATCH，首次保存即从磁盘清理。
+    An old config carrying the three retired VAD keys still boots and PATCHes; the first
+    save also removes them from disk."""
+    import yaml
+    from fastapi.testclient import TestClient
+    import server as server_module
+
+    isolated_settings.CONFIG_FILE.write_text(
+        yaml.safe_dump({
+            "voice": {"vad": {
+                "silence_duration_ms": 1500,
+                "max_duration_ms": 10000,
+                "upload_throttle_ms": 500,
+                "min_speech_ms": 100,
+            }},
+            "rag": {"auto_index": False},
+        }, allow_unicode=True),
+        encoding="utf-8",
+    )
+    with TestClient(server_module.app) as tc:
+        assert tc.get("/api/config").status_code == 200
+        resp = tc.patch("/api/config", json={"agent": {"recursion_limit": 5}})
+        assert resp.status_code == 200
+
+    saved = yaml.safe_load(isolated_settings.CONFIG_FILE.read_text(encoding="utf-8"))
+    vad = saved.get("voice", {}).get("vad", {})
+    assert "silence_duration_ms" not in vad
+    assert "max_duration_ms" not in vad
+    assert "upload_throttle_ms" not in vad
+    assert vad.get("min_speech_ms") == 100
+
+
 # ─── ASR 三模式（voice.asr.mode）的 PATCH 往返 ───
 
 def test_patch_config_persists_asr_mode(isolated_settings):

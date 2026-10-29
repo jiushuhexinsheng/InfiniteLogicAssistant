@@ -13,6 +13,7 @@
  * final/error) are handed to `onEvent` verbatim.
  */
 import { withTokenParam } from '../../../api/auth'
+import { createPreopenQueue } from './preopenQueue'
 
 export interface VoiceStreamEvent {
   type: string
@@ -54,6 +55,12 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
   let node: AudioWorkletNode | null = null
   let running = false
   let muted = false
+  // WS OPEN / start 发出之前产生的帧先进队列，连通后补发（避免吞掉首字）。
+  // Frames produced before WS OPEN / before `start` go to the queue and are flushed
+  // once connected (so the first syllable is not dropped).
+  const preopen = createPreopenQueue()
+  let preopenActive = false
+  let started = false
 
   const constraints = (withDevice: boolean): MediaStreamConstraints => ({
     audio: {
@@ -82,6 +89,9 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
 
   async function start(): Promise<void> {
     if (running) return
+    preopen.clear()
+    preopenActive = false
+    started = false
     media = await acquire()
 
     try {
@@ -100,10 +110,17 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
     node.port.onmessage = (ev: MessageEvent) => {
       const data = ev.data as { pcm: ArrayBuffer; rms: number }
       opts.onLevel?.(data.rms)
-      if (!muted && ws && ws.readyState === WebSocket.OPEN) {
+      if (muted) return
+      if (started && ws && ws.readyState === WebSocket.OPEN) {
         try { ws.send(data.pcm) } catch { /* 连接刚断，丢一帧 */ }
+      } else if (preopenActive) {
+        // 尚未连通 / start 还没发出：先缓存。Not connected yet / start not sent: buffer.
+        preopen.push(data.pcm)
       }
     }
+    // 先允许缓存再接通音频图：worklet 从 connect 起就开始产帧。
+    // Allow buffering before wiring the graph: the worklet starts emitting at connect.
+    preopenActive = true
     source.connect(node)
     // 无输出也要接到 destination 才会被音频图拉取；processor 不写输出 → 静音。
     // Connect to destination so the graph pulls it; the processor writes no output → silence.
@@ -182,6 +199,14 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
       channels: 1,
       format: 'pcm_s16le',
     }))
+    // start 必须先到服务端；随后按序补发预 OPEN 帧（WS OPEN 后到 ready 前的帧由
+    // 服务端排队，无需再门控）。start must arrive first; then flush the pre-open frames
+    // in order (frames sent after OPEN but before ready are queued server-side).
+    started = true
+    for (const frame of preopen.drain()) {
+      try { socket.send(frame) } catch { /* 连接刚断，丢弃 */ }
+    }
+    preopenActive = false
     try {
       await ready
     } catch (e) {
@@ -192,6 +217,9 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
   }
 
   function releaseAudio(): void {
+    preopen.clear()
+    preopenActive = false
+    started = false
     if (node) {
       try { node.port.onmessage = null } catch { /* ignore */ }
       try { node.disconnect() } catch { /* ignore */ }
@@ -224,6 +252,7 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
     },
     setMuted(value) {
       muted = value
+      if (value) preopen.clear()   // 静音期间缓存无意义 / buffered audio is useless while muted
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: value ? 'mute' : 'unmute' }))
       }

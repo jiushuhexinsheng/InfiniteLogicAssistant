@@ -75,14 +75,11 @@ class VadConfig(BaseModel):
     params: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
     silence_threshold: float = 0.02
-    silence_duration_ms: int = 1500
-    max_duration_ms: int = 10000
     # 裸唤醒后的等指令窗（毫秒）；回答本身永不限时（键名保持 answer_timeout_ms 兼容旧配置）。
     # Post-bare-wake command window (ms); answers themselves are never timed out (key name
     # kept as answer_timeout_ms for old-config compatibility).
     answer_timeout_ms: int = 8000
-    min_speech_ms: int = 300
-    upload_throttle_ms: int = 500
+    min_speech_ms: int = 100
     # 续聊窗口（毫秒，0=关闭）：见 config/schema.py 同名字段（两处必须同步）。
     # Follow-up window (ms, 0 = off): see the same field in config/schema.py (keep in sync).
     followup_window_ms: int = 6000
@@ -186,6 +183,9 @@ class CallSessionResponse(ApiResponse):
     """通话会话 start/stop 响应。Call session start/stop response."""
 
     open_window_s: float = 0.0
+    # 本客户端的会话 id（无 body 的旧客户端为空串）。This client's session id (empty for
+    # bodyless legacy clients).
+    call_id: str = ""
 
 
 class CallSegmentResponse(ApiResponse):

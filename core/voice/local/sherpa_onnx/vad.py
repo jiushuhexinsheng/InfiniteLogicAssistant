@@ -8,6 +8,7 @@ VAD is local-only: there is no cloud-VAD option; segmentation happens entirely o
 """
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -49,10 +50,19 @@ class VadEngine:
         self._config: Any | None = None
         self._loaded = False
         self._reason = ""
+        # 加载锁：预热线程与首个会话可能同时触达冷加载。
+        # Load lock: the warmup thread and the first session may race the cold load.
+        self._load_lock = threading.Lock()
 
     def _load(self) -> bool:
         if self._loaded:
             return self._config is not None
+        with self._load_lock:
+            if self._loaded:
+                return self._config is not None
+            return self._load_locked()
+
+    def _load_locked(self) -> bool:
         # 只有成功才置 _loaded：失败不缓存，模型补装后下一会话会重试。
         # Set _loaded only on success: failures are not cached, so installing the model
         # makes the next session retry.

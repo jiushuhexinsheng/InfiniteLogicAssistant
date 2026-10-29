@@ -21,11 +21,8 @@ export const vadConfig: VadConfig = {
   device: 0,
   num_threads: 0,
   silence_threshold: 0.02,
-  silence_duration_ms: 1500,
-  max_duration_ms: 10000,
   answer_timeout_ms: 8000,
-  min_speech_ms: 300,
-  upload_throttle_ms: 500,
+  min_speech_ms: 100,
   barge_in: false,
   followup_window_ms: 6000,
   listen_idle_s: 180,
@@ -55,6 +52,8 @@ export const hardwareConfig: HardwareConfig = {
 export const streamingEnabled = ref(true)
 /** 通话激活标志：唯一事实来源（store 级，避免 wakeOrchestrator ↔ callMode 循环导入）。Call-active flag: store-level single source of truth (avoids a wakeOrchestrator ↔ callMode import cycle). */
 export const callActive = ref(false)
+/** 当前通话会话 id（后端 start 返回；judge/stop 携带，多标签页互不影响）。Current call-session id (returned by start; carried on judge/stop so tabs stay isolated). */
+export const callId = ref('')
 /** 通话开放窗口截止时刻（毫秒时间戳；0 = 不在窗口内）。Call-open-window deadline (ms timestamp; 0 = outside the window). */
 export const callWindowUntil = ref(0)
 

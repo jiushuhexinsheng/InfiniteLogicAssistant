@@ -72,16 +72,11 @@ voice:
   # 静音检测（自动停止录音）
   vad:
     silence_threshold: 0.02
-    silence_duration_ms: 1500
-    max_duration_ms: 10000
-    # 短于此长度的片段直接丢弃、不上传（滤掉咳嗽/关门等爆音）：省调用量的第一道闸。
-    # Clips shorter than this are dropped, never uploaded (filters coughs, door slams and
-    # other transients): the first cost gate.
-    min_speech_ms: 300
-    # 两次「唤醒判定」上传之间的最小间隔（毫秒）：只节流唤醒判定路径，作答/指令通道不受影响。
-    # Minimum gap (ms) between two wake-detection uploads; only that path is throttled, the
-    # answer/command channels are not.
-    upload_throttle_ms: 500
+    # 本地 VAD 的最短语音门限（毫秒）：短于此的连续人声不当作一段语音。
+    # 门限过大不仅推迟触发，还会把短唤醒词整段丢掉；默认 100。
+    # Minimum speech duration for the local VAD (ms): shorter runs are not treated as
+    # speech. A long gate delays detection and can drop a short wake word; 100 default.
+    min_speech_ms: 100
     # 裸唤醒后的等指令窗（毫秒）：只喊唤醒词不带指令，窗内没说指令则作废。
     # 回答本身永不限时（键名保持 answer_timeout_ms 兼容旧配置）。
     # Post-bare-wake command window (ms): with only the wake word spoken, an instruction

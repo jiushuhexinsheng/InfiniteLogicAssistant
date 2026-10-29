@@ -16,7 +16,7 @@
  * standby IS the pre-wake state.
  */
 import { api } from '../../api'
-import { callActive, callConfig, state, statusLine, wakeEnabled } from './store'
+import { callActive, callConfig, callId, state, statusLine, wakeEnabled } from './store'
 import { startListening, stopListening, ensureListening } from './wake/wakeOrchestrator'
 import type { AsstState } from './store'
 
@@ -31,17 +31,26 @@ function isPowered(): boolean {
   return wakeEnabled.value || callActive.value || POWERED_STATES.includes(state.value)
 }
 
+/** 生成本标签页的通话 id（后端未返回时兜底）。Generate this tab's call id (fallback). */
+function newCallId(): string {
+  const c = globalThis.crypto
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
+  return `call-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 /** 关闭语音：停通话会话（若有）、停麦、回关闭态。Power off: end the call session (if
  *  any), stop the mic, return to the off state. */
 async function powerOff(): Promise<void> {
   const wasCall = callActive.value
+  const id = callId.value
   callActive.value = false
+  callId.value = ''
   stopListening()
   wakeEnabled.value = false
   state.value = 'idle'
   statusLine.value = ''
   if (wasCall) {
-    try { await api.callStop() } catch { /* 会话服务端 5 分钟自过期兜底 */ }
+    try { await api.callStop(id ? { call_id: id } : undefined) } catch { /* 会话服务端 5 分钟自过期兜底 */ }
   }
 }
 
@@ -84,13 +93,18 @@ export const toggleCall = togglePower
 export async function enterCallFromWake(): Promise<boolean> {
   if (callActive.value) return true
   if (!callConfig.enabled) return false
+  const proposed = newCallId()
   try {
-    const r = await api.callStart().catch(() => ({ ok: false }))
+    const r = await api.callStart({ call_id: proposed }).catch(() => ({ ok: false }))
     if (!r.ok) {
       statusLine.value = '通话聆听启动失败（后端未就绪），已回退指令窗'
       return false
     }
+    // 后端可能回显自己的 id；两处取一，保证 judge/stop 用同一把钥匙。
+    // The backend may echo its own id; use either so judge/stop share the same key.
+    callId.value = (r as { call_id?: string }).call_id || proposed
   } catch {
+    callId.value = ''
     return false   // api 桩缺 callStart 等异常 → 回退指令窗（测试与降级路径）
   }
   callActive.value = true

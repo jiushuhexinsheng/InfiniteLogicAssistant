@@ -35,8 +35,8 @@ function snapshot() {
       keywords_threshold: 0.25, keywords_score: 1,
     },
     vad: {
-      silence_threshold: 0.02, silence_duration_ms: 1500, max_duration_ms: 10000,
-      answer_timeout_ms: 8000, min_speech_ms: 300, upload_throttle_ms: 500,
+      silence_threshold: 0.02,
+      answer_timeout_ms: 8000, min_speech_ms: 100,
       followup_window_ms: 6000, listen_idle_s: 180, barge_in: false,
     },
     asr: { mode: 'cloud' },

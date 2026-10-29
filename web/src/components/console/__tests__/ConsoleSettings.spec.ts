@@ -52,8 +52,8 @@ function snapshot() {
     vad: {
       mode: 'local', engine: 'ten-vad', model: 'models/vad/ten-vad.onnx', vad_threshold: 0.5,
       window_size: 0, provider: 'cpu', device: 0, num_threads: 0,
-      silence_threshold: 0.02, silence_duration_ms: 1500, max_duration_ms: 10000,
-      answer_timeout_ms: 8000, min_speech_ms: 300, upload_throttle_ms: 500,
+      silence_threshold: 0.02,
+      answer_timeout_ms: 8000, min_speech_ms: 100,
       followup_window_ms: 6000, listen_idle_s: 180, barge_in: false,
     },
     kws: { enabled: true, mode: 'local', model_dir: 'models/kws/x', provider: 'cpu', device: 0,

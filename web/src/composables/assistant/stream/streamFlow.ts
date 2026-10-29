@@ -12,7 +12,8 @@
  */
 import { api } from '../../../api'
 import {
-  state, statusLine, pendingQuestion, callActive, wakeEnabled, inOpenWindow, markTurnEnded,
+  state, statusLine, pendingQuestion, callActive, callId, wakeEnabled, inOpenWindow,
+  markTurnEnded,
 } from '../store'
 import type { AsstState } from '../store'
 import { matchOption } from '../answerMatch'
@@ -195,6 +196,7 @@ async function judgeCall(text: string, ev: StreamEvent): Promise<void> {
     rms: Number(ev.rms ?? 1),
     tabFocused: typeof document !== 'undefined' && document.hasFocus(),
     inOpenWindow: inOpenWindow(),
+    callId: callId.value,
   }).catch((): { ok?: boolean; hit?: boolean; text?: string; stage?: string; reason?: string } => ({ ok: false }))
   if (r?.ok && r.hit && r.text) {
     st.turnToken++

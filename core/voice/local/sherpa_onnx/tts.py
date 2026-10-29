@@ -89,7 +89,8 @@ class TtsEngine:
         self._tts: Any | None = None
         self._loaded = False
         self._reason = ""
-        self._lock = threading.Lock()
+        self._lock = threading.Lock()          # generate 串行化 / serialise generate
+        self._load_lock = threading.Lock()     # 冷加载保护 / guard the cold load
 
     def _model_dir(self) -> Path:
         d = Path(self.opts.model_dir)
@@ -100,6 +101,12 @@ class TtsEngine:
     def _load(self) -> bool:
         if self._loaded:
             return self._tts is not None
+        with self._load_lock:
+            if self._loaded:
+                return self._tts is not None
+            return self._load_locked()
+
+    def _load_locked(self) -> bool:
         # 只有成功才置 _loaded：失败不缓存，模型补装后下一会话会重试。
         # Set _loaded only on success: failures are not cached, so a later session retries.
         try:

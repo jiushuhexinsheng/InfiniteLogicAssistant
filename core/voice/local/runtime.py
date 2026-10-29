@@ -8,6 +8,7 @@ Rebuilt wholesale on config reload; model loading stays lazy (first use only).
 """
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from core import config
@@ -25,12 +26,17 @@ from core.voice.local.sherpa_onnx import (
 )
 
 _runtime: "LocalRuntime | None" = None
+_runtime_lock = threading.Lock()
 
 
 class LocalRuntime:
     """四类本地引擎的懒加载容器。Lazy container for the four local engines."""
 
     def __init__(self) -> None:
+        # 预热线程与首个会话可能并发触达惰性 getter；RLock 保证只构造一次。
+        # The warmup thread and the first session may hit the lazy getters concurrently;
+        # the RLock guarantees a single construction.
+        self._lock = threading.RLock()
         self._vad: VadEngine | None = None
         self._kws: KwsEngine | None = None
         self._asr: StreamingAsrEngine | None = None
@@ -38,76 +44,81 @@ class LocalRuntime:
 
     def vad(self) -> VadEngine:
         """本地 VAD（TEN/Silero）。Local VAD (TEN/Silero)."""
-        if self._vad is None:
-            v = config.settings.voice.vad
-            st = config.settings.voice.streaming
-            self._vad = VadEngine(VadOptions(
-                model=v.model,
-                kind=v.engine,
-                provider=v.provider,
-                device=v.device,
-                num_threads=v.num_threads,
-                threshold=v.vad_threshold,
-                # 流式链路的端点静音/最长时长优先于旧浏览器 VAD 字段。
-                # The streaming endpoint silence / max length wins over the legacy browser fields.
-                min_silence_s=st.endpoint_silence_ms / 1000.0,
-                min_speech_s=v.min_speech_ms / 1000.0,
-                max_speech_s=st.max_utterance_ms / 1000.0,
-                window_size=v.window_size,
-            ))
-        return self._vad
+        with self._lock:
+            if self._vad is None:
+                v = config.settings.voice.vad
+                st = config.settings.voice.streaming
+                self._vad = VadEngine(VadOptions(
+                    model=v.model,
+                    kind=v.engine,
+                    provider=v.provider,
+                    device=v.device,
+                    num_threads=v.num_threads,
+                    threshold=v.vad_threshold,
+                    # 流式链路的端点静音/最长时长优先于旧浏览器 VAD 字段。
+                    # The streaming endpoint silence / max length wins over the legacy browser fields.
+                    min_silence_s=st.endpoint_silence_ms / 1000.0,
+                    min_speech_s=v.min_speech_ms / 1000.0,
+                    max_speech_s=st.max_utterance_ms / 1000.0,
+                    window_size=v.window_size,
+                ))
+            return self._vad
 
     def kws(self) -> KwsEngine:
         """本地 KWS（Zipformer）。Local KWS (Zipformer)."""
-        if self._kws is None:
-            k = config.settings.voice.kws
-            self._kws = KwsEngine(KwsOptions(
-                model_dir=k.model_dir,
-                keywords=tuple(config.settings.voice.wake_word.keywords),
-                provider=k.provider,
-                device=k.device,
-                num_threads=k.num_threads,
-                threshold=k.keywords_threshold,
-                score=k.keywords_score,
-            ))
-        return self._kws
+        with self._lock:
+            if self._kws is None:
+                k = config.settings.voice.kws
+                self._kws = KwsEngine(KwsOptions(
+                    model_dir=k.model_dir,
+                    keywords=tuple(config.settings.voice.wake_word.keywords),
+                    provider=k.provider,
+                    device=k.device,
+                    num_threads=k.num_threads,
+                    threshold=k.keywords_threshold,
+                    score=k.keywords_score,
+                ))
+            return self._kws
 
     def asr(self) -> StreamingAsrEngine:
         """本地流式 ASR。Local streaming ASR."""
-        if self._asr is None:
-            a = config.settings.voice.asr
-            info = registry.find("asr", a.local_model)
-            self._asr = StreamingAsrEngine(AsrOptions(
-                model_dir=a.local_model,
-                family=info.family if info else "transducer",
-                provider=a.provider,
-                device=a.device,
-                num_threads=a.num_threads,
-                enable_endpoint_detection=False,   # 分段由本地 VAD 负责
-            ))
-        return self._asr
+        with self._lock:
+            if self._asr is None:
+                a = config.settings.voice.asr
+                info = registry.find("asr", a.local_model)
+                self._asr = StreamingAsrEngine(AsrOptions(
+                    model_dir=a.local_model,
+                    family=info.family if info else "transducer",
+                    provider=a.provider,
+                    device=a.device,
+                    num_threads=a.num_threads,
+                    enable_endpoint_detection=False,   # 分段由本地 VAD 负责
+                ))
+            return self._asr
 
     def tts(self) -> TtsEngine:
         """本地 Kokoro TTS。Local Kokoro TTS."""
-        if self._tts is None:
-            t = config.settings.voice.tts
-            self._tts = TtsEngine(TtsOptions(
-                model_dir=t.local_model,
-                provider=t.provider,
-                device=t.device,
-                num_threads=t.num_threads,
-                speaker=t.speaker,
-                speed=t.speed,
-                lang=t.lang,
-            ))
-        return self._tts
+        with self._lock:
+            if self._tts is None:
+                t = config.settings.voice.tts
+                self._tts = TtsEngine(TtsOptions(
+                    model_dir=t.local_model,
+                    provider=t.provider,
+                    device=t.device,
+                    num_threads=t.num_threads,
+                    speaker=t.speaker,
+                    speed=t.speed,
+                    lang=t.lang,
+                ))
+            return self._tts
 
     def reset(self) -> None:
         """丢弃全部引擎（配置热重载）。Drop every engine (config reload)."""
-        self._vad = None
-        self._kws = None
-        self._asr = None
-        self._tts = None
+        with self._lock:
+            self._vad = None
+            self._kws = None
+            self._asr = None
+            self._tts = None
 
     def snapshot(self) -> dict[str, Any]:
         """已构造的引擎状态（不触发加载）。Status of constructed engines (no loading)."""
@@ -124,14 +135,17 @@ def get_runtime() -> LocalRuntime:
     """取进程内运行时单例。Get the process-wide runtime singleton."""
     global _runtime
     if _runtime is None:
-        _runtime = LocalRuntime()
+        with _runtime_lock:
+            if _runtime is None:
+                _runtime = LocalRuntime()
     return _runtime
 
 
 def _reset_runtime() -> None:
     """配置热重载后丢弃运行时。Drop the runtime after a config reload."""
     global _runtime
-    _runtime = None
+    with _runtime_lock:
+        _runtime = None
 
 
 add_reload_hook(_reset_runtime, sections=("voice",))

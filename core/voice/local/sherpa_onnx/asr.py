@@ -4,15 +4,20 @@
 Zipformer / sherpa-onnx streaming ASR wrapper.
 
 只负责「模型 → 文本」：VAD、KWS、会话协议都在上层。一个引擎实例可服务多个
-WebSocket 会话（每个会话一个 ``OnlineStream``）；解码用一把锁串行化，避免并发
-调用同一个 recognizer。
+WebSocket 会话（每个会话一个 ``OnlineStream``）；recognizer 对不同 stream 是线程安全的
+（sherpa-onnx 维护者说明），``OnlineStream`` 不共享。CPU provider 下各会话并发解码；
+CUDA/TensorRT 等后端不保证线程安全，仍用锁串行化（``IL_ASR_SERIALIZE_DECODE=1`` 可强制）。
 Only model → text; VAD/KWS/session protocol live above. One engine can serve several
-WebSocket sessions (one ``OnlineStream`` each); decoding is serialised with a lock so
-concurrent sessions never enter the same recognizer at once.
+WebSocket sessions (one ``OnlineStream`` each); the recognizer is thread-safe across
+distinct streams (sherpa-onnx maintainer), and an ``OnlineStream`` is never shared. CPU
+streams decode concurrently; CUDA/TensorRT are not guaranteed thread-safe and stay
+serialised (``IL_ASR_SERIALIZE_DECODE=1`` forces serialisation everywhere).
 """
 from __future__ import annotations
 
+import os
 import threading
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -44,6 +49,21 @@ class AsrOptions:
     hotwords_score: float = 1.5
 
 
+_SERIALIZE_ENV = "IL_ASR_SERIALIZE_DECODE"
+
+
+def _decode_must_serialize(provider: str) -> bool:
+    """是否必须用锁串行化解码：非 CPU 后端（CUDA/TensorRT 不保证线程安全）或显式要求。
+
+    Whether decoding must be serialised: non-CPU backends (CUDA/TensorRT are not
+    guaranteed thread-safe) or an explicit ``IL_ASR_SERIALIZE_DECODE=1`` rollback.
+    """
+    forced = os.environ.get(_SERIALIZE_ENV, "").strip().lower()
+    if forced in ("1", "true", "yes", "on"):
+        return True
+    return provider != "cpu"
+
+
 class AsrError(RuntimeError):
     """ASR 加载/推理失败。ASR load/inference failure."""
 
@@ -68,7 +88,12 @@ class StreamingAsrEngine:
         self._recognizer: Any | None = None
         self._loaded = False
         self._reason = ""
+        # 解码锁只给非 CPU 后端用；加载锁保护冷启动时的双重检查。
+        # The decode lock is only used for non-CPU backends; the load lock guards the
+        # double-checked cold start.
         self._lock = threading.Lock()
+        self._load_lock = threading.Lock()
+        self._serialize_decode = True   # 未加载前保守串行 / conservative before load
 
     def _model_dir(self) -> Path:
         d = Path(self.opts.model_dir)
@@ -79,6 +104,12 @@ class StreamingAsrEngine:
     def _load(self) -> bool:
         if self._loaded:
             return self._recognizer is not None
+        with self._load_lock:
+            if self._loaded:
+                return self._recognizer is not None
+            return self._load_locked()
+
+    def _load_locked(self) -> bool:
         # 只有成功才把 _loaded 置真：失败（模型缺失/损坏/瞬时错误）下次会话会重试，
         # 补装模型后无需重启或热重载即可自愈。
         # Set _loaded only on success: failures (missing/corrupt model, transient error)
@@ -96,6 +127,7 @@ class StreamingAsrEngine:
                 return False
 
             provider = hardware.resolve_provider(self.opts.provider)
+            self._serialize_decode = _decode_must_serialize(provider)
             common: dict[str, Any] = {
                 "tokens": str(tokens),
                 "num_threads": hardware.resolve_threads(self.opts.num_threads),
@@ -222,7 +254,10 @@ class AsrSession:
         rec = engine._recognizer
         if rec is None:
             return ""
-        with engine._lock:
+        # CPU：不同 stream 可并发解码（recognizer 线程安全）；非 CPU：保守串行。
+        # CPU: distinct streams decode concurrently (the recognizer is thread-safe);
+        # non-CPU: stay serialised.
+        with (engine._lock if engine._serialize_decode else nullcontext()):
             while rec.is_ready(self._stream):
                 rec.decode_stream(self._stream)
             return str(rec.get_result(self._stream) or "")
@@ -250,7 +285,9 @@ class AsrSession:
         if self._finished:
             return self.text()
         self._finished = True
-        self._stream.input_finished()
+        engine = self.engine
+        with (engine._lock if engine._serialize_decode else nullcontext()):
+            self._stream.input_finished()
         return self.decode()
 
     def close(self) -> None:

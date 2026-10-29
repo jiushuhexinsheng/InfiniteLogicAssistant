@@ -23,10 +23,10 @@ vi.mock('../wake/wakeOrchestrator', () => ({
 // 同目录 useWakeWord.spec.ts 亦用 '../../../api'。已就地更正。
 vi.mock('../../../api', async (importOriginal) => {
   const orig = await importOriginal<typeof import('../../../api')>()
-  return { ...orig, api: { ...orig.api, callStart: vi.fn(async () => ({ ok: true, open_window_s: 8 })), callStop: vi.fn(async () => ({ ok: true })) } }
+  return { ...orig, api: { ...orig.api, callStart: vi.fn(async () => ({ ok: true, open_window_s: 8, call_id: 'srv' })), callStop: vi.fn(async () => ({ ok: true })) } }
 })
 
-import { callActive, callConfig, callWindowUntil, state, wakeEnabled } from '../store'
+import { callActive, callConfig, callId, callWindowUntil, state, wakeEnabled } from '../store'
 
 /**
  * 2026-10-11 状态图重定义：双击 = **语音电源**（关 ⇄ 静待），唤醒词 = 唤醒点
@@ -41,6 +41,7 @@ describe('语音电源开关（双击）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     callActive.value = false
+    callId.value = ''
     callWindowUntil.value = 0
     wakeEnabled.value = false
     state.value = 'idle'
@@ -72,10 +73,12 @@ describe('语音电源开关（双击）', () => {
     const { togglePower } = await import('../callMode')
     const { api } = await import('../../../api')
     callActive.value = true
+    callId.value = 'srv'
     state.value = 'listening'
     await togglePower()
     expect(callActive.value).toBe(false)
-    expect(vi.mocked(api.callStop)).toHaveBeenCalled()
+    expect(callId.value).toBe('')
+    expect(vi.mocked(api.callStop)).toHaveBeenCalledWith({ call_id: 'srv' })
     expect(state.value).toBe('idle')
     expect(wakeEnabled.value).toBe(false)
   })
@@ -85,15 +88,19 @@ describe('静待 → 通话聆听中（enterCallFromWake）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     callActive.value = false
+    callId.value = ''
     wakeEnabled.value = false
     state.value = 'standby'
   })
 
   it('成功：开漏斗会话、落 listening（文案=通话聆听中）、唤醒生命周期恢复', async () => {
+    const { api } = await import('../../../api')
     const { enterCallFromWake } = await import('../callMode')
     const ok = await enterCallFromWake()
     expect(ok).toBe(true)
     expect(callActive.value).toBe(true)
+    expect(callId.value).toBe('srv')             // 采用后端回显的会话 id
+    expect(vi.mocked(api.callStart)).toHaveBeenCalledWith({ call_id: expect.any(String) })
     expect(state.value).toBe('listening')
     expect(wakeEnabled.value).toBe(true)
     expect(ensureListening).toHaveBeenCalled()   // 兜底拉麦（幂等）
@@ -106,6 +113,7 @@ describe('静待 → 通话聆听中（enterCallFromWake）', () => {
     const ok = await enterCallFromWake()
     expect(ok).toBe(false)
     expect(callActive.value).toBe(false)
+    expect(callId.value).toBe('')
     expect(state.value).toBe('standby')          // 原地不动
   })
 

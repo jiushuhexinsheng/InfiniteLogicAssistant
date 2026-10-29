@@ -42,16 +42,18 @@ export const api = {
   // Voice: audio travels over the /api/voice/asr/stream WebSocket; HTTP keeps call-session semantics.
 
   // ── 通话模式（免唤醒文本判定）──
-  /** 进入通话模式（建会话）。Enter call mode (open a session). */
-  callStart: async (): Promise<{ ok?: boolean; open_window_s?: number; error?: string }> =>
-    post('/voice/call/start'),
-  /** 退出通话模式。Exit call mode. */
-  callStop: async (): Promise<{ ok?: boolean; error?: string }> =>
-    post('/voice/call/stop'),
+  /** 进入通话模式（建会话）。Enter call mode (open a session).
+   *  带 call_id 时后端用它隔离会话；不带 body 时走旧兼容键。 */
+  callStart: async (body?: { call_id?: string }): Promise<{
+    ok?: boolean; open_window_s?: number; call_id?: string; error?: string
+  }> => post('/voice/call/start', body),
+  /** 退出通话模式（只关自己的会话）。Exit call mode (own session only). */
+  callStop: async (body?: { call_id?: string }): Promise<{ ok?: boolean; call_id?: string; error?: string }> =>
+    post('/voice/call/stop', body),
   /** 通话纯文本判定（流式 ASR 已给出文本，只跑 L0/L1/L2 文本闸门）。
    *  Text-only call judging (streaming ASR already produced the text). */
   callJudge: async (text: string, meta: {
-    durationMs: number; rms: number; tabFocused: boolean; inOpenWindow: boolean
+    durationMs: number; rms: number; tabFocused: boolean; inOpenWindow: boolean; callId?: string
   }): Promise<{ ok?: boolean; hit?: boolean; text?: string; stage?: string; reason?: string }> =>
     post('/voice/call/judge', {
       text,
@@ -59,6 +61,7 @@ export const api = {
       rms: meta.rms,
       tab_focused: meta.tabFocused,
       in_open_window: meta.inOpenWindow,
+      ...(meta.callId ? { call_id: meta.callId } : {}),
     }),
 
   // ── 本地模型与硬件能力 ──

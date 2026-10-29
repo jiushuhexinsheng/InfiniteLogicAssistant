@@ -26,6 +26,11 @@ from core import config
 # fails every lifespan test. Lock tests themselves delenv to exercise the real path.
 os.environ["IL_NO_INSTANCE_LOCK"] = "1"
 
+# 语音预热对测试豁免：TestClient 启动 lifespan 不得加载真实本地模型或拉起 TTS 子进程。
+# Voice warmup is exempted for tests: a TestClient booting the lifespan must not load the
+# real local models or spawn the TTS child process.
+os.environ["IL_NO_VOICE_WARMUP"] = "1"
+
 
 def _parse_pins(text: str) -> list[tuple[str, str]]:
     """从 requirements 文本提取 ``name==ver`` 钉版对。

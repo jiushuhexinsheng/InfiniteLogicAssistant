@@ -143,6 +143,15 @@ class AppContext:
         from core import config
         from core.logger import logger
 
+        # 本地语音引擎预热：后台线程加载 VAD/KWS/ASR/TTS，与后续启动工作重叠。
+        # 只预热配置为 local 的引擎；失败只记日志，绝不影响启动。
+        # Local voice warmup: load VAD/KWS/ASR/TTS on a background thread, overlapping the
+        # rest of startup. Only local-configured engines; failures are logged, never fatal.
+        try:
+            from core.voice.warmup import start_voice_warmup
+            start_voice_warmup()
+        except Exception as e:
+            logger.warning("语音预热启动失败: {}", e)
         try:
             await self.mcp_manager().start_all()
         except Exception as e:

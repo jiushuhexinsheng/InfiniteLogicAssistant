@@ -8,7 +8,8 @@ import { saveState, loadState } from './storePersist'
 // Facade: the config cluster / message operations live in sibling submodules; the
 // original import path and export surface are unchanged (pure move).
 export {
-  wakeConfig, vadConfig, callConfig, callActive, callWindowUntil, inOpenWindow, markTurnEnded,
+  wakeConfig, vadConfig, callConfig, callActive, callId, callWindowUntil, inOpenWindow,
+  markTurnEnded,
   callBargeInEnabled, wakeKeywords, wakeHint,
   hardwareConfig, streamingEnabled,
 } from './storeConfig'

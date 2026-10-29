@@ -21,7 +21,11 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from core import config as config_mod
-from core.config.loader import _migrate_legacy_local_asr_model, _migrate_legacy_vendor_keys
+from core.config.loader import (
+    _migrate_legacy_local_asr_model,
+    _migrate_legacy_vad_keys,
+    _migrate_legacy_vendor_keys,
+)
 from core.api.schemas import (
     ConfigFullResponse, DetectionResponse, PatchConfigResponse, PutSecretsResponse,
 )
@@ -208,6 +212,9 @@ async def patch_config(request: Request):
     # Local-transcription key migration, same as the boot path; without it a frontend
     # PATCH write-back would drop the new key (the patch carries only the asr section).
     _migrate_legacy_local_asr_model(merged)
+    # 退役 VAD 键：同上，不剥掉会让 extra=forbid 的校验 400；写回即完成磁盘清理。
+    # Retired VAD keys: same reason (extra=forbid would 400); the write-back cleans disk.
+    _migrate_legacy_vad_keys(merged)
     try:
         config_mod.Settings(**merged)  # 校验：类型/范围/未知字段 违规即 400
     except ValidationError as e:

@@ -245,12 +245,12 @@ def test_permissions_snapshot_exposed(monkeypatch):
 
 
 def test_vad_answer_timeout_default_and_bounds():
-    """等待语音回答的静音超时：默认 8000ms，必须为正数（0 或负数会让等待立即超时）。
-    放在 VadConfig 里 —— 与 max_duration_ms（最大录音时长）同族，且 /api/config 与
-    可编辑快照都以 VadConfig 类型暴露它，故无需新增接线。
-    The answer-wait silence timeout defaults to 8000ms and must be positive. It lives in
-    VadConfig alongside max_duration_ms: both /api/config and the editable snapshot expose
-    it through the VadConfig type, so no extra wiring is needed."""
+    """裸唤醒后的等指令窗：默认 8000ms，必须为正数（0 或负数会让窗口立即过期）。
+    放在 VadConfig 里 —— 与 followup_window_ms / listen_idle_s 同属收听时序，且
+    /api/config 与可编辑快照都以 VadConfig 类型暴露它，故无需新增接线。
+    The post-bare-wake command window defaults to 8000ms and must be positive. It lives in
+    VadConfig with the other listening-timing keys; both /api/config and the editable
+    snapshot expose it through the VadConfig type, so no extra wiring is needed."""
     assert c.Settings().voice.vad.answer_timeout_ms == 8000
     from pydantic import ValidationError
     with pytest.raises(ValidationError):
@@ -334,32 +334,59 @@ def test_wake_unknown_field_still_rejected():
         c.Settings(voice={"wake_word": {"keywrod": "衍衡"}})
 
 
-# ─── 唤醒上传的成本控制字段（子项目 1）───
+# ─── 本地 VAD 最短语音门限 ───
 
 
-def test_vad_wake_cost_control_defaults():
-    """VAD 段新增两个成本控制字段：最短语音时长与上传节流。
-
-    放在 vad 段而非新建段：这两个都是「收听时序」参数，与既有字段同族，该段已有
-    「同族参数放一起」的先例（见 answer_timeout_ms 的注释）。
-
-    Two cost-control fields join the VAD section: a minimum speech duration and an upload throttle.
-    They live here rather than in a new section because they are listening-timing parameters like
-    their neighbours — the section already set that precedent (see the answer_timeout_ms comment).
-    """
+def test_vad_min_speech_default():
+    """本地 VAD 最短语音门限默认 100ms：过大的门限会推迟触发并丢掉短唤醒词。
+    The local VAD minimum-speech gate defaults to 100 ms; a larger gate delays detection
+    and can drop a short wake word."""
     v = c.VadConfig()
-    assert v.min_speech_ms == 300
-    assert v.upload_throttle_ms == 500
+    assert v.min_speech_ms == 100
 
 
-def test_vad_wake_cost_control_bounds():
+def test_vad_min_speech_bounds():
     """负值被 pydantic 拒绝 —— 配置写错启动即报错，而不是静默降级。
     Negative values are rejected by pydantic: a bad config fails at startup instead of degrading."""
     from pydantic import ValidationError
     with pytest.raises(ValidationError):
         c.VadConfig(min_speech_ms=-1)
-    with pytest.raises(ValidationError):
-        c.VadConfig(upload_throttle_ms=-1)
+
+
+def test_retired_vad_keys_are_rejected():
+    """三个退役键不再属于 VadConfig；旧 config.yaml 由 loader 迁移剥除。
+    The three retired keys are no longer part of VadConfig; the loader migration strips
+    them from an old config.yaml."""
+    from pydantic import ValidationError
+    for key in ("silence_duration_ms", "max_duration_ms", "upload_throttle_ms"):
+        with pytest.raises(ValidationError):
+            c.VadConfig(**{key: 1234})
+
+
+def test_migrate_legacy_vad_keys_strips_and_warns(capsys):
+    """旧配置里的三个退役 VAD 键在建模前被剥除，同级键保留，并打印一次提示。
+    The three retired VAD keys are stripped before modelling, sibling keys survive, and a
+    single notice is printed."""
+    import core.config.loader as loader_mod
+
+    data = {"voice": {"vad": {
+        "silence_duration_ms": 1500,
+        "max_duration_ms": 10000,
+        "upload_throttle_ms": 500,
+        "min_speech_ms": 100,
+        "followup_window_ms": 6000,
+    }}}
+    loader_mod._migrate_legacy_vad_keys(data)
+    vad = data["voice"]["vad"]
+    assert "silence_duration_ms" not in vad
+    assert "max_duration_ms" not in vad
+    assert "upload_throttle_ms" not in vad
+    assert vad["min_speech_ms"] == 100
+    assert vad["followup_window_ms"] == 6000
+    captured = capsys.readouterr()
+    assert "退役" in (captured.out + captured.err)
+    # 剥除后模型可正常构建 / the stripped dict validates
+    c.Settings(**data)
 
 
 # ─── 手工副本陷阱：两份模型必须逐字段一致（含默认值与 default_factory）───

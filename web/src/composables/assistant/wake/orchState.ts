@@ -5,6 +5,7 @@ import type { Ref } from 'vue'
 import { nextState } from '../wakeFsm'
 import {
   state, statusLine, vadConfig, pendingQuestion, wakeEnabled, currentSessionId, callActive,
+  callId,
 } from '../store'
 import type { AsstState, PendingQuestion } from '../store'
 import type { VoiceStreamHandle } from '../stream/streamClient'
@@ -17,7 +18,7 @@ interface OrchestratorApi {
   /** 停止任务并弃掉待答问题（T1 stop 端点毒丸）。Stop the task and abandon the pending question. */
   stopTask?(sid: string): Promise<unknown>
   /** 退出通话会话（静止超时自动退通话用）。Exit the call session. */
-  callStop?(): Promise<unknown>
+  callStop?(opts?: { call_id?: string }): Promise<unknown>
 }
 
 /** 可注入依赖集合。Injectable dependencies. */
@@ -190,7 +191,10 @@ export function armIdleTimer() {
       // via callStop, best-effort).
       callActive.value = false
       wakeEnabled.value = true   // 静待的唤醒生命周期需要（done/播报回落都 gate 它）
-      void st.deps?.api.callStop?.()?.catch?.(() => { /* 会话服务端 5 分钟自过期兜底 */ })
+      const id = callId.value
+      callId.value = ''
+      void st.deps?.api.callStop?.(id ? { call_id: id } : undefined)
+        ?.catch?.(() => { /* 会话服务端 5 分钟自过期兜底 */ })
     }
     state.value = 'standby'
     statusLine.value = ''

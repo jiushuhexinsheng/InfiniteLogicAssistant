@@ -104,16 +104,17 @@ class HardwareConfig(BaseModel):
 
 
 class VadConfig(BaseModel):
-    """语音活动检测（VAD）配置：静音阈值与时长上限。
+    """语音活动检测（VAD）配置：本地 VAD 与收听时序。
 
-    Voice activity detection (VAD) config: silence threshold and duration limits.
+    Voice activity detection (VAD) config: local VAD and listening timing.
 
     本项目只有**本地 VAD**（TEN VAD / Silero VAD，sherpa-onnx）；没有云端 VAD 选项。
-    旧的浏览器 RMS 参数（``silence_threshold`` / ``silence_duration_ms`` 等）保留用于
-    兼容旧配置，流式链路使用下面的本地 VAD 字段。
+    旧浏览器 RMS 的 ``silence_duration_ms`` / ``max_duration_ms`` 已随流式链路删除
+    （旧 config.yaml 由 loader 迁移剥除）；``silence_threshold`` 仅保留给 barge-in。
     There is **local VAD only** (TEN VAD / Silero, sherpa-onnx); no cloud VAD option.
-    The legacy browser-RMS keys stay for old config compatibility; the streaming
-    pipeline uses the local fields below.
+    The legacy browser-RMS ``silence_duration_ms`` / ``max_duration_ms`` keys were removed
+    with the streaming chain (the loader strips them from old config.yaml);
+    ``silence_threshold`` survives only for barge-in.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -132,8 +133,6 @@ class VadConfig(BaseModel):
     params: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
     silence_threshold: float = Field(0.02, ge=0.0)
-    silence_duration_ms: int = Field(1500, ge=0)
-    max_duration_ms: int = Field(10000, ge=1000)
     # 裸唤醒后的等指令窗（毫秒）：只喊唤醒词不带指令时，窗内没说指令则作废。
     # 回答本身永不限时（取消限时回答），此键不再参与待答计时；键名保持 answer_timeout_ms
     # 以兼容旧 config.yaml 校验。
@@ -141,7 +140,7 @@ class VadConfig(BaseModel):
     # not arriving inside the window voids it. Answers themselves are never timed out
     # (unlimited answer window); this key no longer times the answer wait. The name stays
     # answer_timeout_ms for old config.yaml compatibility. Lives here rather than in a new
-    # section because it shares the family with max_duration_ms.
+    # section because it shares the listening-timing family with followup_window_ms.
     answer_timeout_ms: int = Field(8000, gt=0)
     # 续聊窗口（docs/designs/03-A）：回合结束（done/error 且播报完）后的免唤醒窗口毫秒数，
     # 窗口内的语音段直接转写为新指令（不必喊唤醒词）；0=关闭（回到「done 后 3s 回聆听」旧行为）。
@@ -162,13 +161,13 @@ class VadConfig(BaseModel):
     # where listening was absorbing). Lives in the vad section (listening-timing family;
     # editable_snapshot only exposes vad/wake_word).
     listen_idle_s: int = Field(180, ge=0)
-    # 唤醒上传的两道成本闸（子项目 1）：短于此长度的片段不上传（滤掉咳嗽/关门等爆音），
-    # 两次上传之间的最小间隔（避免连续误触发时刷接口）。
-    # Two cost gates for wake uploads: clips shorter than min_speech_ms are never uploaded
-    # (filters coughs, door slams and other transients), and upload_throttle_ms sets the minimum
-    # gap between uploads so a burst of false triggers cannot hammer the endpoint.
-    min_speech_ms: int = Field(300, ge=0)
-    upload_throttle_ms: int = Field(500, ge=0)
+    # 本地 VAD 的最短语音门限（毫秒）：连续人声短于此值不当作一段语音。
+    # 它同时推迟 speech_detected（实测 100ms 门限约 320ms 触发滞后，300ms 约 500ms），
+    # 过长的门限会把短唤醒词整段丢掉，故默认取 100。
+    # Minimum speech duration for the local VAD (ms): shorter runs are not treated as
+    # speech. It also delays speech_detected (measured ~320 ms at 100 ms, ~500 ms at
+    # 300 ms), and a long gate can drop a short wake word entirely — hence 100 ms.
+    min_speech_ms: int = Field(100, ge=0)
     # 打断播报（barge-in，docs/designs/02 批3）：助手播报期间不再整体静默，而是用一条
     # 独立的回声消除流做能量检测，连续超阈即掐断播报转入作答/指令分流。默认关 ——
     # 关闭时行为与旧版完全一致（播报期间停麦）。放在 vad 段是因为它与收听时序同族，

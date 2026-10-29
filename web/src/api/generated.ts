@@ -388,7 +388,14 @@ export interface paths {
         put?: never;
         /**
          * Call Start
-         * @description 进入通话模式：建立会话（后续段落才有资格进漏斗）。Enter call mode.
+         * @description 进入通话模式：建立（或替换）本客户端的会话。
+         *
+         *     无 body → 旧客户端兼容键；有 body 且带 ``call_id`` → 用该 id；有 body 未带 →
+         *     生成一个并随响应返回（前端保存后用于 judge/stop）。
+         *
+         *     Enter call mode: create (or replace) this client's session. No body → the legacy
+         *     key; a body with ``call_id`` → use it; a body without one → generate an id and return
+         *     it (the frontend stores it for judge/stop).
          */
         post: operations["call_start_api_voice_call_start_post"];
         delete?: never;
@@ -408,7 +415,9 @@ export interface paths {
         put?: never;
         /**
          * Call Stop
-         * @description 退出通话模式。Exit call mode.
+         * @description 退出通话模式：只关闭本客户端的会话（未知 id 也返回成功）。
+         *
+         *     Exit call mode: close this client's session only (an unknown id is a successful no-op).
          */
         post: operations["call_stop_api_voice_call_stop_post"];
         delete?: never;
@@ -435,7 +444,7 @@ export interface paths {
          *     no cloud upload — the audio path is the streaming session.
          *
          *     Args:
-         *         request: JSON body ``{text, duration_ms, rms, tab_focused, in_open_window}``.
+         *         request: JSON body ``{text, duration_ms, rms, tab_focused, in_open_window, call_id?}``.
          */
         post: operations["call_judge_api_voice_call_judge_post"];
         delete?: never;
@@ -1270,6 +1279,11 @@ export interface components {
              * @default 0
              */
             open_window_s: number;
+            /**
+             * Call Id
+             * @default
+             */
+            call_id: string;
         };
         /**
          * ConfigFullResponse
@@ -2771,30 +2785,15 @@ export interface components {
              */
             silence_threshold: number;
             /**
-             * Silence Duration Ms
-             * @default 1500
-             */
-            silence_duration_ms: number;
-            /**
-             * Max Duration Ms
-             * @default 10000
-             */
-            max_duration_ms: number;
-            /**
              * Answer Timeout Ms
              * @default 8000
              */
             answer_timeout_ms: number;
             /**
              * Min Speech Ms
-             * @default 300
+             * @default 100
              */
             min_speech_ms: number;
-            /**
-             * Upload Throttle Ms
-             * @default 500
-             */
-            upload_throttle_ms: number;
             /**
              * Followup Window Ms
              * @default 6000

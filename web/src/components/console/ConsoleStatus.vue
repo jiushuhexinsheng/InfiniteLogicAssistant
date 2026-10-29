@@ -29,8 +29,7 @@
         </template>
         <template v-if="vad">
           <span>静音阈值</span><b>{{ vad.silence_threshold }}</b>
-          <span>静音时长</span><b>{{ vad.silence_duration_ms }} ms</b>
-          <span>最长录音</span><b>{{ vad.max_duration_ms }} ms</b>
+          <span>最短语音</span><b>{{ vad.min_speech_ms }} ms</b>
         </template>
         <template v-if="!ww && !vad"><span>—</span><b>未加载配置</b></template>
       </div>

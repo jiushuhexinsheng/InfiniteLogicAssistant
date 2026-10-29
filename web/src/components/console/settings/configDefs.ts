@@ -84,7 +84,7 @@ export const advancedDefs: AdvancedDef[] = [
 /** 需要数值类型的字段集合。Set of fields that require numeric input. */
 export const NUMERIC = new Set([
   'max_tokens', 'temperature', 'timeout', 'sensitivity', 'silence_threshold',
-  'silence_duration_ms', 'max_duration_ms', 'recursion_limit', 'structured_temperature', 'retry_max',
+  'recursion_limit', 'structured_temperature', 'retry_max',
   'retry_backoff_base', 'retry_backoff_max', 'circuit_breaker_threshold', 'circuit_breaker_cooldown',
   'request_timeout', 'search_max_results', 'weather_timeout', 'port', 'confirm_timeout_s',
   'recency_half_life_days', 'recency_weight', 'inject_top_k', 'inject_max_chars',

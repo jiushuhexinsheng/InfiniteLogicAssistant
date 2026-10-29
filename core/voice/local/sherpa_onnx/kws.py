@@ -12,6 +12,7 @@ several keyword sets).
 from __future__ import annotations
 
 import hashlib
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,11 @@ class KwsEngine:
         self._spotter: Any | None = None
         self._loaded = False
         self._reason = ""
+        # 加载锁保护冷启动；推理锁串行化共享 spotter（每段一次，成本可忽略）。
+        # Load lock for the cold start; infer lock serialises the shared spotter
+        # (once per segment, negligible cost).
+        self._load_lock = threading.Lock()
+        self._infer_lock = threading.Lock()
 
     # ── 模型文件 ──
 
@@ -96,6 +102,12 @@ class KwsEngine:
     def _load(self) -> bool:
         if self._loaded:
             return self._spotter is not None
+        with self._load_lock:
+            if self._loaded:
+                return self._spotter is not None
+            return self._load_locked()
+
+    def _load_locked(self) -> bool:
         # 只有成功才置 _loaded：失败不缓存，模型补装后下一会话会重试。
         # Set _loaded only on success: failures are not cached, so a later session retries.
         try:
@@ -161,15 +173,16 @@ class KwsEngine:
         if arr.size == 0:
             return None
         try:
-            stream = self._spotter.create_stream()
-            stream.accept_waveform(self.opts.sample_rate, arr.tolist())
-            stream.input_finished()
-            while self._spotter.is_ready(stream):
-                self._spotter.decode_stream(stream)
-                result = self._spotter.get_result(stream)
-                if result:
-                    self._spotter.reset_stream(stream)
-                    return str(result)
+            with self._infer_lock:
+                stream = self._spotter.create_stream()
+                stream.accept_waveform(self.opts.sample_rate, arr.tolist())
+                stream.input_finished()
+                while self._spotter.is_ready(stream):
+                    self._spotter.decode_stream(stream)
+                    result = self._spotter.get_result(stream)
+                    if result:
+                        self._spotter.reset_stream(stream)
+                        return str(result)
             return None
         except Exception as e:  # noqa: BLE001
             logger.warning("KWS 推理失败（本段按未命中）: {}", e)
