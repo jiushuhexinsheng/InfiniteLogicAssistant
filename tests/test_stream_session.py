@@ -62,7 +62,8 @@ class FakeVadStream:
 class FakeAsrSession:
     """固定返回文本的 ASR 会话桩。ASR-session stub returning a fixed text."""
 
-    def __init__(self) -> None:
+    def __init__(self, text: str = "衍衡查天气") -> None:
+        self.text = text
         self.accepted = 0
         self.closed = False
 
@@ -70,25 +71,26 @@ class FakeAsrSession:
         self.accepted += 1
 
     def decode(self) -> str:
-        return "衍衡查天气" if self.accepted else ""
+        return self.text if self.accepted else ""
 
     def finish(self) -> str:
-        return "衍衡查天气" if self.accepted else ""
+        return self.text if self.accepted else ""
 
     def close(self) -> None:
         self.closed = True
 
 
 class FakeAsrEngine:
-    def __init__(self, ok: bool = True) -> None:
+    def __init__(self, ok: bool = True, text: str = "衍衡查天气") -> None:
         self.ok = ok
+        self.text = text
         self.sessions: list[FakeAsrSession] = []
 
     def status(self) -> tuple[bool, str]:
         return self.ok, "" if self.ok else "ASR 模型不存在"
 
     def create_session(self) -> FakeAsrSession:
-        session = FakeAsrSession()
+        session = FakeAsrSession(self.text)
         self.sessions.append(session)
         return session
 
@@ -114,9 +116,10 @@ class FakeVadEngine:
 
 
 class FakeRuntime:
-    def __init__(self, *, vad_ok: bool = True, asr_ok: bool = True) -> None:
+    def __init__(self, *, vad_ok: bool = True, asr_ok: bool = True,
+                 asr_text: str = "衍衡查天气") -> None:
         self._vad = FakeVadEngine(vad_ok)
-        self._asr = FakeAsrEngine(asr_ok)
+        self._asr = FakeAsrEngine(asr_ok, asr_text)
         self._kws = FakeKwsEngine()
 
     def vad(self):
@@ -275,3 +278,102 @@ async def test_cloud_mode_uses_cloud_and_no_partial(monkeypatch):
     assert finals[0]["engine"] == "cloud"
     assert finals[0]["text"] == "打开浏览器"
     assert finals[0]["wake"]["matched"] is False
+
+
+# ─── hybrid：疑似截断的云端兜底 ───
+
+
+def test_looks_truncated_boundaries():
+    """2 字/秒的保守阈值边界。The conservative 2 chars/s threshold boundaries."""
+    from core.voice.streaming.session import _looks_truncated
+
+    assert _looks_truncated("好", 0.49) is False       # 短于 0.5s 不判
+    assert _looks_truncated("好", 0.5) is False        # 1 < 1.0 不成立（严格小于）
+    assert _looks_truncated("好", 0.51) is True        # 1 < 1.02
+    assert _looks_truncated("好", 1.46) is True        # 1 < 2.92
+    assert _looks_truncated("你好", 1.0) is False      # 2 < 2.0 不成立
+    assert _looks_truncated("你好", 1.46) is True      # 2 < 2.92
+
+
+async def _run_hybrid(monkeypatch, *, local_text: str, frames: int,
+                      cloud_text: str = "你好眼横", cloud_raises: bool = False):
+    """跑一段 hybrid 会话，返回 (final 事件, 云端调用次数)。Run one hybrid segment."""
+    _pin(monkeypatch, mode="hybrid")
+    runtime = FakeRuntime(asr_text=local_text)
+    runtime._vad.stream = FakeVadStream(end_after=frames, trigger_after=1)
+    cloud_calls: list[int] = []
+
+    async def fake_cloud(_self, segment):
+        cloud_calls.append(int(segment.size))
+        if cloud_raises:
+            raise RuntimeError("cloud down")
+        return cloud_text
+
+    monkeypatch.setattr(StreamingSession, "_cloud_transcribe", fake_cloud)
+    ws = FakeWS()
+    session = StreamingSession(ws, {"type": "start"}, runtime=runtime)
+    await session.start_session()
+    for _ in range(frames):
+        await session._on_audio(_frame())
+    finals = [m for m in ws.sent if m["type"] == "final"]
+    assert finals, "段应产生 final"
+    return finals[-1], cloud_calls
+
+
+@pytest.mark.asyncio
+async def test_hybrid_truncated_short_text_falls_back(monkeypatch):
+    """1.46s 只转出 1 个字 → 疑似截断，走云端兜底并采用云端文本。"""
+    final, calls = await _run_hybrid(monkeypatch, local_text="好", frames=73)
+    assert calls, "疑似截断应触发云端兜底"
+    assert final["engine"] == "cloud"
+    assert final["fallback"] is True
+    assert final["text"] == "你好眼横"
+
+
+@pytest.mark.asyncio
+async def test_hybrid_short_segment_still_falls_back(monkeypatch):
+    """0.6s 只转出 1 个字（1 < 1.2）→ 仍判截断。"""
+    final, calls = await _run_hybrid(monkeypatch, local_text="好", frames=30)
+    assert calls
+    assert final["engine"] == "cloud"
+
+
+@pytest.mark.asyncio
+async def test_hybrid_very_short_utterance_stays_local(monkeypatch):
+    """0.4s 的「好」是真实短句（未达 0.5s 门槛）→ 不上云。"""
+    final, calls = await _run_hybrid(monkeypatch, local_text="好", frames=20)
+    assert calls == []
+    assert final["engine"] == "local"
+    assert final["fallback"] is False
+    assert final["text"] == "好"
+
+
+@pytest.mark.asyncio
+async def test_hybrid_normal_length_text_stays_local(monkeypatch):
+    """1.46s 的正常长度转写（13 字）→ 不兜底。"""
+    final, calls = await _run_hybrid(
+        monkeypatch, local_text="这是一段正常长度的转写结果", frames=73
+    )
+    assert calls == []
+    assert final["engine"] == "local"
+
+
+@pytest.mark.asyncio
+async def test_hybrid_empty_text_falls_back(monkeypatch):
+    """本地空文本仍走云端（回归保护）。Empty local text still falls back."""
+    final, calls = await _run_hybrid(monkeypatch, local_text="", frames=73)
+    assert calls
+    assert final["engine"] == "cloud"
+    assert final["text"] == "你好眼横"
+
+
+@pytest.mark.asyncio
+async def test_hybrid_cloud_failure_keeps_local_text(monkeypatch):
+    """云端兜底抛错：保留本地短文本，不崩、不覆盖成空串。"""
+    final, calls = await _run_hybrid(
+        monkeypatch, local_text="好", frames=73, cloud_raises=True
+    )
+    assert calls
+    assert final["engine"] == "local"
+    assert final["fallback"] is False
+    assert final["text"] == "好"

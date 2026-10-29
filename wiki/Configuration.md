@@ -56,11 +56,8 @@ voice:
     sensitivity: 0.5
     model_path: ""              # Vosk 时代遗留字段，已无人读，留空即可
   vad:                          # 本地 VAD：静音检测（决定一段从哪开始、到哪结束）
-    silence_threshold: 0.02     # 判定「有人在说」的 RMS 阈值
-    silence_duration_ms: 1500   # 静音多久算一段说完（决定何时切段）
-    max_duration_ms: 10000      # 单段硬上限
-    min_speech_ms: 300          # 短于此长度的段直接丢弃（滤爆音）
-    upload_throttle_ms: 500     # 两次唤醒判定的最小间隔
+    silence_threshold: 0.02     # barge-in 能量阈值（流式切段不再读它）
+    min_speech_ms: 100          # 本地 VAD 最短语音门限（过大会拖延触发、丢掉短词）
     answer_timeout_ms: 8000     # 裸唤醒后的等指令窗（喊唤醒词不带指令时窗内没说则作废）；回答本身永不限时
     followup_window_ms: 6000    # 续聊窗口：回合结束/播报完后免唤醒直接说话即新指令；0=关闭
   kws:                          # 本地 KWS 唤醒闸门（sherpa-onnx；见下「语音隐私边界」）
@@ -109,12 +106,14 @@ voice:
   日志注明。
 - **转写模式 `asr.mode`（2026-10-12）决定音频去哪转写**：`local` 时唤醒链与作答/指令段全程在
   本机转写、**不上云**（缺模型时明确报错，绝不静默上云）；`hybrid` 本地优先，仅在本地不可用 /
-  转写为空 / 失败时回落云端（回落会上传，审计记 `fallback=1`）；`cloud`（默认）全部上传
+  转写为空 / 疑似截断（明显少于中文语速下限）/ 失败时回落云端（回落会上传，审计记 `fallback=1`）；
+  `cloud`（默认）全部上传
   `asr.active` 服务商。**上面「KWS 命中才上传」的描述以 `mode=cloud` 为前提。**
 - `kws.keywords_threshold` 调灵敏度（越低越灵敏）；唤醒词本身在 `wake_word.keywords` 配，
   由 text2token 自动生成 KWS 关键词文件，改词无需手动编排。
-- 降低调用量的其余旋钮：调大 `vad.min_speech_ms` 与 `vad.upload_throttle_ms`、调高
-  `vad.silence_threshold`。代价是漏触发变多，反之亦然。
+- 收听灵敏度旋钮：`vad.vad_threshold`（越低越灵敏）与 `vad.min_speech_ms`（越大越抗噪，
+  但会推迟触发、可能丢短词）。`silence_duration_ms` / `max_duration_ms` / `upload_throttle_ms`
+  已随流式链路删除，旧配置由 loader 迁移剥除。
 - 完整边界说明见 [Security.md](Security.md) 的「语音隐私边界」。
 
 ### call — 通话模式（三级判定漏斗）

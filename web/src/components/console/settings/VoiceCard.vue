@@ -79,7 +79,7 @@
         <p class="wk-hint">
           <strong>云端</strong>时每个 VAD 判到的人声段都会上传到 ASR 服务商——<strong>无论是否说出唤醒词</strong>；
           <strong>本地</strong>模式 VAD/KWS/ASR 全在本机，音频不出本机；
-          <strong>混合</strong>仅在本机失败或转写为空时上传兜底。不接受上传请切到本地，或改用文字输入。
+          <strong>混合</strong>仅在本机失败、转写为空或疑似截断时上传兜底。不接受上传请切到本地，或改用文字输入。
         </p>
       </div>
     </UiDisclosure>
@@ -119,7 +119,7 @@ const asrModeLabel = computed(() => {
 const asrPrivacyLine = computed(() => {
   switch (s.sec('asr')?.mode) {
     case 'local': return '唤醒链与作答/指令段的音频在本机转写、不上云'
-    case 'hybrid': return '本地优先，本地不可用/转写为空时才回落云端'
+    case 'hybrid': return '本地优先，本地不可用/转写为空/疑似截断时回落云端'
     default: return '音频上传到当前 ASR profile 的服务商'
   }
 })

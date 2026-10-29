@@ -41,13 +41,14 @@ from core.voice.streaming import protocol
 
 # 预卷时长（毫秒）：本地 VAD 的 speech_detected 比真实语音起点晚 250–500 ms
 # （TEN-VAD 自身窗口约 260 ms，再叠加 vad.min_speech_ms 的判定门限）。预卷短于这个
-# 滞后就会把「衍衡」这类短词的首字切掉，只剩尾字——300 ms 门限下实测触发滞后约
-# 500 ms，旧的 200 ms 预卷会整字丢失。1 s 足以覆盖，每连接只占约 64 KB。
+# 滞后就会把「衍衡」这类短词的首字切掉，只剩尾字——实测 100 ms 门限约 320 ms 触发
+# 滞后、300 ms 门限约 500 ms，旧的 200 ms 预卷会整字丢失。1 s 覆盖两种门限，每连接
+# 只占约 64 KB。
 # Pre-roll (ms): the local VAD's speech_detected trails the true onset by 250–500 ms
 # (TEN-VAD's own ~260 ms window plus the vad.min_speech_ms gate). A shorter pre-roll
-# clips the first syllable of short words such as 「衍衡」 — with the 300 ms gate the
-# measured lag is ~500 ms, and the old 200 ms pre-roll dropped the whole first word.
-# 1 s covers it and costs only ~64 KB per connection.
+# clips the first syllable of short words such as 「衍衡」 — measured lag is ~320 ms at
+# the 100 ms gate and ~500 ms at 300 ms; the old 200 ms pre-roll dropped the whole first
+# word. 1 s covers both and costs only ~64 KB per connection.
 PRE_ROLL_MS = 1000
 _PRE_ROLL_FRAMES = max(1, PRE_ROLL_MS // audio.FRAME_MS)
 
@@ -65,6 +66,19 @@ def _asr_mode() -> str:
     """当前 ASR 模式（local/cloud/hybrid）。Current ASR mode."""
     mode = getattr(config.settings.voice.asr, "mode", "cloud")
     return mode if mode in ("local", "cloud", "hybrid") else "cloud"
+
+
+def _looks_truncated(text: str, duration_s: float) -> bool:
+    """本地转写疑似被截断：短于中文语速下限的保守判定（hybrid 兜底用）。
+
+    中文正常语速约 4–6 字/秒；阈值取 2 字/秒，只抓明显缺字（如 1.5s 只有 1–2 字），
+    放过「好」「你好」这类 <0.5s 的真实短句。
+
+    A conservative "local transcript looks truncated" test for the hybrid fallback.
+    Mandarin runs ~4–6 chars/s; the 2 chars/s threshold only catches obvious truncation
+    (e.g. 1.5 s → 1–2 chars) and leaves genuine short utterances (<0.5 s) alone.
+    """
+    return duration_s >= 0.5 and len(text.strip()) < duration_s * 2.0
 
 
 class StreamingSession:
@@ -327,14 +341,34 @@ class StreamingSession:
                 logger.warning("本地 ASR 定稿失败: {}", e)
                 error = str(e)
 
+        # 判定用时长：优先 VAD 段（不含 1s 预卷）；flush/超长段没有 VAD 段时退回计时。
+        # Decision duration: prefer the VAD segment (no 1 s pre-roll); fall back to the
+        # elapsed timer for flush/max-duration segments.
+        if vad_samples is not None and len(vad_samples):
+            decision_s = audio.duration_s(
+                np.asarray(vad_samples, dtype=np.float32), audio.SAMPLE_RATE
+            )
+        else:
+            decision_s = self._elapsed_ms() / 1000.0
+        # hybrid 的兜底条件：本地为空/本地 ASR 缺失/疑似被截断（明显少于中文语速下限）。
+        # Hybrid fallback conditions: empty local text / missing local ASR / obviously
+        # truncated output. local mode never uploads (privacy invariant).
+        suspicious = self.mode == "hybrid" and _looks_truncated(text, decision_s)
         need_cloud = self.mode == "cloud" or (
-            self.mode == "hybrid" and (not text or self._asr_session is None)
+            self.mode == "hybrid" and (not text or self._asr_session is None or suspicious)
         )
         if need_cloud and segment.size:
             try:
-                text = (await self._cloud_transcribe(segment) or "").strip()
-                engine = "cloud"
-                fallback = self.mode == "hybrid"
+                cloud_text = (await self._cloud_transcribe(segment) or "").strip()
+                if cloud_text or not text:
+                    text = cloud_text
+                    engine = "cloud"
+                    fallback = self.mode == "hybrid"
+                else:
+                    # 云端没给出更好的结果：保留本地短文本，绝不用空串覆盖。
+                    # Cloud produced nothing better: keep the local short text, never
+                    # overwrite it with an empty string.
+                    logger.info("hybrid 云端兜底为空，保留本地文本: {!r}", text)
                 error = ""
             except Exception as e:  # noqa: BLE001
                 logger.warning("云端 ASR 失败（via=stream）: {}", e)
