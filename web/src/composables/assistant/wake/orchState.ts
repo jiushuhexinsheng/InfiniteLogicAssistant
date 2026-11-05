@@ -8,7 +8,7 @@ import {
   callId,
 } from '../store'
 import type { AsstState, PendingQuestion } from '../store'
-import type { VoiceStreamHandle } from '../stream/streamClient'
+import type { StreamGate, VoiceStreamHandle } from '../stream/streamClient'
 import type { BargeInMonitor } from '../bargeIn'
 
 // ── 可注入依赖（由 useWakeWord.ts 注入）──
@@ -58,6 +58,10 @@ export const st: {
   echoGuardUntil: number
   turnToken: number
   bargeMonitor: BargeInMonitor | null
+  /** 续聊窗口是否仍有效（transcribing 等中间态也要保持 open 闸门）。
+   *  Whether the follow-up window is still active (intermediate transcribing states
+   *  must keep the gate open). */
+  followupActive: boolean
 } = {
   deps: null,
   voiceStream: null,
@@ -75,6 +79,30 @@ export const st: {
   echoGuardUntil: 0,
   turnToken: 0,
   bargeMonitor: null,
+  followupActive: false,
+}
+
+/**
+ * 当前应使用的上传闸门。
+ *
+ * upload gate for the current context:
+ * - 通话 / 待答 / 指令窗 / 续聊：open（免唤醒，不能被 KWS 拦截）
+ * - 其余（聆听/静待）：wake（KWS 未命中不上云）
+ *
+ * @returns 闸门模式。The gate mode.
+ */
+export function currentGate(): StreamGate {
+  if (callActive.value || pendingQuestion.value || st.awaitingCommand) return 'open'
+  if (st.followupActive || state.value === 'awaiting_answer' || state.value === 'recording') {
+    return 'open'
+  }
+  return 'wake'
+}
+
+/** 把当前闸门同步给流式连接（无连接/旧句柄时静默）。
+ *  Push the current gate to the stream (silent when absent or on a legacy handle). */
+export function syncStreamGate(): void {
+  st.voiceStream?.setGate?.(currentGate())
 }
 
 /**
@@ -287,6 +315,7 @@ export function armCommandTimer() {
     st.awaitingCommand = false
     statusLine.value = ''
     if (state.value === 'recording') state.value = wakeEnabled.value ? 'listening' : 'idle'
+    syncStreamGate()   // 指令窗关闭 → 回到 wake 闸门。Window closed → back to the wake gate.
     console.log('[wake] 等指令超时，恢复唤醒判定')
   }, commandWindowMs())
 }

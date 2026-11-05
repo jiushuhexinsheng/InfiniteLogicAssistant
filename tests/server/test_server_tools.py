@@ -36,9 +36,18 @@ def test_tools_call_invalid_args(client):
     assert resp.status_code == 400
 
 
-def test_tools_call_bad_json(client):
-    """测试请求体非 JSON 时返回 400。Tests a non-JSON request body returning 400."""
+def test_tools_call_rejects_non_json_content_type(client):
+    """状态变更请求必须是 application/json（挡跨站简单请求）。"""
     resp = client.post("/api/tools/call", content="not json")
+    assert resp.status_code == 415
+
+
+def test_tools_call_bad_json(client):
+    """Content-Type 是 JSON 但正文非法 → 400。"""
+    resp = client.post(
+        "/api/tools/call", content="not json",
+        headers={"Content-Type": "application/json"},
+    )
     assert resp.status_code == 400
 
 

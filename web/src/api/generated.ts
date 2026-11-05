@@ -1798,6 +1798,11 @@ export interface components {
              * @default 1
              */
             keywords_score: number;
+            /**
+             * Upload Preroll
+             * @default true
+             */
+            upload_preroll: boolean;
         };
         /**
          * LibraryDetailResponse
@@ -2577,6 +2582,16 @@ export interface components {
              * @default []
              */
             lazy_groups: string[];
+            /**
+             * Shell Max Output Bytes
+             * @default 200000
+             */
+            shell_max_output_bytes: number;
+            /**
+             * Env Passthrough
+             * @default []
+             */
+            env_passthrough: string[];
         };
         /**
          * ToolsResponse

@@ -120,6 +120,8 @@ class ToolsConfigOut(BaseModel):
     weather_timeout: int = 10
     llm_max_output_chars: int = 8000
     lazy_groups: list[str] = []
+    shell_max_output_bytes: int = 200_000
+    env_passthrough: list[str] = []
 
 class McpServerOut(BaseModel):
     """单个 MCP 服务器配置。

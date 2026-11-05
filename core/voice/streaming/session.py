@@ -9,7 +9,12 @@ Per-connection streaming session: PCM frames → local VAD → KWS → ASR → p
   不偷偷退回旧的浏览器切段链路。
 - **本地 ASR** 在说话期间增量解码并推 partial；**云端 ASR** 只在 VAD 段结束时
   上传一次，推 final（不伪造 partial）。
-- **KWS** 在段尾对同一段音频做发音级判定；KWS=api 时退化为文本拼音判定。
+- **唤醒闸门（gate）**：连接上有两种模式 —— ``wake``（等待唤醒词）与 ``open``
+  （通话/续聊/作答/指令窗，免唤醒）。``wake`` 模式下 KWS 在**云端上传之前**判定：
+  未命中且本地文本也未命中唤醒词时，该段不上云、不出文本，final 带 ``gate="drop"``。
+  ``open`` 模式跳过上传闸门，按 ASR 模式正常转写。
+- **KWS** 仍是发音级判定；``kws=api`` 退化为转写后的文本拼音判定（不做上传前拦截），
+  ``kws=off`` 表示不判唤醒（所有非空文本都当指令）。
 - 解码/合成/KWS 都放线程池，绝不阻塞事件循环。
 
 Design:
@@ -18,8 +23,12 @@ Design:
   clear error, never a silent fallback to the legacy browser-segment pipeline.
 - **Local ASR** decodes incrementally while speaking and emits partials; **cloud ASR**
   uploads once at the VAD endpoint and emits a final (no fake partials).
-- **KWS** judges the same segment at its end (pronunciation level); ``kws=api`` degrades
-  to text/pinyin judging.
+- **Wake gate**: a connection is in ``wake`` (waiting for the wake word) or ``open``
+  (call mode / follow-up / answering / command window). In ``wake`` mode KWS judges
+  **before** any cloud upload: a miss (and no local text hit) drops the segment without
+  uploading, and the final carries ``gate="drop"``. ``open`` skips the upload gate.
+  ``kws=api`` degrades to post-transcript text judging (no pre-upload gate) and
+  ``kws=off`` means "do not judge wake" (every non-empty transcript is a command).
 - Decode/synthesis/KWS run in worker threads and never block the event loop.
 """
 from __future__ import annotations
@@ -92,6 +101,9 @@ class StreamingSession:
         self.mode = _asr_mode()
         self.vad_mode = getattr(config.settings.voice.vad, "mode", "local")
         self.kws_mode = getattr(config.settings.voice.kws, "mode", "local")
+        self.kws_enabled = bool(getattr(config.settings.voice.kws, "enabled", True))
+        self.wake_enabled = bool(getattr(config.settings.voice.wake_word, "enabled", True))
+        self.asr_streaming = bool(getattr(config.settings.voice.asr, "streaming", True))
         self.streaming_cfg = config.settings.voice.streaming
 
         self._vad_engine = self.runtime.vad()
@@ -106,10 +118,23 @@ class StreamingSession:
         self._segment_id = 0
         self._frames: list[np.ndarray] = []
         self._pre_roll: deque[np.ndarray] = deque(maxlen=_PRE_ROLL_FRAMES)
+        # 段起点前的预卷快照：KWS 闸门与（可选）云端上传需要它覆盖 VAD 触发滞后，
+        # 但 `_pre_roll` 在 `_begin()` 后即被喂给 ASR 并清空，故单独留一份。
+        # Pre-roll snapshot for the segment: the KWS gate (and optional cloud upload)
+        # needs it to cover the VAD trigger lag, but `_pre_roll` is fed to ASR and
+        # cleared in `_begin()`, so keep a copy.
+        self._preroll_snapshot: list[np.ndarray] = []
         self._last_partial = ""
         self._last_partial_at = 0.0
         self._started_at = 0.0
         self._fallback_used = False
+        # 闸门模式：wake = 等待唤醒词（KWS 上传前判定）；open = 免唤醒开放聆听。
+        # 只有本地 KWS 可用时才具备 wake 闸门；其余配置强制 open。
+        # Gate mode: wake = waiting for the wake word (KWS gate before upload);
+        # open = wake-free continuous listening. The wake gate requires a loaded local
+        # KWS; every other configuration is forced open.
+        self.gate_capable = False
+        self._gate_mode = "open"
 
     # ── 启动 ──
 
@@ -118,6 +143,16 @@ class StreamingSession:
 
         Validate models and send ready; raise SessionError on failure.
         """
+        if not self.wake_enabled:
+            # 关闭唤醒 = 关闭语音入口（README 的隐私承诺）；需要免唤醒持续聆听
+            # 时用 kws.mode=off，而不是把 enabled 关掉。
+            # Wake disabled = the voice entry point is disabled (the documented privacy
+            # promise); use kws.mode=off for wake-free continuous listening instead.
+            raise SessionError(
+                "wake_disabled",
+                "唤醒已关闭（voice.wake_word.enabled=false）：请使用文字输入；"
+                "若需要免唤醒持续聆听，请恢复唤醒开关并把 kws.mode 设为 off",
+            )
         if self.vad_mode == "off":
             raise SessionError("vad_disabled", "VAD 已关闭：流式链路必须启用本地 VAD")
         ok, reason = await asyncio.to_thread(self._vad_engine.status)
@@ -138,21 +173,42 @@ class StreamingSession:
             if not get_asr().available() and self._asr_engine is None:
                 raise SessionError("cloud_unavailable", "云端 ASR 未配置")
 
-        if self.kws_mode == "local":
+        if self.kws_mode == "local" and self.kws_enabled:
             self._kws_engine = self.runtime.kws()
             kws_ok, kws_reason = await asyncio.to_thread(self._kws_engine.status)
             if not kws_ok:
                 logger.warning("本地 KWS 不可用（{}），本会话退化为文本拼音判定", kws_reason)
                 self._kws_engine = None
+        elif self.kws_mode == "local":
+            logger.info("本地 KWS 已禁用（kws.enabled=false），本会话退化为文本拼音判定")
+
+        # 只有「本地 KWS 可用 + 唤醒开启 + mode=local」才具备上传前闸门；
+        # api/off/模型缺失一律 open（api 需要先转写才能文本判定）。
+        # The pre-upload gate requires a loaded local KWS, wake enabled and mode=local;
+        # api/off/missing model are open (api needs the transcript before text judging).
+        self.gate_capable = (
+            self.wake_enabled and self.kws_mode == "local" and self._kws_engine is not None
+        )
+        self._gate_mode = "wake" if self.gate_capable else "open"
 
         await protocol.send(self.ws, {
             "type": "ready",
             "mode": self.mode,
-            "streaming": bool(self._asr_engine is not None and config.settings.voice.asr.streaming),
+            "streaming": bool(self._asr_engine is not None and self.asr_streaming),
             "sample_rate": audio.SAMPLE_RATE,
             "vad": self.vad_mode,
-            "kws": self.kws_mode if self._kws_engine is not None else "text",
+            "kws": (
+                "off" if self.kws_mode == "off"
+                else "local" if self._kws_engine is not None
+                else "text"
+            ),
             "tts": config.settings.voice.tts.mode,
+            # 前端据此校验 gate 能力：服务端不具备 wake 闸门时，客户端发 wake 会被
+            # 夹回 open（通话/作答等开放聆听场景始终可用）。
+            # The frontend validates gate capability: when the server cannot gate,
+            # a client "wake" request is clamped to "open".
+            "gate_capable": self.gate_capable,
+            "gate_default": self._gate_mode,
         })
 
     # ── 主循环 ──
@@ -193,6 +249,20 @@ class StreamingSession:
         elif kind == "unmute":
             self._muted = False
             self._discard_audio_state()
+        elif kind == "gate":
+            mode = str(msg.get("mode") or "").strip().lower()
+            if mode not in ("wake", "open"):
+                await protocol.send(self.ws, {
+                    "type": "error", "code": "bad_gate",
+                    "message": "gate.mode 必须是 wake 或 open", "recoverable": True,
+                })
+                return
+            # 服务端不具备上传闸门时，wake 请求被夹回 open（不静默假装已启用）。
+            # When the server cannot gate, clamp a wake request to open.
+            if mode == "wake" and not self.gate_capable:
+                mode = "open"
+            self._gate_mode = mode
+            await protocol.send(self.ws, {"type": "gate", "mode": self._gate_mode})
         elif kind == "flush":
             await self._finish(reason="flush")
         elif kind == "cancel":
@@ -216,6 +286,7 @@ class StreamingSession:
         playback, and VAD/ASR would keep stale state (echo-guard leak).
         """
         self._pre_roll.clear()
+        self._preroll_snapshot = []
         if self._vad_stream is not None:
             self._vad_stream.reset()
         if self._active:
@@ -274,6 +345,10 @@ class StreamingSession:
             except Exception as e:  # noqa: BLE001
                 logger.warning("本地 ASR 会话创建失败（hybrid 会走云端）: {}", e)
                 self._asr_session = None
+        # 先留一份预卷快照：KWS 闸门与云端上传要用它覆盖 VAD 触发滞后。
+        # Snapshot the pre-roll first: the KWS gate and cloud upload use it to cover
+        # the VAD trigger lag.
+        self._preroll_snapshot = list(self._pre_roll)
         # 把预卷（含触发帧）喂给 ASR，避免吞掉首字。
         # Feed the pre-roll (including the trigger frame) so the first phoneme survives.
         for frame in self._pre_roll:
@@ -303,6 +378,11 @@ class StreamingSession:
 
     async def _maybe_partial(self) -> None:
         """按节流间隔解码并推送 partial。Decode and push a partial at the throttle interval."""
+        # voice.asr.streaming=false：关闭边说边出字（段尾仍会 finish 出 final）。
+        # voice.asr.streaming=false: no incremental text; the segment still finishes
+        # with a final transcript.
+        if not self.asr_streaming:
+            return
         if self._asr_session is None:
             return
         now = time.monotonic()
@@ -329,6 +409,10 @@ class StreamingSession:
             return
         self._active = False
         segment = self._segment_audio(vad_samples)
+        # 闸门判定用的完整音频：VAD 段 + 段前预卷（补 VAD 触发滞后造成的短词首字丢失）。
+        # Full audio for the gate: VAD segment plus the pre-roll snapshot (recovers a
+        # short word's first syllable lost to the VAD trigger lag).
+        gate_audio = self._segment_audio_with_preroll(vad_samples)
         text = ""
         engine = "local"
         fallback = False
@@ -350,36 +434,75 @@ class StreamingSession:
             )
         else:
             decision_s = self._elapsed_ms() / 1000.0
-        # hybrid 的兜底条件：本地为空/本地 ASR 缺失/疑似被截断（明显少于中文语速下限）。
-        # Hybrid fallback conditions: empty local text / missing local ASR / obviously
-        # truncated output. local mode never uploads (privacy invariant).
-        suspicious = self.mode == "hybrid" and _looks_truncated(text, decision_s)
-        need_cloud = self.mode == "cloud" or (
-            self.mode == "hybrid" and (not text or self._asr_session is None or suspicious)
-        )
-        if need_cloud and segment.size:
-            try:
-                cloud_text = (await self._cloud_transcribe(segment) or "").strip()
-                if cloud_text or not text:
-                    text = cloud_text
-                    engine = "cloud"
-                    fallback = self.mode == "hybrid"
-                else:
-                    # 云端没给出更好的结果：保留本地短文本，绝不用空串覆盖。
-                    # Cloud produced nothing better: keep the local short text, never
-                    # overwrite it with an empty string.
-                    logger.info("hybrid 云端兜底为空，保留本地文本: {!r}", text)
-                error = ""
-            except Exception as e:  # noqa: BLE001
-                logger.warning("云端 ASR 失败（via=stream）: {}", e)
-                error = str(e)
 
+        # KWS 必须先于云端上传：wake 闸门下未命中就不上云（隐私 + 成本承诺）。
+        # KWS runs before any cloud upload: under the wake gate a miss never uploads.
         kws_hit: str | None = None
-        if self._kws_engine is not None and segment.size:
+        detect_audio = gate_audio if self._gate_mode == "wake" else segment
+        if self._kws_engine is not None and detect_audio.size:
             try:
-                kws_hit = await asyncio.to_thread(self._kws_engine.detect, segment, audio.SAMPLE_RATE)
+                kws_hit = await asyncio.to_thread(
+                    self._kws_engine.detect, detect_audio, audio.SAMPLE_RATE
+                )
             except Exception as e:  # noqa: BLE001
                 logger.warning("KWS 判定失败（按未命中）: {}", e)
+
+        # 本地文本命中（local/hybrid 有文本；cloud 模式此时通常为空）。
+        # Local text hit (local/hybrid have text; cloud mode is usually empty here).
+        local_text_hit = self._text_wake_hit(text)
+        drop = (
+            self._gate_mode == "wake"
+            and self.gate_capable
+            and not kws_hit
+            and not local_text_hit
+        )
+
+        if drop:
+            audit(f"kws-gate skip=1 segment={self._segment_id}")
+        else:
+            if kws_hit and self._gate_mode == "wake":
+                audit(f"kws-gate hit=1 keyword={kws_hit!r}")
+            # hybrid 的兜底条件：本地为空/本地 ASR 缺失/疑似被截断（明显少于中文语速下限）。
+            # Hybrid fallback conditions: empty local text / missing local ASR / obviously
+            # truncated output. local mode never uploads (privacy invariant).
+            suspicious = self.mode == "hybrid" and _looks_truncated(text, decision_s)
+            need_cloud = self.mode == "cloud" or (
+                self.mode == "hybrid" and (not text or self._asr_session is None or suspicious)
+            )
+            # wake 闸门下上传带预卷（保住唤醒词首字）；open 模式维持原有 VAD 段。
+            # Under the wake gate, upload with the pre-roll (preserve the wake word's
+            # first syllable); open mode keeps the plain VAD segment as before.
+            upload_audio = (
+                gate_audio
+                if (self._gate_mode == "wake"
+                    and bool(getattr(config.settings.voice.kws, "upload_preroll", True)))
+                else segment
+            )
+            if need_cloud and upload_audio.size:
+                try:
+                    cloud_text = (await self._cloud_transcribe(upload_audio) or "").strip()
+                    if cloud_text or not text:
+                        text = cloud_text
+                        engine = "cloud"
+                        fallback = self.mode == "hybrid"
+                    else:
+                        # 云端没给出更好的结果：保留本地短文本，绝不用空串覆盖。
+                        # Cloud produced nothing better: keep the local short text, never
+                        # overwrite it with an empty string.
+                        logger.info("hybrid 云端兜底为空，保留本地文本: {!r}", text)
+                    error = ""
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("云端 ASR 失败（via=stream）: {}", e)
+                    error = str(e)
+
+        if drop:
+            # 闸门丢弃：不带文本、不带唤醒结论，前端按 gate="drop" 静默处理。
+            # Gate drop: no text and no wake verdict; the frontend handles gate="drop"
+            # as a silent no-op.
+            text = ""
+            engine = "kws"
+            fallback = False
+            error = ""
 
         wake = self._wake_verdict(text, kws_hit)
         duration_ms = self._elapsed_ms()
@@ -404,11 +527,17 @@ class StreamingSession:
             "duration_ms": duration_ms,
             "rms": level,
             "wake": wake,
+            # gate="drop" = 被唤醒闸门在本机丢弃（未上传、无文本）；其余为当前闸门模式。
+            # gate="drop" = dropped locally by the wake gate (no upload, no text);
+            # otherwise the active gate mode.
+            "gate": "drop" if drop else self._gate_mode,
         })
 
-        if engine == "cloud":
+        if drop:
+            pass  # 丢弃段只记 kws-gate skip（上面已记）。The drop audit is emitted above.
+        elif engine == "cloud":
             tail = " fallback=1" if fallback else ""
-            audit(f"audio-upload via=stream chars={len(text)} text={text[:80]!r}{tail}")
+            audit(f"audio-upload via=stream gate={self._gate_mode} chars={len(text)} text={text[:80]!r}{tail}")
         else:
             audit(f"asr-stream local chars={len(text)} text={text[:80]!r}")
         if kws_hit:
@@ -417,6 +546,7 @@ class StreamingSession:
         await self._close_current()
         self._frames = []
         self._pre_roll.clear()
+        self._preroll_snapshot = []
         self._last_partial = ""
 
     async def _cancel(self) -> None:
@@ -425,6 +555,7 @@ class StreamingSession:
         await self._close_current()
         self._frames = []
         self._pre_roll.clear()
+        self._preroll_snapshot = []
         self._active = False
         if self._vad_stream is not None:
             self._vad_stream.reset()
@@ -459,6 +590,34 @@ class StreamingSession:
         merged = np.concatenate(self._frames)
         return audio.resample_linear(merged, self.sample_rate, audio.SAMPLE_RATE)
 
+    def _segment_audio_with_preroll(self, vad_samples: np.ndarray | None) -> np.ndarray:
+        """VAD 段 + 段前预卷（仅 VAD 段存在时拼；flush 的 `_frames` 已含预卷）。
+
+        The VAD segment plus the pre-roll snapshot (only when a VAD segment exists;
+        flush segments already include the pre-roll via `_frames`).
+        """
+        base = self._segment_audio(vad_samples)
+        if vad_samples is None or not len(vad_samples) or not self._preroll_snapshot:
+            return base
+        pre = np.concatenate(self._preroll_snapshot)
+        pre = audio.resample_linear(
+            np.asarray(pre, dtype=np.float32), self.sample_rate, audio.SAMPLE_RATE
+        )
+        if not base.size:
+            return pre
+        return np.concatenate([pre, base])
+
+    def _text_wake_hit(self, text: str) -> bool:
+        """文本是否命中唤醒词（供闸门在 KWS 未命中时给本地文本一次机会）。
+
+        Whether the text hits a wake keyword (lets local text rescue a KWS miss).
+        """
+        if not text:
+            return False
+        from core.voice.wake import detect
+        keywords = list(config.settings.voice.wake_word.keywords)
+        return bool(detect(text, keywords).matched)
+
     async def _cloud_transcribe(self, segment: np.ndarray) -> str:
         """把一段 16 kHz PCM 上传云端转写。Upload one 16 kHz PCM segment to cloud ASR."""
         from core.voice import get_asr
@@ -470,6 +629,16 @@ class StreamingSession:
 
     def _wake_verdict(self, text: str, kws_hit: str | None) -> dict[str, Any]:
         """文本拼音判定 + KWS 发音判定合成唤醒结论。Combine text and KWS verdicts."""
+        if not self.wake_enabled:
+            return {"matched": False, "command": "", "keyword": "",
+                    "source": "", "text": text}
+        # kws.mode=off：不判唤醒 —— 每个非空转写都当指令（免唤醒持续聆听）。
+        # kws.mode=off: no wake judging — every non-empty transcript is a command
+        # (wake-free continuous listening).
+        if self.kws_mode == "off":
+            body = (text or "").strip()
+            return {"matched": bool(body), "command": body, "keyword": "",
+                    "source": "off" if body else "", "text": body}
         from core.voice.wake import detect
         keywords = list(config.settings.voice.wake_word.keywords)
         result = detect(text, keywords) if text else None

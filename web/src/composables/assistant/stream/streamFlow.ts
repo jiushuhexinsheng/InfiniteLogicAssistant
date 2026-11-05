@@ -20,7 +20,7 @@ import { matchOption } from '../answerMatch'
 import { enterWakeCooldown } from '../wakeMatch'
 import {
   st, playBeep, armCommandTimer, clearCommandTimer, clearFollowupTimer,
-  inEchoGuard, abandonPendingQuestion, tryEnterCallFromStandby,
+  inEchoGuard, abandonPendingQuestion, tryEnterCallFromStandby, syncStreamGate,
 } from '../wake/orchState'
 import {
   beginRecognition, setInterim, finalizeTranscript, showGhost, setStreamPhase,
@@ -93,6 +93,10 @@ async function handleFinal(ev: StreamEvent): Promise<void> {
     wake: (ev.wake || null) as Record<string, unknown> | null,
   })
   restoreBase()
+  // 服务端唤醒闸门在本机丢弃（未上传、无文本）：静默处理，不显示 ghost/错误。
+  // Dropped locally by the server wake gate (no upload, no text): silent no-op,
+  // no ghost or error UI.
+  if (ev.gate === 'drop') { markHudDropped(); return }
   if (!text) { markHudDropped(); return }
   if (inEchoGuard()) { markHudDropped(); return }
 
@@ -186,6 +190,9 @@ function enterCommandWindow(): void {
   st.awaitingCommand = true
   statusLine.value = '已唤醒，请说指令…'
   if (state.value === 'listening' || state.value === 'standby') state.value = 'recording'
+  // 指令窗进入开放聆听：后续段不再受唤醒闸门拦截。
+  // The command window is open listening: subsequent segments bypass the wake gate.
+  syncStreamGate()
   playBeep()
   armCommandTimer()
 }

@@ -148,6 +148,7 @@ class KwsConfig(BaseModel):
     params: dict[str, dict[str, Any]] = Field(default_factory=dict)
     keywords_threshold: float = 0.25
     keywords_score: float = 1.0
+    upload_preroll: bool = True
 
 
 class ConfigResponse(ApiResponse):

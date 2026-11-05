@@ -7,6 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from core import config
+from core.execution.python import run_python
 from core.execution.shell import run_shell
 
 
@@ -40,3 +42,30 @@ async def test_run_shell_cwd():
     with tempfile.TemporaryDirectory() as d:
         r = await run_shell("cd", cwd=d)
         assert r.returncode == 0
+
+
+@pytest.mark.asyncio
+async def test_subprocess_env_scrubs_secrets(monkeypatch):
+    """API Key 等敏感变量不得进入子进程环境。"""
+    monkeypatch.setenv("IL_TEST_SECRET", "should-not-leak")
+    r = await run_python("import os; print(os.environ.get('IL_TEST_SECRET', 'absent'))")
+    assert r.returncode == 0
+    assert "absent" in r.stdout
+    assert "should-not-leak" not in r.stdout
+
+
+@pytest.mark.asyncio
+async def test_subprocess_env_passthrough(monkeypatch):
+    """tools.env_passthrough 可显式放行指定变量。"""
+    monkeypatch.setenv("IL_TEST_SECRET", "explicitly-allowed")
+    monkeypatch.setattr(config.settings.tools, "env_passthrough", ["IL_TEST_SECRET"])
+    r = await run_python("import os; print(os.environ.get('IL_TEST_SECRET', 'absent'))")
+    assert "explicitly-allowed" in r.stdout
+
+
+@pytest.mark.asyncio
+async def test_shell_output_truncated(monkeypatch):
+    """超过 shell_max_output_bytes 的输出被截断并标记。"""
+    monkeypatch.setattr(config.settings.tools, "shell_max_output_bytes", 16)
+    r = await run_shell("echo 123456789012345678901234567890")
+    assert "截断" in r.stdout

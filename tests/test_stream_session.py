@@ -96,11 +96,14 @@ class FakeAsrEngine:
 
 
 class FakeKwsEngine:
+    def __init__(self, hit: str | None = "衍衡") -> None:
+        self.hit = hit
+
     def status(self) -> tuple[bool, str]:
         return True, ""
 
     def detect(self, _samples: np.ndarray, _sr: int) -> str | None:
-        return "衍衡"
+        return self.hit
 
 
 class FakeVadEngine:
@@ -117,10 +120,10 @@ class FakeVadEngine:
 
 class FakeRuntime:
     def __init__(self, *, vad_ok: bool = True, asr_ok: bool = True,
-                 asr_text: str = "衍衡查天气") -> None:
+                 asr_text: str = "衍衡查天气", kws_hit: str | None = "衍衡") -> None:
         self._vad = FakeVadEngine(vad_ok)
         self._asr = FakeAsrEngine(asr_ok, asr_text)
-        self._kws = FakeKwsEngine()
+        self._kws = FakeKwsEngine(kws_hit)
 
     def vad(self):
         return self._vad
@@ -132,12 +135,17 @@ class FakeRuntime:
         return self._kws
 
 
-def _pin(monkeypatch, *, mode: str = "local", kws_mode: str = "local") -> None:
+def _pin(monkeypatch, *, mode: str = "local", kws_mode: str = "local",
+         wake_enabled: bool = True, kws_enabled: bool = True,
+         asr_streaming: bool = True, upload_preroll: bool = True) -> None:
     """钉住会话读取的配置。Pin the config the session reads."""
     monkeypatch.setattr(config.settings.voice.asr, "mode", mode)
-    monkeypatch.setattr(config.settings.voice.asr, "streaming", True)
+    monkeypatch.setattr(config.settings.voice.asr, "streaming", asr_streaming)
     monkeypatch.setattr(config.settings.voice.vad, "mode", "local")
     monkeypatch.setattr(config.settings.voice.kws, "mode", kws_mode)
+    monkeypatch.setattr(config.settings.voice.kws, "enabled", kws_enabled)
+    monkeypatch.setattr(config.settings.voice.kws, "upload_preroll", upload_preroll)
+    monkeypatch.setattr(config.settings.voice.wake_word, "enabled", wake_enabled)
     monkeypatch.setattr(config.settings.voice.wake_word, "keywords", ["衍衡"])
     monkeypatch.setattr(config.settings.voice.streaming, "partial_interval_ms", 0)
 
@@ -377,3 +385,138 @@ async def test_hybrid_cloud_failure_keeps_local_text(monkeypatch):
     assert final["engine"] == "local"
     assert final["fallback"] is False
     assert final["text"] == "好"
+
+
+# ─── 唤醒闸门（gate）───
+
+
+def _stub_cloud(monkeypatch) -> None:
+    """让 start_session 的云端可用性检查通过。Make the cloud availability check pass."""
+    import core.voice as voice_mod
+
+    class _CloudAsr:
+        def available(self) -> bool:
+            return True
+
+    monkeypatch.setattr(voice_mod, "get_asr", lambda: _CloudAsr())
+
+
+async def _run_cloud_segment(monkeypatch, *, kws_hit: str | None,
+                             gate: str | None = None, mode: str = "cloud"):
+    """跑一段 cloud 模式会话，返回 (final, 云端调用列表, ws, session)。"""
+    _pin(monkeypatch, mode=mode, kws_mode="local")
+    _stub_cloud(monkeypatch)
+    runtime = FakeRuntime(kws_hit=kws_hit)
+    runtime._vad.stream = FakeVadStream(end_after=3)
+    calls: list[int] = []
+
+    async def fake_cloud(_self, segment):
+        calls.append(int(segment.size))
+        return "打开浏览器"
+
+    monkeypatch.setattr(StreamingSession, "_cloud_transcribe", fake_cloud)
+    ws = FakeWS()
+    session = StreamingSession(ws, {"type": "start"}, runtime=runtime)
+    await session.start_session()
+    if gate is not None:
+        import json
+        await session._on_control(json.dumps({"type": "gate", "mode": gate}))
+    for _ in range(3):
+        await session._on_audio(_frame())
+    finals = [m for m in ws.sent if m["type"] == "final"]
+    assert finals, "段应产生 final"
+    return finals[-1], calls, ws, session
+
+
+@pytest.mark.asyncio
+async def test_gate_wake_kws_miss_drops_before_cloud(monkeypatch):
+    """gate=wake 且 KWS 未命中：不上云、final 标记 drop。"""
+    final, calls, _ws, _session = await _run_cloud_segment(monkeypatch, kws_hit=None)
+    assert calls == [], "闸门未命中不得调用云端 ASR"
+    assert final["gate"] == "drop"
+    assert final["text"] == ""
+    assert final["engine"] == "kws"
+    assert final["wake"]["matched"] is False
+
+
+@pytest.mark.asyncio
+async def test_gate_wake_kws_hit_uploads(monkeypatch):
+    """gate=wake 且 KWS 命中：正常上云，final 带唤醒结论。"""
+    final, calls, _ws, _session = await _run_cloud_segment(monkeypatch, kws_hit="衍衡")
+    assert calls, "闸门命中应上传云端"
+    assert final["gate"] == "wake"
+    assert final["text"] == "打开浏览器"
+    assert final["wake"]["matched"] is True
+    assert final["wake"]["source"] == "kws"
+
+
+@pytest.mark.asyncio
+async def test_gate_open_uploads_on_kws_miss(monkeypatch):
+    """gate=open（通话/续聊/作答）：KWS 未命中也不得上传拦截。"""
+    final, calls, _ws, _session = await _run_cloud_segment(
+        monkeypatch, kws_hit=None, gate="open"
+    )
+    assert calls, "开放聆听必须照常上云"
+    assert final["gate"] == "open"
+    assert final["text"] == "打开浏览器"
+    assert any(m.get("type") == "gate" and m.get("mode") == "open"
+               for m in _ws.sent)
+
+
+@pytest.mark.asyncio
+async def test_gate_capable_false_clamps_wake_to_open(monkeypatch):
+    """kws.mode=api（无本地闸门）时 wake 请求被夹回 open，并回 ack。"""
+    _pin(monkeypatch, mode="local", kws_mode="api")
+    ws = FakeWS()
+    session = StreamingSession(ws, {"type": "start"}, runtime=FakeRuntime())
+    await session.start_session()
+    ready = ws.sent[0]
+    assert ready["gate_capable"] is False
+    assert ready["gate_default"] == "open"
+
+    import json
+    await session._on_control(json.dumps({"type": "gate", "mode": "wake"}))
+    ack = [m for m in ws.sent if m["type"] == "gate"][-1]
+    assert ack["mode"] == "open"
+
+
+@pytest.mark.asyncio
+async def test_wake_disabled_rejects_session(monkeypatch):
+    """wake_word.enabled=false：拒绝建立语音流（只用文字）。"""
+    _pin(monkeypatch, wake_enabled=False)
+    session = StreamingSession(FakeWS(), {"type": "start"}, runtime=FakeRuntime())
+    with pytest.raises(SessionError) as e:
+        await session.start_session()
+    assert e.value.code == "wake_disabled"
+
+
+@pytest.mark.asyncio
+async def test_kws_mode_off_treats_all_speech_as_command(monkeypatch):
+    """kws.mode=off：不判唤醒，整句都是指令。"""
+    _pin(monkeypatch, mode="local", kws_mode="off")
+    runtime = FakeRuntime(asr_text="打开浏览器")
+    runtime._vad.stream = FakeVadStream(end_after=3)
+    ws = FakeWS()
+    session = StreamingSession(ws, {"type": "start"}, runtime=runtime)
+    await session.start_session()
+    for _ in range(3):
+        await session._on_audio(_frame())
+    final = [m for m in ws.sent if m["type"] == "final"][-1]
+    assert final["wake"]["matched"] is True
+    assert final["wake"]["command"] == "打开浏览器"
+    assert final["wake"]["source"] == "off"
+
+
+@pytest.mark.asyncio
+async def test_asr_streaming_false_sends_no_partial(monkeypatch):
+    """voice.asr.streaming=false：不再推 partial，但段尾仍有 final。"""
+    _pin(monkeypatch, mode="local", asr_streaming=False)
+    runtime = FakeRuntime()
+    runtime._vad.stream = FakeVadStream(end_after=3)
+    ws = FakeWS()
+    session = StreamingSession(ws, {"type": "start"}, runtime=runtime)
+    await session.start_session()
+    for _ in range(3):
+        await session._on_audio(_frame())
+    assert not any(m["type"] == "partial" for m in ws.sent)
+    assert any(m["type"] == "final" for m in ws.sent)

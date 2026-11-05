@@ -185,16 +185,19 @@ class VadConfig(BaseModel):
 class KwsConfig(BaseModel):
     """本地 KWS（关键词检测）前置闸门配置：sherpa-onnx zipformer-wenetspeech。
 
-    KWS 在**云端 ASR 之前**本地判定音频里有没有唤醒词：未命中直接丢弃（背景媒体声/
-    闲聊不上云、不花钱），命中才调 ASR 抬取指令文本。发音级检测（拼音 tokens），
-    对「ASR 写什么字」免疫。
+    客户端以 ``gate=wake``（等待唤醒词）连入时，KWS 在**云端 ASR 之前**本地判定
+    音频里有没有唤醒词：未命中且本地文本也未命中直接丢弃（背景媒体声/闲聊不上云、
+    不花钱），命中才调 ASR 抬取指令文本。通话/续聊/作答等 ``gate=open`` 场景不做
+    上传拦截（否则免唤醒模式会失效）。发音级检测（拼音 tokens），对「ASR 写什么字」
+    免疫。
 
-    本地前置闸门（keyword-spotting gate）configuration: sherpa-onnx
-    zipformer-wenetspeech. KWS judges locally whether the audio contains a wake word
-    **before** any cloud ASR call: misses are dropped outright (background media /
-    chatter never leaves the machine or costs money), hits proceed to ASR for command
-    extraction. Pronunciation-level detection (pinyin tokens), immune to "whatever
-    ASR writes".
+    Keyword-spotting gate configuration. When the client connects in ``gate=wake``
+    (waiting for the wake word), KWS judges locally **before** any cloud ASR call:
+    a miss that also fails the local text check is dropped outright (background
+    media / chatter never leaves the machine or costs money); a hit proceeds to ASR
+    for command extraction. Open-listening states (call mode / follow-up / answering,
+    ``gate=open``) are never upload-gated. Pronunciation-level detection (pinyin
+    tokens), immune to "whatever ASR writes".
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -219,6 +222,12 @@ class KwsConfig(BaseModel):
     keywords_threshold: float = Field(0.25, ge=0.0, le=1.0)
     # 关键词得分加成：越高越易命中。Keyword score boost: higher hits more easily.
     keywords_score: float = Field(1.0, ge=0.0)
+    # wake 闸门命中后的云端上传是否带 1s 预卷：VAD 触发滞后会削掉短唤醒词首字，
+    # 带预卷可提高指令首字准确率（代价是多上传约 1s 音频）。
+    # Whether the cloud upload after a wake-gate hit includes the 1 s pre-roll: the VAD
+    # trigger lag can clip a short wake word's first syllable; including it improves the
+    # command transcript at the cost of ~1 s more uploaded audio.
+    upload_preroll: bool = True
 
 
 class CallConfig(BaseModel):

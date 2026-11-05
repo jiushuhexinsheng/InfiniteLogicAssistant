@@ -110,7 +110,7 @@ def test_stream_local_partial_then_final(client, monkeypatch):
     settings = config.Settings(rag=config.RagSection(auto_index=False))
     settings.voice.asr.mode = "local"
     settings.voice.vad.mode = "local"
-    settings.voice.kws.mode = "off"
+    settings.voice.kws.mode = "api"
     settings.voice.wake_word.keywords = ["衍衡"]
     settings.voice.streaming.partial_interval_ms = 0
     monkeypatch.setattr(config, "get_settings", lambda: settings)
@@ -138,6 +138,31 @@ def test_stream_local_partial_then_final(client, monkeypatch):
     assert final["wake"]["command"] == "查天气"
 
 
+def test_stream_gate_control_ack(client, monkeypatch):
+    """gate 控制消息：无本地闸门时 wake 被夹回 open 并回 ack。"""
+    from core import config
+    from core.voice.streaming import session as session_mod
+
+    settings = config.Settings(rag=config.RagSection(auto_index=False))
+    settings.voice.asr.mode = "local"
+    settings.voice.vad.mode = "local"
+    settings.voice.kws.mode = "api"   # 无本地 KWS → gate_capable=false
+    monkeypatch.setattr(config, "get_settings", lambda: settings)
+    monkeypatch.setattr(session_mod, "get_runtime", lambda: _Runtime())
+
+    with client.websocket_connect("/api/voice/asr/stream") as ws:
+        ws.send_json({"type": "start", "sample_rate": 16000})
+        ready = ws.receive_json()
+        assert ready["type"] == "ready"
+        assert ready["gate_capable"] is False
+        assert ready["gate_default"] == "open"
+        ws.send_json({"type": "gate", "mode": "wake"})
+        ack = ws.receive_json()
+        assert ack == {"type": "gate", "mode": "open"}
+        ws.send_json({"type": "stop"})
+        assert ws.receive_json()["type"] == "done"
+
+
 def test_stream_local_asr_unavailable_sends_error(client, monkeypatch):
     """local 模式缺模型 → 明确错误（不静默上云）。"""
     from core import config
@@ -146,7 +171,7 @@ def test_stream_local_asr_unavailable_sends_error(client, monkeypatch):
     settings = config.Settings(rag=config.RagSection(auto_index=False))
     settings.voice.asr.mode = "local"
     settings.voice.vad.mode = "local"
-    settings.voice.kws.mode = "off"
+    settings.voice.kws.mode = "api"
     monkeypatch.setattr(config, "get_settings", lambda: settings)
     monkeypatch.setattr(session_mod, "get_runtime", lambda: _Runtime(asr_ok=False))
 

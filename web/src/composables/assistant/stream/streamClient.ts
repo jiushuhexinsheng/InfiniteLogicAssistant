@@ -30,7 +30,14 @@ export interface VoiceStreamOptions {
   echoCancellation?: boolean
   noiseSuppression?: boolean
   autoGain?: boolean
+  /** 建连时的初始闸门（缺省 wake）。Initial gate at connect time (default wake). */
+  gate?: StreamGate
 }
+
+/** 服务端上传闸门：wake = 等待唤醒词（KWS 未命中不上云）；open = 免唤醒开放聆听。
+ *  Server upload gate: wake = waiting for the wake word (KWS miss never uploads);
+ *  open = wake-free continuous listening. */
+export type StreamGate = 'wake' | 'open'
 
 export interface VoiceStreamHandle {
   start(): Promise<void>
@@ -38,6 +45,9 @@ export interface VoiceStreamHandle {
   send(message: Record<string, unknown>): void
   /** 暂停/恢复发送（TTS 播报时抑制回声）。Pause/resume sending (TTS echo guard). */
   setMuted(muted: boolean): void
+  /** 切换服务端上传闸门（连接未就绪时记住，连通后补发）。
+   *  Switch the server upload gate (remembered and sent once connected). */
+  setGate(mode: StreamGate): void
   isRunning(): boolean
 }
 
@@ -55,6 +65,10 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
   let node: AudioWorkletNode | null = null
   let running = false
   let muted = false
+  // 上传闸门（wake/open）：连接未 OPEN 时先记住，start 发出后立刻补发（在补发预开帧之前）。
+  // Upload gate (wake/open): remembered until the socket is OPEN, flushed right after
+  // start and before the pre-open frames (so the first segment is gated correctly).
+  let gate: StreamGate = opts.gate ?? 'wake'
   // WS OPEN / start 发出之前产生的帧先进队列，连通后补发（避免吞掉首字）。
   // Frames produced before WS OPEN / before `start` go to the queue and are flushed
   // once connected (so the first syllable is not dropped).
@@ -74,6 +88,12 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
       ...(withDevice && opts.inputDevice ? { deviceId: { exact: opts.inputDevice } } : {}),
     },
   })
+
+  function sendGate(): void {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try { ws.send(JSON.stringify({ type: 'gate', mode: gate })) } catch { /* 连接刚断 */ }
+    }
+  }
 
   async function acquire(): Promise<MediaStream> {
     try {
@@ -203,6 +223,10 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
     // 服务端排队，无需再门控）。start must arrive first; then flush the pre-open frames
     // in order (frames sent after OPEN but before ready are queued server-side).
     started = true
+    // 闸门必须在预开帧之前到达服务端：否则首段会按默认 wake 处理（通话重连时误拦）。
+    // The gate must reach the server before the pre-open frames; otherwise the first
+    // segment is judged under the default wake gate (wrongly gated on call reconnect).
+    sendGate()
     for (const frame of preopen.drain()) {
       try { socket.send(frame) } catch { /* 连接刚断，丢弃 */ }
     }
@@ -256,6 +280,10 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: value ? 'mute' : 'unmute' }))
       }
+    },
+    setGate(mode) {
+      gate = mode
+      sendGate()
     },
     isRunning: () => running,
   }

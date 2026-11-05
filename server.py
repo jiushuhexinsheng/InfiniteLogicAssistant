@@ -15,6 +15,9 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from core import config as config
 from core.api import history, library, llm, memory, providers, schedule, sessions, settings, tools, voice
+from core.api.security import (
+    allowed_hosts, host_only, is_loopback_host, origin_allowed, token_matches,
+)
 from core.logger import logger
 
 
@@ -81,6 +84,11 @@ async def lifespan(app: FastAPI):
 
     Application lifespan: start/shutdown the unified app context container (MCP / scheduler / RAG index / LLM connection pool).
     """
+    # 绑定校验下沉到 lifespan：即使绕过 start_server()、直接用
+    # `uvicorn server:app --host 0.0.0.0` 启动，也会在首个生命周期节点拒绝。
+    # Bind validation also runs in the lifespan: even when bypassing start_server()
+    # with `uvicorn server:app --host 0.0.0.0`, the app refuses at startup.
+    _validate_bind(config.settings.server.host, config.settings.server.api_token)
     # 单实例守卫先行：多 worker/重复实例在这里拒绝启动（状态都在本进程内存里）
     lock_fh = _acquire_instance_lock()
     try:
@@ -106,15 +114,66 @@ def _is_localhost(host: str) -> bool:
 
 @app.middleware("http")
 async def _auth_middleware(request: Request, call_next):
-    """认证中间件：配置了 api_token 时，校验所有 /api/* 请求的 X-API-Token。
+    """认证中间件：配置了 api_token 时，校验 /api/* 与文档端点的 X-API-Token。
 
-    Auth middleware: when api_token is configured, validate the X-API-Token header on every /api/* request.
+    Auth middleware: when api_token is configured, validate the X-API-Token header on
+    every /api/* request and on the docs/OpenAPI endpoints.
     """
     token = config.settings.server.api_token
-    # 配置了 token 时，所有 /api/* 请求都需携带正确的 X-API-Token（静态资源放行）
-    if token and request.url.path.startswith("/api/"):
-        if request.headers.get("x-api-token") != token:
+    path = request.url.path
+    protected = path.startswith("/api/") or path in ("/docs", "/redoc", "/openapi.json")
+    # 配置了 token 时，受保护路径都需携带正确的 X-API-Token（静态资源放行）。
+    # With a token configured, every protected path needs a correct X-API-Token
+    # (static assets stay open).
+    # CORS 预检（OPTIONS）不携带自定义头，放行给 CORS 中间件处理。
+    # CORS preflight (OPTIONS) carries no custom headers; let CORS handle it.
+    if token and protected and request.method != "OPTIONS":
+        supplied = request.headers.get("x-api-token") or ""
+        if not token_matches(supplied, token):
             return JSONResponse({"ok": False, "error": "未授权：需要正确的 X-API-Token"}, status_code=401)
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def _source_guard(request: Request, call_next):
+    """来源校验：Host（DNS rebinding）、Origin（跨站）、远端无 token、JSON 请求体。
+
+    Source guard: Host (DNS rebinding), Origin (cross-site), remote clients without a
+    token, and JSON-only state-changing bodies.
+    """
+    if not request.url.path.startswith("/api/"):
+        return await call_next(request)
+
+    token = config.settings.server.api_token
+    # 无 token 时严格校验 Host（有 token 时 token 本身是闸门，允许 LAN IP 直连）。
+    # Without a token, require an allowed Host (with a token, the token itself is the
+    # gate, so LAN IP access keeps working).
+    if not token:
+        host = host_only(request.headers.get("host") or "")
+        if host not in allowed_hosts():
+            return JSONResponse({"ok": False, "error": "Host 不受信任"}, status_code=421)
+
+    origin = request.headers.get("origin") or ""
+    if origin and not origin_allowed(origin):
+        return JSONResponse({"ok": False, "error": "Origin 不受信任"}, status_code=403)
+
+    # 远端且无 token → 拒绝（即使有人绕过 start_server 直接公开绑定）。
+    # A remote peer without a token is rejected (covers direct public binds that
+    # bypass start_server's validation).
+    client = request.client
+    if client is not None and not is_loopback_host(client.host) and not token:
+        return JSONResponse({"ok": False, "error": "远程访问需要 X-API-Token"}, status_code=401)
+
+    # 状态变更请求必须是 JSON：表单无法伪造 application/json，挡掉跨站简单请求。
+    # State-changing requests must be JSON: forms cannot forge application/json,
+    # which blocks cross-site simple requests.
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        length = request.headers.get("content-length")
+        ctype = (request.headers.get("content-type") or "").lower()
+        if length not in (None, "0") and not ctype.startswith("application/json"):
+            return JSONResponse(
+                {"ok": False, "error": "请求体必须是 application/json"}, status_code=415,
+            )
     return await call_next(request)
 
 

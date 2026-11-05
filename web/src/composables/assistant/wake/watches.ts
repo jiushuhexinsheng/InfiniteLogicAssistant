@@ -5,6 +5,7 @@ import { startBargeInMonitor, BARGE_IN_DURATION_MS } from '../bargeIn'
 import {
   st, armFollowupTimer, clearFollowupTimer, followupWindowMs, stopBargeIn, bargeInEnabled,
   DONE_RESET_MS, ECHO_GUARD_MS, clearIdleTimer, armIdleTimer, resetIdleDeadline,
+  syncStreamGate,
 } from './orchState'
 import { ensureListening, stopListening } from './micControl'
 // 拆分自 wakeOrchestrator.ts（重构：纯移动 + 状态收敛到 orchState.st，无行为变化）。
@@ -84,6 +85,11 @@ export function registerWatches() {
 
   watch(state, (s) => {
     if (st.resetTimer) { clearTimeout(st.resetTimer); st.resetTimer = null }
+    // 续聊窗口的“上下文”标志：transcribing 是识别中间态，不能把窗口关掉。
+    // Follow-up context flag: `transcribing` is an intermediate state and must not
+    // close the window.
+    if (s === 'followup') st.followupActive = true
+    else if (s !== 'transcribing') st.followupActive = false
     clearFollowupTimer()
     // 聆听空闲倒计时随状态统一收放：进聆听按**剩余**时间重挂；其余状态一律摘表
     // （实质输入的续期走 resetIdleDeadline，见 useChat/useChatAnswer）。
@@ -122,4 +128,10 @@ export function registerWatches() {
       if (state.value === 'done' || state.value === 'error') state.value = 'listening'
     }, DONE_RESET_MS)
   })
+
+  // 闸门随上下文切换：通话/待答/指令窗/续聊 → open，其余 → wake。
+  // 状态 watcher 先跑（上面的 followupActive），这里再统一同步给服务端。
+  // Gate follows the context: call/answer/command/follow-up → open, otherwise wake.
+  // The state watcher above runs first (followupActive), then this pushes it server-side.
+  watch([state, callActive, pendingQuestion], () => syncStreamGate())
 }

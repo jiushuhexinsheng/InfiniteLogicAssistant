@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from core import config as config_mod
+from core.atomic_io import atomic_write_text
 from core.config.loader import (
     _migrate_legacy_local_asr_model,
     _migrate_legacy_vad_keys,
@@ -222,8 +223,12 @@ async def patch_config(request: Request):
 
     restart_required = _needs_restart(current, merged)
     try:
-        with open(config_mod.CONFIG_FILE, "w", encoding="utf-8") as f:
-            yaml.safe_dump(merged, f, allow_unicode=True, sort_keys=False)
+        # 原子写：同目录临时文件 + os.replace，崩溃不会留下半截 YAML。
+        # Atomic write: same-dir temp file + os.replace; a crash never leaves half a YAML.
+        atomic_write_text(
+            config_mod.CONFIG_FILE,
+            yaml.safe_dump(merged, allow_unicode=True, sort_keys=False),
+        )
     except Exception as e:
         logger.error("写回 config.yaml 失败: {}", e)
         return JSONResponse({"ok": False, "error": f"写入 config.yaml 失败: {e}"}, status_code=500)
@@ -270,8 +275,10 @@ async def put_secrets(request: Request):
         node["api_key" if parts[0] != "server" else "api_token"] = value
     if isinstance(node, dict) and not node.get("profiles"):
         node.pop("profiles", None)
-    with open(config_mod.SECRETS_FILE, "w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+    atomic_write_text(
+        config_mod.SECRETS_FILE,
+        yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
+    )
 
     config_mod.reload_settings(source="api.secrets")
     return {"ok": True, "set": bool(value), "path": path}

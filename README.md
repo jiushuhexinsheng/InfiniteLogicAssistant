@@ -99,7 +99,8 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 - 唤醒词是 **「衍衡」** 或 **「洛吉斯」**（**发音级判定**：ASR 写成任何同音字——燕恒/言恒/
   演横——都命中；拼音严格相等，「也行」「若」等近音词不会误触发）
 - **判定本地完成**（sherpa-onnx VAD/KWS）：分段与唤醒判定都在本机；`asr.mode=local` 时音频
-  不出本机，`cloud`/`hybrid` 才上传
+  不出本机。`cloud`/`hybrid` 仅在唤醒闸门命中后才上传（`kws.mode=local`，默认），
+  通话/续聊/作答等开放聆听场景不受闸门限制；`kws.mode=api` 则所有人声段都会上传。
 - 录音 **本地 VAD 自动断句**（`voice.streaming.endpoint_silence_ms`，默认 700ms），单段上限
   `voice.streaming.max_utterance_ms`（默认 15s）；`vad.min_speech_ms`（默认 100ms）过滤爆音
 - **语音回答提问**：助手提出需要确认/澄清的问题并播报完后，**直接开口说答案即可**（不必再说唤醒词）；
@@ -297,6 +298,13 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 - **绑定与令牌**：默认只绑定 `127.0.0.1`。将 `server.host` 改为非 localhost 地址时，必须设置
   `server.api_token`（否则拒绝启动）；此时所有 `/api/*` 请求需携带 `X-API-Token` 请求头。
 - **CORS**：`server.cors_origins` 默认空 = 禁止跨域；本地同源/开发代理（vite 代理 /api）无需配置。
+- **来源校验**：无 token 时校验 `Host`（防 DNS rebinding）与 `Origin`（防跨站）；带请求体的
+  状态变更接口要求 `Content-Type: application/json`（表单无法伪造），远端 peer 无 token 一律
+  401。WebSocket 握手在 `accept` 前校验 Origin，且 token 比较为恒定时间。配置 `api_token` 后
+  `/docs`、`/redoc`、`/openapi.json` 同样需要 `X-API-Token`。
+- **子进程环境**：shell/Python 子进程默认只继承白名单变量（PATH/SystemRoot/TEMP/本地化等），
+  `LLM_API_KEY` 等密钥不会进入被执行命令；需要额外变量时在 `tools.env_passthrough` 显式列出。
+  shell/Python 输出单流上限 `tools.shell_max_output_bytes`（默认 200 KB），超出截断。
 - **密钥零落库**：`config.yaml` 不含密钥，密钥在 `config.secrets.yaml` / 环境变量；API 永不回显密钥值，
   设置页只报「已设置 / 未设置」。
 - **无沙箱 + 权限策略（默认已全放行）**：工具是否需要操作者确认由 `permissions` 策略决定
@@ -307,11 +315,14 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
   共用同一份 `permissions`；放行时**仍会播报计划**，只是不阻塞等待。无人值守（定时任务）
   无确认通道时高风险调用一律拒绝。**全放行等于这道闸门默认不生效**，请确认你接受该风险。
 - **语音隐私边界**：
-  - **本地 KWS 闸门（默认开启）**：唤醒判定在本机完成（sherpa-onnx），**没说唤醒词的音频
-    （电视声/闲聊）在本机直接丢弃、不出本机、不上云**；只有 KWS 听到唤醒词的那段才上传云端
-    ASR 抬取指令文本。`cloud` 模式（设置页可切）旁路闸门——每次人声段都上云，最大召回。
-  - 上传即记账（`data/audit.log`）：`audio-upload via=wake|transcribe` 为真正上云的音频
-    （含转写文本前 80 字），`kws-gate hit/skip=` 为本地判定记账（非上传）。
+  - **本地 KWS 上传闸门（`kws.mode=local`，默认开启）**：唤醒待命时判定在本机完成
+    （sherpa-onnx），**未命中唤醒词的音频（电视声/闲聊）在本机直接丢弃、不出本机、不上云**；
+    只有 KWS 命中（或本地文本命中唤醒词）的那段才上传云端 ASR 抬取指令文本。通话模式、
+    续聊窗口、等待作答与指令窗属于**开放聆听**（客户端 `gate=open`），不做上传拦截。
+    `kws.mode=api` 先转写再用文本拼音判唤醒（高召回，所有人声段都会上传）；
+    `kws.mode=off` 不判唤醒，所有非空语音都当指令。
+  - 上传即记账（`data/audit.log`）：`audio-upload via=stream gate=wake|open` 为真正上云的
+    音频（含转写文本前 80 字），`kws-gate hit/skip=` 为本地判定记账（非上传）。
     `grep -c 'audio-upload via=' data/audit.log` 即云端上传总次数，供自查调用量与成本。
   - 关闭语音唤醒（再次点 mic 徽章）即停止取麦；助手播报期间麦克风被释放，播报结束后
     1.2 秒内音频丢弃（回声护栏）。

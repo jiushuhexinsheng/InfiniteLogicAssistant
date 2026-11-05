@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
+from core.atomic_io import atomic_write_text
 from core.config import ROOT_DIR
 
 SCHEDULES_FILE = ROOT_DIR / "data" / "schedules.json"
@@ -167,10 +168,10 @@ class Scheduler:
     def _save(self) -> None:
         """把所有任务序列化为 JSON 写入调度文件。
         Serializes all jobs to JSON and writes them to the schedule file."""
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps([asdict(sc) for sc in self._schedules.values()], ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        atomic_write_text(
+            self.path,
+            json.dumps([asdict(sc) for sc in self._schedules.values()],
+                       ensure_ascii=False, indent=2),
         )
 
     def _load(self) -> None:

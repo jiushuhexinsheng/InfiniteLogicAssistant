@@ -7,12 +7,16 @@ The `cancel` argument is a duck-typed CancellationToken:
 it only needs an `is_cancelled` attribute (bool). Full implementation in core/orchestrator/control.py (P0-T10).
 """
 import asyncio
+import locale
 import os
 import signal
 import subprocess
 import time
 from dataclasses import dataclass
 from typing import Any
+
+from core import config
+from core.execution.env import subprocess_env
 
 
 @dataclass
@@ -56,13 +60,41 @@ def kill_tree(pid: int) -> None:
         _kill_tree_posix(pid)
 
 
-async def _drain(stream, buf: list[str]) -> None:
-    """逐行读取子进程输出流并追加到缓冲区。Read a subprocess output stream line by line into a buffer."""
+async def _drain(stream, buf: list[bytes], limit: int) -> bool:
+    """逐行读取子进程输出到字节缓冲，超过 limit 后继续排空但不再累积。
+
+    Drain a subprocess stream line by line into a byte buffer; after `limit` is
+    reached keep draining (so the child never blocks) but stop accumulating.
+
+    Returns:
+        是否发生截断。Whether truncation happened.
+    """
+    total = 0
+    truncated = False
     while True:
         line = await stream.readline()
         if not line:
             break
-        buf.append(line.decode("utf-8", errors="replace"))
+        if total >= limit:
+            truncated = True
+            continue
+        chunk = line[: limit - total]
+        buf.append(chunk)
+        total += len(chunk)
+        if len(chunk) < len(line):
+            truncated = True
+    return truncated
+
+
+def _decode_output(raw: bytes) -> str:
+    """按 UTF-8 解码，失败回退系统编码（中文 Windows 的 cmd 输出是 cp936）。
+
+    Decode as UTF-8, falling back to the system encoding (cmd.exe output on Chinese
+    Windows is cp936)."""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode(locale.getpreferredencoding(False) or "utf-8", errors="replace")
 
 
 async def run_shell(
@@ -76,16 +108,25 @@ async def run_shell(
     if cancel is not None and cancel.is_cancelled:
         raise asyncio.CancelledError
     start = time.monotonic()
+    # POSIX 上让子进程自成一个会话/进程组，kill_tree 的 os.killpg 才真正有效。
+    # On POSIX the child gets its own session/process group so kill_tree's os.killpg
+    # hits the whole tree instead of a nonexistent group.
+    spawn_kwargs: dict[str, Any] = {}
+    if os.name != "nt":
+        spawn_kwargs["start_new_session"] = True
     proc = await asyncio.create_subprocess_shell(
         command,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=cwd,
+        env=subprocess_env(),
+        **spawn_kwargs,
     )
-    out_chunks: list[str] = []
-    err_chunks: list[str] = []
-    t_out = asyncio.ensure_future(_drain(proc.stdout, out_chunks))
-    t_err = asyncio.ensure_future(_drain(proc.stderr, err_chunks))
+    out_chunks: list[bytes] = []
+    err_chunks: list[bytes] = []
+    limit = max(0, int(config.settings.tools.shell_max_output_bytes))
+    t_out = asyncio.ensure_future(_drain(proc.stdout, out_chunks, limit))
+    t_err = asyncio.ensure_future(_drain(proc.stderr, err_chunks, limit))
     deadline = time.monotonic() + timeout
     try:
         while True:
@@ -102,9 +143,25 @@ async def run_shell(
                 break
             except asyncio.TimeoutError:
                 continue
-        await t_out
-        await t_err
+        out_trunc = await t_out
+        err_trunc = await t_err
+    except asyncio.CancelledError:
+        # 外部取消（runner 收尾 / FORCE 暂停）不会走上面的轮询分支：这里补杀进程树。
+        # External cancellation (runner teardown / FORCE pause) never reaches the poll
+        # branch, so kill the process tree here before propagating.
+        kill_tree(proc.pid)
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+        raise
     finally:
         t_out.cancel()
         t_err.cancel()
-    return ShellResult(ret, "".join(out_chunks), "".join(err_chunks), time.monotonic() - start)
+    stdout = _decode_output(b"".join(out_chunks))
+    stderr = _decode_output(b"".join(err_chunks))
+    if out_trunc:
+        stdout += f"\n[输出已截断，上限 {limit} 字节]"
+    if err_trunc:
+        stderr += f"\n[输出已截断，上限 {limit} 字节]"
+    return ShellResult(ret, stdout, stderr, time.monotonic() - start)

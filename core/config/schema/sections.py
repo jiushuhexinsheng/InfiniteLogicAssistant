@@ -76,6 +76,14 @@ class ToolsSection(BaseModel):
     # one-line stubs (full parameters via tools_describe first); empty = full schemas
     # (today's behaviour unchanged). E.g. ["mcp"].
     lazy_groups: list[str] = Field(default_factory=list)
+    # shell/Python 子进程的单流输出上限（字节）：超过后继续排空但截断，防止大输出撑爆内存。
+    # Per-stream output cap for shell/Python children (bytes): keep draining but truncate
+    # so a huge output cannot exhaust memory.
+    shell_max_output_bytes: int = Field(200_000, gt=0)
+    # 子进程默认只继承白名单环境变量（不含 API Key/token）；需要额外变量时在此列出键名。
+    # Children inherit an allow-listed environment by default (no API keys/tokens);
+    # list extra variable names here to opt in explicitly.
+    env_passthrough: list[str] = Field(default_factory=list)
 
 
 class PermissionRule(BaseModel):

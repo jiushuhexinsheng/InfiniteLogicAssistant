@@ -1,7 +1,9 @@
 import {
   state, statusLine, wakeEnabled, failWake, hardwareConfig, streamingEnabled,
 } from '../store'
-import { st, clearWaitTimers, resetFailures, stopBargeIn } from './orchState'
+import {
+  st, clearWaitTimers, resetFailures, stopBargeIn, syncStreamGate, currentGate,
+} from './orchState'
 import { createVoiceStream, type VoiceStreamHandle } from '../stream/streamClient'
 import { handleStreamEvent } from '../stream/streamFlow'
 import { clearTranscript, setStreamPhase, streamError } from '../storeTranscript'
@@ -64,6 +66,9 @@ async function acquireAndStart(): Promise<AcquireOutcome> {
     echoCancellation: hardwareConfig.echo_cancellation,
     noiseSuppression: hardwareConfig.noise_suppression,
     autoGain: hardwareConfig.auto_gain,
+    // 建连闸门取当前上下文（通话中重连 = open；普通唤醒 = wake）。
+    // Initial gate from the current context (call reconnect = open; wake = wake).
+    gate: currentGate(),
   })
   try {
     await handle.start()
@@ -86,6 +91,10 @@ async function acquireAndStart(): Promise<AcquireOutcome> {
   }
   st.voiceStream = handle
   setStreamPhase('ready')
+  // 新连接先按当前上下文同步闸门（默认 wake；通话重连时为 open）。
+  // Sync the gate for the current context on a fresh connection (wake by default;
+  // open when reconnecting inside a call).
+  syncStreamGate()
   return 'ok'
 }
 

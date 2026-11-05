@@ -66,9 +66,20 @@ voice:
   # 判定有没有唤醒词，未命中直接丢弃。模型目录缺失时闸门自动旁路并在启动日志注明。
   kws:
     enabled: true
+    # local = 本地 Zipformer KWS 上传前闸门（唤醒待命时未命中不上云）；
+    # api = 先转写、再用文本拼音判唤醒（高召回、会上传所有人声段）；
+    # off = 不判唤醒，所有非空语音都当指令（免唤醒持续聆听）。
+    # local = on-device KWS pre-upload gate (a miss while waiting for the wake word
+    # never uploads); api = transcribe first, then text/pinyin wake judging (highest
+    # recall, uploads every speech segment); off = no wake judging (every non-empty
+    # utterance is a command; wake-free continuous listening).
+    mode: local
     model_dir: "models/kws/sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01"
     keywords_threshold: 0.25    # 检测阈值：越低越灵敏（漏报少、误报多）
     keywords_score: 1.0         # 关键词得分加成：越高越易命中
+    # wake 闸门命中后的云端上传是否带 1s 预卷（补 VAD 触发滞后导致的短唤醒词首字丢失）。
+    # Whether the cloud upload after a wake-gate hit includes the 1 s pre-roll.
+    upload_preroll: true
   # 静音检测（自动停止录音）
   vad:
     silence_threshold: 0.02
@@ -219,6 +230,12 @@ tools:
   # 渐进式工具 schema（docs/designs/08）：这些分组降级为一行简介（完整参数先调
   # tools_describe）；默认 []=全量下发。例: ["mcp"]（挂多个 MCP server 时首轮 prompt 瘦身）。
   lazy_groups: []
+  # shell/Python 子进程单流输出上限（字节）：超出后继续排空但截断，防止大输出撑爆内存。
+  # Per-stream output cap for shell/Python children (bytes); keeps draining but truncates.
+  shell_max_output_bytes: 200000
+  # 子进程默认只继承白名单环境变量（不含 API Key/token）；需要额外变量时在此列出键名。
+  # Children inherit an allow-listed environment (no API keys/tokens); opt in extra keys here.
+  env_passthrough: []
 
 # 工具权限策略：工具调用是否需要操作者确认（可在设置页「权限」调整）
 #   allow 直接执行 / ask 询问操作者 / deny 拒绝执行
