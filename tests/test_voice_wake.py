@@ -6,7 +6,7 @@
 它们是本次重构最有价值的回归资产。
 
 **共享测试向量**：tests/data/wake_vectors.json 同时被本文件（pytest）与
-web/src/composables/assistant/__tests__/wakeMatch.spec.ts（vitest）消费，
+web/src/composables/assistant/__tests__/wakeMatchVectors.spec.ts（vitest）消费，
 钉住前后端判定语义一致 —— 改任一侧的匹配规则，两侧测试必须同时变绿。
 
 Tests for wake-word matching (normalize / detect), pinyin level. Every case comes from
@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from core.voice.pinyin import to_syllables
 from core.voice.wake import WakeResult, detect, normalize
 
 KEYWORDS = ["衍衡", "洛吉斯"]
@@ -91,6 +92,21 @@ def test_detect_longest_match_wins():
     The longest matching candidate wins, so a short one cannot pre-empt a longer one."""
     r = detect("衍衡查天气", ["衍", "衍衡"])
     assert r.command == "查天气"
+
+
+def test_to_syllables_aligns_mixed_script_per_char():
+    """非中文按字符逐位展开，音节下标 == 字符下标（混合中英文时的切分前提）。"""
+    assert to_syllables("hello衍衡") == ["h", "e", "l", "l", "o", "yan", "heng"]
+    assert len(to_syllables("A1衍衡")) == len("A1衍衡")
+    assert to_syllables("123") == ["1", "2", "3"]
+
+
+def test_detect_mixed_script_leading_tolerance():
+    """ASCII 前导按字符计：2 个命中，3/5 个不命中，指令切分不错位。"""
+    assert detect("hi衍衡查天气", KEYWORDS).command == "查天气"
+    assert detect("ok衍衡", KEYWORDS).command == ""
+    assert detect("123衍衡", KEYWORDS).matched is False
+    assert detect("hello衍衡", KEYWORDS).matched is False
 
 
 def test_detect_result_is_frozen():

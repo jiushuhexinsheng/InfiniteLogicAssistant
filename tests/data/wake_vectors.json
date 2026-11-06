@@ -1,11 +1,14 @@
 {
   "_comment": [
     "唤醒词匹配共享测试向量 — pytest(tests/test_voice_wake.py) 与 vitest",
-    "(web/src/composables/assistant/__tests__/wakeMatch.spec.ts) 共同消费，",
-    "钉住后端 core/voice/wake.py 与前端 wakeMatch.ts 的判定语义一致。",
+    "(web/src/composables/assistant/__tests__/wakeMatchVectors.spec.ts) 共同消费，",
+    "钉住后端 core/voice/wake.py 与前端 detectWake.ts 的判定语义一致。",
     "正例含实测 ASR 转写样本（spec 2026-09-13），反例一条都不能命中。",
+    "中英混合用例钉住「逐字符对齐」：非中文按字符展开，前导容差按字符计。",
     "Shared wake-matching vectors: consumed by both pytest and vitest to pin",
-    "identical semantics between backend wake.py and frontend wakeMatch.ts."
+    "identical semantics between backend wake.py and frontend detectWake.ts.",
+    "Mixed-script cases pin per-character alignment (non-Chinese expands per char;",
+    "leading tolerance counts characters)."
   ],
   "keywords": ["衍衡", "洛吉斯"],
   "positives": [
@@ -20,7 +23,10 @@
     { "text": "衍衡帮我查天气", "command": "帮我查天气", "note": "无标点" },
     { "text": "洛吉斯。", "command": "", "note": "实测 ASR 转写：一字不差" },
     { "text": "罗基斯", "command": "", "note": "同音异字" },
-    { "text": "洛吉斯，打开设置。", "command": "打开设置", "note": "唤醒词 + 指令" }
+    { "text": "洛吉斯，打开设置。", "command": "打开设置", "note": "唤醒词 + 指令" },
+    { "text": "hi衍衡查天气", "command": "查天气", "note": "中英混合：2 个 ASCII 前导仍在容差内；指令按字符切" },
+    { "text": "ok衍衡", "command": "", "note": "中英混合：2 个 ASCII 前导 = 裸唤醒" },
+    { "text": "衍衡打开Chrome", "command": "打开Chrome", "note": "指令含英文，大小写原样保留" }
   ],
   "negatives": [
     { "text": "也行", "note": "实测 Vosk 误识别；yexing≠yanheng，极常见短语绝不能命中" },
@@ -30,6 +36,8 @@
     { "text": "我昨天说衍衡那个事", "note": "唤醒词在句中（前导 4 字 > 容差 2）" },
     { "text": "帮我看看洛吉斯的情况", "note": "同上" },
     { "text": "你好帮我查衍衡", "note": "唤醒词离句首太远（防 TTS 回声循环）" },
+    { "text": "hello衍衡", "note": "中英混合：5 个 ASCII 前导 > 容差 2，不得命中" },
+    { "text": "123衍衡", "note": "中英混合：3 个数字前导 > 容差 2，不得命中" },
     { "text": "", "note": "空转写" }
   ]
 }

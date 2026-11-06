@@ -1,6 +1,6 @@
 // 拆分自 wakeMatch.ts（重构：纯移动，无行为变化）。Split from wakeMatch.ts (pure move).
 import { normalize } from './normalize'
-import { toPinyin, toPinyinMapped } from './pinyin'
+import { toPinyinTokens } from './pinyin'
 
 // ── 唤醒判定 ──
 
@@ -40,27 +40,41 @@ export function isWakeCooldown(): boolean {
  */
 export function detectWake(text: string, keywords: string[]): WakeMatch {
   if (isWakeCooldown()) return { matched: false, command: '' }
-  const norm = normalize(text)
-  const { py: normPy, map: pyMap } = toPinyinMapped(norm)
-  /** 允许唤醒词前最多有 2 个汉字的噪音（语气词/口头禅）。Allow up to 2 leading noise chars. */
+  // 逐字符对齐：normChars[i] 对应 normTokens[i]；token 下标即字符下标。
+  // Per-character alignment: normChars[i] ↔ normTokens[i]; a token index is a
+  // character index.
+  const normChars = Array.from(normalize(text))
+  const normTokens = toPinyinTokens(normChars.join(''))
+  /** 允许唤醒词前最多有 2 个字符的噪音（语气词/口头禅）。Allow up to 2 leading noise chars. */
   const MAX_LEAD_CHARS = 2
-  let bestPyLen = 0
+  let bestLen = 0
   let bestEndChar = -1
   for (const keyword of keywords) {
-    const kwNorm = normalize(keyword)
-    const kwPy = toPinyin(kwNorm)
-    if (!kwPy) continue
-    // 在全文查找唤醒词拼音
-    const idx = normPy.indexOf(kwPy)
-    if (idx === -1) continue
-    // 检查唤醒词起始字符位置是否在允许的前导范围内
-    const startChar = pyMap[idx]
-    if (startChar > MAX_LEAD_CHARS) continue
-    if (kwPy.length > bestPyLen) {
-      bestPyLen = kwPy.length
-      bestEndChar = pyMap[idx + kwPy.length - 1] + 1
+    const kwChars = Array.from(normalize(keyword))
+    const kwTokens = toPinyinTokens(kwChars.join(''))
+    if (!kwTokens.length) continue
+    // 按 token 序列查找（不能扁平 indexOf：会跨音节误命中）。
+    // Search the token sequence (not a flat indexOf, which matches across syllables).
+    const idx = indexOfTokens(normTokens, kwTokens)
+    if (idx < 0 || idx > MAX_LEAD_CHARS) continue
+    if (kwTokens.length > bestLen) {
+      bestLen = kwTokens.length
+      bestEndChar = idx + kwTokens.length
     }
   }
   if (bestEndChar < 0) return { matched: false, command: '' }
-  return { matched: true, command: norm.slice(bestEndChar) }
+  return { matched: true, command: normChars.slice(bestEndChar).join('') }
+}
+
+/** 在 token 序列中找第一次出现的下标（无则 -1）。First occurrence of a token sequence. */
+function indexOfTokens(haystack: string[], needle: string[]): number {
+  const n = needle.length
+  for (let i = 0; i <= haystack.length - n; i++) {
+    let hit = true
+    for (let k = 0; k < n; k++) {
+      if (haystack[i + k] !== needle[k]) { hit = false; break }
+    }
+    if (hit) return i
+  }
+  return -1
 }

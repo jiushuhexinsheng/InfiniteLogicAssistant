@@ -33,3 +33,21 @@ export function toPinyinMapped(text: string): { py: string; map: number[] } {
 export function toPinyin(text: string): string {
   return toPinyinMapped(text).py
 }
+
+/**
+ * 把文本转成**逐字符对齐**的拼音 token 列表（每个字符一个 token）。
+ *
+ * 与后端 `core/voice/pinyin.py::to_syllables` 同语义：中文取无声调拼音，
+ * 非中文（ASCII/数字/未知字）保留原字符、各占一个 token。唤醒判定必须按
+ * token 序列比较，不能把拼音拼成扁平字符串后 `indexOf` —— 否则会跨音节
+ * 误命中（如 "tian" 中的 "an"）。
+ *
+ * Convert text to a **per-character aligned** pinyin token list (one token per
+ * character). Same semantics as backend `to_syllables`: Chinese → toneless pinyin,
+ * non-Chinese (ASCII/digits/unknown) → the character itself, one token each. Wake
+ * matching must compare token sequences; a flat `indexOf` can match across syllable
+ * boundaries (e.g. "an" inside "tian").
+ */
+export function toPinyinTokens(text: string): string[] {
+  return Array.from(text).map((ch) => CHAR_TO_PINYIN.get(ch) ?? ch)
+}

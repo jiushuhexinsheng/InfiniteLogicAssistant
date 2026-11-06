@@ -13,7 +13,7 @@
 **句首容差**：唤醒词前允许至多 2 个字的语气词噪音（「呃衍衡」命中），再远就是
 句中提及（「我昨天说衍衡那个事」），不命中 —— 防误触发与 TTS 回声循环。
 
-前端镜像：web/src/composables/assistant/wakeMatch.ts（Web Speech 路径），
+前端镜像：web/src/composables/assistant/wakeMatch/detectWake.ts（文字输入/弃题路径），
 语义由共享测试向量 tests/data/wake_vectors.json 钉住（pytest 与 vitest 共跑）。
 
 Wake-word detection: decide whether an ASR transcript starts with a wake word and split out the
