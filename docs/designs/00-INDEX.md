@@ -47,3 +47,8 @@
 3. **提示词单点**：全部 prompt 改动只动 `core/prompts.py`。
 4. **测试三件套**：pytest 后端行为 + vitest 前端行为 + 涉及唤醒/作答语义的走 `tests/data/wake_vectors.json` 共享向量。
 5. **审计**：凡影响放行/拒绝/上传的行为变化，延续 `data/audit.log` 记账口径。
+
+## 后续执行清单（2026-11）
+
+[10-hardening-followups.md](10-hardening-followups.md) — 全仓分析后的批次 4–6 待办：
+前端缺陷、会话生命周期/执行层/多智能体/LLM、死功能与文档对账。
