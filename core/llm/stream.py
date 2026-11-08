@@ -52,6 +52,7 @@ async def stream_chat(
     *,
     profile: dict | None = None,
     client: httpx.AsyncClient | None = None,
+    timeout: httpx.Timeout | float | None = None,
 ) -> AsyncIterator[dict]:
     """流式调用 LLM，按协议分派；逐 chunk yield 事件；最后 yield done（含完整 message）。Stream an LLM call, dispatching by protocol; yield events chunk by chunk; finally yield done (with the full message).
 
@@ -60,6 +61,8 @@ async def stream_chat(
         tools: 可选工具定义。Optional tool definitions.
         profile: 可选 LLM profile（默认取全局配置）。Optional LLM profile (defaults to the global config).
         client: 可复用的 httpx 客户端。Reusable httpx client.
+        timeout: 本次请求的 httpx 超时（覆盖客户端的默认值）。Per-request httpx
+            timeout (overrides the client default).
 
     Yields:
         事件 dict：content_delta / reasoning_delta / tool_call_delta / usage / done。Event dicts: content_delta / reasoning_delta / tool_call_delta / usage / done.
@@ -68,11 +71,11 @@ async def stream_chat(
         _, profile = resolve_llm_profile()
     protocol = resolve_protocol(profile)
     if protocol == "anthropic":
-        async for evt in _stream_anthropic(messages, tools, profile, client):
+        async for evt in _stream_anthropic(messages, tools, profile, client, timeout):
             yield evt
     elif protocol == "gemini":
-        async for evt in _stream_gemini(messages, tools, profile, client):
+        async for evt in _stream_gemini(messages, tools, profile, client, timeout):
             yield evt
     else:
-        async for evt in _stream_openai(messages, tools, profile, client):
+        async for evt in _stream_openai(messages, tools, profile, client, timeout):
             yield evt

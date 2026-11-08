@@ -128,6 +128,7 @@ async def _stream_gemini(
     tools: list[dict] | None,
     profile: dict,
     client: httpx.AsyncClient | None,
+    timeout: httpx.Timeout | float | None = None,
 ) -> AsyncIterator[dict]:
     """Gemini streamGenerateContent?alt=sse → 内部事件。Parse Gemini streamGenerateContent?alt=sse into internal events.
 
@@ -156,7 +157,8 @@ async def _stream_gemini(
         own = httpx.AsyncClient(timeout=timeout)
         client = own
     try:
-        async with client.stream("POST", url, headers=headers, json=payload) as resp:
+        async with client.stream("POST", url, headers=headers, json=payload,
+                                 timeout=timeout) as resp:
             await _raise_for_status_read(resp)
             async for line in resp.aiter_lines():
                 if not line or not line.startswith("data: "):

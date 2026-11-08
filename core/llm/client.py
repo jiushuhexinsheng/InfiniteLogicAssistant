@@ -46,20 +46,30 @@ class CircuitBreaker:
     async def is_open(self) -> bool:
         """判断熔断器是否应拒绝新请求（含 HALF_OPEN 单探针逻辑）。Return whether new requests should be rejected (including the HALF_OPEN single-probe logic).
 
+        HALF_OPEN 下**每次放行都领取探针**（不只是从 OPEN 迁移的那一次）：探针释放后
+        下一个请求才接上，否则一次 release 之后所有并发请求都会被放行。
+
+        In HALF_OPEN **every admitted request claims the probe** (not just the one that
+        performed the OPEN→HALF_OPEN transition): the next probe starts only after the
+        previous one is released — otherwise a single release lets every concurrent
+        request through.
+
         Returns:
             为 True 时调用方应立即抛熔断错误。True means the caller should raise a circuit-breaker error immediately.
         """
         async with self._lock:
-            if self._state == "HALF_OPEN" and self._probe:
-                return True
-            if self._state != "OPEN":
-                return False
-            if time.monotonic() - self._opened_at >= self._cooldown:
+            if self._state == "OPEN":
+                if time.monotonic() - self._opened_at < self._cooldown:
+                    return True
                 self._state = "HALF_OPEN"
                 self._successes = 0
+                self._probe = False
+            if self._state == "HALF_OPEN":
+                if self._probe:
+                    return True
                 self._probe = True
                 return False
-            return True
+            return False
 
     async def record_success(self) -> None:
         """记录一次成功：HALF_OPEN 下连续 3 次成功则恢复 CLOSED。Record a success: 3 consecutive successes in HALF_OPEN recover the breaker to CLOSED."""
@@ -162,12 +172,29 @@ class LlmClient:
     """全局 LLM 客户端：连接池 + 熔断 + 多模型 failover。Global LLM client: connection pool + circuit breaker + multi-model failover."""
 
     def __init__(self) -> None:
-        """初始化连接池引用与熔断器。Initialize the connection-pool reference and circuit breaker."""
+        """初始化连接池引用与熔断器分桶。Initialize the connection-pool reference and breaker buckets."""
         self._http: httpx.AsyncClient | None = None
-        self._breaker = CircuitBreaker(
-            failure_threshold=config.settings.llm_client.circuit_breaker_threshold,
-            cooldown_seconds=config.settings.llm_client.circuit_breaker_cooldown,
+        # 熔断按 (provider, endpoint, model) 分桶：一个 profile 挂掉不应阻塞 judge /
+        # confirm / RAG 等其他 profile 的调用（docs/designs/10 5.6）。
+        # Breakers are bucketed by (provider, endpoint, model): one dead profile must not
+        # block judge / confirm / RAG calls on other profiles (docs/designs/10 5.6).
+        self._breakers: dict[tuple[str, str, str], CircuitBreaker] = {}
+
+    def _breaker_for(self, profile: dict) -> CircuitBreaker:
+        """取（或创建）某 profile 的熔断器。Get (or create) the breaker for a profile."""
+        key = (
+            str(profile.get("provider") or ""),
+            str(profile.get("endpoint") or ""),
+            str(profile.get("model") or ""),
         )
+        breaker = self._breakers.get(key)
+        if breaker is None:
+            breaker = CircuitBreaker(
+                failure_threshold=config.settings.llm_client.circuit_breaker_threshold,
+                cooldown_seconds=config.settings.llm_client.circuit_breaker_cooldown,
+            )
+            self._breakers[key] = breaker
+        return breaker
 
     async def _get_http(self) -> httpx.AsyncClient:
         """惰性创建 / 复用底层 httpx 连接池。Lazily create or reuse the underlying httpx connection pool.
@@ -222,12 +249,17 @@ class LlmClient:
             CircuitBreakerOpenError: 熔断器处于 OPEN 状态。The circuit breaker is OPEN.
             RetryExhaustedError: 所有模型均失败。All models failed.
         """
-        if await self._breaker.is_open():
+        if profile is None:
+            _, profile = resolve_llm_profile()
+        # 空模型名在发起请求前拒绝：一次注定失败的调用只会浪费重试与配额。
+        # Reject an empty model before calling: a doomed call only burns retries/quota.
+        if not str(profile.get("model") or "").strip():
+            raise ValueError("LLM 模型名为空：请在设置中配置模型")
+        breaker = self._breaker_for(profile)
+        if await breaker.is_open():
             raise CircuitBreakerOpenError("Circuit breaker is OPEN")
         max_retries = config.settings.llm_client.retry_max
         client = await self._get_http()
-        if profile is None:
-            _, profile = resolve_llm_profile()
         models = _model_sequence(profile)
         try:
             for i, model in enumerate(models):
@@ -235,17 +267,27 @@ class LlmClient:
                 prof["model"] = model
                 if temperature is not None:
                     prof["temperature"] = temperature
+                # 每题独立超时：read=profile.timeout，connect/write/pool 用短固定值，
+                # 避免一个慢 profile 拖死共享连接池（docs/designs/10 5.6）。
+                # Per-request timeout: read = profile.timeout; connect/write/pool use
+                # short fixed values so a slow profile cannot tie up the shared pool.
+                read_timeout = float(
+                    prof.get("timeout") or config.settings.llm_client.request_timeout or 60
+                )
+                req_timeout = httpx.Timeout(read_timeout, connect=10.0, write=10.0, pool=10.0)
                 try:
-                    async for event in self._attempt_model(prof, messages, tools, client, max_retries):
+                    async for event in self._attempt_model(
+                        prof, messages, tools, client, max_retries, breaker, req_timeout,
+                    ):
                         yield event
                     return  # done
                 except _SwitchModel:
                     if i == len(models) - 1:
-                        await self._breaker.record_failure()
+                        await breaker.record_failure()
                         raise RetryExhaustedError(f"LLM call failed for all models: {model}") from None
                     logger.warning("LLM 模型 {} 不可用，切换备选: {}", model, models[i + 1])
         finally:
-            await self._breaker.release_probe()
+            await breaker.release_probe()
 
     async def _attempt_model(
         self,
@@ -254,6 +296,8 @@ class LlmClient:
         tools: list[dict] | None,
         client: httpx.AsyncClient,
         max_retries: int,
+        breaker: CircuitBreaker,
+        timeout: httpx.Timeout,
     ) -> AsyncIterator[dict]:
         """单个模型的重试循环：成功 yield 到 done；模型缺失/重试耗尽抛 _SwitchModel；已吐部分输出抛 RetryExhaustedError。Retry loop for a single model: yield until done on success; raise _SwitchModel when the model is missing or retries are exhausted; raise RetryExhaustedError after partial output has been emitted.
 
@@ -270,12 +314,14 @@ class LlmClient:
         emitted = False
         for attempt in range(max_retries + 1):
             try:
-                async for event in stream_chat(messages, tools, profile=prof, client=client):
+                async for event in stream_chat(
+                    messages, tools, profile=prof, client=client, timeout=timeout,
+                ):
                     if event["type"] in ("content_delta", "reasoning_delta", "tool_call_delta"):
                         emitted = True
                     yield event
                     if event["type"] == "done":
-                        await self._breaker.record_success()
+                        await breaker.record_success()
                         return
             except Exception as exc:
                 if isinstance(exc, httpx.HTTPStatusError):
@@ -289,7 +335,7 @@ class LlmClient:
                     logger.warning("LLM HTTP {}: {} | {}", exc.response.status_code, exc.request.url, body)
                 if emitted:
                     # 已发出部分内容 → 不重试、不切模型（避免重复执行任务）
-                    await self._breaker.record_failure()
+                    await breaker.record_failure()
                     raise RetryExhaustedError(f"LLM stream failed after partial output: {exc}") from exc
                 if _is_model_missing(exc):
                     raise _SwitchModel() from exc

@@ -176,7 +176,7 @@ async def test_retry_stream_chat_no_retry_after_partial_output(monkeypatch):
     """测试已产生部分输出后发生错误不再重试而是直接抛出异常。Tests that an error after partial output is not retried but raises directly."""
     calls = {"n": 0}
 
-    async def fake_stream_chat(messages, tools=None, client=None, profile=None):
+    async def fake_stream_chat(messages, tools=None, client=None, profile=None, timeout=None):
         calls["n"] += 1
         yield {"type": "content_delta", "text": "部分"}
         raise httpx.ReadError("connection reset")
@@ -223,11 +223,15 @@ async def test_retry_stream_chat_breaker_open_raises():
     """测试熔断器开启时流式聊天直接抛出熔断错误。Tests that stream chat raises a breaker error when the breaker is open."""
     client = LlmClient()
     client._http = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    # 熔断按 profile 分桶：用同一个 profile 键扣动熔断（docs/designs/10 5.6）。
+    # Breakers are per profile: trip the bucket of the profile being called.
+    profile = {"provider": "openai", "endpoint": "https://breaker", "model": "m"}
+    breaker = client._breaker_for(profile)
     try:
-        for _ in range(client._breaker._threshold):
-            await client._breaker.record_failure()
+        for _ in range(breaker._threshold):
+            await breaker.record_failure()
         with pytest.raises(CircuitBreakerOpenError):
-            async for _ in client.retry_stream_chat([]):
+            async for _ in client.retry_stream_chat([], profile=profile):
                 pass
     finally:
         await client._http.aclose()
@@ -242,7 +246,7 @@ async def _stream_models(models: list[str], monkeypatch, profile: dict, client: 
     called = []
     captured = {}
 
-    async def fake_stream_chat(messages, tools=None, client=None, profile=None):
+    async def fake_stream_chat(messages, tools=None, client=None, profile=None, timeout=None):
         called.append(profile["model"])
         captured["last"] = profile
         for m in models:
@@ -309,7 +313,7 @@ async def test_failover_all_models_fail_raises(monkeypatch):
     client._http = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200)))
     try:
         called = []
-        async def fake_stream_chat(messages, tools=None, client=None, profile=None):
+        async def fake_stream_chat(messages, tools=None, client=None, profile=None, timeout=None):
             called.append(profile["model"])
             raise httpx.HTTPStatusError(
                 "404 model", request=httpx.Request("POST", "http://t"),
@@ -321,7 +325,7 @@ async def test_failover_all_models_fail_raises(monkeypatch):
             async for _ in client.retry_stream_chat([], profile=profile):
                 pass
         assert called == ["model-a", "model-b"]
-        assert client._breaker._failures == 1  # 全部失败末尾只记一次
+        assert client._breaker_for(profile)._failures == 1  # 全部失败末尾只记一次
     finally:
         await client._http.aclose()
 
@@ -331,7 +335,7 @@ async def test_retry_stream_chat_temperature_override(monkeypatch):
     """测试显式传入的 temperature 会覆盖 profile 中的设置。Tests that an explicit temperature overrides the profile setting."""
     captured = {}
 
-    async def fake_stream_chat(messages, tools=None, client=None, profile=None):
+    async def fake_stream_chat(messages, tools=None, client=None, profile=None, timeout=None):
         captured["profile"] = profile
         yield {"type": "done", "message": {"role": "assistant", "content": "ok"}}
 
@@ -356,7 +360,7 @@ async def test_failover_does_not_switch_after_partial_output(monkeypatch):
     client._http = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200)))
     try:
         calls = {"n": 0}
-        async def fake_stream_chat(messages, tools=None, client=None, profile=None):
+        async def fake_stream_chat(messages, tools=None, client=None, profile=None, timeout=None):
             calls["n"] += 1
             yield {"type": "content_delta", "text": "部分"}
             raise httpx.ReadError("reset")

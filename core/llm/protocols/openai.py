@@ -114,6 +114,7 @@ async def _stream_openai(
     tools: list[dict] | None,
     profile: dict,
     client: httpx.AsyncClient | None,
+    timeout: httpx.Timeout | float | None = None,
 ) -> AsyncIterator[dict]:
     """OpenAI chat/completions SSE 解析。Parse the OpenAI chat/completions SSE stream.
 
@@ -139,7 +140,8 @@ async def _stream_openai(
         own = httpx.AsyncClient(timeout=timeout)
         client = own
     try:
-        async with client.stream("POST", url, headers=_headers(profile), json=payload) as resp:
+        async with client.stream("POST", url, headers=_headers(profile), json=payload,
+                                 timeout=timeout) as resp:
             await _raise_for_status_read(resp)
             async for line in resp.aiter_lines():
                 if not line or not line.startswith("data: "):

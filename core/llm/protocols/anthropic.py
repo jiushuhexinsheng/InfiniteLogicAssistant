@@ -118,6 +118,7 @@ async def _stream_anthropic(
     tools: list[dict] | None,
     profile: dict,
     client: httpx.AsyncClient | None,
+    timeout: httpx.Timeout | float | None = None,
 ) -> AsyncIterator[dict]:
     """Anthropic Messages API SSE（text / thinking / tool_use）→ 内部事件。Parse the Anthropic Messages API SSE (text / thinking / tool_use) into internal events.
 
@@ -154,7 +155,8 @@ async def _stream_anthropic(
         client = own
     current_event = ""
     try:
-        async with client.stream("POST", url, headers=headers, json=payload) as resp:
+        async with client.stream("POST", url, headers=headers, json=payload,
+                                 timeout=timeout) as resp:
             await _raise_for_status_read(resp)
             async for line in resp.aiter_lines():
                 if line.startswith("event: "):
