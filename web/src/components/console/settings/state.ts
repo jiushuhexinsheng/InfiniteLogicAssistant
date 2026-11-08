@@ -31,6 +31,15 @@ export const saving = ref(false)
 export const activeMenu = ref('llm')
 
 /**
+ * 语音设置内部 Tab 的跨页入口。起始页「语音设置」按钮在路由跳转前写入目标 Tab，
+ * VoiceSettingsPage 挂载时消费一次（消费后复位 overview），于是落页即渲染合成页。
+ * Cross-page entry for the voice-settings tab: the start page writes the target tab
+ * before navigating, VoiceSettingsPage consumes it once on mount (resetting to overview),
+ * so the destination renders the synthesis page immediately.
+ */
+export const activeVoiceTab = ref<'overview' | 'wake' | 'recognition' | 'synthesis' | 'hardware' | 'advanced'>('overview')
+
+/**
  * 获取指定模块的可编辑配置对象。
  * Get the editable config object for a module.
  *

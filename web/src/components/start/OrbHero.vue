@@ -51,7 +51,7 @@ import { useRouter } from 'vue-router'
 import { useAssistant } from '../../composables/useAssistant'
 import { startSubtitle } from '../../composables/assistant/hints'
 import { useConsole } from '../../composables/useConsole'
-import { activeMenu } from '../console/settings/state'
+import { activeMenu, activeVoiceTab } from '../console/settings/state'
 import { UiButton, UiIcon } from '../ui'
 
 const asst = useAssistant()
@@ -66,13 +66,16 @@ const subtitle = computed(() => startSubtitle(asst.wakeEnabled.value, asst.wakeH
  * Navigate to the console's voice-synthesis settings page.
  *
  * 先设置目标 tab / 菜单再导航，保证落页即渲染语音合成区块
- * （activeTab 与 activeMenu 均为模块级单例，跨页共享）。
- * Set the target tab/menu before navigating so the destination renders the
- * TTS section immediately (both are module-level singletons shared across pages).
+ * （activeTab、activeMenu、activeVoiceTab 均为模块级单例，跨页共享）。
+ * 菜单 id 是 `voice`（语音统一入口）；`tts` 从来不是菜单 id —— 写错时右侧渲染空白。
+ * Set the target tab/menu before navigating so the destination renders the TTS section
+ * immediately. The menu id is `voice` (the single voice entry); `tts` was never a menu id,
+ * and using it left the right pane blank.
  */
 function gotoTtsSettings() {
   activeTab.value = 'settings'
-  activeMenu.value = 'tts'
+  activeMenu.value = 'voice'
+  activeVoiceTab.value = 'synthesis'
   void router.push('/console')
 }
 </script>

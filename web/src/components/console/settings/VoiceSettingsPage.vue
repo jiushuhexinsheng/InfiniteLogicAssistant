@@ -84,6 +84,7 @@ import { UiDisclosure } from '../../ui'
 import { settingsText as T } from '../../../locales/settings'
 import { useVoiceModuleStatus } from '../../../composables/useVoiceModuleStatus'
 import { useSettings } from './useSettings'
+import { activeVoiceTab } from './state'
 
 type TabId = 'overview' | 'wake' | 'recognition' | 'synthesis' | 'hardware' | 'advanced'
 interface TabDef { id: TabId; labelZh: string; labelEn: string }
@@ -97,7 +98,12 @@ const tabs: TabDef[] = [
   { id: 'advanced', labelZh: T.advanced.zh, labelEn: T.advanced.en },
 ]
 
-const tab = ref<TabId>('overview')
+// 起始页「语音设置」可预置目标 Tab（见 state.ts 的 activeVoiceTab）：挂载时消费一次，
+// 随后复位 overview，保持「从菜单进入默认看概览」的既有行为。
+// The start page can preselect a tab (see activeVoiceTab in state.ts): consume it once on
+// mount, then reset to overview, keeping "entering from the menu shows the overview".
+const tab = ref<TabId>(activeVoiceTab.value)
+activeVoiceTab.value = 'overview'
 const settings = useSettings()
 /** 云端 ASR 配置是否展开：本地模式默认折叠。Whether the cloud ASR block is open. */
 const cloudOpen = ref(true)
