@@ -4,6 +4,13 @@ import type { ChatMessage } from './store'
 /** 消息与 token 用量持久化的本地存储键。Local storage key for message and token usage persistence. */
 const STORAGE_KEY = 'xluo.history'
 
+/** 删除本地持久化快照（清空对话时调用，别让旧消息在下次加载时复活）。
+ *  Drop the persisted snapshot (called when clearing the conversation, so old messages
+ *  cannot come back on the next load). */
+export function clearPersistedState() {
+  try { localStorage.removeItem(STORAGE_KEY) } catch { /* 隐私模式忽略。Privacy mode: ignore. */ }
+}
+
 /** 保存状态到本地存储。Save state to local storage. */
 export function saveState() {
   try {

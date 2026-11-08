@@ -79,6 +79,18 @@ function destroy() {
   stopWake()
 }
 
+/**
+ * 清空对话：**先**中止当前回合（带着旧 sessionId 调 stopTask 停掉后端任务），
+ * 再清本地消息与会话 id。顺序不可换 —— abortChat 读 currentSessionId，先清就没人可停。
+ * Clear the conversation: **first** abort the running turn (stopTask with the old
+ * sessionId), then clear local messages and the session id. The order matters: abortChat
+ * reads currentSessionId, so clearing first leaves nothing to stop.
+ */
+function clearConversation() {
+  abortChat()
+  clearMessages()
+}
+
 /** 状态视觉（数据驱动，来自 useAssistantVisuals）。State visuals (data-driven, from useAssistantVisuals). */
 const visual = computed<StateVisual>(() => STATE_VISUALS[state.value] || STATE_VISUALS.idle)
 const stateLabel = computed(() => resolveStateLabel(visual.value, wakeHint.value))
@@ -113,7 +125,7 @@ export function useAssistant() {
     // 双击悬浮球入口：通话开关（唤醒仍走徽章 toggleWake，R7）。
     // Double-click float-ball entry: call toggle (wake stays on the badge's toggleWake, R7).
     toggleCall,
-    clearMessages,
+    clearMessages: clearConversation,
     sendText,
     sendAnswer,
     retryTool,

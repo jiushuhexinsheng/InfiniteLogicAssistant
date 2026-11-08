@@ -4,6 +4,7 @@ import {
   state, messages, tokenUsage, partialText, statusLine, expanded,
   pendingQuestion, currentSessionId, MAX_MESSAGES,
 } from './store'
+import { clearPersistedState } from './storePersist'
 import type { ChatMessage } from './store'
 
 /** 生成唯一消息 ID。Generate unique message ID.
@@ -64,10 +65,21 @@ export function addBlocks(role: ChatMessage['role'], blocks: Block[]) {
   if (messages.value.length > MAX_MESSAGES) messages.value.shift()
 }
 
-/** 清空所有消息和 token 使用量。Clear all messages and token usage. */
+/** 清空对话：消息、token、未完成的转写、待答问题、当前会话 id 与本地快照一起清。
+ *  只清 messages 时，下一次发送仍会带旧 session_id，后端历史被续写 —— 表面「清空」
+ *  实际没清。调用方必须先 abortChat()（带旧 sid 停后端），见 useAssistant.clearMessages。
+ *  Clear the conversation: messages, token usage, in-flight partial text, the pending
+ *  question, the current session id and the persisted snapshot. Clearing only `messages`
+ *  left the next send carrying the old session_id and appending to backend history — the
+ *  conversation looked cleared but was not. Callers must abortChat() first (with the old
+ *  sid) — see useAssistant.clearMessages. */
 export function clearMessages() {
   messages.value = []
   tokenUsage.value = {}
+  partialText.value = ''
+  pendingQuestion.value = null
+  currentSessionId.value = ''
+  clearPersistedState()
 }
 
 /** 唤醒失败统一处理：错误状态 + 状态行 + 消息区醒目提示 + 自动展开面板。

@@ -95,6 +95,31 @@ describe('useAssistant.applyServerConfig 运行时热同步', () => {
   })
 })
 
+/** 清空对话必须连后端会话一起结束（docs/designs/10 4.4）。 */
+describe('useAssistant.clearMessages 重置后端会话', () => {
+  beforeEach(() => { vi.resetModules() })
+
+  it('先带着旧 sessionId 调 stopTask，再清本地会话/待答/token', async () => {
+    const { useAssistant } = await import('../../useAssistant')
+    const store = await import('../store')
+    const { api } = await import('../../../api')
+    const asst = useAssistant()
+    asst.currentSessionId.value = 's-1'
+    store.pendingQuestion.value = { text: '选哪个？', kind: 'text', options: [] }
+    store.tokenUsage.value = { total_tokens: 9 } as any
+    store.addMessage('user', 'hi')
+
+    asst.clearMessages()
+
+    // stopTask 必须拿到**清空前的** sessionId，否则后端任务无人停。
+    expect(api.stopTask).toHaveBeenCalledWith('s-1')
+    expect(asst.currentSessionId.value).toBe('')
+    expect(asst.pendingQuestion.value).toBeNull()
+    expect(asst.tokenUsage.value).toEqual({})
+    expect(asst.messages.value).toEqual([])
+  })
+})
+
 /** Task 11 接线：双击悬浮球改走通话开关 —— useAssistant 必须把 toggleCall 暴露给
  *  FloatingAssistant（与 toggleWake 同模式；徽章仍走 toggleWake = R7）。
  *  Task 11 wiring: the double-click now toggles call — useAssistant must expose toggleCall
