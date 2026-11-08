@@ -181,4 +181,25 @@ describe('normalize 事件归一', () => {
     expect(blocks[0].payload.md).toBe('查一下')
     expect(blocks[2].payload.md).toBe('晴，25度')
   })
+
+  /** tool_end 的终态必须保真（docs/designs/10 4.5）：把 cancelled/denied 折叠成
+   *  error 会让用户以为工具真的失败了，而它们分别是「用户取消」和「权限拒绝」，
+   *  都不是运行错误。只有未知状态才归为 error。
+   *  tool_end must preserve the terminal status (docs/designs/10 4.5): collapsing
+   *  cancelled/denied into error tells the user the tool failed, but those mean
+   *  "user cancelled" and "policy denied" — neither is a runtime error. Only
+   *  unknown statuses fall back to error. */
+  it.each(['ok', 'cancelled', 'denied'])('tool_end 保留终态 %s', (status) => {
+    const blocks: Block[] = []
+    applyEvent(ev({ type: 'tool_start', name: 'write_file', args: {}, call_id: 'c1' }), blocks)
+    applyEvent(ev({ type: 'tool_end', name: 'write_file', status, output: 'x', call_id: 'c1' }), blocks)
+    expect(blocks[0].payload.status).toBe(status)
+  })
+
+  it('tool_end 未知状态归为 error', () => {
+    const blocks: Block[] = []
+    applyEvent(ev({ type: 'tool_start', name: 'write_file', args: {}, call_id: 'c1' }), blocks)
+    applyEvent(ev({ type: 'tool_end', name: 'write_file', status: 'weird', output: 'x', call_id: 'c1' }), blocks)
+    expect(blocks[0].payload.status).toBe('error')
+  })
 })

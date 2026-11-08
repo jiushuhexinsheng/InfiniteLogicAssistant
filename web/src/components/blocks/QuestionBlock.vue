@@ -72,9 +72,11 @@ function submit() {
   text.value = ''
 }
 
-/** 提交选项回答（只回传 value）。Submit an option answer (value only). */
+/** 提交选项回答（只回传 value；source=button 供审计区分作答通道）。
+ *  Submit an option answer (value only; source=button lets the audit trail
+ *  distinguish the answer channel). */
 function choose(value: string) {
-  sendAnswer('', value)
+  sendAnswer('', value, 'button')
 }
 </script>
 

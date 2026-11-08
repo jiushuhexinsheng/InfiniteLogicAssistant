@@ -60,6 +60,17 @@ export function registerWatches() {
     // window is N ms *after* playback ends, not from the done event); the 1.2s echo
     // guard still sits in front.
     if (state.value === 'followup') armFollowupTimer()
+    else if (!pendingQuestion.value && wakeEnabled.value && followupWindowMs() > 0
+             && (state.value === 'listening' || state.value === 'standby')) {
+      // 长播报把续聊窗耗尽了：窗口起点语义是「播报真正结束后的 N 毫秒」，而定时器
+      // 从 done（≈播报开始）起算，长回复会在播报途中到期回 listening。播报结束这一刻
+      // 回合早已完成，重新开窗（state watcher 会武装计时）。
+      // A long reply exhausted the follow-up window: the timer starts at `done`
+      // (≈ playback start) while the semantic window is N ms after playback *ends*,
+      // so it expires mid-speech and falls back to listening. At end of playback the
+      // turn is already complete — reopen it (the state watcher arms the timer).
+      state.value = 'followup'
+    }
     const q = pendingQuestion.value
     if (q) {
       // 通话态保持「通话聆听中」：awaiting_answer 复用的是录音视觉（mic + 10 秒扇形

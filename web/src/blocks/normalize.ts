@@ -192,7 +192,12 @@ export function applyEvent(ev: SseEvent, target: Block[]): void {
           (!e.call_id && x.payload.name === e.name && x.payload.status === 'running')
         ))
       if (b) {
-        b.payload.status = e.status === 'ok' ? 'ok' : 'error'
+        // 终态保真：cancelled / denied 不是运行错误，折叠成 error 会误导用户。
+        // Preserve terminal states: cancelled / denied are not runtime errors; folding
+        // them into error misleads the user. Only unknown statuses fall back to error.
+        b.payload.status = e.status === 'ok' || e.status === 'cancelled' || e.status === 'denied'
+          ? e.status
+          : 'error'
         b.payload.output = e.output
         b.payload.output_preview = e.output
         b.payload.truncated = e.truncated

@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+
+const sendAnswer = vi.fn()
+vi.mock('../../../composables/assistant/useChat', () => ({
+  sendAnswer: (...args: unknown[]) => sendAnswer(...args),
+}))
+
 import QuestionBlock from '../QuestionBlock.vue'
 import { makeBlock } from '../../../blocks/normalize'
 
@@ -43,5 +49,23 @@ describe('QuestionBlock 窄面板布局', () => {
     expect(w.findAll('.q-row')).toHaveLength(2)   // 选项行 + 输入行。Options row + input row.
     expect(w.findAll('.ui-btn')).toHaveLength(4)  // 3 选项 + 回答。3 options + submit.
     expect(w.text()).toContain('打开B站《凡人修仙传》第112集播放页')
+  })
+
+  /** 选项按钮作答必须标记 source='button'（docs/designs/10 4.5）：审计口径里按钮
+   *  回答曾一律记成 typed，与真实作答通道不符。
+   *  Option-button answers must carry source='button' (docs/designs/10 4.5): the audit
+   *  trail recorded every button answer as typed, misreporting the actual channel. */
+  it('选项按钮作答 source=button', async () => {
+    sendAnswer.mockClear()
+    const b = makeBlock('question', {
+      qid: 'q2',
+      question: '是否继续？',
+      kind: 'choice',
+      options: [{ value: 'yes', label: '继续' }, { value: 'no', label: '取消' }],
+      status: 'pending',
+    })
+    const w = mount(QuestionBlock, { props: { block: b } })
+    await w.findAll('.q-row .ui-btn')[0].trigger('click')
+    expect(sendAnswer).toHaveBeenCalledWith('', 'yes', 'button')
   })
 })

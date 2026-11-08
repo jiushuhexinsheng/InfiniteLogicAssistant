@@ -50,7 +50,9 @@ describe('QuestionCard', () => {
     const w = mount(QuestionCard)
     await w.findAll('button').find((b) => b.text() === '确认')!.trigger('click')
     await flushPromises()
-    expect(api.answer).toHaveBeenCalledWith('s1', '', 'yes', expect.objectContaining({ source: 'typed' }))
+    // 按钮作答的审计来源是 button（docs/designs/10 4.5），不再是 typed。
+    // Button answers are audited as button (docs/designs/10 4.5), no longer typed.
+    expect(api.answer).toHaveBeenCalledWith('s1', '', 'yes', expect.objectContaining({ source: 'button' }))
   })
 
   /** 点击「取消」→ 回传结构化 choice=no。 */
@@ -60,7 +62,7 @@ describe('QuestionCard', () => {
     const w = mount(QuestionCard)
     await w.findAll('button').find((b) => b.text() === '取消')!.trigger('click')
     await flushPromises()
-    expect(api.answer).toHaveBeenCalledWith('s1', '', 'no', expect.objectContaining({ source: 'typed' }))
+    expect(api.answer).toHaveBeenCalledWith('s1', '', 'no', expect.objectContaining({ source: 'button' }))
   })
 
   /** 文本类提问：渲染自由文本输入，回答不带 choice。 */
@@ -86,7 +88,7 @@ describe('QuestionCard', () => {
     expect(w.find('input').exists()).toBe(true)
     await w.findAll('button').find((b) => b.text() === '甲')!.trigger('click')
     await flushPromises()
-    expect(api.answer).toHaveBeenCalledWith('s1', '', 'a', expect.objectContaining({ source: 'typed' }))
+    expect(api.answer).toHaveBeenCalledWith('s1', '', 'a', expect.objectContaining({ source: 'button' }))
   })
 
   /** 综合类：只输文本也可提交（不带 choice）。 */
