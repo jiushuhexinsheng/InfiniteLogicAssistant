@@ -118,12 +118,17 @@ class EventQueueChannel(OperatorChannel):
         async with self._ask_lock:
             qid = "q_" + uuid4().hex[:12]
             self.pending_qid = qid
-            await self.events.put(
-                QuestionEvent(question=question, session_id=self.session_id,
-                              kind=kind, options=options or [], qid=qid).emit()
-            )
+            # 先置待答标志再入队：stop/弃题若恰好落在「question 已发、ask 尚未挂起」
+            # 的窗口里，必须能看到「有待答问题」并投出毒丸，否则 ask 永远等下去。
+            # Set the pending flag BEFORE enqueueing: a stop/abandon landing in the
+            # "question sent, ask not yet parked" window must see a pending question
+            # and deliver the poison pill, or ask() waits forever.
             self.awaiting_answer = True
             try:
+                await self.events.put(
+                    QuestionEvent(question=question, session_id=self.session_id,
+                                  kind=kind, options=options or [], qid=qid).emit()
+                )
                 # 确认/澄清超时（agent.confirm_timeout_s，0=不限，与旧行为一致）：
                 # 到期按「拒绝」回流（fail-closed），并下发 timeout 源的 answer 事件
                 # 让前端当场收起问题卡，而不是让 question 悬在那里等回合结束。
@@ -191,6 +196,12 @@ class EventQueueChannel(OperatorChannel):
         Returns:
             是否投递成功。Whether the delivery succeeded.
         """
+        # 没有待答问题时拒收：预投递的回答若留在队列里，会被下一个 ask() 当成它
+        # 自己的回答吃掉（docs/designs/10 5.2）。
+        # Reject when nothing is pending: a pre-delivered answer left in the queue
+        # would be eaten by the next ask() as its own answer (docs/designs/10 5.2).
+        if not self.awaiting_answer:
+            return False
         if qid is not None and self.pending_qid is not None and qid != self.pending_qid:
             return False
         self.answers.put_nowait(Answer(text=text, choice=choice))

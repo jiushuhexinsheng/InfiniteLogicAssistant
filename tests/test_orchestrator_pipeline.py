@@ -300,6 +300,12 @@ async def test_ask_real_answer_wins_and_racing_poison_is_discarded():
     assert ch.abandon() is True
     assert await asyncio.wait_for(t, timeout=1.0) == Answer(text="真回答")
 
+    # 第一问的 AnswerEvent 还在队列里：先清掉，否则 _next_event 取到的是它而不是
+    # 第二问的 question 事件（清空后 events.get 才真正让出调度给 t2）。
+    # The first answer's AnswerEvent is still queued; drain it so _next_event waits
+    # for the second question (only an empty queue yields to t2).
+    while not events.empty():
+        events.get_nowait()
     t2 = asyncio.ensure_future(ch.ask("第二问?"))
     await _next_event(events)
     assert not t2.done(), "弃题毒丸残留进了下一个 ask"

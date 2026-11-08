@@ -19,6 +19,9 @@ def test_voice_answer_passes_structured_choice(client):
 
     session = Session(session_id="ans-choice")
     channel = EventQueueChannel(asyncio.Queue(), "ans-choice")
+    # 模拟一个正在等待回答的 ask（answer() 拒绝无待答问题的预投递，5.2）。
+    # Simulate a pending ask (answer() rejects pre-delivery with nothing pending, 5.2).
+    channel.awaiting_answer = True
     session.channel = channel
     state.register(session, StopController())
     try:
@@ -48,6 +51,7 @@ def test_voice_answer_accepts_arbitrary_choice(client):
 
     session = Session(session_id="ans-arb")
     channel = EventQueueChannel(asyncio.Queue(), "ans-arb")
+    channel.awaiting_answer = True
     session.channel = channel
     state.register(session, StopController())
     try:
@@ -79,6 +83,7 @@ def test_voice_answer_rejects_stale_qid_409(client):
     session = Session(session_id="ans-qid")
     channel = EventQueueChannel(asyncio.Queue(), "ans-qid")
     channel.pending_qid = "q_current"
+    channel.awaiting_answer = True
     session.channel = channel
     state.register(session, StopController())
     try:

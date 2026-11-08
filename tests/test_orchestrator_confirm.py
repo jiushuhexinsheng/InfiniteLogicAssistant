@@ -670,8 +670,13 @@ async def test_zero_timeout_keeps_wait_forever(monkeypatch, asking):
     monkeypatch.setattr(config.settings.agent, "confirm_timeout_s", 0)
     events: aio.Queue = aio.Queue()
     ch = EventQueueChannel(events, "sid")
-    # 立即投递答案：若错误地套了 wait_for(0)（等价于立即超时），这里会拿到超时回答
-    ch.answer("确认", choice="yes")
-    ans = await ch.ask("确认执行吗？", kind="choice", options=[])
+    # 问题进入等待后再作答（docs/designs/10 5.2：无待答问题时的预投递回答会被拒收）。
+    # Answer only once the question is pending (docs/designs/10 5.2: pre-delivered
+    # answers with no pending question are rejected).
+    task = aio.create_task(ch.ask("确认执行吗？", kind="choice", options=[]))
+    await aio.sleep(0)
+    assert ch.answer("确认", choice="yes") is True
+    # confirm_timeout_s=0 必须等价于「不设超时」；若错误地套了 wait_for(0)，这里会超时回答。
+    ans = await aio.wait_for(task, timeout=1)
     assert ans.choice == "yes"
     assert ans.reason == ""
