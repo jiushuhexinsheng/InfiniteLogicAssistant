@@ -58,7 +58,11 @@ async function acquireAndStart(): Promise<AcquireOutcome> {
       statusLine.value = e.message
       setStreamPhase('error', e.message)
     },
-    onClose: () => {
+    onClose: (info) => {
+      // 客户端会自动重连：handle 仍有效，必须保留，否则 ensureListening 会再建一条流。
+      // The client will retry: the handle is still live and must be kept, or
+      // ensureListening would open a second stream.
+      if (info?.willReconnect) return
       if (st.voiceStream === handle) st.voiceStream = null
       if (!streamError.value) setStreamPhase('idle')
     },

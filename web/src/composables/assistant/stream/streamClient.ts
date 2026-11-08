@@ -20,11 +20,18 @@ export interface VoiceStreamEvent {
   [key: string]: unknown
 }
 
+/** 关闭事件信息。Close info. */
+export interface VoiceStreamCloseInfo {
+  /** 客户端是否会自动重连（true 时调用方应保留 handle，不要丢弃）。
+   *  Whether the client will retry automatically (keep the handle when true). */
+  willReconnect: boolean
+}
+
 export interface VoiceStreamOptions {
   onEvent: (event: VoiceStreamEvent) => void
   onLevel?: (rms: number) => void
   onError?: (error: Error) => void
-  onClose?: () => void
+  onClose?: (info: VoiceStreamCloseInfo) => void
   /** 浏览器 deviceId；空 = 系统默认。Browser deviceId; empty = system default. */
   inputDevice?: string
   echoCancellation?: boolean
@@ -54,6 +61,11 @@ export interface VoiceStreamHandle {
 /** 帧长（毫秒），与服务端默认一致。Frame length in ms, matching the server default. */
 const FRAME_MS = 20
 
+/** 断线重连的指数退避：500ms 起翻倍，封顶 15s。
+ *  Reconnect backoff: 500ms doubling, capped at 15s. */
+const RECONNECT_BASE_MS = 500
+const RECONNECT_MAX_MS = 15_000
+
 /**
  * 创建流式语音客户端（每次开麦创建一个；停麦即释放）。
  * Create a streaming voice client (one per listening session; released on stop).
@@ -75,6 +87,21 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
   const preopen = createPreopenQueue()
   let preopenActive = false
   let started = false
+  // 断线重连状态（docs/designs/10 4.5）：
+  // gen 在每次 start/stop 递增，用作代际号 —— 旧连接/旧重连定时器的回调先比对代际，
+  // 不得动新连接；stopped 是「用户主动停止」，为 true 时一律不重连。
+  // Reconnect state: `gen` increments on every start/stop as the generation counter —
+  // callbacks from an old socket or an old retry timer compare it before touching the
+  // new connection; `stopped` means "user stopped" and suppresses all retries.
+  let gen = 0
+  let stopped = false
+  let readyOnce = false
+  let serverFailed = false
+  let reconnectAttempt = 0
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  /** 启动中途被 stop() 时用来拒绝 ready 等待（否则 start() 永久挂起）。
+   *  Rejects the ready wait when stop() lands mid-start (otherwise start() hangs). */
+  let cancelStart: ((e: Error) => void) | null = null
 
   const constraints = (withDevice: boolean): MediaStreamConstraints => ({
     audio: {
@@ -109,6 +136,12 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
 
   async function start(): Promise<void> {
     if (running) return
+    // 认领代际 + 清除「主动停止」标志：本次启动之后的一切回调只看这个代际。
+    // Claim the generation and clear the stop flag: every callback below keys off it.
+    const myGen = ++gen
+    stopped = false
+    serverFailed = false
+    readyOnce = false
     preopen.clear()
     preopenActive = false
     started = false
@@ -175,6 +208,7 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
       if (err) rejectReady(err)
       else resolveReady()
     }
+    cancelStart = (e: Error) => settleReady(e)
     readyTimer = setTimeout(
       () => settleReady(new Error('本地引擎加载超时（20s），请检查模型与后端日志')),
       20_000,
@@ -190,6 +224,9 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
       if (event.type === 'ready') {
         settleReady()
       } else if (event.type === 'error') {
+        // 服务端明确报错（模型缺失等）：不再自动重连，错误要透传给用户。
+        // An explicit server error (missing model etc.): never retry; surface it.
+        serverFailed = true
         const error = Object.assign(new Error(String(event.message || '语音服务错误')), {
           server: true,
           code: event.code,
@@ -199,14 +236,21 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
       }
     }
     socket.onclose = () => {
+      // 已被 stop()/新连接替换的旧 socket：其关闭事件与本句柄无关。
+      // A stale socket replaced by stop()/a newer connection: its close is not ours.
+      if (ws !== socket) return
+      ws = null
       running = false
-      // 就绪前断开 = 启动失败；就绪后断开 = 正常生命周期（下次开麦重建）。
-      // Close before ready = startup failure; after ready = normal lifecycle.
+      // 就绪前断开 = 启动失败；就绪后的非主动断开 = 断线（自动重连）。
+      // Close before ready = startup failure; an involuntary close after ready = a drop.
       settleReady(new Error('语音流在就绪前断开'))
       // 服务端关闭/报错时也要释放麦克风与音频图，否则麦克风会一直占着。
       // Release the mic and audio graph on a server close/error too; otherwise the mic stays held.
       releaseAudio()
-      opts.onClose?.()
+      const willReconnect = readyOnce && !stopped && !serverFailed
+      readyOnce = false
+      if (willReconnect) scheduleReconnect(myGen)
+      opts.onClose?.({ willReconnect })
     }
     socket.onerror = () => {
       const error = new Error('语音流连接错误')
@@ -236,8 +280,30 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
     } catch (e) {
       stop()
       throw e
+    } finally {
+      cancelStart = null
     }
+    // 启动途中被 stop()/新启动覆盖：本次不得把 running 打开。
+    // Stopped or superseded mid-start: this attempt must not mark the stream running.
+    if (myGen !== gen || stopped) { stop(); return }
+    readyOnce = true
+    reconnectAttempt = 0
     running = true
+  }
+
+  /** 排一次指数退避重连；代际号变化或主动停止即放弃。
+   *  Schedule one exponential-backoff retry; abandon it on a generation change or stop. */
+  function scheduleReconnect(fromGen: number): void {
+    if (reconnectTimer) return
+    const delay = Math.min(RECONNECT_BASE_MS * 2 ** reconnectAttempt, RECONNECT_MAX_MS)
+    reconnectAttempt++
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null
+      if (stopped || gen !== fromGen) return
+      // 失败由下一次 onclose 再排一次（getUserMedia 失败则 stop() 终止重试）。
+      // A failure schedules again via the next onclose (a mic failure stops retries).
+      void start().catch(() => { /* 见下：下一轮 onclose 决定是否继续重试 */ })
+    }, delay)
   }
 
   function releaseAudio(): void {
@@ -261,6 +327,14 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
   }
 
   function stop(): void {
+    // 代际 +1 作废在飞的重连；stopped 让随后到达的 onclose 不再排新的重连。
+    // Bump the generation to void in-flight retries; `stopped` keeps the later
+    // onclose from scheduling a new one.
+    gen++
+    stopped = true
+    readyOnce = false
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
+    cancelStart?.(new Error('语音流启动已取消'))
     running = false
     try { ws?.send(JSON.stringify({ type: 'stop' })) } catch { /* ignore */ }
     try { ws?.close() } catch { /* ignore */ }
