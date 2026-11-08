@@ -100,14 +100,20 @@ async function handleFinal(ev: StreamEvent): Promise<void> {
   if (!text) { markHudDropped(); return }
   if (inEchoGuard()) { markHudDropped(); return }
 
+  // 认领本段 final 的代际：每段 final 都是一条独立 promise，通话判定等异步段可能
+  // 迟到；送回 LLM 之前再校验一次代际，过期段一律丢弃（并发 final 去重）。
+  // Claim this segment's generation: each final is its own promise and async work
+  // (call judging) can land late; re-check before sending to the LLM and drop stale
+  // segments (concurrent-final dedupe).
+  const gen = ++st.turnToken
+  const stale = () => gen !== st.turnToken
+
   // 1) 待答问题：唤醒词优先弃题，否则作答。Pending question: wake abandons, else answers.
   const pq = pendingQuestion.value
   if (pq) {
-    st.turnToken++
     if (wake.matched) {
       abandonPendingQuestion()
       if (wake.command) {
-        st.turnToken++
         enterWakeCooldown()
         sendToLlm(wake.command)
       } else {
@@ -119,18 +125,18 @@ async function handleFinal(ev: StreamEvent): Promise<void> {
     const hit = matchOption(text, pq.options)
     markHudAccepted()
     await st.deps?.sendAnswer(hit ? '' : text, hit?.value, 'voice', pq)
+    if (stale()) markHudDropped()
     return
   }
 
   // 2) 通话：文本判定（L0/L1/L2）后再送编排。Call: text judge then orchestrate.
   if (callActive.value) {
-    await judgeCall(text, ev)
+    await judgeCall(text, ev, gen)
     return
   }
 
   // 3) 等指令窗：整句就是指令。Command window: the whole sentence is the command.
   if (st.awaitingCommand) {
-    st.turnToken++
     if (text) {
       st.awaitingCommand = false
       clearCommandTimer()
@@ -148,7 +154,6 @@ async function handleFinal(ev: StreamEvent): Promise<void> {
   // 4) 续聊窗口：命中唤醒词照常处理，否则整句当新指令。
   // Follow-up window: a wake hit behaves normally; otherwise the whole sentence is a command.
   if (baseState === 'followup') {
-    st.turnToken++
     if (wake.matched) {
       if (wake.command) {
         enterWakeCooldown()
@@ -168,7 +173,6 @@ async function handleFinal(ev: StreamEvent): Promise<void> {
   // 5) 普通唤醒：命中且带指令 → 执行；裸唤醒 → 提示音 + 指令窗；未命中 → ghost。
   if (wake.matched) {
     if (wake.command) {
-      st.turnToken++
       enterWakeCooldown()
       sendToLlm(wake.command)
       return
@@ -197,7 +201,7 @@ function enterCommandWindow(): void {
   armCommandTimer()
 }
 
-async function judgeCall(text: string, ev: StreamEvent): Promise<void> {
+async function judgeCall(text: string, ev: StreamEvent, gen: number): Promise<void> {
   const r = await api.callJudge(text, {
     durationMs: Number(ev.duration_ms || 0),
     rms: Number(ev.rms ?? 1),
@@ -205,8 +209,10 @@ async function judgeCall(text: string, ev: StreamEvent): Promise<void> {
     inOpenWindow: inOpenWindow(),
     callId: callId.value,
   }).catch((): { ok?: boolean; hit?: boolean; text?: string; stage?: string; reason?: string } => ({ ok: false }))
+  // 判定期间来了更新的段/停止监听 → 本次判定作废（不得把旧文本送进 LLM）。
+  // A newer segment / stop arrived while judging → this verdict is void.
+  if (gen !== st.turnToken) { markHudDropped(); return }
   if (r?.ok && r.hit && r.text) {
-    st.turnToken++
     markTurnEnded()
     if (state.value === 'recording') state.value = 'listening'
     statusLine.value = ''

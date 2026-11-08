@@ -11,6 +11,7 @@ vi.mock('../../../api', () => ({
 
 import { api } from '../../../api'
 import { notify } from '../../../composables/useToast'
+import { state } from '../../../composables/assistant/store'
 import ConsoleHistory from '../ConsoleHistory.vue'
 
 const SESSIONS = {
@@ -57,6 +58,25 @@ describe('ConsoleHistory', () => {
   })
 
   /** 归档成功：弹出成功通知并刷新列表。Archive success: emits a success notice and refreshes the list. */
+  /** 回合进行中切换会话会与旧回合的收尾相互覆盖（docs/designs/10 4.5）：明确禁止并提示。
+   *  Switching sessions mid-turn races the old turn's wrap-up (docs/designs/10 4.5):
+   *  refuse with a visible notice. */
+  it('回合进行中禁止切换会话', async () => {
+    vi.mocked(api.listSessions).mockResolvedValue(SESSIONS as any)
+    const errSpy = vi.spyOn(notify, 'err')
+    state.value = 'thinking'
+    try {
+      const w = mount(ConsoleHistory)
+      await flushPromises()
+      await w.find('.history-item').trigger('click')
+      await flushPromises()
+      expect(api.getHistoryDetail).not.toHaveBeenCalled()
+      expect(errSpy).toHaveBeenCalled()
+    } finally {
+      state.value = 'idle'
+    }
+  })
+
   it('归档成功弹出成功通知', async () => {
     vi.mocked(api.listSessions).mockResolvedValue(SESSIONS as any)
     vi.mocked(api.archiveSession).mockResolvedValue({ ok: true } as any)

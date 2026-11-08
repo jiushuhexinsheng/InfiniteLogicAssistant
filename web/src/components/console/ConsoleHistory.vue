@@ -48,6 +48,7 @@ import { UiButton, UiCard, UiEmpty, UiErrorNote } from '../ui'
 import ConsolePane from './ConsolePane.vue'
 import { useConsole } from '../../composables/useConsole'
 import { createNewSession, switchSession } from '../../composables/assistant/store'
+import { turnActive } from '../../composables/assistant/useChatPause'
 
 /** 当前控制台活跃标签页。Current console active tab. */
 const { activeTab } = useConsole()
@@ -103,6 +104,15 @@ async function create() {
  *  Click a session = switch: load its history (with block structure and real timestamps)
  *  into the conversation view and continue from that session. */
 async function open(id: string) {
+  // 回合进行中切会话：旧回合的收尾（done/abort）会把内容写进刚切进来的会话视图，
+  // 两段历史互相覆盖。直接禁止并提示，让用户先停止或等回合结束。
+  // Switching mid-turn: the old turn's wrap-up (done/abort) writes into the session
+  // view that was just switched in, overwriting one history with another. Refuse and
+  // tell the user to stop or wait.
+  if (turnActive.value) {
+    notify.err('回合进行中，请先停止或等待完成后再切换会话')
+    return
+  }
   try {
     const r = await api.getHistoryDetail(id)
     const msgs = (r.conversation.messages || []).map(m => ({
