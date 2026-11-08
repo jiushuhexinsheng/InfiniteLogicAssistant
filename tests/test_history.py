@@ -40,6 +40,36 @@ async def test_save_overwrites(store):
 
 
 @pytest.mark.asyncio
+async def test_save_conversation_keeps_other_turns(store):
+    """历史覆盖竞态（docs/designs/10 5.3）：旧回合晚收尾时只替换自己那一回合，
+    新回合已写入的消息必须保留，且顺序仍按真实时间。
+
+    History overwrite race (docs/designs/10 5.3): when an older turn retires late it
+    replaces only its own turn; messages already written by the newer turn survive,
+    in real-time order.
+    """
+    def msg(role, content, turn_id, ts):
+        return {"role": role, "content": content, "turn_id": turn_id, "ts": ts}
+
+    # 新回合先落盘：turn1 + turn2。
+    await store.save_conversation("c1", [
+        msg("user", "问题一", "t1", "2026-11-08T10:00:00"),
+        msg("assistant", "回答一", "t1", "2026-11-08T10:00:05"),
+        msg("user", "问题二", "t2", "2026-11-08T10:01:00"),
+        msg("assistant", "回答二", "t2", "2026-11-08T10:01:05"),
+    ], status="done", summary="")
+
+    # 旧回合（只有 turn1）迟到收尾：不得删掉 turn2。
+    await store.save_conversation("c1", [
+        msg("user", "问题一", "t1", "2026-11-08T10:00:00"),
+        msg("assistant", "回答一", "t1", "2026-11-08T10:00:05"),
+    ], status="done", summary="")
+
+    conv = await store.get_conversation("c1")
+    assert [m["content"] for m in conv["messages"]] == ["问题一", "回答一", "问题二", "回答二"]
+
+
+@pytest.mark.asyncio
 async def test_list_conversations_orders_by_updated(store):
     """测试会话列表按更新时间倒序排列并携带摘要与消息数。Tests that the conversation list is ordered by updated time descending and carries summary and message count."""
     await store.save_conversation("c1", [{"role": "user", "content": "a"}], summary="旧")

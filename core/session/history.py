@@ -133,8 +133,19 @@ class HistoryStore:
 
     async def save_conversation(self, conv_id: str, messages: list[dict],
                                 status: str = "", summary: str = "") -> None:
-        """整段覆盖保存一个会话的完整消息（会话结束时调用）。
-        Saves a conversation's full message list with a whole-overwrite (called when the conversation ends).
+        """增量保存一个会话的消息（按回合替换，会话结束时调用）。
+
+        旧实现在每次收尾时**整段覆盖**：新回合已经落盘后，旧回合迟到的收尾会把整段
+        历史删掉重写 —— 新回合的消息被抹掉（docs/designs/10 5.3）。现在只替换本次
+        提交涉及的回合（turn_id），其他回合原样保留；没有 turn_id 的消息按旧语义
+        整段替换（兼容旧调用方/测试）。
+
+        Incrementally save a conversation's messages (replace per turn, called when a
+        conversation ends). The old whole-overwrite deleted everything and rewrote it:
+        when an older turn retired after a newer one had already persisted, the newer
+        turn's messages were wiped (docs/designs/10 5.3). Only the turns present in
+        this payload are replaced; other turns are left untouched. Messages without a
+        turn_id keep the legacy whole-replace semantics (for old callers/tests).
 
         新会话 INSERT 用默认名「新会话」；已存在会话 UPDATE 时保留 name。
         A new conversation is INSERTed with the default name "新会话"; an existing conversation keeps its name on UPDATE.
@@ -147,7 +158,24 @@ class HistoryStore:
                 "status=excluded.status, summary=excluded.summary",
                 (conv_id, "新会话", now, now, status, summary),
             )
-            conn.execute("DELETE FROM messages WHERE conversation_id=?", (conv_id,))
+            turn_ids = {str(m.get("turn_id") or "") for m in messages if isinstance(m, dict)}
+            if not turn_ids:
+                conn.execute("DELETE FROM messages WHERE conversation_id=?", (conv_id,))
+            else:
+                for turn_id in turn_ids:
+                    if turn_id:
+                        conn.execute(
+                            "DELETE FROM messages WHERE conversation_id=? AND turn_id=?",
+                            (conv_id, turn_id),
+                        )
+                if "" in turn_ids:
+                    # 无回合归属的消息：只清这一类，不能连带删掉带 turn_id 的回合。
+                    # Messages without a turn: clear only those, never the tagged turns.
+                    conn.execute(
+                        "DELETE FROM messages WHERE conversation_id=? AND "
+                        "(turn_id IS NULL OR turn_id='')",
+                        (conv_id,),
+                    )
             for m in messages:
                 if not isinstance(m, dict):
                     continue
@@ -196,9 +224,14 @@ class HistoryStore:
             ).fetchone()
             if not c:
                 return None
+            # 按消息真实时间排序（同一时刻再按插入序）：增量替换会重写旧回合的行，
+            # 其自增 id 会变大，按 id 排序会把旧回排放到新回合之后。
+            # Order by real message time (insertion order breaks ties): incremental
+            # replacement re-inserts an older turn's rows with larger ids, so ordering
+            # by id would place that turn after a newer one.
             msgs = conn.execute(
                 "SELECT role, content, blocks, turn_id, ts_iso FROM messages "
-                "WHERE conversation_id=? ORDER BY id", (conv_id,)
+                "WHERE conversation_id=? ORDER BY ts_iso, id", (conv_id,)
             ).fetchall()
         return {
             "id": c[0], "name": c[1], "created": c[2], "updated": c[3], "status": c[4] or "", "summary": c[5] or "",
