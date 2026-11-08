@@ -21,7 +21,8 @@ async def test_coordinator_merges_subtasks(monkeypatch):
             {"goal": "子任务2", "agent_type": "searcher", "independent": True},
         ]
 
-    async def fake_subagent(role, goal, context="", cancel=None, max_steps=None, confirm=None, events=None, agent=""):
+    async def fake_subagent(role, goal, context="", cancel=None, max_steps=None, confirm=None,
+                            events=None, agent="", pause=None, session=None):
         return SimpleNamespace(status="done", output=f"结果:{goal}", used_tools=["get_datetime"])
 
     async def fake_build(q):
@@ -44,7 +45,8 @@ async def test_coordinator_emits_notify_events(monkeypatch):
     async def fake_decompose(task, ctx=""):
         return [{"goal": "子任务", "agent_type": "doer", "independent": False}]
 
-    async def fake_subagent(role, goal, context="", cancel=None, max_steps=None, confirm=None, events=None, agent=""):
+    async def fake_subagent(role, goal, context="", cancel=None, max_steps=None, confirm=None,
+                            events=None, agent="", pause=None, session=None):
         return SimpleNamespace(status="done", output="完成", used_tools=[])
 
     async def fake_build(q):
@@ -112,7 +114,8 @@ async def test_coordinator_artifact_and_critic_paths(monkeypatch, tmp_path):
     async def fake_decompose(task, ctx=""):
         return [{"goal": "长产出子任务", "agent_type": "doer", "independent": False}]
 
-    async def fake_subagent(role, goal, context="", cancel=None, max_steps=None, confirm=None, events=None, agent=""):
+    async def fake_subagent(role, goal, context="", cancel=None, max_steps=None, confirm=None,
+                            events=None, agent="", pause=None, session=None):
         goals_seen.append(goal)
         if "审查" in goal:
             return SimpleNamespace(status="done", output="审查通过", used_tools=[])
@@ -136,3 +139,109 @@ async def test_coordinator_artifact_and_critic_paths(monkeypatch, tmp_path):
 
     critic_goal = next(g for g in goals_seen if "审查" in g)
     assert "完整产物" in critic_goal and entry["artifact"] in critic_goal
+
+
+# ─── 子任务上限 / 类型白名单 / 产物路径 / 暂停传播 / 摘要口径（docs/designs/10 5.5）───
+
+
+def _stub_coordinator(monkeypatch, subtasks, on_sub=None):
+    """搭一个最小协调器环境：拆解结果固定，子代理按需回调。"""
+    async def fake_decompose(task, ctx=""):
+        return subtasks
+
+    async def fake_subagent(role, goal, context="", cancel=None, max_steps=None, confirm=None,
+                            events=None, agent="", pause=None, session=None):
+        if on_sub is not None:
+            on_sub(role, goal, agent, pause, session)
+        if "审查" in goal:
+            return SimpleNamespace(status="done", output="审查通过", used_tools=[])
+        return SimpleNamespace(status="done", output=f"结果:{goal}", used_tools=[])
+
+    async def fake_build(q):
+        return ""
+
+    monkeypatch.setattr("core.agent.coordinator._decompose", fake_decompose)
+    monkeypatch.setattr("core.agent.coordinator.run_subagent", fake_subagent)
+    monkeypatch.setattr("core.agent.coordinator.build_context", fake_build)
+
+
+@pytest.mark.asyncio
+async def test_coordinator_caps_subtasks_and_normalizes_agent_type(monkeypatch):
+    """子任务数受 agent.max_subtasks 限制；未知 agent_type 一律按 doer 执行。"""
+    from core import config as config_mod
+    monkeypatch.setattr(config_mod.settings.agent, "max_subtasks", 2)
+    roles: list[str] = []
+    _stub_coordinator(monkeypatch, [
+        {"goal": "一", "agent_type": "hacker", "independent": False},
+        {"goal": "二", "agent_type": "searcher", "independent": False},
+        {"goal": "三", "agent_type": "planner", "independent": False},
+    ], on_sub=lambda role, goal, agent, pause, session: roles.append(agent))
+
+    r = await run_coordinator(Task("t", "主任务"), Session(), CancellationToken())
+
+    assert len(r["subtasks"]) == 2
+    assert [x["agent_type"] for x in r["subtasks"]] == ["doer", "searcher"]
+    assert roles[:2] == ["sub:doer", "sub:searcher"]
+
+
+@pytest.mark.asyncio
+async def test_coordinator_artifact_sanitizes_path(monkeypatch, tmp_path):
+    """产物白名单类型 + 目标必须落在 data/agent_outputs/ 内（session.id 也可疑时不越界）。"""
+    from pathlib import Path
+    from core import config as config_mod
+    monkeypatch.setattr(config_mod, "ROOT_DIR", tmp_path)
+    _stub_coordinator(monkeypatch, [
+        {"goal": "写文件", "agent_type": "../../escape", "independent": False},
+    ])
+
+    s = Session(session_id="../../evil")
+    await run_coordinator(Task("t", "主任务"), s, CancellationToken())
+
+    root = (tmp_path / "data" / "agent_outputs").resolve()
+    written = list((tmp_path / "data").rglob("*.md"))
+    assert written, "应至少产出一个产物文件"
+    for p in written:
+        assert p.resolve().is_relative_to(root), f"产物越界: {p}"
+
+
+@pytest.mark.asyncio
+async def test_coordinator_passes_pause_and_session(monkeypatch):
+    """暂停控制器与会话透传给子代理（子代理据此在步骤边界等待、并走统一技能确认链）。"""
+    seen: dict = {}
+    pause = object()
+    session = Session(session_id="sid-1")
+
+    def on_sub(role, goal, agent, pause_arg, session_arg):
+        seen["pause"] = pause_arg
+        seen["session"] = session_arg
+
+    _stub_coordinator(monkeypatch, [
+        {"goal": "子任务", "agent_type": "doer", "independent": False},
+    ], on_sub=on_sub)
+
+    await run_coordinator(Task("t", "主任务"), session, CancellationToken(), pause=pause)
+
+    assert seen["pause"] is pause
+    assert seen["session"] is session
+
+
+@pytest.mark.asyncio
+async def test_coordinator_summary_is_voice_short_with_full_report(monkeypatch):
+    """done.summary 只放 ≤60 字语音摘要；完整报告单独返回（steps 用）。"""
+    detailed = "详细结论：" + "很长的内容" * 40
+    _stub_coordinator(monkeypatch, [
+        {"goal": "子任务", "agent_type": "doer", "independent": False},
+    ])
+
+    async def fake_sub(role, goal, context="", cancel=None, max_steps=None, confirm=None,
+                       events=None, agent="", pause=None, session=None):
+        if "审查" in goal:
+            return SimpleNamespace(status="done", output="审查通过", used_tools=[])
+        return SimpleNamespace(status="done", output=detailed, used_tools=[])
+
+    monkeypatch.setattr("core.agent.coordinator.run_subagent", fake_sub)
+    r = await run_coordinator(Task("t", "主任务"), Session(), CancellationToken())
+
+    assert len(r["summary"]) <= 60
+    assert detailed in r["report"]
+    assert r["summary"] != r["report"]

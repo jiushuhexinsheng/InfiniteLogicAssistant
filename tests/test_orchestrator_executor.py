@@ -94,7 +94,7 @@ async def test_execute_uses_coordinator_for_complex(monkeypatch):
     """复杂任务交给多智能体协调器。Complex tasks are delegated to the multi-agent coordinator."""
     from core import config as config_mod
 
-    async def fake_coordinator(task, session, cancel, events=None):
+    async def fake_coordinator(task, session, cancel, events=None, pause=None):
         return {"status": "done", "summary": "多智能体结果", "subtasks": [
             {"goal": "a", "agent_type": "doer", "status": "done", "output": "ok", "tools": []}]}
 
@@ -149,7 +149,7 @@ async def test_execute_multi_agent_streams_summary_and_records(monkeypatch):
     import asyncio
     from core import config as config_mod
 
-    async def fake_coordinator(task, session, cancel, events=None):
+    async def fake_coordinator(task, session, cancel, events=None, pause=None):
         return {"status": "done", "summary": "多智能体最终结论：已全部完成", "subtasks": [
             {"goal": "a", "agent_type": "doer", "status": "done", "output": "ok", "tools": []}]}
 
@@ -623,7 +623,7 @@ async def test_execute_uses_coordinator_only_when_intent_complex(monkeypatch):
 
     calls = []
 
-    async def fake_coordinator(task, session, cancel, events=None):
+    async def fake_coordinator(task, session, cancel, events=None, pause=None):
         calls.append(task.goal)
         return {"status": "done", "summary": "多智能体结果", "subtasks": []}
 

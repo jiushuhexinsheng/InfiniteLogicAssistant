@@ -103,7 +103,7 @@ def _spy_acall(monkeypatch):
     """
     calls = []
 
-    async def fake_acall(name, args, cancel=None):
+    async def fake_acall(name, args, cancel=None, session=None):
         calls.append(name)
         return "ok"
     monkeypatch.setattr("core.agent.base.TOOLS.acall", fake_acall)
@@ -185,6 +185,54 @@ async def test_subagent_policy_allowed_tool_skips_confirm(monkeypatch):
     # 不传 confirm → 若走了确认分支会被拒；能 done 说明确实免确认执行了
     r = await run_subagent("doer", "跑个命令", context="", cancel=CancellationToken())
     assert r.status == "done", r.summary
+
+
+@pytest.mark.asyncio
+async def test_subagent_passes_session_to_tools(monkeypatch):
+    """子代理调工具必须传 session（与主 ReAct 同一确认/技能链路，docs/designs/10 5.5）。"""
+    import core.agent.base as base
+
+    class _FakeTools:
+        def __init__(self):
+            self.sessions = []
+
+        def schemas(self, stub_groups=None):
+            return []
+
+        async def acall(self, name, args, cancel=None, session=None):
+            self.sessions.append(session)
+            return "ok"
+
+    tools = _FakeTools()
+    monkeypatch.setattr(base, "TOOLS", tools)
+    fake = _FakeLLM([[_done(tool="get_datetime")], [_done(content="完成")]])
+    monkeypatch.setattr("core.agent.base.get_llm_client", lambda: fake)
+
+    sentinel = object()
+    r = await run_subagent("doer", "查时间", session=sentinel)
+
+    assert r.status == "done"
+    assert tools.sessions == [sentinel]
+
+
+@pytest.mark.asyncio
+async def test_subagent_waits_at_pause_boundaries(monkeypatch):
+    """子代理每步开始前检查暂停（暂停在步骤边界生效，docs/designs/10 5.5）。"""
+    class _Pause:
+        def __init__(self):
+            self.count = 0
+
+        async def wait_if_paused(self):
+            self.count += 1
+
+    pause = _Pause()
+    fake = _FakeLLM([[_done(tool="get_datetime")], [_done(content="完成")]])
+    monkeypatch.setattr("core.agent.base.get_llm_client", lambda: fake)
+
+    r = await run_subagent("doer", "查时间", pause=pause)
+
+    assert r.status == "done"
+    assert pause.count >= 2, "两步至少各检查一次暂停"
 
 
 @pytest.mark.asyncio

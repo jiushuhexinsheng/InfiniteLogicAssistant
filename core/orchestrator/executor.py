@@ -63,7 +63,7 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
 
     # 复杂任务 → 多智能体
     if should_use_multi_agent(task):
-        cr = await run_coordinator(task, session, cancel, events)
+        cr = await run_coordinator(task, session, cancel, events, pause=pause)
         steps = [
             {"step": i, "tool": f"agent:{x['agent_type']}", "status": x["status"],
              # 产物路径附在结果尾部（docs/designs/08 批3）：汇总卡可见完整输出去向。
@@ -72,12 +72,18 @@ async def execute_task(task: Task, session: Session, cancel: CancellationToken,
              "result": x["output"] + (f"\n[产物] {x['artifact']}" if x.get("artifact") else "")}
             for i, x in enumerate(cr["subtasks"])
         ]
+        # done.summary 只放语音摘要（≤60 字）；完整报告作为最后一步进 steps（docs/designs/10 5.5）。
+        # done.summary carries only the short voice line; the full report goes into
+        # steps as a final entry (docs/designs/10 5.5).
+        report = cr.get("report") or cr["summary"]
+        steps.append({"step": len(steps), "tool": "agent:report",
+                      "status": cr["status"], "result": report})
         summary = cr["summary"]
         # 把最终摘要按 content_delta 流式返回（前端累积 → 语音播报真实结论）
         if events is not None and summary:
             for i in range(0, len(summary), 200):
                 await events.put(ContentDeltaEvent(text=summary[i:i + 200]).emit())
-        session.append("assistant", summary)
+        session.append("assistant", report)
         return {"status": cr["status"], "summary": summary, "steps": steps}
 
     max_steps = config.settings.agent.recursion_limit

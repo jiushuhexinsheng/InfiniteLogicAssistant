@@ -6,6 +6,8 @@ concurrency) → critic review → merge results.
 """
 import asyncio
 import json
+import re
+from typing import Any
 
 from core import config
 from core.agent.base import run_subagent
@@ -94,12 +96,41 @@ async def _decompose(task: Task, ctx: str = "") -> list[dict]:
     return [{"goal": task.goal, "agent_type": "doer", "independent": False}]
 
 
-async def run_coordinator(task: Task, session: Session, cancel: CancellationToken,
-                          events: asyncio.Queue | None = None) -> dict:
-    """拆解→执行→critic→合并。返回 {status, summary, subtasks}。
+# 合法的子代理类型（白名单）。Unknown types fall back to doer.
+_AGENT_TYPES = {"planner", "doer", "searcher"}
+# 产物文件名允许的类型（critic 也写产物）。Types allowed in artifact filenames.
+_ARTIFACT_TYPES = _AGENT_TYPES | {"critic"}
 
-    Decompose → execute → critic review → merge.
-    Return ``{status, summary, subtasks}``.
+
+def _normalize_subtasks(raw: list[dict]) -> list[dict]:
+    """截断到 agent.max_subtasks 并把未知 agent_type 归一为 doer。
+
+    拆解 schema 的 maxItems 只是给模型的提示，运行时必须自己再兜一层（docs/designs/10 5.5）。
+
+    Cap at ``agent.max_subtasks`` and normalize unknown agent types to ``doer``. The
+    schema's maxItems is only a hint to the model; the runtime must enforce its own
+    bound (docs/designs/10 5.5).
+    """
+    cap = config.settings.agent.max_subtasks
+    out: list[dict] = []
+    for s in raw[:cap]:
+        t = str(s.get("agent_type") or "doer")
+        if t not in _AGENT_TYPES:
+            t = "doer"
+        out.append({**s, "agent_type": t})
+    return out
+
+
+async def run_coordinator(task: Task, session: Session, cancel: CancellationToken,
+                          events: asyncio.Queue | None = None,
+                          pause: Any | None = None) -> dict:
+    """拆解→执行→critic→合并。返回 {status, summary, report, subtasks}。
+
+    summary 是给语音播报的短摘要（≤60 字）；report 是完整报告（steps / 产物用）。
+
+    Decompose → execute → critic review → merge. Return
+    ``{status, summary, report, subtasks}``. summary is the short voice line
+    (≤60 chars); report is the full report for steps / artifacts.
     """
     if cancel.is_cancelled:
         return {"status": "stopped", "summary": "已停止", "subtasks": []}
@@ -123,7 +154,10 @@ async def run_coordinator(task: Task, session: Session, cancel: CancellationToke
     except Exception:
         pass
 
-    subtasks = await _decompose(task, ctx=ctx)
+    subtasks = _normalize_subtasks(await _decompose(task, ctx=ctx))
+    if not subtasks:
+        # 空拆解：退化为单个 doer 子任务，绝不让协调器空转。Never run an empty plan.
+        subtasks = [{"goal": task.goal, "agent_type": "doer", "independent": False}]
     if cancel.is_cancelled:
         return {"status": "stopped", "summary": "已停止", "subtasks": []}
     await session.notify(f"已拆分 {len(subtasks)} 个子任务")
@@ -141,9 +175,18 @@ async def run_coordinator(task: Task, session: Session, cancel: CancellationToke
         """
         try:
             from uuid import uuid4
-            d = config.ROOT_DIR / "data" / "agent_outputs" / session.id
+            # 类型白名单 + session id 清洗 + 目标路径自证：任何内部调用方都不得越界写。
+            # Type whitelist + sanitized session id + target-path proof: no internal
+            # caller may write outside the outputs root.
+            safe_type = agent_type if agent_type in _ARTIFACT_TYPES else "agent"
+            safe_sid = re.sub(r"[^A-Za-z0-9_-]", "_", session.id)[:64] or "session"
+            root = (config.ROOT_DIR / "data" / "agent_outputs").resolve()
+            d = root / safe_sid
             d.mkdir(parents=True, exist_ok=True)
-            p = d / f"{agent_type}_{uuid4().hex[:8]}.md"
+            p = d / f"{safe_type}_{uuid4().hex[:8]}.md"
+            if not p.resolve().is_relative_to(root):
+                logger.warning("跳过 agent 产物：非法目标路径 {}", p)
+                return None
             p.write_text(text, encoding="utf-8")
             return str(p)
         except Exception as e:
@@ -169,7 +212,7 @@ async def run_coordinator(task: Task, session: Session, cancel: CancellationToke
         r = await run_subagent(
             _ROLE_PROMPTS.get(s["agent_type"], _ROLE_PROMPTS["doer"]),
             goal, context=sub_context, cancel=cancel, confirm=_confirm, events=events,
-            agent=f"sub:{s['agent_type']}",
+            agent=f"sub:{s['agent_type']}", pause=pause, session=session,
         )
         artifact = _save_artifact(r.output, s["agent_type"]) if r.output else None
         executed.append({
@@ -218,13 +261,23 @@ async def run_coordinator(task: Task, session: Session, cancel: CancellationToke
         critic_prompt += f"\n\n背景信息：\n{ctx}"
     critic = await run_subagent(
         _ROLE_PROMPTS["critic"], critic_prompt, cancel=cancel, confirm=_confirm, events=events,
-        agent="sub:critic",
+        agent="sub:critic", pause=pause, session=session,
     )
     critique = critic.output[:500]
 
     failed = any(x["status"] in ("failed", "stopped") for x in executed)
+    report = merged + (f"\n\n[审查] {critique}" if critique else "")
+    # 语音只念短摘要（≤60 字），完整报告走 report → steps / 产物路径。
+    # Speech gets only the short line (≤60 chars); the full report travels via
+    # `report` into steps / artifacts.
+    if critique.strip():
+        voice = critique.strip().splitlines()[0][:60]
+    else:
+        goals = "、".join(x["goal"][:12] for x in executed[:3])
+        voice = f"已完成 {len(executed)} 个子任务：{goals}"[:60]
     return {
         "status": "failed" if failed else "done",
-        "summary": merged + (f"\n\n[审查] {critique}" if critique else ""),
+        "summary": voice,
+        "report": report,
         "subtasks": executed,
     }

@@ -6,7 +6,7 @@ Sub-agent base — a single ReAct loop with a role prompt, cancellable.
 import asyncio
 import json
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 from core import config
 from core.llm.client import get_llm_client
@@ -50,6 +50,8 @@ async def run_subagent(
     confirm: Callable[[str, dict], Awaitable[ConfirmResult | bool]] | None = None,
     events: asyncio.Queue | None = None,
     agent: str = "",
+    pause: Any | None = None,
+    session: Any | None = None,
 ) -> SubAgentResult:
     """执行子任务：LLM 循环（可调工具），直到给出结论或步数/取消。
 
@@ -88,6 +90,10 @@ async def run_subagent(
     ]
     used: list[str] = []
     for _ in range(max_steps):
+        # 暂停在步骤边界生效（与主 ReAct 同一语义，docs/designs/10 5.5）。
+        # Pause takes effect at step boundaries (same semantics as the main ReAct).
+        if pause is not None:
+            await pause.wait_if_paused()
         if cancel is not None and cancel.is_cancelled:
             return SubAgentResult("stopped", "已停止", used)
         # 滚动压缩（docs/designs/08 批2）：子代理步数更长、收益更大；失败原样返回。
@@ -141,7 +147,7 @@ async def run_subagent(
             # refused when no confirmation channel exists.
             decision = decide(name)
             if decision.action == "allow":
-                result = await TOOLS.acall(name, args, cancel=cancel)
+                result = await TOOLS.acall(name, args, cancel=cancel, session=session)
             elif decision.action == "deny":
                 result = f"Error: 操作者策略禁止调用 {name}（{decision.source}）"
             elif confirm is None:
@@ -149,7 +155,7 @@ async def run_subagent(
             else:
                 conf = await confirm(name, args)
                 if conf:
-                    result = await TOOLS.acall(name, args, cancel=cancel)
+                    result = await TOOLS.acall(name, args, cancel=cancel, session=session)
                 else:
                     # 拒绝理由回喂子代理 LLM 作为纠偏信号（getattr 兼容测试桩返回裸 bool）。
                     # The refusal rationale is fed back to the sub-agent LLM as a

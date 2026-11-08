@@ -35,6 +35,10 @@ class AgentSection(BaseModel):
     # 多智能体子代理并发上限（此前是 coordinator 模块里的硬编码常量 4）。
     # Concurrency cap for multi-agent sub-agents (formerly a hardcoded 4 in coordinator).
     max_concurrent_subagents: int = Field(4, gt=0)
+    # 多智能体子任务总数上限（此前只有 schema 的 maxItems=6，实际未在运行时截断）。
+    # Total sub-task cap for multi-agent runs (previously only the schema's maxItems=6;
+    # the runtime never enforced it).
+    max_subtasks: int = Field(6, gt=0)
 
 
 class LlmClientSection(BaseModel):
