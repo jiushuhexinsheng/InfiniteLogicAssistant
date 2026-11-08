@@ -48,6 +48,53 @@ describe('useAssistant init 透传配置', () => {
   })
 })
 
+/** 设置页保存后的运行时热同步（docs/designs/10 4.2）。Settings-save runtime hot sync. */
+describe('useAssistant.applyServerConfig 运行时热同步', () => {
+  beforeEach(() => { vi.resetModules() })
+
+  /** 唤醒词整体替换：旧词不得留下（否则保存后仍能被旧词唤醒）。 */
+  it('唤醒词整体替换，旧词不残留', async () => {
+    const { useAssistant } = await import('../../useAssistant')
+    const asst = useAssistant()
+    asst.applyServerConfig({ wake: { keywords: ['衍衡', '洛吉斯'] } })
+    expect(asst.wakeKeywords.value).toEqual(['衍衡', '洛吉斯'])
+    asst.applyServerConfig({ wake: { keywords: ['新名字'] } })
+    expect(asst.wakeKeywords.value).toEqual(['新名字'])
+  })
+
+  /** 下发的空唤醒词列表回退到内置默认，而不是把界面提示清成空。 */
+  it('空唤醒词回退到内置默认', async () => {
+    const { useAssistant } = await import('../../useAssistant')
+    const asst = useAssistant()
+    asst.applyServerConfig({ wake: { keywords: [] } })
+    expect(asst.wakeKeywords.value).toEqual(['衍衡', '洛吉斯'])
+  })
+
+  /** 二次应用时先重置默认再合并：被删掉的键必须回到默认值，而不是停留在上一次的下发值。 */
+  it('二次应用先重置默认，被删除的键还原', async () => {
+    const { useAssistant } = await import('../../useAssistant')
+    const { vadConfig, callConfig, hardwareConfig } = await import('../store')
+    const asst = useAssistant()
+    asst.applyServerConfig({
+      vad: { followup_window_ms: 9000 },
+      call: { open_window_s: 3 },
+      hardware: { input_device: 'mic-2' },
+      streaming: false,
+    })
+    expect(vadConfig.followup_window_ms).toBe(9000)
+    expect(callConfig.open_window_s).toBe(3)
+    expect(hardwareConfig.input_device).toBe('mic-2')
+    expect(asst.streamingEnabled.value).toBe(false)
+
+    // 新配置删掉了这些键 → 回到默认值。
+    asst.applyServerConfig({})
+    expect(vadConfig.followup_window_ms).toBe(6000)
+    expect(callConfig.open_window_s).toBe(8)
+    expect(hardwareConfig.input_device).toBe('')
+    expect(asst.streamingEnabled.value).toBe(true)
+  })
+})
+
 /** Task 11 接线：双击悬浮球改走通话开关 —— useAssistant 必须把 toggleCall 暴露给
  *  FloatingAssistant（与 toggleWake 同模式；徽章仍走 toggleWake = R7）。
  *  Task 11 wiring: the double-click now toggles call — useAssistant must expose toggleCall

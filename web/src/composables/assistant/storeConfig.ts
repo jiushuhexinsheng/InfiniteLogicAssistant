@@ -9,9 +9,15 @@ import type { WakeWordConfig, VadConfig, CallConfig } from '../../types'
  *  model_path is a leftover from the Vosk era (nothing on the frontend reads it since the wake
  *  judgement moved to the cloud): the empty string only satisfies the generated type's required
  *  field, matching the backend api schema's default (`model_path: str = ""`). */
-export const wakeConfig: WakeWordConfig = { enabled: true, keywords: ['衍衡', '洛吉斯'], sensitivity: 0.5, model_path: '' }
+/** 内置唤醒词。设置页保存后若下发空列表，回退到这里，而不是让界面提示变空。
+ *  Built-in wake keywords. If a saved config sends an empty list, fall back to these so the
+ *  on-screen hint never renders blank. */
+export const DEFAULT_WAKE_KEYWORDS = ['衍衡', '洛吉斯']
+
+const WAKE_DEFAULTS: WakeWordConfig = { enabled: true, keywords: DEFAULT_WAKE_KEYWORDS, sensitivity: 0.5, model_path: '' }
+export const wakeConfig: WakeWordConfig = { ...WAKE_DEFAULTS, keywords: [...DEFAULT_WAKE_KEYWORDS] }
 /** VAD（语音活动检测）配置。VAD (Voice Activity Detection) configuration. */
-export const vadConfig: VadConfig = {
+const VAD_DEFAULTS: VadConfig = {
   mode: 'local',
   engine: 'ten-vad',
   model: 'models/vad/ten-vad.onnx',
@@ -27,8 +33,10 @@ export const vadConfig: VadConfig = {
   followup_window_ms: 6000,
   listen_idle_s: 180,
 }
+export const vadConfig: VadConfig = { ...VAD_DEFAULTS }
 /** 通话模式配置（/api/config 的 call 段覆盖默认值）。Call-mode config (the `call` block of /api/config overrides these defaults). */
-export const callConfig: CallConfig = { enabled: true, open_window_s: 8, l0_min_rms: 0.02, l0_min_seconds: 0.5, local_asr_model: '', session_ttl_s: 300, relax_after_misses: 2 }
+const CALL_DEFAULTS: CallConfig = { enabled: true, open_window_s: 8, l0_min_rms: 0.02, l0_min_seconds: 0.5, local_asr_model: '', session_ttl_s: 300, relax_after_misses: 2 }
+export const callConfig: CallConfig = { ...CALL_DEFAULTS }
 
 /** 浏览器硬件选项（输入/输出设备与麦克风处理）。Browser hardware options. */
 export interface HardwareConfig {
@@ -40,16 +48,31 @@ export interface HardwareConfig {
 }
 
 /** 硬件配置默认值（/api/config 的 hardware 段覆盖）。Hardware defaults (overridden by /api/config). */
-export const hardwareConfig: HardwareConfig = {
+const HARDWARE_DEFAULTS: HardwareConfig = {
   input_device: '',
   output_device: '',
   echo_cancellation: true,
   noise_suppression: true,
   auto_gain: true,
 }
+export const hardwareConfig: HardwareConfig = { ...HARDWARE_DEFAULTS }
 
 /** 流式语音开关（/api/config 的 streaming 覆盖）。Streaming switch (overridden by /api/config). */
-export const streamingEnabled = ref(true)
+export const DEFAULT_STREAMING_ENABLED = true
+export const streamingEnabled = ref(DEFAULT_STREAMING_ENABLED)
+
+/** 把运行时配置恢复到内置默认。设置页二次保存时先调用再合并，否则服务端删掉的键
+ *  会停留在上一次下发的值上（Object.assign 只增不减）。
+ *  Reset runtime config to built-in defaults. Settings-save applies this before merging, or
+ *  keys removed from the server config would keep their previous values (Object.assign only
+ *  adds and overwrites — it never removes). */
+export function resetRuntimeConfig(): void {
+  Object.assign(wakeConfig, WAKE_DEFAULTS, { keywords: [...DEFAULT_WAKE_KEYWORDS] })
+  Object.assign(vadConfig, VAD_DEFAULTS)
+  Object.assign(callConfig, CALL_DEFAULTS)
+  Object.assign(hardwareConfig, HARDWARE_DEFAULTS)
+  streamingEnabled.value = DEFAULT_STREAMING_ENABLED
+}
 /** 通话激活标志：唯一事实来源（store 级，避免 wakeOrchestrator ↔ callMode 循环导入）。Call-active flag: store-level single source of truth (avoids a wakeOrchestrator ↔ callMode import cycle). */
 export const callActive = ref(false)
 /** 当前通话会话 id（后端 start 返回；judge/stop 携带，多标签页互不影响）。Current call-session id (returned by start; carried on judge/stop so tabs stay isolated). */

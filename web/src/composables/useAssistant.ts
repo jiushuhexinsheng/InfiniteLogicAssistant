@@ -6,6 +6,7 @@ import {
   wakeConfig, vadConfig, callConfig, hardwareConfig, streamingEnabled,
   clearMessages, pendingQuestion, currentSessionId,
 } from './assistant/store'
+import { DEFAULT_WAKE_KEYWORDS, resetRuntimeConfig } from './assistant/storeConfig'
 import type { HardwareConfig } from './assistant/store'
 import { sendText, retryTool, cancelTool, abortChat, sendAnswer, forkAt, sendEdited, regenerate, outboxCount, clearQueued } from './assistant/useChat'
 import { toggleWake, stopWake } from './assistant/useWakeWord'
@@ -17,29 +18,54 @@ export type { AsstState, ChatMessage } from './assistant/store'
 /** 模块级初始化标志，确保只初始化一次。Module-level initialization flag to ensure only one initialization. */
 let initialized = false
 
-/** 初始化（幂等：根组件只调用一次，防路由重挂/热更新重复预热）。
- *  Initialization (idempotent: only called once by root component, prevents duplicate warm-up from route remount/hot update).
- *  @param config - 可选的唤醒词和 VAD 配置。Optional wake word and VAD configuration. */
-function init(config?: {
+/** /api/config 中驱动前端运行时行为的子集。The /api/config subset that drives frontend runtime behavior. */
+export interface ServerRuntimeConfig {
   wake?: Partial<WakeWordConfig>
   vad?: Partial<VadConfig>
   call?: Partial<CallConfig>
   hardware?: Partial<HardwareConfig>
   streaming?: boolean
-}) {
-  if (initialized) return
-  initialized = true
-  if (config?.wake) {
-    Object.assign(wakeConfig, config.wake)
-    // 以 /api/config 下发的唤醒词为准；缺省（空数组）时保留内置默认，避免界面提示为空
-    // Take the keywords from /api/config; keep the built-in default when the list is empty,
-    // so the on-screen hint never renders blank.
-    if (wakeConfig.keywords?.length) wakeKeywords.value = [...wakeConfig.keywords]
-  }
+}
+
+/**
+ * 把服务端配置应用到运行时单例。
+ *
+ * 设置页保存后 `refreshConfig()` 只换 `app.config`，旧实现不会重新写入这些模块级单例，
+ * 于是「改了唤醒词/续聊窗/idle 超时/输入设备后必须刷新页面」才生效。这里抽出统一入口，
+ * App.vue 深度 watch `app.config` 即可热同步。
+ *
+ * **先重置默认再合并**：配置里被删掉的键必须回到默认值；否则 Object.assign 只覆盖
+ * 出现过的键，删掉的键会永远停在上一轮下发值上。
+ *
+ * Apply server config to the runtime singletons. After a settings save, `refreshConfig()`
+ * only swapped `app.config`; the module-level singletons kept their old values, so wake
+ * keywords / followup window / idle timeout / input device only took effect after a reload.
+ * App.vue deep-watches `app.config` and calls this. **Reset before merge**: keys removed
+ * from the config must fall back to defaults, since Object.assign never deletes.
+ * @param config - /api/config 的运行时子集。Runtime subset of /api/config.
+ */
+export function applyServerConfig(config?: ServerRuntimeConfig) {
+  resetRuntimeConfig()
+  if (config?.wake) Object.assign(wakeConfig, config.wake)
+  // 以 /api/config 下发的唤醒词为准；缺省（空数组）时保留内置默认，避免界面提示为空
+  // Take the keywords from /api/config; keep the built-in default when the list is empty,
+  // so the on-screen hint never renders blank.
+  wakeKeywords.value = [
+    ...(wakeConfig.keywords?.length ? wakeConfig.keywords : DEFAULT_WAKE_KEYWORDS),
+  ]
   if (config?.vad) Object.assign(vadConfig, config.vad)
   if (config?.call) Object.assign(callConfig, config.call)
   if (config?.hardware) Object.assign(hardwareConfig, config.hardware)
   if (typeof config?.streaming === 'boolean') streamingEnabled.value = config.streaming
+}
+
+/** 初始化（幂等：根组件只调用一次，防路由重挂/热更新重复预热）。
+ *  Initialization (idempotent: only called once by root component, prevents duplicate warm-up from route remount/hot update).
+ *  @param config - 可选的唤醒词和 VAD 配置。Optional wake word and VAD configuration. */
+function init(config?: ServerRuntimeConfig) {
+  if (initialized) return
+  initialized = true
+  applyServerConfig(config)
   state.value = 'idle'
   // 唤醒链路已改走云端判定（VAD 分段 → POST /api/voice/wake），前端不再加载本地模型，
   // 因此既没有引擎探测也没有模型预热。
@@ -77,6 +103,9 @@ export function useAssistant() {
     // 编排问答 / Orchestrate Q&A
     pendingQuestion,
     currentSessionId,
+    // 运行时配置（设置保存后热同步）/ Runtime config (hot-synced after a settings save)
+    streamingEnabled,
+    applyServerConfig,
     // 方法 / Methods
     init,
     destroy,

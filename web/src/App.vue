@@ -21,7 +21,7 @@
 <!-- 应用根组件脚本 -->
 <!-- Application root component script -->
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, watch } from 'vue'
 import FloatingAssistant from './components/FloatingAssistant.vue'
 import AppHeader from './components/layout/AppHeader.vue'
 import { UiToaster } from './components/ui'
@@ -32,6 +32,29 @@ import { useAssistant } from './composables/useAssistant'
 const app = useConfig()
 // 初始化助手管理 / Initialize assistant management
 const asst = useAssistant()
+
+/**
+ * /api/config 变化即热同步运行时配置（docs/designs/10 4.2）。
+ * 设置页保存 → refreshConfig() 换掉 app.config → 这里重新应用唤醒词 / VAD / 通话 /
+ * 硬件 / 流式开关，不再需要刷新页面。深度 watch：设置页可能原地改对象。
+ * Hot-sync runtime config whenever /api/config changes: saving in the settings page swaps
+ * app.config, and this re-applies wake words / VAD / call / hardware / streaming without a
+ * reload. Deep watch because the settings page may mutate in place.
+ */
+watch(
+  () => app.config.value,
+  (cfg) => {
+    if (!cfg) return
+    asst.applyServerConfig({
+      wake: cfg.wake_word,
+      vad: cfg.vad,
+      call: cfg.call,
+      hardware: cfg.hardware as any,
+      streaming: cfg.streaming,
+    })
+  },
+  { deep: true },
+)
 
 /**
  * 清理函数，销毁助手实例
