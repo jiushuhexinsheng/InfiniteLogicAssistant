@@ -5,7 +5,7 @@ import { notify } from './useToast'
 import { formatError } from '../errors'
 
 /** 控制台标签页键类型。Console tab key type. */
-export type ConsoleTabKey = 'conv' | 'task' | 'status' | 'tools' | 'stats' | 'env' | 'memory' | 'settings' | 'history' | 'library' | 'schedule'
+export type ConsoleTabKey = 'conv' | 'task' | 'status' | 'tools' | 'stats' | 'env' | 'memory' | 'settings' | 'history' | 'schedule'
 
 /** 控制台标签页接口。Console tab interface. */
 export interface ConsoleTab {
@@ -29,7 +29,9 @@ export const CONSOLE_TABS: ConsoleTab[] = [
   { key: 'memory', label: '记忆', icon: 'database' },
   { key: 'settings', label: '设置', icon: 'settings' },
   { key: 'history', label: '历史', icon: 'history' },
-  { key: 'library', label: '任务库', icon: 'library' },
+  // 「任务库」已下线（docs/designs/10 6.1）：TaskStore 无运行时写入方，页面永远是空的。
+  // The task library is retired: TaskStore has no runtime writer, so the page was
+  // always empty.
   { key: 'schedule', label: '定时', icon: 'calendar-clock' },
 ]
 

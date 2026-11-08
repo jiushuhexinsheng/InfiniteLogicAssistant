@@ -1,6 +1,15 @@
 # -*- coding: utf-8 -*-
 """任务知识库 — 成功任务存档 + 相似任务检索（用于减少重复询问）。
 
+**已休眠（dormant，docs/designs/10 6.1）**：`record()` / `find_similar()` 没有任何
+运行时调用方，`/api/library` 已下线（列表恒空，详情/删除 410）。本模块保留供未来
+「成功任务」定义明确后重新接线，勿在此状态下接入新调用方。
+
+**Dormant (docs/designs/10 6.1)**: `record()` / `find_similar()` have no runtime
+caller and `/api/library` is retired (empty list; detail/delete 410). Kept for a
+future re-wiring once "successful task" is defined; do not add callers in this state.
+
+
 Task knowledge base — archives successful tasks and retrieves similar ones (to reduce
 repeated questions).
 

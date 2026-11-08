@@ -11,12 +11,25 @@ vi.mock('../assistant/store', () => ({
 import { api } from '../../api'
 import { notify } from '../useToast'
 import { createNewSession } from '../assistant/store'
-import { useConsole, newSession } from '../useConsole'
+import { useConsole, newSession, CONSOLE_TABS } from '../useConsole'
 
 /**
  * 新建会话（2026-10-11 随按钮迁入 useConsole：侧栏「新建」触发）。
  * Create a new session (moved into useConsole on 2026-10-11 with the sidebar button).
  */
+/**
+ * 任务库下线（docs/designs/10 6.1）：TaskStore 无任何运行时写入方，任务库 tab 永远
+ * 是空列表，产品上不再暴露。后端 /api/library 保留一个版本返回空/410。
+ * Task library offline (docs/designs/10 6.1): TaskStore has no runtime writer, so the
+ * tab could only ever show an empty list; it is no longer exposed.
+ */
+describe('控制台导航不再包含任务库', () => {
+  it('CONSOLE_TABS 没有 library 项', () => {
+    expect(CONSOLE_TABS.some(t => t.key === 'library')).toBe(false)
+    expect(CONSOLE_TABS.some(t => t.label === '任务库')).toBe(false)
+  })
+})
+
 describe('useConsole.newSession', () => {
   beforeEach(() => {
     vi.mocked(api.createSession).mockReset()
