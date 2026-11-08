@@ -75,11 +75,16 @@ const emit = defineEmits<{ clear: []; close: [] }>()
 }
 /* 聆听/录音：边框切彩虹。Listening/recording: rainbow border effect. */
 .float-panel.fx-rainbow {
+  /* 声明在动画元素自身 —— 见 tokens.css 的 --rainbow-angle 注释。 */
+  --rainbow: conic-gradient(from var(--rainbow-angle), var(--rainbow-colors));
   background:
     radial-gradient(120% 60% at 50% 0%, rgba(103, 232, 249, .08), transparent 60%),
     linear-gradient(var(--panel-bg), var(--panel-bg)) padding-box,
     var(--rainbow) border-box;
   animation: rainbow-hue 4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .float-panel.fx-rainbow { animation: none; }
 }
 
 /* 面板内容区。Panel body content area. */

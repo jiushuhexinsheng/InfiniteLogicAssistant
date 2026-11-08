@@ -235,3 +235,38 @@
   --header-h: 56px; /* 全站统一顶栏高度（AppHeader 唯一使用者）。Shared header height (only AppHeader reads it). */
   --danger: var(--err);
 }
+
+/* ── 彩虹激活态（聆听 / 录音）──
+   面板与悬浮球在 listening/recording 时用 `var(--rainbow)` 画边框、`rainbow-hue` 旋转。
+   这两样原先**在全仓都没有定义** → `background` 整条声明被判无效，彩虹边框静默消失。
+   这里补上：
+   - `--rainbow-angle` 用 @property 注册成真正的 <angle>，@keyframes 才能平滑插值；
+     未支持 @property 的浏览器会退化为静态彩虹（仍有边框，只是不转）。
+   - `--rainbow-colors` 存放色环，`--rainbow` 由使用方在**动画元素自身**上声明 ——
+     自定义属性里的 var() 在声明处求值，若把 `--rainbow` 定在 :root，角度会定格在 0deg。
+   色相用静态 conic-gradient 旋转角度而非 filter:hue-rotate，避免与边框外的
+   box-shadow/发光叠加时把整块（含阴影）一起染色。
+
+   Rainbow activation (listening / recording). Both the panel and the floating ball draw
+   their border with `var(--rainbow)` and animate it with `rainbow-hue`; neither was ever
+   defined anywhere in the repo, so the whole `background` declaration was invalid and the
+   rainbow silently disappeared. `--rainbow-angle` is registered via @property as a real
+   <angle> so @keyframes can interpolate it (browsers without @property degrade to a static
+   rainbow rather than no border). `--rainbow` itself must be declared **on the animated
+   element**: var() inside a custom property is substituted where that property is declared,
+   so a :root-level `--rainbow` would freeze the angle at 0deg. Rotating the gradient angle
+   rather than filter:hue-rotate keeps the glow/box-shadow outside the border un-tinted. */
+@property --rainbow-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes rainbow-hue {
+  from { --rainbow-angle: 0deg; }
+  to   { --rainbow-angle: 360deg; }
+}
+
+:root {
+  --rainbow-colors: #f87171, #fbbf24, #34d399, #22d3ee, #818cf8, #f472b6, #f87171;
+}

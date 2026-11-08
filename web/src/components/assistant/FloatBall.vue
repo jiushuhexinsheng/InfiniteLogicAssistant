@@ -443,6 +443,8 @@ const ringStyle = computed(() => {
 
 /* ── 彩虹激活（listening / recording）── Rainbow activation (listening / recording). */
 .float-trigger.fx-rainbow {
+  /* 声明在动画元素自身 —— 见 tokens.css 的 --rainbow-angle 注释。 */
+  --rainbow: conic-gradient(from var(--rainbow-angle), var(--rainbow-colors));
   border-color: transparent;
   background:
     linear-gradient(#1e293b, #1e293b) padding-box,
@@ -452,5 +454,9 @@ const ringStyle = computed(() => {
 .float-trigger.fx-rainbow::after {
   border-color: rgba(255, 255, 255, .35);
   animation: fx-radar 1.2s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .float-trigger.fx-rainbow { animation: none; }
+  .float-trigger.fx-rainbow::after { animation: none; }
 }
 </style>
