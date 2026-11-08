@@ -238,7 +238,7 @@ audit `call-funnel` 行；云端转写共用 `audio-upload via=` 前缀，成本
 - 移除 Vosk 引擎与 43MB 模型（新唤醒词下 Vosk 全灭，实测驱动）
 - VAD 分段 + `POST /api/voice/wake` 云端判定；唤醒词改「衍衡」「洛吉斯」
 - 语音作答（播报后直接开口答问题）、确认三层判定（按钮 → 精确字面量 → LLM 兜底）
-- 审计口径：`audio-upload via=wake|transcribe` 共用前缀，一条 grep 数全
+- 审计口径：所有云端音频上传统一记 `audio-upload via=stream`，一条 grep 数全
 
 ### 2026-08-26 多厂商 Provider 配置
 
@@ -282,8 +282,8 @@ grep -c 'audio-upload via=' data/audit.log     # 云端上传总次数（真正�
 grep -o 'via=[a-z-]*' data/audit.log | sort | uniq -c   # 按通道拆分
 ```
 
-- `audio-upload via=wake`：唤醒命中后为提取指令的转写（`POST /api/voice/wake`）
-- `audio-upload via=transcribe`：**作答与指令**两段（`POST /api/voice/transcribe`）
+- `audio-upload via=stream`：唯一上传口径 —— 流式语音会话（KWS 命中后的指令、作答、
+  通话段都在同一连接内）
 - `kws-gate hit/skip=`：**本地 KWS 判定记账，不是上传**（skip = 被闸门挡掉、没上云）
 - `POST /api/voice/answer` 只回传文本，不出音频，不在上传口径内
 

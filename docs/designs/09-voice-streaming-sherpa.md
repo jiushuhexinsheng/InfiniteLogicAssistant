@@ -69,6 +69,14 @@ core/api/voice/models.py        模型列表 / 刷新 / 硬件 / 能力快照
 
 ## 配置
 
+> ⚠️ **已退役字段（2026-11）**：`streaming.frame_ms` 已不再读取 —— 服务端帧长固定
+> 20 ms；浏览器 SpeechSynthesis 播报也已退役（合成仅本地 Kokoro / API 两路）。
+> 下方示例保留为设计记录，勿按 `frame_ms` 配置。
+>
+> Retired (2026-11): `streaming.frame_ms` is no longer read (the server frame length is
+> fixed at 20 ms), and browser SpeechSynthesis playback is gone (local Kokoro / API only).
+> The example below is kept as a design record; do not configure `frame_ms`.
+
 ```yaml
 voice:
   streaming: { enabled: true, frame_ms: 20, partial_interval_ms: 120,
@@ -109,7 +117,7 @@ voice:
 - **唤醒**：唤醒开关/唤醒词/灵敏度、等指令窗、续聊窗口、聆听空闲、打断播报。
 - **识别**：VAD/KWS/ASR 本地模式、模型下拉、CPU/GPU、阈值/线程/流式开关；下方是
   云端 ASR API Profile（只配 API）。
-- **合成**：浏览器 / 本地 Kokoro / API 三选一；按选择显示浏览器语音、Kokoro 模型参数
+- **合成**（浏览器 SpeechSynthesis 已退役）：本地 Kokoro / API 二选一；按选择显示 Kokoro 模型参数
   或 API Profile。
 - **硬件**：输入/输出设备、回声消除/降噪/自动增益。
 - **高级**：WebSocket 流式开关、帧长、partial 间隔、端点静音、最长语音。

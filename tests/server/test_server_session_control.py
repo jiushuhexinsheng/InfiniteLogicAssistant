@@ -99,39 +99,14 @@ def test_task_stop_abandons_pending_answer(client):
         state.cleanup("stop-abandon")
 
 
-def test_library_list_and_delete(client, tmp_path, monkeypatch):
-    """任务库列表与删除端点。The task-library list and delete endpoints."""
-    import asyncio
-
-    from core.orchestrator.task import Task
-    from core.tasks import store as store_mod
-
-    st = store_mod.TaskStore(tmp_path / "lib.sqlite")
-    import core.api.library as lib
-    monkeypatch.setattr(lib, "_get_store", lambda: st)
-
+def test_library_retired_empty_and_gone(client):
+    """任务库已下线：列表恒空，详情/删除 410（docs/designs/10 6.1）。
+    The task library is retired: empty list, detail/delete 410 (docs/designs/10 6.1)."""
     r = client.get("/api/library")
     assert r.status_code == 200
     assert r.json()["tasks"] == []
-
-    asyncio.run(st.record(Task("t", "复制文件", {"dest": "下载"}, risk="read"),
-                          {"status": "done", "steps": []}, session_id="s1"))
-
-    tasks = client.get("/api/library").json()["tasks"]
-    assert len(tasks) == 1 and tasks[0]["goal"] == "复制文件"
-
-    tid = tasks[0]["id"]
-    assert client.get(f"/api/library/{tid}").json()["task"]["params"] == {"dest": "下载"}
-    assert client.delete(f"/api/library/{tid}").status_code == 200
-    assert client.get("/api/library").json()["tasks"] == []
-
-
-def test_library_detail_unknown_404(client, tmp_path, monkeypatch):
-    """未知任务 id 返回 404。An unknown task id returns 404."""
-    from core.tasks import store as store_mod
-    import core.api.library as lib
-    monkeypatch.setattr(lib, "_get_store", lambda: store_mod.TaskStore(tmp_path / "lib2.sqlite"))
-    assert client.get("/api/library/999999").status_code == 404
+    assert client.get("/api/library/999999").status_code == 410
+    assert client.delete("/api/library/999999").status_code == 410
 
 
 def test_stop_releases_paused_run(client):

@@ -756,9 +756,9 @@ export interface paths {
         };
         /**
          * Library List
-         * @description 列出已存档的成功任务（按时间倒序）。
+         * @description 列出已存档任务 —— 库已下线，恒为空。
          *
-         *     List archived successful tasks, newest first.
+         *     List archived tasks — the library is retired, so this is always empty.
          */
         get: operations["library_list_api_library_get"];
         put?: never;
@@ -778,18 +778,14 @@ export interface paths {
         };
         /**
          * Library Detail
-         * @description 取单条任务详情。
-         *
-         *     Fetch one archived task.
+         * @description 取单条任务详情 —— 已下线。Fetch one archived task — retired.
          */
         get: operations["library_detail_api_library__task_id__get"];
         put?: never;
         post?: never;
         /**
          * Library Delete
-         * @description 删除一条任务存档。
-         *
-         *     Delete one archived task.
+         * @description 删除一条任务存档 —— 已下线。Delete one archived task — retired.
          */
         delete: operations["library_delete_api_library__task_id__delete"];
         options?: never;

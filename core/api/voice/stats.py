@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""语音上传成本统计 — audit.log 的 audio-upload via= 三前缀计数与按天趋势（P2-6）。
+"""语音上传成本统计 — audit.log 的 audio-upload via=stream 单一前缀计数与按天趋势（P2-6）。
 
 Voice upload cost stats — audio-upload via= counts and per-day trend from the audit
 log (P2-6).
@@ -23,8 +23,9 @@ router = APIRouter()
 # call-segment pipeline is gone).
 _VIAS = ("stream",)
 
-# loguru 行首 `YYYY-MM-DD HH:MM:SS.mmm | …`；取日期与 via（只认三前缀，其余行忽略）。
-# loguru line head `YYYY-MM-DD HH:MM:SS.mmm | …`; take the date and via (whitelist only).
+# loguru 行首 `YYYY-MM-DD HH:MM:SS.mmm | …`；取日期与 via（只认单前缀 stream，其余行忽略）。
+# loguru line head `YYYY-MM-DD HH:MM:SS.mmm | …`; take the date and via (only the single
+# `stream` prefix is whitelisted).
 _LINE_RE = re.compile(
     r"^(\d{4}-\d{2}-\d{2})\s.*\|\saudio-upload via=(" + "|".join(re.escape(v) for v in _VIAS) + r")\b"
 )
@@ -34,9 +35,9 @@ _TREND_DAYS = 7
 
 
 def parse_upload_lines(lines) -> dict[str, int]:
-    """统计三前缀计数（仅 audio-upload via= 白名单行）。
+    """统计单前缀 stream 计数（仅 audio-upload via= 白名单行）。
 
-    Count the three via prefixes (whitelisted ``audio-upload via=`` lines only).
+    Count the single `stream` prefix (whitelisted ``audio-upload via=`` lines only).
     """
     counts = {v: 0 for v in _VIAS}
     for line in lines:

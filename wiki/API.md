@@ -1,6 +1,6 @@
 # API 参考
 
-统一前缀 `/api`，REST + SSE（无 WebSocket）。SSE 用 `fetch` + `ReadableStream` 解析。
+统一前缀 `/api`，REST + SSE + WebSocket（流式语音）。SSE 用 `fetch` + `ReadableStream` 解析。
 
 ## 认证
 
@@ -29,11 +29,16 @@
 | WS | `/api/voice/asr/stream` | **流式语音唯一入口**：`start` JSON + 20ms PCM16LE 帧 → `ready` / `vad` / `status` / `partial` / `final` / `error` / `done`；本地 VAD → KWS → ASR 全在同一连接内完成 |
 | POST | `/api/voice/call/start` · `/api/voice/call/stop` | 通话模式开 / 关（建立漏斗会话；无段落 300s 自动过期，期间与唤醒互斥） |
 | POST | `/api/voice/call/judge` | 通话文本判定（L0 规则 → L1 文本快筛 → L2 云端意图闸门）；请求体为转写文本 + 窗口标记，响应 `hit` / `stage` / `reason`，`hit` 才由前端送 `/voice/utter` 编排 |
+| GET | `/api/voice/models` · POST `/api/voice/models/refresh` | 扫描 `models/{vad,kws,asr,tts,llm}` 的模型清单 / 重新扫描 |
+| GET | `/api/voice/hardware` | CPU 核数、可用 provider、sherpa 版本、默认线程数 |
+| GET | `/api/voice/capabilities` | 四能力当前模式 + 本地模型是否就位 + API 是否配置 |
+| GET | `/api/voice/schema` | 语音配置 schema（设置页本地模型卡片用） |
+| POST | `/api/voice/engines/{kind}/test` | 本地引擎探测 / 测试（`kind`: vad/kws/asr/tts） |
 | GET | `/api/voice/upload-stats` | 云端上传成本统计：`audio-upload via=stream` 计数 + 近 7 日趋势（**只回计数与日期**，绝不回放转写文本）；数据源 `data/audit.log`，统计页成本仪表用 |
 | POST | `/api/tts` | 文本转语音（返回音频字节） |
 | GET | `/api/memory` · DELETE `/api/memory/{topic}` | 长期记忆浏览/删除 |
 | GET / POST | `/api/history` · GET/DELETE `/api/history/{conv_id}` | 会话历史列表 / 详情 / 删除 |
-| GET | `/api/library` · GET/DELETE `/api/library/{task_id}` | 任务知识库浏览 / 详情 / 删除 |
+| GET | `/api/library` · GET/DELETE `/api/library/{task_id}` | 任务库已下线：列表恒空，详情/删除返回 410 |
 | GET / POST | `/api/sessions` · PATCH/DELETE `/api/sessions/{sid}` | 会话列表 / 新建 / 改名 / 归档删除 |
 | POST | `/api/sessions/{sid}/clear` · `/api/sessions/{sid}/fork` | 清空会话 / 分叉编辑 |
 | GET / POST | `/api/schedules` · DELETE `/api/schedules/{sid}` | 定时任务列表/注册/取消 |
@@ -41,6 +46,7 @@
 | GET | `/api/llm/models` | 按供应商分组的可用模型（对话内模型切换器） |
 | POST | `/api/llm/active-model` | 设置全局使用的供应商与模型（专用写入端点） |
 | POST | `/api/task/{session_id}/stop` | 停止该会话整个任务 |
+| POST | `/api/task/{session_id}/pause` · `/pause/resume` | 暂停（wait / stop / force 三档）/ 恢复该会话的回合 |
 
 完整 schema 见 `GET /openapi.json`（前端 `web/src/api/generated.ts` 由其生成，
 CI 校验两者同步）。

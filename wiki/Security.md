@@ -49,13 +49,12 @@ permissions:
   - `cloud`（默认）：上面「KWS 命中才上传」的描述成立。
   覆盖**唤醒链与通话 L2**（通话 L1 始终本地快筛）；设置页「语音识别」卡可切。
 - `cloud` 模式（设置页「语音」可切）**旁路本地闸门**：每次人声段都上云判定，最大召回，
-  但隐私面回到「每段人声都出本机」。`webspeech` 模式走浏览器识别（Chrome 中文实际经
-  Google 服务器，并不更私密）。
+  但隐私面回到「每段人声都出本机」。
 - **KWS 模型缺失时闸门自动旁路**（回退云端判定）并在启动日志注明 —— 此时隐私面同 cloud 模式。
 - VAD 是**本地闸门**（滤静音、滤过短片段），KWS 是**本地判定闸门**（滤非唤醒语音）；
-  等待作答期间的音频仍会当作答上传（`POST /api/voice/transcribe`，再由 `/api/voice/answer`
-  把**文本**投给编排层）。
-- **上传即记账**（`data/audit.log`）：`audio-upload via=wake|transcribe` 是**真正上云**的音频
+  等待作答期间的音频同样在流式会话内上传（`audio-upload via=stream`），
+  `/api/voice/answer` 只把**文本**投给编排层。
+- **上传即记账**（`data/audit.log`）：`audio-upload via=stream` 是**真正上云**的音频
   （含转写文本前 80 字）；`kws-gate hit/skip=` 是**本地判定**记账（非上传，不进成本口径）。
   `grep -c 'audio-upload via=' data/audit.log` 即云端上传总次数 —— 统计调用量与成本的依据。
   （`/api/voice/answer` 只回传文本、不出音频，不记上传审计。）
@@ -70,18 +69,17 @@ permissions:
 ## 审计日志
 
 - 工具执行（工具名、参数、风险级、结果状态）与高风险确认决策（同意/拒绝/原因）写入 `data/audit.log`。
-- **云端 ASR 上传**逐条记入 `data/audit.log`，两条通道共用前缀 `audio-upload via=`：
-  `via=wake matched=… chars=… command=… text=…`（唤醒命中后为提取指令的转写）、
-  `via=transcribe chars=… text=…`（作答 / 指令）。
+- **云端 ASR 上传**逐条记入 `data/audit.log`，唯一口径是流式会话：
+  `audio-upload via=stream gate=wake|open chars=… text=…`（唤醒命中后的指令、作答、
+  通话段都在同一连接内）。
   `grep -c 'audio-upload via=' data/audit.log` 即云端上传总次数（成本口径）。
 - **本地 KWS 判定**另记 `kws-gate hit=1` / `kws-gate skip=1`（前缀不同：它不是上传，
   **不得混入 `audio-upload` 成本口径**；skip = 被闸门挡掉的背景声/闲聊）。
-- **本地转写**（`voice.asr.mode=local/hybrid` 走本地时）记 `asr-local via=wake|transcribe|call-segment`
-  —— 同样前缀不同，**不是上传、不进成本口径**（`hybrid` 回落云端那条仍记 `audio-upload ... fallback=1`）。
+- **本地转写**（`voice.asr.mode=local/hybrid` 走本地时）不产生 `audio-upload` 行 ——
+  **不是上传、不进成本口径**（`hybrid` 回落云端那条仍记 `audio-upload via=stream fallback=1`）。
 - **通话模式**（`/api/voice/call/*`）：会话开/关记 `call-start` / `call-stop`；漏斗各级丢弃与
   异常记 `call-funnel`（本地判定，非上传）；**L2 转写按 `voice.asr.mode` 记**：云端为真上传
-  `audio-upload via=call-segment`（计入成本口径，与 wake/transcribe 同前缀），本地为
-  `asr-local via=call-segment`（非上传）。
+  `audio-upload via=stream`（计入成本口径），本地不记上传。
 - 与 `data/agent.log` 分离，独立文件保留 90 天。
 - 实现点：`core/tools/base.py`（TOOLS.acall/call）、`core/orchestrator/confirm.py`。
 

@@ -11,9 +11,9 @@
 | P3 | 多智能体 + 定时 + GUI | ✅ 已完成 | [2026-08-12-agent-p3-advanced.md](../superpowers/plans/2026-08-12-agent-p3-advanced.md) | 子代理/协调者（复杂任务转多智能体）+ cron 定时（无人值守）+ GUI 工具 + 前端定时 Tab |
 | P4 | 询问类型扩展 + 问答入聊天记录（子系统 B+D） | ✅ 已完成 | [2026-09-13-question-types-and-qa-history.md](../superpowers/plans/2026-09-13-question-types-and-qa-history.md) | 询问支持 choice / text / composite 三态（`confirm` 并入 `choice`）；`missing` 结构化为 `MissingItem`；提问与回答进入消息列表 |
 | P5 | 工具权限策略层（子系统 A） | ✅ 已完成 | [2026-09-13-tool-permission-policy.md](../superpowers/plans/2026-09-13-tool-permission-policy.md) | 设置页可配 allow / ask / deny（deny 短路 > 规则 > 层级 > 默认）；默认等价改造前行为；三个消费点全部走策略 |
-| P6 | 语音作答 + 无应答待机 + 再唤醒续答（子系统 C） | ✅ 已完成 | [2026-09-13-voice-answering.md](../superpowers/plans/2026-09-13-voice-answering.md) | 播报后自动开录、直接语音作答；播报期间暂停监听。**2026-10-07 取消限时回答**：「无应答进待机 / 再唤醒续答本题」机制已删除（回答永不限时），待答期间改为**先判唤醒词、命中即弃题开新轮**，验收台第 2 项随之改判弃题契约 **（⚠️ 4 项验收均待重做：其中「播报期不自触发」曾被记为「已由验收台验证」，那是一次**真观测**（当时 `WakeWordEngine` 尚在，样本里非零的「播报前 12/22」可证），但它测的引擎与门控机制**已随唤醒链路重构整体删除并替换**，结论无法迁移到当前实现 —— 该「已验证」作废。此后引擎删除、探针目标消失，同一份检查才退化成只能报空洞 PASS 的假保障，故检查 4 已在 P8 重写；现 4 项编号为 1 播报作答 / 2 待答弃题 / 3 播报不自触发 / 4 通话免唤醒。需真人有声环境跑 `npm run verify:voice` 重做，详见计划「撤回说明」与 updates.md 语音验收台节）** |
-| P7 | 任务知识库（子系统 E） | ✅ 已完成 | [2026-09-13-task-knowledge-base.md](../superpowers/plans/2026-09-13-task-knowledge-base.md) | 完成时询问是否完成；成功任务存入独立模块；相似任务检索预填参数、减少询问（按**用户原话**匹配，非 LLM 归一化的 goal） |
-| P8 | 唤醒链路重构（**子项目 1 / 4**：VAD → KWS(API) → ASR） | ⏳ 待人工验收 | [2026-09-13-wake-detection-rework.md](../superpowers/plans/2026-09-13-wake-detection-rework.md) · [验收记录](../superpowers/plans/2026-09-13-wake-detection-rework-verification.md) | 唤醒重新可用且支持一句话说完：浏览器本地 VAD 切段 → `POST /api/voice/wake` 云端转写并判定「衍衡」「洛吉斯」→ 命中即起一轮；Vosk 引擎与 43MB 模型全部删除。**子项目 2（本地 KWS sherpa-onnx）✅ 已于 2026-09-26 落地**（`voice.kws` 闸门，25b458a / 64e4153）；**子项目 4（有序回退链 + 能力探测）✅ 已随同批交付**（`wakeChain.ts`：local / cloud / webspeech / auto 链 + isAvailable 探测）；**子项目 3（本地 ASR）⏳ 待做** —— 唤醒指令抬取仍走云端转写，本地转写目前只用于通话漏斗 L1。⚠️ spec 的硬门槛（人工验收 6 项，spec:198-212 风险表）**尚未执行**：spec 里所有实测用的都是 SAPI 合成音，对合成音识别好不代表对真人好 —— 验收通过前不得称「已完成」 |
+| P6 | 语音作答 + 无应答待机 + 再唤醒续答（子系统 C） | ✅ 已完成 | [2026-09-13-voice-answering.md](../superpowers/plans/2026-09-13-voice-answering.md) | 播报后自动开录、直接语音作答；播报期间暂停监听。**2026-10-07 取消限时回答**：「无应答进待机 / 再唤醒续答本题」机制已删除（回答永不限时），待答期间改为**先判唤醒词、命中即弃题开新轮**，验收台第 2 项随之改判弃题契约 （2026-10-07 起取消限时回答，待答期命中唤醒词即弃题；人工语音验收已在 P8 于 2026-10-12 通过，自动化全绿）真观测**（当时 `WakeWordEngine` 尚在，样本里非零的「播报前 12/22」可证），但它测的引擎与门控机制**已随唤醒链路重构整体删除并替换**，结论无法迁移到当前实现 —— 该「已验证」作废。此后引擎删除、探针目标消失，同一份检查才退化成只能报空洞 PASS 的假保障，故检查 4 已在 P8 重写；现 4 项编号为 1 播报作答 / 2 待答弃题 / 3 播报不自触发 / 4 通话免唤醒。需真人有声环境跑 `npm run verify:voice` 重做，详见计划「撤回说明」与 updates.md 语音验收台节）** |
+| P7 | 任务知识库（子系统 E） | ⏹ 已下线 | [2026-09-13-task-knowledge-base.md](../superpowers/plans/2026-09-13-task-knowledge-base.md) | **2026-11 下线**（docs/designs/10 6.1）：TaskStore 无运行时写入方，任务库页面永远是空的；前端 tab 与组件移除，`/api/library` 列表恒空、详情/删除 410，`core/tasks/store.py` 休眠待未来重新接线 |
+| P8 | 唤醒链路重构（**子项目 1 / 4**：VAD → KWS(API) → ASR） | ✅ 已完成 | [2026-09-13-wake-detection-rework.md](../superpowers/plans/2026-09-13-wake-detection-rework.md) · [验收记录](../superpowers/plans/2026-09-13-wake-detection-rework-verification.md) | 浏览器本地 VAD 切段 → 本地 sherpa-onnx KWS 闸门判定「衍衡」「洛吉斯」（未命中不上云）→ 云端/本地 ASR 抬指令；Vosk 引擎与 43MB 模型全部删除。**2026-10-12 真人有声环境人工验收通过**（硬门槛解除）。子项目 2（本地 KWS）✅ 2026-09-26；子项目 3（ASR 三模式 local/cloud/hybrid）✅ 2026-10-12；子项目 4（能力探测与链路接线）✅ 随同批交付 |
 
 > P4–P7 的完整分解（接口边界、待决问题、风险、spec 大纲）见
 > [2026-09-13-agent-capabilities-roadmap-design.md](../superpowers/specs/2026-09-13-agent-capabilities-roadmap-design.md)。
@@ -29,8 +29,8 @@
 - **P3**：6 / 6 个 Task ✅
 - **P4**：10 / 10 个 Task ✅
 - **P5**：8 / 8 个 Task ✅
-- **P6**：9 / 9 个 Task ✅（自动化全绿；**4 项验收全部待人工验收** —— 其中「播报期不自触发」曾记为「已由验收台验证」：那是一次**真观测**，但测的是**已被整体替换的旧实现**（Vosk 引擎 + 停引擎式门控），结论无法迁移到当前代码，故该「已验证」作废；引擎删除后同一份检查才退化为只能报空洞 PASS 的假保障，检查 4 已在 P8 重写。需真人有声环境跑 `npm run verify:voice` 重做；**2026-10-07 起验收台为新 4 项（第 2 项=待答弃题契约，见 updates.md 语音验收台节）**；见计划「撤回说明」与 README「语音验收台」）
-- **P7**：9 / 9 个 Task ✅（自动化全绿；端到端验证通过 —— 同一句话第二次跑时命中历史、预填参数、不再追问澄清）
+- **P6**：9 / 9 个 Task ✅（自动化全绿；人工语音验收已在 P8 于 2026-10-12 通过）
+- **P7**：⏹ 已下线（2026-11，docs/designs/10 6.1）—— 无运行时写入方，任务库不再出现在界面
 - **P8（子项目 1）**：8 / 8 个 Task 已实施 —— 自动化全绿、类型同步门禁通过、服务可绑定。
   ✅ **真人有声环境的人工验收已于 2026-10-12 由用户对照麦克风逐条执行并通过**
   （见计划 Task 8 与 README「语音验收台」）；硬门槛解除，唤醒链路自此可宣称可用。
@@ -56,12 +56,12 @@
 
 | 能力 | 说明 |
 |------|------|
-| 语音交互 | 浏览器本地 VAD 分段 → **本地 sherpa-onnx KWS 闸门**判定唤醒词（衍衡 / 洛吉斯，未命中不上云）→ 命中才调云端 ASR 抬指令 + 后端 OpenAI 兼容 ASR/TTS + SpeechSynthesis 播报 |
+| 语音交互 | 浏览器本地 VAD 分段 → **本地 sherpa-onnx KWS 闸门**判定唤醒词（衍衡 / 洛吉斯，未命中不上云）→ 命中才调 ASR 抬指令 + 本地 Kokoro / 云端 API 合成播报（浏览器 SpeechSynthesis 已退役） |
 | 语音隐私 | **本地 KWS 前置闸门（2026-09-26 起默认开启）**：没说唤醒词的人声段在本机直接丢弃、**不出本机不上云**；只有命中段上传云端 ASR。`kws.enabled: false` 或模型缺失时闸门旁路，才回到「每次人声段都上云」（详见 README「安全」/ wiki/Security.md） |
 | 任务编排 | 意图 → 任务 → 澄清 → 确认 → 执行 → 汇报，SSE 事件流 + 人类在环问答通道 |
 | 执行层 | Shell / Python（独立进程、可 kill 进程树）、文件系统（10+ 通用格式）、GUI 自动化、环境感知 |
 | 记忆/RAG | 长期事实记忆（facts.sqlite）+ 任务后 LLM 提取 + 关键词 RAG 上下文注入 |
 | 能力扩展 | MCP 客户端与桥、Skills 热加载、cron 定时（无人值守）、多智能体协调者 |
 | 控制 | CancellationToken 贯穿全链路：stop_task / stop_step / pause + taskkill /T 兜底 |
-| 测试 | 57 个 pytest 文件（621 用例）覆盖各层（`python -m pytest tests/ -q`）+ 前端 54 个 Vitest spec（323 用例） |
+| 测试 | pytest 全量 735 用例覆盖各层（`python -m pytest tests/ -q`）+ 前端 85 个 Vitest spec、460 用例（`npm --prefix web test`） |
 | 定时被拒提醒 | 定时任务无人应答的高风险操作自动拒绝后，记 warning + 落盘会话历史（控制台可见） |

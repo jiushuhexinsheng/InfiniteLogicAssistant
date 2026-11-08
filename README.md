@@ -31,7 +31,6 @@
 | 多智能体 | 复杂任务自动拆解：规划 / 执行 / 检索 / 批评 子代理并发协作（可开关） |
 | 工具执行 | 29 个内置工具：搜索/天气/计算/文件/Shell/Python/GUI/记忆/定时/技能/元工具，@tool 自动注册 |
 | 长期记忆 | 事实记忆（SQLite FTS5 全文检索）+ 任务后 LLM 自动提取 + RAG（BM25）检索注入上下文 |
-| 任务知识库 | 任务模式下完成时询问「完成了吗」，答「完成了」才存档成功任务；下次相似任务按**用户原话**检索历史参数预填、减少重复询问（控制台「任务库」可浏览/删除） |
 | MCP 桥接 | 启动时连接外部 MCP server，工具动态注册进注册中心（mcp_<server>_<tool>） |
 | Skills 技能包 | skills/*.yaml 热加载，{{param}} 填参逐步骤执行 |
 | 定时任务 | cron（5 段）注册，到点无人值守执行（需澄清/确认的自动跳过） |
@@ -118,9 +117,8 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 - **播报期间暂停送帧**：助手说话时流式会话进入 mute（麦克风保持、帧不入 ASR/KWS），播完恢复；
   播报结束后 1.2 秒内音频整体丢弃（**回声护栏**——助手自称「衍衡」，防止它自己的声音被误唤醒）
 - 说出「停止 / 取消 / 暂停」等命令词可中断当前任务
-- **对话 / 任务模式**：控制台头部 `[对话][任务]` 开关切换（localStorage 持久化）。
-  **对话**（默认）少打断、完成不询问；**任务**模式会在任务完成后询问「这个任务完成了吗？」，
-  答「完成了」才把该任务存档进任务库，下次相似任务自动预填参数减少询问
+- **单一 ReAct 管线**：不再区分「对话 / 任务」模式，所有输入走同一条编排管线；
+  只有真正没把握时问一次（澄清/确认），不会在回合结束时追问「完成了吗」
 
 **能力模式**（设置页「语音识别 / 本地模型」或 `config.yaml`）：
 
@@ -198,7 +196,7 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 | GET/DELETE | `/api/memory` | 长期记忆读取 / 删除 |
 | GET/POST/DELETE | `/api/schedules` 等 | 定时任务管理 |
 | GET/DELETE | `/api/history` `/api/history/{conv_id}` | 会话历史列表 / 详情 / 删除 |
-| GET/DELETE | `/api/library` `/api/library/{task_id}` | 任务知识库浏览 / 详情 / 删除 |
+| GET/DELETE | `/api/library` `/api/library/{task_id}` | 已下线：列表恒空，详情/删除返回 410（任务库无运行时写入方） |
 | GET/POST/PATCH/DELETE | `/api/sessions` 等 | 会话管理（列表/改名/清空 `clear`/分叉 `fork`） |
 | POST | `/api/providers/fetch-models` | 拉取可用模型列表（自填 endpoint 后可用） |
 | GET | `/api/llm/models` | 按供应商分组的可用模型（对话内模型切换器） |
@@ -218,7 +216,7 @@ python main.py check        聚合检测（环境 / 配置 / LLM·ASR·TTS 连�
 ## 测试
 
 ```
-pip install -r requirements-dev.txt   # 测试/检查依赖（pytest + pytest-asyncio + mypy）
+pip install -r requirements-dev.txt   # 测试/检查依赖（pytest + pytest-asyncio + mypy + ruff）
 python -m pytest tests/ -q      # 后端单元测试（编排 / 工具 / 记忆 / RAG / MCP / Skills / 定时 / API）
 python -m mypy core/ server.py  # 后端静态类型检查
 cd web && npm run build         # 前端类型检查（vue-tsc）+ 生产构建
@@ -266,7 +264,7 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 - `voice.tts.mode`：`api`（默认，`enabled` + profile）或 `local`（Kokoro）；`voice.hardware`
   选浏览器输入/输出设备与回声消除 / 降噪 / 自动增益。
 - 模型目录：`models/{vad,kws,asr,tts,llm}`；`python scripts/fetch_models.py` 下载 VAD/ASR/Kokoro，
-  KWS 小模型随仓库；模型不入库。隐私口径见「安全」节。
+  KWS 小模型随仓库；其余 ONNX/BIN 走 Git LFS（约 1 GB）。隐私口径见「安全」节。
 - `agent`：`recursion_limit`（ReAct 步数上限）、`multi_agent`（复杂任务是否转多智能体协调者）、
   `auto_approve`（write/exec 免确认开关）、`confirm_timeout_s`（确认/澄清超时秒数，
   0=不限；到期按拒绝处理，防确认链无限挂起）、`models_failover`（主模型故障备选序列）、
@@ -368,7 +366,7 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 ├── config.yaml.example        非敏感配置模板（不含密钥）
 ├── config.secrets.yaml.example 密钥存储模板（复制为 config.secrets.yaml，不入库）
 ├── requirements.txt           Python 依赖（在线 / 离线 scripts/libs/ 双路）
-├── requirements-dev.txt       测试/检查依赖（pytest + pytest-asyncio + mypy）
+├── requirements-dev.txt       测试/检查依赖（pytest + pytest-asyncio + mypy + ruff）
 ├── mypy.ini                   后端静态类型检查配置
 ├── models/                    vad / kws / asr / tts / llm 五类模型（KWS 随仓库；其余脚本下载）
 ├── core/
@@ -393,7 +391,7 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 │   │                          intent / task / clarify / confirm / executor / condense（历史滚动压缩）/
 │   │                          control / pipeline
 │   ├── session/               会话历史存储（SQLite data/history.db，对话线创建/改名/覆盖/删除）
-│   ├── tasks/                 任务知识库（成功任务存档 + trigram 相似检索，减少重复询问）
+│   ├── tasks/                 任务知识库（已休眠：无运行时写入方，见 docs/designs/10 6.1）
 │   ├── agent/                 base 子代理基座 + coordinator 多智能体协调者
 │   ├── tools/                 @tool 注册中心 + 内置工具（policy.py 权限求值 / describe.py 元工具）
 │   ├── execution/             shell（可 kill 进程树）/ python（独立进程）/ fs / gui
@@ -416,8 +414,9 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 │       ├── components/blocks/ 块组件（Thinking/Tool/Text/Code/Question/Answer/Notice/Summary/…）
 │       ├── components/        FloatingAssistant（悬浮球）+ assistant/ + console/ + ui/ + layout/
 │       ├── composables/       assistant/（store · useChat · useTts · useWakeWord）
-│       │   └── assistant/wake/ 唤醒编排：wakeOrchestrator / wakeChain / cloudAsrProvider /
-│       │                      webSpeechProvider（本地判定在后端 KWS 闸门）
+│       │   └── assistant/wake/ 唤醒编排：micControl（取流/启停）/ orchState（状态与计时）/
+│       │                      wakeOrchestrator（接线）/ watches（状态机监听），
+│       │                      流式会话在 streaming/（本地 KWS 闸门在后端）
 │       ├── api/               openapi-typescript 生成类型（generated.ts，gen:api 同步）
 │       └── views/             StartPage.vue / ConsolePage.vue
 └── data/                      运行时数据（agent.log / audit.log / history.db / schedules.json /

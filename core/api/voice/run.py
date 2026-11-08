@@ -67,9 +67,9 @@ async def voice_utter(request: Request):
     messages = params.get("messages")
     if not isinstance(messages, list):
         messages = None
-    # 模式：task = 完成后询问并存档；其余（含缺失/非法）一律 chat（向后兼容老前端）。
-    # Mode: "task" asks and archives on completion; anything else (missing or invalid) is
-    # "chat" for backward compatibility.
+    # mode 仅为兼容旧前端保留的字段，已忽略（单一 ReAct 管线，无对话/任务分支）。
+    # `mode` survives only for old frontends and is ignored (single ReAct pipeline,
+    # no chat/task split).
     mode = "task" if params.get("mode") == "task" else "chat"
 
     session = Session()
