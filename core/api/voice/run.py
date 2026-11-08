@@ -164,7 +164,9 @@ async def _retire_run(run: state.RunHandle) -> None:
     if not run.runner.done():
         run.runner.cancel()
     await asyncio.gather(run.runner, return_exceptions=True)
-    await state.persist(run.session, state.session_ts.get(run.session.id))
+    # 创建时间取注册时间；session_ts 会被事件刷新为最近活动时间。
+    # Use the registration time: session_ts gets refreshed to last-activity on events.
+    await state.persist(run.session, state.session_created.get(run.session.id))
     if state.get_run(run.session.id) is run:
         state.cleanup(run.session.id)  # 新 run 已顶替时不碰新注册表。Never touch a successor's registry.
 
@@ -246,6 +248,9 @@ async def _stream_run(run: state.RunHandle, *, attach_id: int | None = None):
                     evt = getter.result()
                 except asyncio.CancelledError:
                     break  # 被 supersede 取消。Cancelled by a supersede.
+                # 事件产生即刷新会话活动时间（TTL 从最近活动起算）。
+                # An event refreshes the session's activity time (TTL from last activity).
+                state.touch(run.session.id)
                 evt["seq"] = run.next_seq
                 run.next_seq += 1
                 run.buffer.append(evt)

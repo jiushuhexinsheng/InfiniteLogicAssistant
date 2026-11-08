@@ -19,7 +19,13 @@ from core.orchestrator.session import Session
 # 编排会话与停止控制器注册表（key = session_id）
 sessions: dict[str, Session] = {}
 controllers: dict[str, StopController] = {}
+# 最近活动时间（TTL 依据，事件产生时刷新）。Last activity time (the TTL basis, refreshed
+# whenever an event is produced).
 session_ts: dict[str, float] = {}
+# 首次注册时间（会话「创建」时间；与活动时间分开，落盘时用它而不是被刷新过的 ts）。
+# First-registration time (the session's "created" time; kept apart from the activity
+# timestamp — persistence uses this, not the refreshed `session_ts`).
+session_created: dict[str, float] = {}
 
 
 @dataclass
@@ -108,10 +114,25 @@ def register(session: Session, controller: StopController) -> None:
         session: 编排会话。The orchestration session.
         controller: 该会话的停止控制器。The session's stop controller.
     """
+    now = time.time()
     sessions[session.id] = session
     controllers[session.id] = controller
-    session_ts[session.id] = time.time()
+    session_ts[session.id] = now
+    session_created[session.id] = now
     sweep()
+
+
+def touch(session_id: str) -> None:
+    """标记会话仍有活动（事件产生时调用），让 TTL 从最近活动起算。
+
+    Mark a session as still active (called when an event is produced), so the TTL
+    counts from the most recent activity rather than registration.
+
+    Args:
+        session_id: 会话 id。The session id.
+    """
+    if session_id in session_ts:
+        session_ts[session_id] = time.time()
 
 
 def get_session(session_id: str) -> Session | None:
@@ -148,20 +169,36 @@ def sweep() -> None:
     Reclaim expired sessions (prevent memory leaks on long-running processes).
     """
     now = time.time()
-    for sid in [sid for sid, ts in session_ts.items()
-                if now - ts > config.settings.server.session_ttl_s]:
+    expired = [sid for sid, ts in session_ts.items()
+               if now - ts > config.settings.server.session_ttl_s]
+    for sid in expired:
+        # 仍在运行的会话不按 TTL 回收：长任务跨过 TTL 不该被清掉（docs/designs/10 5.1）。
+        # A session whose run is still live is never TTL-evicted: a long task crossing
+        # the TTL must not be wiped (docs/designs/10 5.1).
+        run = runs.get(sid)
+        if run is not None and not run.finished:
+            continue
         cleanup(sid)
 
 
 def cleanup(session_id: str) -> None:
-    """流结束时移除注册表条目。
+    """流结束/回收时移除注册表条目；未完成的 runner 先取消再移除。
 
-    Remove registry entries when a stream ends.
+    Remove registry entries when a stream ends or a session is reclaimed; an
+    unfinished runner is cancelled before removal so no orphan task survives.
     """
+    run = runs.pop(session_id, None)
+    if run is not None and not run.finished:
+        grace = getattr(run, "grace_task", None)
+        if grace is not None and not grace.done():
+            grace.cancel()
+        runner = getattr(run, "runner", None)
+        if runner is not None and not runner.done():
+            runner.cancel()
     sessions.pop(session_id, None)
     controllers.pop(session_id, None)
     session_ts.pop(session_id, None)
-    runs.pop(session_id, None)
+    session_created.pop(session_id, None)
 
 
 def _conv_summary(messages: list[dict], task: dict | None) -> str:
