@@ -29,6 +29,19 @@ class ShellResult:
     duration: float
 
 
+def _spawn_kwargs() -> dict[str, Any]:
+    """平台相关的子进程 spawn 参数。
+
+    POSIX 上让子进程自成一个会话/进程组，kill_tree 的 os.killpg 才真正有效；
+    Windows 不需要额外参数（杀树走 taskkill /T）。
+
+    Platform-specific spawn arguments: on POSIX the child gets its own session /
+    process group so kill_tree's os.killpg hits the whole tree; Windows needs
+    nothing extra (the tree is killed via taskkill /T).
+    """
+    return {"start_new_session": True} if os.name != "nt" else {}
+
+
 def _kill_tree_windows(pid: int) -> None:
     """Windows：taskkill /T 杀整棵进程树。Windows: taskkill /T kills the whole tree."""
     subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True, text=True)
@@ -108,19 +121,13 @@ async def run_shell(
     if cancel is not None and cancel.is_cancelled:
         raise asyncio.CancelledError
     start = time.monotonic()
-    # POSIX 上让子进程自成一个会话/进程组，kill_tree 的 os.killpg 才真正有效。
-    # On POSIX the child gets its own session/process group so kill_tree's os.killpg
-    # hits the whole tree instead of a nonexistent group.
-    spawn_kwargs: dict[str, Any] = {}
-    if os.name != "nt":
-        spawn_kwargs["start_new_session"] = True
     proc = await asyncio.create_subprocess_shell(
         command,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=cwd,
         env=subprocess_env(),
-        **spawn_kwargs,
+        **_spawn_kwargs(),
     )
     out_chunks: list[bytes] = []
     err_chunks: list[bytes] = []
