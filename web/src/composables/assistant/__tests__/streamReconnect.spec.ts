@@ -94,6 +94,32 @@ describe('createVoiceStream 断线重连', () => {
     expect(FakeWS.instances).toHaveLength(2)
   })
 
+  it('重连一次失败后仍继续重试（不吞掉后续尝试）', async () => {
+    const { createVoiceStream } = await import('../stream/streamClient')
+    let gumCalls = 0
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn(async () => {
+          gumCalls++
+          // 第一次正式启动成功；第一次重连取流失败（服务仍在重启）；第二次重连成功。
+          if (gumCalls === 2) throw new Error('mic busy while reconnecting')
+          return { getTracks: () => [{ stop: vi.fn() }] }
+        }),
+      },
+    })
+    const handle = createVoiceStream({ onEvent: () => {}, onClose: () => {} })
+    await handle.start()
+    expect(FakeWS.instances).toHaveLength(1)
+
+    FakeWS.instances[0].drop()
+    await vi.advanceTimersByTimeAsync(600)      // 第一次重连：取流失败
+    expect(FakeWS.instances).toHaveLength(1)
+
+    await vi.advanceTimersByTimeAsync(1100)     // 第二次重连（退避翻倍）：成功
+    expect(FakeWS.instances).toHaveLength(2)
+  })
+
   it('主动 stop 不再重连', async () => {
     const { createVoiceStream } = await import('../stream/streamClient')
     const handle = createVoiceStream({ onEvent: () => {}, onClose: () => {} })

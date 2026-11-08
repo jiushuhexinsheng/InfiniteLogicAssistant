@@ -99,6 +99,9 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
   let serverFailed = false
   let reconnectAttempt = 0
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  /** 本次 start 是否由重连触发（失败/就绪前断开时继续重试）。
+   *  Whether this start is a reconnect attempt (keep retrying on failure / early close). */
+  let reconnecting = false
   /** 启动中途被 stop() 时用来拒绝 ready 等待（否则 start() 永久挂起）。
    *  Rejects the ready wait when stop() lands mid-start (otherwise start() hangs). */
   let cancelStart: ((e: Error) => void) | null = null
@@ -145,6 +148,7 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
     preopen.clear()
     preopenActive = false
     started = false
+    try {
     media = await acquire()
 
     try {
@@ -247,7 +251,7 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
       // 服务端关闭/报错时也要释放麦克风与音频图，否则麦克风会一直占着。
       // Release the mic and audio graph on a server close/error too; otherwise the mic stays held.
       releaseAudio()
-      const willReconnect = readyOnce && !stopped && !serverFailed
+      const willReconnect = (readyOnce || reconnecting) && !stopped && !serverFailed
       readyOnce = false
       if (willReconnect) scheduleReconnect(myGen)
       opts.onClose?.({ willReconnect })
@@ -277,9 +281,6 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
     preopenActive = false
     try {
       await ready
-    } catch (e) {
-      stop()
-      throw e
     } finally {
       cancelStart = null
     }
@@ -287,8 +288,23 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
     // Stopped or superseded mid-start: this attempt must not mark the stream running.
     if (myGen !== gen || stopped) { stop(); return }
     readyOnce = true
+    reconnecting = false
     reconnectAttempt = 0
     running = true
+    } catch (e) {
+      // 启动失败（含重连失败）：必须释放本次拿到的麦克风/音频图/socket，否则麦克风
+      // 一直亮着、st.voiceStream 也永远非空。不置 stopped —— 重连还可以再来一次。
+      // A failed start (including a failed reconnect) must release whatever it acquired,
+      // or the mic indicator stays on and st.voiceStream never clears. `stopped` is left
+      // alone so the reconnect loop may try again.
+      if (myGen === gen) {
+        try { ws?.close() } catch { /* ignore */ }
+        ws = null
+        releaseAudio()
+        running = false
+      }
+      throw e
+    }
   }
 
   /** 排一次指数退避重连；代际号变化或主动停止即放弃。
@@ -300,9 +316,14 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null
       if (stopped || gen !== fromGen) return
-      // 失败由下一次 onclose 再排一次（getUserMedia 失败则 stop() 终止重试）。
-      // A failure schedules again via the next onclose (a mic failure stops retries).
-      void start().catch(() => { /* 见下：下一轮 onclose 决定是否继续重试 */ })
+      reconnecting = true
+      // 失败（取流/建连/就绪）再排一次；onclose 路径若已排过，scheduleReconnect 的
+      // 定时器护栏会忽略重复排程。
+      // A failure (mic / connect / ready) schedules the next attempt; if onclose already
+      // scheduled one, scheduleReconnect's timer guard ignores the duplicate.
+      void start().catch(() => {
+        if (!stopped && !serverFailed) scheduleReconnect(gen)
+      })
     }, delay)
   }
 
@@ -333,6 +354,7 @@ export function createVoiceStream(opts: VoiceStreamOptions): VoiceStreamHandle {
     gen++
     stopped = true
     readyOnce = false
+    reconnecting = false
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
     cancelStart?.(new Error('语音流启动已取消'))
     running = false

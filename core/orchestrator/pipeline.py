@@ -228,6 +228,11 @@ async def run_pipeline(text: str, session: Session, events: asyncio.Queue,
     if channel is None:
         channel = EventQueueChannel(events, session.id)
     session.channel = channel
+    # 新回合先领回合 id：当前用户消息与后续产出都打上同一 turn_id，
+    # 历史增量保存据此只替换本轮（docs/designs/10 5.3）。
+    # Claim the turn id BEFORE seeding/append so this turn's messages share it and
+    # incremental history replacement can target just this turn.
+    session.begin_turn()
     if messages:
         # 规范化历史种子：过滤合法消息并保证恒带 blocks（种子可能来自旧格式的
         # {role, content} 裸 dict —— content 包成单 text 块）。

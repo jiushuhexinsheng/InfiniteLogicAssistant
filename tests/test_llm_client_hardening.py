@@ -79,6 +79,51 @@ async def test_per_request_timeout_from_profile(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_openai_protocol_uses_request_timeout():
+    """协议层必须真正使用传入的 per-request 超时（回归：曾被 profile.timeout 覆盖）。"""
+    from core.llm.protocols.openai import _stream_openai
+
+    class _Resp:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        async def aread(self):
+            return b""
+
+        async def aiter_lines(self):
+            yield "data: [DONE]"
+
+    class _Stream:
+        def __init__(self):
+            self.resp = _Resp()
+
+        async def __aenter__(self):
+            return self.resp
+
+        async def __aexit__(self, *exc):
+            return False
+
+    class _Client:
+        def __init__(self):
+            self.timeouts = []
+
+        def stream(self, method, url, **kwargs):
+            self.timeouts.append(kwargs.get("timeout"))
+            return _Stream()
+
+    client = _Client()
+    timeout = httpx.Timeout(2.0)
+    async for _ in _stream_openai(
+        [{"role": "user", "content": "hi"}], None,
+        {"endpoint": "http://x", "model": "m", "provider": "openai"}, client, timeout,
+    ):
+        pass
+    assert client.timeouts == [timeout]
+
+
+@pytest.mark.asyncio
 async def test_stream_chat_forwards_timeout(monkeypatch):
     """stream_chat 把 timeout 透传给协议层（协议层再交给 client.stream）。"""
     sentinel = httpx.Timeout(3.0)

@@ -118,7 +118,9 @@ def register(session: Session, controller: StopController) -> None:
     sessions[session.id] = session
     controllers[session.id] = controller
     session_ts[session.id] = now
-    session_created[session.id] = now
+    # 同一 session 的后续回合只刷新活动时间；创建时间保持首次注册值。
+    # Later turns for the same session refresh activity only; created keeps the first.
+    session_created.setdefault(session.id, now)
     sweep()
 
 

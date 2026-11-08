@@ -143,7 +143,13 @@ async def _stream_gemini(
     """
     payload = _build_gemini_payload(profile, messages, tools)
     url = _gemini_url(profile)
-    timeout = float(profile.get("timeout", 60) or 60)
+    # 调用方（LLM 客户端）传入的 per-request httpx.Timeout 优先；直接调用时
+    # 回退到 profile.timeout 的单一读超时（旧行为）。
+    # Prefer the per-request httpx.Timeout from the LLM client; direct callers
+    # fall back to the single profile read timeout (legacy behavior).
+    req_timeout: httpx.Timeout | float = (
+        timeout if timeout is not None else float(profile.get("timeout", 60) or 60)
+    )
     headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
     if profile.get("api_key"):
         headers["x-goog-api-key"] = profile["api_key"]
@@ -154,11 +160,11 @@ async def _stream_gemini(
 
     own = None
     if client is None:
-        own = httpx.AsyncClient(timeout=timeout)
+        own = httpx.AsyncClient(timeout=req_timeout)
         client = own
     try:
         async with client.stream("POST", url, headers=headers, json=payload,
-                                 timeout=timeout) as resp:
+                                 timeout=req_timeout) as resp:
             await _raise_for_status_read(resp)
             async for line in resp.aiter_lines():
                 if not line or not line.startswith("data: "):

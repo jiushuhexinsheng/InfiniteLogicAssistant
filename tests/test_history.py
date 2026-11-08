@@ -70,6 +70,49 @@ async def test_save_conversation_keeps_other_turns(store):
 
 
 @pytest.mark.asyncio
+async def test_seed_without_ts_stays_before_this_turn(store):
+    """前端历史种子没有 ts：必须排在本轮带时间戳的消息之前，不能盖成保存时刻。
+    Frontend seeds carry no ts: they must sort before this turn's timestamped messages,
+    never be stamped with the save time (which would put them after the reply).
+    """
+    await store.save_conversation("c1", [
+        {"role": "user", "content": "旧问题"},
+        {"role": "assistant", "content": "旧回答"},
+        {"role": "user", "content": "本轮问题", "ts": "2026-11-08T10:00:00", "turn_id": "t1"},
+        {"role": "assistant", "content": "本轮回答", "ts": "2026-11-08T10:00:05", "turn_id": "t1"},
+    ], status="done", summary="")
+
+    conv = await store.get_conversation("c1")
+    assert [m["content"] for m in conv["messages"]] == ["旧问题", "旧回答", "本轮问题", "本轮回答"]
+
+
+@pytest.mark.asyncio
+async def test_runtime_turns_survive_old_turn_resave(store):
+    """真实 Session 的回合打标 + 旧回合迟到重存：新回合消息必须保留。
+    Real Session turn tagging + a late old-turn re-save: the newer turn must survive.
+    """
+    from core.orchestrator.session import Session
+
+    s = Session(session_id="c1")
+    s.begin_turn()
+    s.append("user", "第一问")
+    s.append("assistant", "第一答")
+    turn1 = s.turn_id
+    s.begin_turn()
+    s.append("user", "第二问")
+    s.append("assistant", "第二答")
+    assert all(m["turn_id"] for m in s.messages), "运行时的消息必须带 turn_id"
+
+    # 新回合先落盘（含全部消息）。
+    await store.save_conversation("c1", s.messages)
+    # 旧回合迟到收尾：只带第一轮 —— 不得删掉第二轮。
+    await store.save_conversation("c1", [m for m in s.messages if m["turn_id"] == turn1])
+
+    conv = await store.get_conversation("c1")
+    assert [m["content"] for m in conv["messages"]] == ["第一问", "第一答", "第二问", "第二答"]
+
+
+@pytest.mark.asyncio
 async def test_list_conversations_orders_by_updated(store):
     """测试会话列表按更新时间倒序排列并携带摘要与消息数。Tests that the conversation list is ordered by updated time descending and carries summary and message count."""
     await store.save_conversation("c1", [{"role": "user", "content": "a"}], summary="旧")

@@ -176,18 +176,30 @@ class HistoryStore:
                         "(turn_id IS NULL OR turn_id='')",
                         (conv_id,),
                     )
-            for m in messages:
+            # 无 ts 的消息（前端历史种子只有 role/content）按「其后第一条带 ts 的消息」
+            # 计时：它们发生在那条消息之前。若直接盖 now（保存时刻），种子会比本轮回答
+            # 还晚，`ORDER BY ts_iso` 把整段对话倒过来（docs/designs/10 5.3 修）。
+            # Messages without ts (frontend seeds carry only role/content) inherit the
+            # ts of the next tagged message after them: they happened before it. Stamping
+            # `now` (save time) would place the seeds after this turn's reply and
+            # `ORDER BY ts_iso` would reverse the conversation.
+            resolved: list[tuple[dict, str]] = []
+            next_ts: str | None = None
+            for m in reversed(messages):
                 if not isinstance(m, dict):
                     continue
+                msg_ts = m.get("ts") or next_ts or now
+                resolved.append((m, msg_ts))
+                if m.get("ts"):
+                    next_ts = str(m["ts"])
+            resolved.reverse()
+            for m, msg_ts in resolved:
                 blocks = json.dumps(m.get("blocks"), ensure_ascii=False) if m.get("blocks") else None
-                # ts_iso：消息真实时间（块协议带 ts）；缺省回退整表 now（旧行为）
-                # ts_iso: the message's real time (blocks carry ts); falls back to the
-                # table-wide now (legacy behavior).
                 conn.execute(
                     "INSERT INTO messages (conversation_id, role, content, ts, blocks, turn_id, ts_iso) "
                     "VALUES (?,?,?,?,?,?,?)",
                     (conv_id, m.get("role", ""), m.get("content", "") or "", now,
-                     blocks, m.get("turn_id") or None, m.get("ts") or now),
+                     blocks, m.get("turn_id") or None, msg_ts),
                 )
 
     async def list_conversations(self, limit: int = 30, archived: bool | None = False) -> list[dict]:
