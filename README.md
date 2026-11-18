@@ -2,7 +2,7 @@
 
 # 无限逻辑 · 语音全控智能体
 
-用语音（或文字）控制电脑上的一切：唤醒 → 说话 → 意图判断 → 任务编排（澄清/确认/执行/汇报）→
+用语音（或文字）控制电脑上的一切：唤醒 → 说话 → 意图判断 → 编排执行（必要时只问一次）→
 多智能体协作 + 工具执行 → 记忆/RAG 上下文。浏览器 AudioWorklet 采集 → WebSocket 流式 →
 后端本地 VAD / KWS / ASR（sherpa-onnx），轻量 Python 后端（FastAPI），OpenAI 兼容接口，
 支持离线/在线任意部署。
@@ -26,7 +26,7 @@
 | 通话模式 | 双击悬浮球免唤醒持续聆听；流式文本进 L0 规则 + L1 快筛 + L2 云端意图闸门，命中才送编排；播报可打断、回答后 8s 开放追问 |
 | 语音输入 | 本地或云端 ASR 转文字；状态栏显示「正在识别…」，定稿进聊天记录并显示「识别完成」 |
 | AI 对话 | LLM（OpenAI 兼容：DeepSeek / OpenAI / 通义…）多 profile 切换，ReAct 工具调用 |
-| 任务编排 | 意图判断（闲聊/任务）→ 任务形成 → 澄清缺失信息 → 操作确认（**默认已放行**，见「安全」节）→ 执行 → 汇报（SSE 实时） |
+| 任务编排 | 单一 ReAct 管线：意图判断 →（真没把握时**只问一次**）→ 执行（工具常开）→ 汇报（SSE 实时）；是否确认由权限策略决定（**默认已放行**，见「安全」节） |
 | 消息块协议 | 对话内容模块化：思考 / 工具 / 正文（代码/文档/图片）/ 提问作答 / 回合汇总卡等独立块渲染，注册协议可扩展（ext:*），思考过程可折叠查看 |
 | 多智能体 | 复杂任务自动拆解：规划 / 执行 / 检索 / 批评 子代理并发协作（可开关） |
 | 工具执行 | 29 个内置工具：搜索/天气/计算/文件/Shell/Python/GUI/记忆/定时/技能/元工具，@tool 自动注册 |
@@ -37,7 +37,7 @@
 | 环境感知 | 采集系统信息写入 environment.md，注入规划上下文，工具参数贴合真实系统 |
 | 全链路可控 | 任意时刻可停止整个任务/当前步骤（CancellationToken 贯穿到子进程，taskkill /T 兜底） |
 | 安全审计 | 非 localhost 绑定强制 API Token；工具执行与高风险确认写入 data/audit.log；每次云端音频上传记账可查 |
-| 语音播报 | 浏览器 SpeechSynthesis / 本地 Kokoro / 云端 TTS 三选一，句级队列、可打断 |
+| 语音播报 | 本地 Kokoro / 云端 TTS 二选一（浏览器 SpeechSynthesis 已退役），句级队列、可打断 |
 | 设置面板 | 控制台「设置」页：切换服务商 profile / 调节参数 / 设密钥（不回显）/ 检测连接，热重载即时生效 |
 
 ## 快速开始
@@ -127,7 +127,7 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 | VAD | TEN VAD / Silero（默认） | — | 没有云端 VAD；模型缺失时会话明确报错 |
 | KWS | Zipformer（默认） | 文本拼音判定 | API 模式在转写后判唤醒词 |
 | ASR | Zipformer 流式（默认 `cloud`） | OpenAI 兼容 profile | `local` / `cloud` / `hybrid`；本地增量出字 |
-| TTS | Kokoro | OpenAI 兼容 profile | 另有浏览器 SpeechSynthesis 可选 |
+| TTS | Kokoro | OpenAI 兼容 profile | 浏览器 SpeechSynthesis 已退役 |
 
 唤醒词、VAD 端点静音、KWS 阈值、本地模型、CPU/GPU 与麦克风/扬声器都在设置页
 「语音唤醒」「本地模型」卡中调整；模型放 `models/{vad,kws,asr,tts}`，用
@@ -163,10 +163,9 @@ npm install && npm run dev     # 访问 http://127.0.0.1:5173 （vite 代理 /ap
 
 ```
 语音（AudioWorklet → WebSocket → 本地 VAD/KWS/ASR 或云端）或文字输入
-  → 意图判断（闲聊 | 任务）
-  → 闲聊：LLM 直接回复
-  → 任务：form_task（目标/参数/风险）→ 缺参数则澄清追问
-  → 按权限策略确认（默认放行，仍播报计划）→ 执行（单代理 ReAct / 多智能体）
+  → 意图判断（概括 / 复杂度 / 是否真没把握；不区分闲聊与任务）
+  → 真没把握且猜错有代价：只问一次，回答并进目标
+  → 执行：单代理 ReAct（工具常开）或转多智能体；是否确认由权限策略决定（默认放行，仍播报计划）
   → SSE 实时汇报（状态/思考/工具/正文/提问/汇总）→ TTS 播报
 ```
 
@@ -388,8 +387,8 @@ cd web && npm run gen:api   # 导出 openapi.json + 重新生成 generated.ts
 │   │                          local/sherpa_onnx（VAD/KWS/ASR/TTS 四引擎 + 模型注册表）/
 │   │                          streaming（WebSocket 会话：VAD → KWS → ASR → partial/final）
 │   ├── orchestrator/          编排层：blocks（消息块协议）/ events（SSE 契约）/ session（状态机）/
-│   │                          intent / task / clarify / confirm / executor / condense（历史滚动压缩）/
-│   │                          control / pipeline
+│   │                          intent / task / confirm / executor / condense（历史滚动压缩）/
+│   │                          control / voice_reply / pipeline
 │   ├── session/               会话历史存储（SQLite data/history.db，对话线创建/改名/覆盖/删除）
 │   ├── tasks/                 任务知识库（已休眠：无运行时写入方，见 docs/designs/10 6.1）
 │   ├── agent/                 base 子代理基座 + coordinator 多智能体协调者

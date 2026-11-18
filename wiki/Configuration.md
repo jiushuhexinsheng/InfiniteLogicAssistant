@@ -185,7 +185,7 @@ agent:
   recursion_limit: 12           # ReAct 步数上限
   multi_agent: false            # 复杂任务是否转多智能体协调者
   models_failover: []           # 主模型故障时依次尝试的备选模型（例: ["gpt-4o-mini", "qwen-turbo"]）
-  structured_temperature: 0.2   # 意图/任务形成/提取等结构化输出阶段的温度
+  structured_temperature: 0.2   # 意图判断/记忆提取等结构化输出阶段的温度
   auto_approve: false           # true=write/exec 自动放行不再询问（含子代理与技能；无人值守仍拒绝）
   confirm_timeout_s: 0          # 澄清/确认超时秒数，0=不限；到期按拒绝处理（fail-closed）
   condense_threshold_chars: 12000  # ReAct 历史滚动压缩阈值（字符），0=关闭

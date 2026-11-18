@@ -27,12 +27,12 @@
 - `core/container.py` — 应用上下文容器（AppContext）：scheduler / MCP / LLM 连接池的生命周期统一启停
 - `core/config/` — 配置包：schema（pydantic 模型）/ loader（YAML+密钥注入）/ runtime（单例+热重载+profile 解析）
 - `core/prompts.py` — 系统提示词集中管理（编排各模块单一来源）；`core/model_compat.py` — 模型 profile 工具（协议分派/模型列表路径，2026-10-11 起无内置厂商目录）
-- `core/api/` — **API 路由**：`voice`（子包：编排 SSE 入口 + 唤醒检测/快检/转写/TTS）/ `tools` / `memory` / `schedule` / `history`（会话历史）/ `library`（任务知识库）/ `sessions`（列表/改名/清空/分叉）/ `settings`（配置热重载）/ `providers`（拉取模型列表）/ `state`（会话注册表）；`schemas/` 分域 pydantic 响应模型（openapi 单一事实来源）
+- `core/api/` — **API 路由**：`voice`（子包：`stream` 流式 WS / `run` 编排 SSE / `call` 通话与判定 / `models` 模型与硬件 / `tts` / `stats`）/ `tools` / `memory` / `schedule` / `history`（会话历史）/ `library`（已下线：恒空 / 410）/ `sessions`（列表/改名/清空/分叉）/ `settings`（配置热重载）/ `providers`（拉取模型列表）/ `state`（会话注册表）；`schemas/` 分域 pydantic 响应模型（openapi 单一事实来源）
 - `core/voice/` — 语音层：`streaming/`（WebSocket 会话：VAD→KWS→ASR→partial/final）/ `local/sherpa_onnx/`（四引擎 + registry）/ `wake.py`（拼音级唤醒判定）/ `call_funnel.py`（通话三级漏斗）/ `tts.py`
 - `core/llm/` — 客户端（`client.py` 重试+熔断+连接池 / `stream.py` SSE 解析 / `protocols/`：openai · anthropic · gemini）
-- `core/orchestrator/` — **编排层**：blocks（消息块协议）/ events（SSE 契约）/ session（状态机）/ intent / task / clarify / confirm / executor / condense（ReAct 历史滚动压缩）/ control / pipeline
+- `core/orchestrator/` — **编排层**：blocks（消息块协议）/ events（SSE 契约）/ session（状态机）/ intent / task / confirm / executor / condense（ReAct 历史滚动压缩）/ control / voice_reply（语音摘要）/ pipeline
 - `core/session/` — 会话历史存储（SQLite `data/history.db`，对话线创建/改名/覆盖/删除）
-- `core/tasks/` — 任务知识库（成功任务存档 + trigram 相似检索，减少重复询问）
+- `core/tasks/` — 任务知识库（**已休眠**：无运行时写入方；`/api/library` 只保留空列表 / 410，见 `docs/designs/10` 6.1）
 - `core/agent/` — 多智能体：base 子代理基座 + coordinator 协调者
 - `core/tools/` — @tool 注册中心 + 内置工具（29 个；`policy.py` 权限求值 / `describe.py` 元工具）
 - `core/memory/` — 长期事实记忆（FTS5）+ 任务后提取 + 上下文注入
@@ -48,15 +48,16 @@
 或云端整段转写 → `final` 文本带唤醒判定。随后进入 `core/orchestrator/pipeline.py`
 的 `run_pipeline`：
 
-1. **意图判断** `judge_intent`：规则（记忆类陈述）+ LLM 结构化输出 → 闲聊 或 任务
-2. **任务形成** `form_task`：LLM 提取 `{goal, params, missing, risk}`
-3. **澄清** `run_clarify`：把 `missing` 转问题问操作者，回答后回填，循环至信息足够（上限 3 轮）
-4. **确认** `confirm_if_needed`：由 `permissions` 策略决定——**三档默认全放行**（2026-09-13 起，
-   设置页「权限」或 `config.yaml` 可改回 `ask`/`deny`）；无人值守无确认通道时高风险一律拒绝
-5. **执行** `execute_task`：复杂任务转多智能体协调者；简单任务走 ReAct 循环（read 工具并发）；
+1. **意图判断** `judge_intent`：规则（记忆类陈述）+ LLM 结构化输出 → 概括 / 复杂度 / 是否真没把握；
+   不再区分「闲聊」与「任务」，也不再有独立的任务形成（结构化抽取参数）步骤
+2. **至多问一次** `Session.ask`：只有「猜错有实际代价」时才提问，回答并进目标；
+   弃题 / 空答 → 本轮 `cancelled` 收束，绝不按猜测继续
+3. **确认**（可选）：仅当 `permissions` 把对应风险档设为 `ask` 时，高风险工具调用前确认
+   （三档默认全放行，2026-09-13 起）；无人值守无确认通道时高风险一律拒绝
+4. **执行** `execute_task`：简单任务走 ReAct 循环（read 工具并发）；复杂任务转多智能体协调者；
    历史超 `agent.condense_threshold_chars` 阈值时滚动压缩（`condense.py`，fail-open 不丢任务）
-6. **汇报**：SSE `task_state(done)` 带 summary/steps；任务后异步提取事实写长期记忆；
-   任务模式答「完成了」才存档任务知识库（`core/tasks/`）
+5. **汇报**：SSE `task_state(done)` 带 summary/steps；任务后异步提取事实写长期记忆；
+   不写任务知识库（已休眠，见 `docs/designs/10` 6.1）
 
 > 所有层横切 **CancellationToken**（停止）与**审计日志**。
 

@@ -275,6 +275,11 @@ agent 每次规划时把 `environment.md`（或其相关段）注入上下文，
 
 ### 4.2 语音 → 任务 → 执行 → 汇报 闭环
 
+> **已演进（2026-10，本节为 v1 设计记录）**：当前实现是单一 ReAct 管线 —— `judge_intent`
+> →（真没把握时只问一次）→ `execute_task`。独立的「任务形成 / 澄清循环」已删除，
+> `task.py` 只保留 `Task` 数据类；确认仅由 `permissions` 策略触发（默认放行）。
+> 现状以 [README](../../README.md) 与 [wiki/Architecture.md](../../wiki/Architecture.md) 为准。
+
 ```
 1. 唤醒 → ASR → 文本
 2. intent.py：闲聊 or 任务？

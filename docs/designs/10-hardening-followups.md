@@ -155,6 +155,10 @@
 
 - 新增轻量 `tests/test_docs_consistency.py`：README API 表中的端点必须存在于 openapi；
   已删除路由/文件名不得再出现；`via=` 只允许 `stream`。
+- **2026-11-18 扩展**：范围补齐 `wiki/API.md` 端点表；当前文档引用的 `core/**.py` 必须存在
+  （带空转保护）；`FORBIDDEN` 增加 `form_task` / `run_clarify` / `clarify` —— README 目录树写的是
+  裸模块名，只禁 `.py` 抓不到。范围仍是 README + wiki，`docs/designs`、`docs/superpowers`
+  作为历史记录不纳入。
 - CI 增加该测试；PR 模板增加文档检查项。
 
 ---

@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""voice 域 API — 配置 / TTS / ASR 转写 / 编排 SSE 入口（唯一 agent 路径）
+"""voice 域 API — 配置 / TTS / 模型与硬件 / 流式 WS / 编排 SSE 入口（唯一 agent 路径）
 
-voice domain API — config / TTS / ASR transcription / orchestration SSE entry
-(the only agent path)
+voice domain API — config / TTS / models & hardware / streaming WS / orchestration SSE
+entry (the only agent path)
 
-按端点域拆到同目录子模块(meta / tts / wake / run / call),各自持有 APIRouter;
+按端点域拆到同目录子模块(meta / models / stream / stats / tts / run / call),各自持有
+APIRouter;
 本包聚合出 `router` 供 server.py 挂载(`voice.router` 零改动),并 re-export
 test_sse_resume 直驱的运行流辅助(`_stream_run` 等)。
 """

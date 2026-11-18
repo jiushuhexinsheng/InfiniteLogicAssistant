@@ -23,8 +23,8 @@
 | GET | `/api/env` | 环境感知快照 |
 | GET | `/api/tools` | 工具清单（@tool 注册中心的 OpenAI schema 数组） |
 | POST | `/api/tools/call` | 单工具执行（是否询问由 `permissions` 策略决定） |
-| POST | `/api/voice/utter` | **编排入口**：文本 → SSE 事件流（唯一 agent 路径，`mode`: chat/task） |
-| POST | `/api/voice/answer` | 投递澄清/确认问题的回答（可带 qid 配对，解除 ask() 阻塞） |
+| POST | `/api/voice/utter` | **编排入口**：文本 → SSE 事件流（唯一 agent 路径；`mode` 仅为兼容旧前端保留，已忽略） |
+| POST | `/api/voice/answer` | 投递提问的回答（`kind`: `text`/`choice`，可带 qid 配对，解除 ask() 阻塞） |
 | POST | `/api/voice/resume` | SSE 断线后续播（`server.resume_grace_s` 宽限期内任务继续） |
 | WS | `/api/voice/asr/stream` | **流式语音唯一入口**：`start` JSON + 20ms PCM16LE 帧 → `ready` / `vad` / `status` / `partial` / `final` / `error` / `done`；本地 VAD → KWS → ASR 全在同一连接内完成 |
 | POST | `/api/voice/call/start` · `/api/voice/call/stop` | 通话模式开 / 关（建立漏斗会话；无段落 300s 自动过期，期间与唤醒互斥） |
@@ -53,7 +53,7 @@ CI 校验两者同步）。
 
 ## SSE 事件（`POST /api/voice/utter`）
 
-请求体：`{ text, mode?, messages? }`（`mode`: `chat`/`task`，缺省 chat；
+请求体：`{ text, mode?, messages? }`（`mode` 仅为兼容旧前端保留、服务端已忽略；
 `messages` 为多轮历史种子，含当前用户消息）。
 
 所有事件携带公共字段 `turn_id`（所属回合：一次用户话语 → 一次编排运行 → `done`）；
@@ -65,7 +65,7 @@ CI 校验两者同步）。
 | `content_delta` / `reasoning_delta` | 文本 / 思考增量（任务答复也流式返回） |
 | `tool_start` / `tool_end` | 工具开始 / 结束（tool_end 含 output 与 status） |
 | `usage` | token 用量增量 |
-| `question` | 需要操作者回答（澄清/确认，带 qid），回答走 `/api/voice/answer` |
+| `question` | 需要操作者回答（`kind`: `text`/`choice`，带 qid），回答走 `/api/voice/answer` |
 | `answer` | 操作员作答入块（qid/text/choice/source，语音可审计） |
 | `block` | 离散消息块直通（image/file/ext:* 等即插即用） |
 | `done` | 本轮完成（含 session_id） |

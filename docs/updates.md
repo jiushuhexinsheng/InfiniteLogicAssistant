@@ -7,6 +7,23 @@
 
 ## 更新历史
 
+### 2026-11-18 文档对账 + 防漂移门禁扩展
+
+**背景**：`docs/designs/10` 批次 6 的对账只覆盖 README API 表与一批死标识，叙述性段落仍停在旧架构
+（任务形成/澄清循环、任务库存档、浏览器 SpeechSynthesis）——门禁全绿但文档在说谎。
+
+- **README**：功能表「任务编排」、一次输入的处理链路、目录树（orchestrator 模块列表）改为
+  单一 ReAct 管线；TTS 口径改为「本地 Kokoro / 云端 TTS 二选一（浏览器 SpeechSynthesis 已退役）」。
+- **wiki**：Architecture 的编排步骤改为「意图 → 至多问一次 → 可选确认 → 执行 → 汇报」，
+  同步 API 子模块列表、`core/tasks` 休眠口径；Home 功能表；Memory-RAG 任务库节标注已休眠；
+  API 的 `mode` 标为兼容字段、`question.kind` 改为 text/choice；Configuration 注释去「任务形成」。
+- **历史文档**：`docs/architecture/01` 的 v1 闭环图补「已演进」说明，原文保留为设计记录。
+- **门禁**（`tests/test_docs_consistency.py`）：新增 wiki/API.md 端点存在性校验、当前文档引用的
+  `core/**.py` 模块存在性校验（19 处引用，带空转保护）；`FORBIDDEN` 增加 `form_task` /
+  `run_clarify` / `clarify`（README 目录树写裸模块名，只禁 `.py` 抓不到）。范围仍限定
+  README + wiki：`docs/designs/` 与 `docs/superpowers/` 是时点决策记录，不纳入门禁。
+- **验证**：pytest 740 passed（新增 2 项门禁用例）、mypy 干净、ruff 干净、docs gate 5 passed。
+
 ### 2026-10-20 流式语音 WebSocket + sherpa-onnx 四引擎；旧切段链路删除
 
 **新链路**：浏览器 AudioWorklet → `/api/voice/asr/stream` WebSocket → 本地 VAD（TEN/Silero）
